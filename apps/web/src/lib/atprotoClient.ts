@@ -7,8 +7,11 @@
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
-/** Public App View — graph + profile reads only (not `repo.listRecords` for arbitrary NSIDs). */
-const BSKY_APPVIEW_PUBLIC = "https://public.api.bsky.app";
+/**
+ * Public App View — identity (`resolveHandle`), graph, profile (`getProfile`).
+ * Prefer this host over `bsky.social` for unauthenticated browser reads.
+ */
+export const BSKY_APPVIEW_PUBLIC = "https://public.api.bsky.app";
 
 /**
  * Collections probed to decide whether a followed account has standard.site
@@ -85,6 +88,34 @@ const GRAPH_FOLLOW_COLLECTION = "app.bsky.graph.follow";
 
 const plcEndpointCache = new Map<string, string | null>();
 
+/** Cache handle → DID for {@link resolveRepoDid} (App View resolveHandle). */
+const handleToDidCache = new Map<string, string>();
+
+/**
+ * `repo` parameters must be a DID for PLC/PDS reads. Handles are resolved via public App View.
+ */
+async function resolveRepoDid(handleOrDid: string): Promise<string | null> {
+  const trimmed = handleOrDid.trim().replace(/^@/, "");
+  if (!trimmed) return null;
+  if (trimmed.startsWith("did:")) return trimmed;
+
+  const cached = handleToDidCache.get(trimmed);
+  if (cached) return cached;
+
+  try {
+    const params = new URLSearchParams({ handle: trimmed });
+    const url = `${BSKY_APPVIEW_PUBLIC}/xrpc/com.atproto.identity.resolveHandle?${params}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { did?: string };
+    const did = typeof json.did === "string" ? json.did : null;
+    if (did) handleToDidCache.set(trimmed, did);
+    return did;
+  } catch {
+    return null;
+  }
+}
+
 async function resolvePlcPdsEndpoint(did: string): Promise<string | null> {
   if (!did.startsWith("did:")) return null;
   try {
@@ -124,7 +155,7 @@ function oauthAwareFetch(session: OAuthSession | undefined) {
  * when the host returns 400/401/403 (some PDS policies require an authenticated session).
  */
 async function listRecordsOnAuthorRepo(
-  repoDid: string,
+  repoDidOrHandle: string,
   collection: string,
   options: { limit: number; cursor?: string; reverse?: boolean },
   oauthSession?: OAuthSession
@@ -132,6 +163,9 @@ async function listRecordsOnAuthorRepo(
   records: Array<{ uri: string; value: unknown }>;
   cursor?: string;
 }> {
+  const repoDid = await resolveRepoDid(repoDidOrHandle);
+  if (!repoDid) return { records: [] };
+
   let pdsBase = plcEndpointCache.get(repoDid);
   if (pdsBase === undefined) {
     pdsBase = await resolvePlcPdsEndpoint(repoDid);
@@ -169,11 +203,14 @@ async function listRecordsOnAuthorRepo(
 }
 
 async function getRecordOnAuthorRepo(
-  repo: string,
+  repoDidOrHandle: string,
   collection: string,
   rkey: string,
   oauthSession?: OAuthSession
 ): Promise<unknown | null> {
+  const repo = await resolveRepoDid(repoDidOrHandle);
+  if (!repo) return null;
+
   let pdsBase = plcEndpointCache.get(repo);
   if (pdsBase === undefined) {
     pdsBase = await resolvePlcPdsEndpoint(repo);

@@ -3,9 +3,10 @@
 import { Agent } from "@atproto/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
-import { createOAuthAgent } from "@/lib/atprotoClient";
-
-const BSKY_SERVICE = "https://bsky.social";
+import {
+  BSKY_APPVIEW_PUBLIC,
+  createOAuthAgent,
+} from "@/lib/atprotoClient";
 
 export const VIEWER_PROFILE_QUERY_KEY = (did: string) =>
   ["viewerProfile", did] as const;
@@ -22,9 +23,9 @@ export type ViewerProfileSlice = {
 /**
  * Loads the signed-in user's Bluesky-facing profile (avatar, display name, handle).
  *
- * OAuth access tokens from ATProto are typically audience-bound to the user's **PDS**,
- * not `bsky.social`. Sending them on App View XRPC often yields 401. Public App View
- * reads (`app.bsky.actor.getProfile`) work without Authorization for indexed accounts.
+ * OAuth access tokens from ATProto are typically audience-bound to the user's **PDS**.
+ * Sending them on App View XRPC often yields 401. Use the **public** App View host for
+ * `app.bsky.actor.getProfile` without Authorization for indexed accounts.
  *
  * Fallback: read `app.bsky.actor.profile` on the user's repo via {@link createOAuthAgent}
  * (correct audience → PDS).
@@ -38,7 +39,7 @@ export function useViewerProfile() {
     queryFn: async (): Promise<ViewerProfileSlice | null> => {
       if (!did) return null;
 
-      const appViewAgent = new Agent(BSKY_SERVICE);
+      const appViewAgent = new Agent(BSKY_APPVIEW_PUBLIC);
       try {
         const res = await appViewAgent.api.app.bsky.actor.getProfile({
           actor: did,

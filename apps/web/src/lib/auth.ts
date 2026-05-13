@@ -8,6 +8,7 @@
  */
 
 import { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
+import { BSKY_APPVIEW_PUBLIC } from "@/lib/atprotoClient";
 
 /**
  * Resolve the ATProto OAuth client ID.
@@ -48,7 +49,7 @@ export async function getOAuthClient(): Promise<BrowserOAuthClient> {
   if (!_clientPromise) {
     _clientPromise = BrowserOAuthClient.load({
       clientId: resolveClientId(),
-      handleResolver: "https://bsky.social",
+      handleResolver: BSKY_APPVIEW_PUBLIC,
     });
   }
   return _clientPromise;
