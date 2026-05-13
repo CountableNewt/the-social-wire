@@ -7,7 +7,10 @@
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
-import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
+import {
+  isBridgyAtprotoPdsEndpoint,
+  normalizeHttpUrlToHttps,
+} from "@/lib/publicResourceUrl";
 
 /**
  * Public App View — identity (`resolveHandle`), graph, profile (`getProfile`).
@@ -79,13 +82,15 @@ export interface EntryListItem {
   summary?: string;
   publishedAt: string;
   /**
-   * Resolved image URL for list row (typically `site.standard.document` `coverImage` blob → PDS
-   * `com.atproto.sync.getBlob`, or HTTPS field fallbacks).
+   * Resolved image URL for list row (`site.standard.document#coverImage` blob → PDS
+   * `com.atproto.sync.getBlob`, or HTTPS metadata). Omitted when the only candidate is a blob on a
+   * Bridgy Fed relay PDS — see {@link resolveEntryThumbnailUrls}.
    */
   thumbnailUrl?: string;
   /**
    * When {@link thumbnailUrl} is a blob/sync URL and the record also declares HTTPS thumbnails,
-   * this is wired for `<img onError>` retry paths in the sidebar.
+   * this is wired for `<img onError>` retry paths in the sidebar. Not used for Bridgy relay repos
+   * where blob `getBlob` URLs are never exposed to the browser.
    */
   thumbnailFallbackUrl?: string;
 }
@@ -141,12 +146,7 @@ const plcEndpointInflight = new Map<string, Promise<string | null>>();
  * For those hosts we list ascending and {@link sortRepoRecordsNewestFirst} each page.
  */
 function relayHostOmitsListRecordsReverse(pdsBase: string): boolean {
-  try {
-    const host = new URL(pdsBase).hostname.toLowerCase();
-    return host === "atproto.brid.gy" || host.endsWith(".brid.gy");
-  } catch {
-    return false;
-  }
+  return isBridgyAtprotoPdsEndpoint(pdsBase);
 }
 
 /** Stable newest-first order for raw `listRecords` rows (matches {@link sortEntryListItemsNewestFirst}). */
@@ -675,6 +675,12 @@ export type ResolvedEntryThumbnail = {
 /**
  * Resolves primary + optional HTTPS fallback for sidebar thumbnails (blob via canonical repo DID
  * and PLC PDS, same as repo reads — handle AT-URI authorities are resolved via App View).
+ *
+ * When PLC points at Bridgy Fed (`atproto.brid.gy` / `*.brid.gy`), **`sync.getBlob` is not
+ * used as the primary `<img>` URL**: the relay often returns HTTP 400 for blob fetches from
+ * the browser while still returning JSON errors that poison `<img>`. We prefer HTTPS fields
+ * from the record (`thumbnailUrl`, `coverImage` string, etc.) only; if the only art is a blob,
+ * we omit thumbnails rather than hot-linking a broken URL. See {@link isBridgyAtprotoPdsEndpoint}.
  */
 export async function resolveEntryThumbnailUrls(
   entryUri: string,
@@ -705,6 +711,11 @@ export async function resolveEntryThumbnailUrls(
 
   const httpsFallback =
     candidate.kind === "blob" ? extractHttpsThumbnailOnly(record) : undefined;
+
+  if (isBridgyAtprotoPdsEndpoint(pds)) {
+    return httpsFallback ? { thumbnailUrl: httpsFallback } : {};
+  }
+
   const params = new URLSearchParams({
     did: repoDid,
     cid: candidate.cid,

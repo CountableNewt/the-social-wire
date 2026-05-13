@@ -116,7 +116,7 @@ describe("resolveEntryThumbnailUrl", () => {
     );
   });
 
-  it("uses https://atproto.brid.gy when plc advertises http://atproto.brid.gy", async () => {
+  it("omits Bridgy relay sync.getBlob for browser thumbnails (blob-only record)", async () => {
     globalThis.fetch = mock(() =>
       Promise.resolve(
         new Response(
@@ -147,9 +147,43 @@ describe("resolveEntryThumbnailUrl", () => {
       undefined
     );
 
-    expect(url).toBe(
-      "https://atproto.brid.gy/xrpc/com.atproto.sync.getBlob?did=did%3Aplc%3Abridgyrelay&cid=bafyreiabc"
+    expect(url).toBeUndefined();
+  });
+
+  it("prefers HTTPS thumbnail metadata when PLC is Bridgy relay (blob cover + thumbnailUrl)", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            service: [
+              {
+                id: "#atproto_pds",
+                type: "AtprotoPersonalDataServer",
+                serviceEndpoint: "https://atproto.brid.gy/",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    ) as typeof fetch;
+
+    const r = await resolveEntryThumbnailUrls(
+      "at://did:plc:bridgyrelay/site.standard.document/rk",
+      {
+        coverImage: {
+          $type: "blob",
+          ref: { $link: "bafyreiabc" },
+          mimeType: "image/jpeg",
+          size: 10,
+        },
+        thumbnailUrl: "https://publisher.example/card.png",
+      },
+      undefined
     );
+
+    expect(r.thumbnailUrl).toBe("https://publisher.example/card.png");
+    expect(r.thumbnailFallbackUrl).toBeUndefined();
   });
 
   it("uses https PDS origin when plc advertises http (mixed-content safe)", async () => {

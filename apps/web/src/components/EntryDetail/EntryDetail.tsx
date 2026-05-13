@@ -37,9 +37,8 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
   if (isLoading) {
     return (
       <div className="space-y-4 p-4 sm:p-6">
-        <Skeleton className="h-8 w-3/4" />
-        <Skeleton className="h-4 w-1/4" />
-        <div className="space-y-2 pt-3">
+        <Skeleton className="h-10 w-full max-w-xs" />
+        <div className="space-y-2">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-4 w-full" />
           ))}
@@ -56,35 +55,25 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
     );
   }
 
-  const date = new Date(entry.publishedAt).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
   const showEmbed = Boolean(entry.embedUrl) && !preferRecordBodyOverEmbed;
 
   return (
     <article className="w-full max-w-none px-3 pb-8 pt-1 sm:px-4 sm:pb-10 sm:pt-2 md:px-6 lg:px-8">
-      <header className="mb-3 sm:mb-4">
-        <h1 className="text-xl font-bold leading-tight sm:text-2xl">{entry.title}</h1>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:text-sm">
-          <time dateTime={entry.publishedAt}>{date}</time>
-          {canonicalArticleHref && !showEmbed && (
-            <a
-              href={canonicalArticleHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 hover:text-foreground transition-colors sm:min-h-0 sm:py-0"
-            >
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              View original
-            </a>
-          )}
-        </div>
-      </header>
-
       <EntrySocialToolbar entry={entry} />
+
+      {canonicalArticleHref && !showEmbed ? (
+        <div className="mt-3 flex flex-wrap sm:mt-4">
+          <a
+            href={canonicalArticleHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground sm:min-h-0 sm:text-sm sm:py-0"
+          >
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            View original
+          </a>
+        </div>
+      ) : null}
 
       {showEmbed ? (
         <EntryArticleEmbed
