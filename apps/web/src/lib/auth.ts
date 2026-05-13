@@ -28,7 +28,7 @@ function resolveClientId(): string {
   }
   return (
     process.env.NEXT_PUBLIC_ATPROTO_CLIENT_ID ??
-    "https://thesocialwire.com/client-metadata.json"
+    "https://thesocialwire.app/client-metadata.json"
   );
 }
 

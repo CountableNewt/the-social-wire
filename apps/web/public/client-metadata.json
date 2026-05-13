@@ -1,12 +1,12 @@
 {
-  "client_id": "https://thesocialwire.com/client-metadata.json",
+  "client_id": "https://thesocialwire.app/client-metadata.json",
   "application_type": "web",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
-  "redirect_uris": ["https://thesocialwire.com/callback"],
+  "redirect_uris": ["https://thesocialwire.app/callback"],
   "scope": "atproto",
   "token_endpoint_auth_method": "none",
   "dpop_bound_access_tokens": true,
   "client_name": "The Social Wire",
-  "client_uri": "https://thesocialwire.com"
+  "client_uri": "https://thesocialwire.app"
 }
