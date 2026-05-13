@@ -3,6 +3,7 @@ import {
   computeNextListEntriesPageCursor,
   normalizeAtRepoParam,
   normalizeDidForOwnershipCompare,
+  parseAtUri,
   publicationRepoDid,
   repoAndPublicationFilterFromPubId,
   sortEntryListItemsNewestFirst,
@@ -20,6 +21,20 @@ describe("normalizeAtRepoParam", () => {
 
   it("trims and strips a leading @ before decoding", () => {
     expect(normalizeAtRepoParam("  @did%3Aplc%3Ax  ")).toBe("did:plc:x");
+  });
+
+  it("does not decode percent-encoding inside a parseable AT-URI (preserves rkey)", () => {
+    const uri = "at://did:plc:abc/site.standard.document/foo%3Abar";
+    expect(normalizeAtRepoParam(uri)).toBe(uri);
+    expect(parseAtUri(uri)?.rkey).toBe("foo%3Abar");
+  });
+
+  it("still unwraps URL-encoded AT-URI path segments for route params", () => {
+    const encoded =
+      "at%3A%2F%2Fdid%3Aplc%3Aabc%2Fsite.standard.publication%2Frkey1";
+    const decoded = "at://did:plc:abc/site.standard.publication/rkey1";
+    expect(normalizeAtRepoParam(encoded)).toBe(decoded);
+    expect(parseAtUri(encoded)?.rkey).toBe("rkey1");
   });
 });
 

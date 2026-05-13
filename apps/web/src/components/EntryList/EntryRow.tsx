@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { EntryListItem } from "@/lib/atprotoClient";
 
@@ -10,6 +10,37 @@ interface EntryRowProps {
   onSelect: (entryId: string) => void;
   isRead: boolean;
   readIndicatorsEnabled: boolean;
+}
+
+
+function protocolAlternate(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    const flipped =
+      u.protocol === "https:"
+        ? `http://${u.host}${u.pathname}${u.search}${u.hash}`
+        : `https://${u.host}${u.pathname}${u.search}${u.hash}`;
+    return flipped === url ? undefined : flipped;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Ordered URLs to try (`<img onError>` advances), including opposite HTTP(S) variants. */
+function thumbnailSrcAttempts(primary?: string, fallback?: string): string[] {
+  const out: string[] = [];
+  const push = (url: string) => {
+    if (!out.includes(url)) out.push(url);
+  };
+  const branch = (u?: string) => {
+    if (!u) return;
+    push(u);
+    const alt = protocolAlternate(u);
+    if (alt) push(alt);
+  };
+  branch(primary);
+  branch(fallback);
+  return out;
 }
 
 export function EntryRow({
@@ -27,8 +58,24 @@ export function EntryRow({
   });
 
   const showUnreadChrome = readIndicatorsEnabled && !isRead;
-  const [thumbFailed, setThumbFailed] = useState(false);
-  const showThumb = Boolean(entry.thumbnailUrl) && !thumbFailed;
+  const thumbAttempts = useMemo(
+    () =>
+      thumbnailSrcAttempts(entry.thumbnailUrl, entry.thumbnailFallbackUrl),
+    [entry.entryId, entry.thumbnailUrl, entry.thumbnailFallbackUrl]
+  );
+  const [attemptIdx, setAttemptIdx] = useState(0);
+
+  useEffect(() => {
+    setAttemptIdx(0);
+  }, [entry.entryId, entry.thumbnailUrl, entry.thumbnailFallbackUrl]);
+
+  const activeThumbSrc =
+    thumbAttempts.length > 0 && attemptIdx < thumbAttempts.length
+      ? thumbAttempts[attemptIdx]
+      : undefined;
+  const thumbsExhausted =
+    thumbAttempts.length > 0 && attemptIdx >= thumbAttempts.length;
+  const showThumb = Boolean(activeThumbSrc) && !thumbsExhausted;
 
   return (
     <button
@@ -52,23 +99,29 @@ export function EntryRow({
         <span
           className={cn(
             "relative mt-0.5 h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border/50 bg-muted/35",
-            showThumb && "bg-muted"
+            showThumb ? "bg-muted" : thumbsExhausted ? "opacity-60" : null
           )}
         >
-          {entry.thumbnailUrl ? (
+          {activeThumbSrc ? (
             /* eslint-disable-next-line @next/next/no-img-element -- PDS / arbitrary publisher URLs */
             <img
-              src={entry.thumbnailUrl}
+              src={activeThumbSrc}
               alt=""
               width={48}
               height={48}
               loading="lazy"
               decoding="async"
-              onError={() => setThumbFailed(true)}
-              className={cn(
-                "absolute inset-0 h-full w-full object-cover",
-                thumbFailed && "hidden"
-              )}
+              onError={() => {
+                setAttemptIdx((i) =>
+                  i + 1 < thumbAttempts.length ? i + 1 : thumbAttempts.length
+                );
+              }}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : thumbsExhausted ? (
+            <span
+              className="block h-full w-full bg-muted/30"
+              aria-hidden
             />
           ) : null}
         </span>

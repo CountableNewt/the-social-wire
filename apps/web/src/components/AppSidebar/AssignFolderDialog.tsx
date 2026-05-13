@@ -48,7 +48,7 @@ export function AssignFolderDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign to folder</DialogTitle>
+          <DialogTitle>Assign to Folder</DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
           <Label>Folder</Label>
@@ -59,7 +59,7 @@ export function AssignFolderDialog({
               }`}
               onClick={() => setSelected(null)}
             >
-              All Publications (no folder)
+              All Publications (No Folder)
             </button>
             {folders.map((f) => (
               <button

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
 import { useAuth } from "@/hooks/useAuth";
@@ -240,7 +241,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Folders & publications</SidebarGroupLabel>
+          <SidebarGroupLabel>Folders & Publications</SidebarGroupLabel>
           <SidebarMenu>
             {foldersLoading || pubsLoading ? (
               <SidebarSkeleton count={5} />
@@ -360,13 +361,13 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
             </>
           )}
         </div>
-        <div className="flex min-w-0 items-start gap-2 px-2 pb-2">
-          <input
+        <div className="flex min-w-0 items-center gap-2 px-2 pb-2">
+          <Switch
             id="show-hidden-folder"
-            type="checkbox"
+            size="sm"
             checked={showHiddenFolder}
-            onChange={(e) => setShowHiddenFolder(e.target.checked)}
-            className="border-input text-primary focus-visible:ring-ring mt-0.5 size-4 shrink-0 rounded border shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            onCheckedChange={setShowHiddenFolder}
+            className="shrink-0"
           />
           <Label
             htmlFor="show-hidden-folder"

@@ -211,7 +211,7 @@ export function EntrySocialToolbar({
       <Dialog open={repostOpen} onOpenChange={setRepostOpen}>
         <DialogContent showCloseButton className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Repost this article?</DialogTitle>
+            <DialogTitle>Repost this Article?</DialogTitle>
             <DialogDescription>
               This repeats the linked Bluesky post to your followers. You can
               undo a repost anytime from this toolbar.
@@ -239,7 +239,7 @@ export function EntrySocialToolbar({
       <Dialog open={quoteOpen} onOpenChange={setQuoteOpen}>
         <DialogContent showCloseButton className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Quote post</DialogTitle>
+            <DialogTitle>Quote Post</DialogTitle>
             <DialogDescription>
               {hasLinkedPost
                 ? "Posts a quote of the linked Bluesky record."

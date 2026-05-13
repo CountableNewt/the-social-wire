@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -22,6 +22,7 @@ import {
   useHidePublication,
   useSetPublicationFolder,
 } from "@/hooks/usePublications";
+import { ControlledCreateFolderDialog } from "./NewFolderDialog";
 
 interface PublicationSubItemProps {
   publication: DiscoveredPublication;
@@ -41,6 +42,7 @@ export function PublicationSubItem({
   const { trigger, isSupported } = useWebHaptics();
   const setFolder = useSetPublicationFolder();
   const hidePublication = useHidePublication();
+  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
 
   const prefs = prefsMap.get(publication.publicationId);
   const currentFolderId = prefs?.value.folderId ?? null;
@@ -117,6 +119,13 @@ export function PublicationSubItem({
           </SidebarMenuSubButton>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-[11rem]">
+          <ContextMenuItem
+            disabled={busy}
+            onClick={() => setNewFolderDialogOpen(true)}
+          >
+            New folder…
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuSub>
             <ContextMenuSubTrigger disabled={busy}>{folderSubmenuLabel}</ContextMenuSubTrigger>
             <ContextMenuSubContent className="max-h-[min(50vh,280px)] overflow-y-auto">
@@ -130,12 +139,7 @@ export function PublicationSubItem({
                 ) : (
                   <span className="size-4 shrink-0" aria-hidden />
                 )}
-                <span className="min-w-0 flex-1">
-                  All Publications
-                  <span className="block text-[10px] leading-tight text-muted-foreground">
-                    Unfoldered (My vs follows unchanged)
-                  </span>
-                </span>
+                <span className="truncate">All Publications</span>
               </ContextMenuItem>
               {folders.map((f) => {
                 const rkey = rkeyFromURI(f.uri);
@@ -177,6 +181,17 @@ export function PublicationSubItem({
           )}
         </ContextMenuContent>
       </ContextMenu>
+      <ControlledCreateFolderDialog
+        open={newFolderDialogOpen}
+        onOpenChange={setNewFolderDialogOpen}
+        dialogTitle="New folder"
+        description={`“${publication.title}” moves into this folder when you create it.`}
+        submitLabel="Create & move"
+        pendingSubmitLabel="Saving…"
+        onCreated={async ({ uri }) => {
+          await assignFolder(rkeyFromURI(uri));
+        }}
+      />
     </SidebarMenuSubItem>
   );
 }

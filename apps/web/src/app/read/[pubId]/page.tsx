@@ -86,7 +86,7 @@ export default function PubPage({ params }: Props) {
           </>
         ) : (
           <div className="hidden flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground md:flex">
-            Select an article from the list
+            Select an Article from the List
           </div>
         )}
       </div>

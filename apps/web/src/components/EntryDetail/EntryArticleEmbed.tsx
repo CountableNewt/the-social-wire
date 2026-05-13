@@ -35,7 +35,7 @@ export function EntryArticleEmbed({
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-medium text-foreground">Live site</span>
+          <span className="shrink-0 font-medium text-foreground">Live Site</span>
           <a
             href={url}
             target="_blank"

@@ -81,6 +81,11 @@ export interface EntryListItem {
    * `com.atproto.sync.getBlob`, or HTTPS field fallbacks).
    */
   thumbnailUrl?: string;
+  /**
+   * When {@link thumbnailUrl} is a blob/sync URL and the record also declares HTTPS thumbnails,
+   * this is wired for `<img onError>` retry paths in the sidebar.
+   */
+  thumbnailFallbackUrl?: string;
 }
 
 export interface EntryDetail {
@@ -124,6 +129,28 @@ const LIST_CURSOR_ENT = "e:";
 const GRAPH_FOLLOW_COLLECTION = "app.bsky.graph.follow";
 
 const plcEndpointCache = new Map<string, string | null>();
+
+/** In-flight PLC resolution so concurrent list/thumbnail lookups share one network round-trip. */
+const plcEndpointInflight = new Map<string, Promise<string | null>>();
+
+async function plcPdsBaseForRepoDid(repoDid: string): Promise<string | null> {
+  if (!repoDid.startsWith("did:")) return null;
+  const cached = plcEndpointCache.get(repoDid);
+  if (cached !== undefined) return cached;
+
+  let inflight = plcEndpointInflight.get(repoDid);
+  if (!inflight) {
+    inflight = (async () => {
+      const endpoint = await resolvePlcPdsEndpoint(repoDid);
+      plcEndpointCache.set(repoDid, endpoint);
+      return endpoint;
+    })().finally(() => {
+      plcEndpointInflight.delete(repoDid);
+    });
+    plcEndpointInflight.set(repoDid, inflight);
+  }
+  return inflight;
+}
 
 /** Cache handle → DID for {@link resolveRepoDid} (App View resolveHandle). */
 const handleToDidCache = new Map<string, string>();
@@ -203,11 +230,7 @@ async function listRecordsOnAuthorRepo(
   const repoDid = await resolveRepoDid(repoDidOrHandle);
   if (!repoDid) return { records: [] };
 
-  let pdsBase = plcEndpointCache.get(repoDid);
-  if (pdsBase === undefined) {
-    pdsBase = await resolvePlcPdsEndpoint(repoDid);
-    plcEndpointCache.set(repoDid, pdsBase);
-  }
+  const pdsBase = await plcPdsBaseForRepoDid(repoDid);
   if (!pdsBase) return { records: [] };
 
   const params = new URLSearchParams({
@@ -251,11 +274,7 @@ async function getRecordOnAuthorRepo(
   const repo = await resolveRepoDid(repoDidOrHandle);
   if (!repo) return null;
 
-  let pdsBase = plcEndpointCache.get(repo);
-  if (pdsBase === undefined) {
-    pdsBase = await resolvePlcPdsEndpoint(repo);
-    plcEndpointCache.set(repo, pdsBase);
-  }
+  const pdsBase = await plcPdsBaseForRepoDid(repo);
   if (!pdsBase) return null;
 
   const params = new URLSearchParams({ repo, collection, rkey });
@@ -317,15 +336,24 @@ export function createOAuthAgent(session: OAuthSession): Agent {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const AT_URI_PATH_RE = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
+
 /**
  * Normalizes a sidebar or route `repo`-style value: trim, strip a leading `@`, then
  * apply up to three `decodeURIComponent` passes while each pass changes the string so
  * DIDs and `at://` URIs survive URL segments (`encodeURIComponent`), including accidental
  * double-encoding (`did%253A…`).
+ *
+ * Stops as soon as the value is a well-formed `at://…` path or **`did:`** repo id so we
+ * do not decode `%`-sequences inside an **rkey** (e.g. `foo%3Abar`), which would change
+ * the key and cause `com.atproto.repo.getRecord` to 404.
  */
 export function normalizeAtRepoParam(raw: string): string {
   let s = raw.trim().replace(/^@/, "");
   for (let i = 0; i < 3; i++) {
+    if (AT_URI_PATH_RE.test(s) || s.startsWith("did:")) {
+      return s;
+    }
     const prev = s;
     try {
       const next = decodeURIComponent(prev);
@@ -343,7 +371,7 @@ export function parseAtUri(
   uri: string
 ): { did: string; collection: string; rkey: string } | null {
   const normalized = normalizeAtRepoParam(uri);
-  const match = normalized.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  const match = normalized.match(AT_URI_PATH_RE);
   if (!match) return null;
   return { did: match[1], collection: match[2], rkey: match[3] };
 }
@@ -474,14 +502,32 @@ function extractBlobLink(obj: unknown): string | undefined {
   return undefined;
 }
 
-async function getPdsBaseForDid(did: string): Promise<string | null> {
-  if (!did.startsWith("did:")) return null;
-  let pdsBase = plcEndpointCache.get(did);
-  if (pdsBase === undefined) {
-    pdsBase = await resolvePlcPdsEndpoint(did);
-    plcEndpointCache.set(did, pdsBase);
+/** PLC often documents `http://` PDS hosts; HTTPS pages can't load blob URLs mixed-content. */
+function normalizePdsBaseForHttpsThumbnail(pds: string): string {
+  const trimmed = pds.trim().replace(/\/+$/, "");
+  if (!/^http:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.slice("http://".length)}`;
+}
+
+/** HTTPS-ish thumbnail URLs only — used after blob/sync primary for `<img onError>` recovery. */
+function extractHttpsThumbnailOnly(value: Record<string, unknown>): string | undefined {
+  const cover = value.coverImage;
+  if (typeof cover === "string") {
+    const url = extractHttpsUrl(cover);
+    if (url) return url;
   }
-  return pdsBase;
+  const thumb = value.thumbnail;
+  if (typeof thumb === "string") {
+    const url = extractHttpsUrl(thumb);
+    if (url) return url;
+  }
+  return extractHttpsUrl(
+    str(value.thumbnailUrl),
+    str(value.coverImageUrl),
+    str(value.image),
+    str(value.heroImage),
+    str(value.socialImage)
+  );
 }
 
 type ThumbnailCandidate =
@@ -519,6 +565,58 @@ function thumbnailCandidateFromRecordValue(
   return undefined;
 }
 
+export type ResolvedEntryThumbnail = {
+  thumbnailUrl?: string;
+  thumbnailFallbackUrl?: string;
+};
+
+/**
+ * Resolves primary + optional HTTPS fallback for sidebar thumbnails (blob via canonical repo DID
+ * and PLC PDS, same as repo reads — handle AT-URI authorities are resolved via App View).
+ */
+export async function resolveEntryThumbnailUrls(
+  entryUri: string,
+  value: unknown,
+  _oauthSession?: OAuthSession
+): Promise<ResolvedEntryThumbnail> {
+  void _oauthSession;
+  if (!value || typeof value !== "object") return {};
+
+  const record = value as Record<string, unknown>;
+  const candidate = thumbnailCandidateFromRecordValue(record);
+  if (!candidate) return {};
+
+  if (candidate.kind === "https") {
+    return { thumbnailUrl: candidate.url };
+  }
+
+  const parsed = parseAtUri(entryUri);
+  if (!parsed) return {};
+
+  const repoDid = await resolveRepoDid(parsed.did);
+  if (!repoDid?.startsWith("did:")) return {};
+
+  const pdsRaw = await plcPdsBaseForRepoDid(repoDid);
+  if (!pdsRaw) return {};
+
+  const pds = normalizePdsBaseForHttpsThumbnail(pdsRaw);
+
+  const httpsFallback =
+    candidate.kind === "blob" ? extractHttpsThumbnailOnly(record) : undefined;
+  const params = new URLSearchParams({
+    did: repoDid,
+    cid: candidate.cid,
+  });
+  const blobUrl = `${pds}/xrpc/com.atproto.sync.getBlob?${params}`;
+
+  return {
+    thumbnailUrl: blobUrl,
+    ...(httpsFallback && httpsFallback !== blobUrl
+      ? { thumbnailFallbackUrl: httpsFallback }
+      : {}),
+  };
+}
+
 /**
  * Resolves a usable `<img src>` URL for entry list rows from record fields (blob preferred per
  * `site.standard.document#coverImage`, then common HTTPS metadata).
@@ -526,26 +624,10 @@ function thumbnailCandidateFromRecordValue(
 export async function resolveEntryThumbnailUrl(
   entryUri: string,
   value: unknown,
-  _oauthSession?: OAuthSession
+  oauthSession?: OAuthSession
 ): Promise<string | undefined> {
-  void _oauthSession;
-  if (!value || typeof value !== "object") return undefined;
-  const candidate = thumbnailCandidateFromRecordValue(value as Record<string, unknown>);
-  if (!candidate) return undefined;
-
-  if (candidate.kind === "https") return candidate.url;
-
-  const parsed = parseAtUri(entryUri);
-  if (!parsed) return undefined;
-
-  const pds = await getPdsBaseForDid(parsed.did);
-  if (!pds) return undefined;
-
-  const params = new URLSearchParams({
-    did: parsed.did,
-    cid: candidate.cid,
-  });
-  return `${pds}/xrpc/com.atproto.sync.getBlob?${params}`;
+  const r = await resolveEntryThumbnailUrls(entryUri, value, oauthSession);
+  return r.thumbnailUrl;
 }
 
 function parseStrongRef(
@@ -688,7 +770,7 @@ async function recordsToListItems(
   return Promise.all(
     records.map(async (record) => {
       const parsed = parseEntryValue(record.value as Record<string, unknown>);
-      const thumbnailUrl = await resolveEntryThumbnailUrl(
+      const thumbnails = await resolveEntryThumbnailUrls(
         record.uri,
         record.value,
         oauthSession
@@ -698,7 +780,8 @@ async function recordsToListItems(
         title: parsed.title,
         summary: parsed.summary,
         publishedAt: parsed.publishedAt,
-        thumbnailUrl,
+        thumbnailUrl: thumbnails.thumbnailUrl,
+        thumbnailFallbackUrl: thumbnails.thumbnailFallbackUrl,
       };
     })
   );
