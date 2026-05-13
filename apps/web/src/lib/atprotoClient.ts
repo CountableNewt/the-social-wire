@@ -127,7 +127,7 @@ const handleToDidCache = new Map<string, string>();
  * `repo` parameters must be a DID for PLC/PDS reads. Handles are resolved via public App View.
  */
 async function resolveRepoDid(handleOrDid: string): Promise<string | null> {
-  const trimmed = handleOrDid.trim().replace(/^@/, "");
+  const trimmed = normalizeAtRepoParam(handleOrDid);
   if (!trimmed) return null;
   if (trimmed.startsWith("did:")) return trimmed;
 
@@ -312,11 +312,33 @@ export function createOAuthAgent(session: OAuthSession): Agent {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Normalizes a sidebar or route `repo`-style value: trim, strip a leading `@`, then
+ * apply up to three `decodeURIComponent` passes while each pass changes the string so
+ * DIDs and `at://` URIs survive URL segments (`encodeURIComponent`), including accidental
+ * double-encoding (`did%253A…`).
+ */
+export function normalizeAtRepoParam(raw: string): string {
+  let s = raw.trim().replace(/^@/, "");
+  for (let i = 0; i < 3; i++) {
+    const prev = s;
+    try {
+      const next = decodeURIComponent(prev);
+      if (next === prev) break;
+      s = next;
+    } catch {
+      break;
+    }
+  }
+  return s;
+}
+
 /** Parses an AT-URI into its components. */
 export function parseAtUri(
   uri: string
 ): { did: string; collection: string; rkey: string } | null {
-  const match = uri.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  const normalized = normalizeAtRepoParam(uri);
+  const match = normalized.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
   if (!match) return null;
   return { did: match[1], collection: match[2], rkey: match[3] };
 }
@@ -329,11 +351,33 @@ export function repoAndPublicationFilterFromPubId(pubId: string): {
   repoDid: string;
   publicationAtUri?: string;
 } {
-  const parsed = parseAtUri(pubId);
+  const normalized = normalizeAtRepoParam(pubId);
+  const parsed = parseAtUri(normalized);
   if (parsed && PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
-    return { repoDid: parsed.did, publicationAtUri: pubId };
+    return { repoDid: parsed.did, publicationAtUri: normalized };
   }
-  return { repoDid: pubId };
+  return { repoDid: normalized };
+}
+
+/**
+ * Repo DID that owns this sidebar publication key (aggregate `did:…` id or a publication AT-URI).
+ * When {@link repoAndPublicationFilterFromPubId} falls back to a non-publication AT-URI string,
+ * this still extracts the embedded DID.
+ */
+export function publicationRepoDid(pubId: string): string {
+  let { repoDid } = repoAndPublicationFilterFromPubId(pubId);
+  const parsedRepo = parseAtUri(repoDid);
+  if (parsedRepo?.did) return parsedRepo.did;
+  return repoDid;
+}
+
+/** True if this discovered publication should appear only under "My Publications", not "All". */
+export function viewerOwnsDiscoveredPublication(
+  publication: { publicationId: string },
+  viewerDid: string | null | undefined
+): boolean {
+  if (!viewerDid) return false;
+  return publicationRepoDid(publication.publicationId) === viewerDid;
 }
 
 function slugFromPath(path: string): string | undefined {
@@ -1005,6 +1049,8 @@ export async function getEntry(
   const parsed = parseAtUri(entryId);
   if (!parsed) return null;
 
+  const normalizedEntryId = `at://${parsed.did}/${parsed.collection}/${parsed.rkey}`;
+
   const raw = (await getRecordOnAuthorRepo(
     parsed.did,
     parsed.collection,
@@ -1022,7 +1068,7 @@ export async function getEntry(
   const bskyRef = parseStrongRef(raw.bskyPostRef);
 
   return {
-    entryId,
+    entryId: normalizedEntryId,
     title: fields.title,
     publishedAt: fields.publishedAt,
     contentHtml: fields.contentHtml,

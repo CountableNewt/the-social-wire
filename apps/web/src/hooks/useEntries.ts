@@ -6,7 +6,12 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { listEntries, getEntry, repoAndPublicationFilterFromPubId } from "@/lib/atprotoClient";
+import {
+  listEntries,
+  getEntry,
+  normalizeAtRepoParam,
+  repoAndPublicationFilterFromPubId,
+} from "@/lib/atprotoClient";
 import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import { useAuth } from "./useAuth";
 
@@ -28,15 +33,16 @@ type EntriesPage = { entries: EntryListItem[]; cursor?: string };
 export function useEntries(publicationKey: string | null) {
   const { session, getOAuthSession } = useAuth();
   const queryClient = useQueryClient();
+  const normalizedKey = publicationKey ? normalizeAtRepoParam(publicationKey) : null;
 
   return useInfiniteQuery({
-    queryKey: ENTRIES_QUERY_KEY(publicationKey ?? ""),
+    queryKey: ENTRIES_QUERY_KEY(normalizedKey ?? ""),
     queryFn: async ({ pageParam, signal }) => {
-      if (!publicationKey) return { entries: [], cursor: undefined };
+      if (!normalizedKey) return { entries: [], cursor: undefined };
       const oauth = getOAuthSession() ?? undefined;
-      const key = ENTRIES_QUERY_KEY(publicationKey);
+      const key = ENTRIES_QUERY_KEY(normalizedKey);
       const { repoDid, publicationAtUri } =
-        repoAndPublicationFilterFromPubId(publicationKey);
+        repoAndPublicationFilterFromPubId(normalizedKey);
       const isFirstInfinitePage = pageParam === undefined;
       return listEntries(
         repoDid,
@@ -70,7 +76,7 @@ export function useEntries(publicationKey: string | null) {
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.cursor,
-    enabled: !!publicationKey && !!session,
+    enabled: !!normalizedKey && !!session,
     staleTime: 2 * 60_000,
     gcTime: 1000 * 60 * 60 * 24,
   });
@@ -81,14 +87,15 @@ export function useEntries(publicationKey: string | null) {
  */
 export function useEntry(entryId: string | null) {
   const { session, getOAuthSession } = useAuth();
+  const normalizedId = entryId ? normalizeAtRepoParam(entryId) : null;
 
   return useQuery({
-    queryKey: ENTRY_DETAIL_QUERY_KEY(entryId ?? ""),
+    queryKey: ENTRY_DETAIL_QUERY_KEY(normalizedId ?? ""),
     queryFn: async () => {
-      if (!entryId) return null;
-      return getEntry(entryId, getOAuthSession() ?? undefined);
+      if (!normalizedId) return null;
+      return getEntry(normalizedId, getOAuthSession() ?? undefined);
     },
-    enabled: !!entryId && !!session,
+    enabled: !!normalizedId && !!session,
     staleTime: 5 * 60_000,
   });
 }

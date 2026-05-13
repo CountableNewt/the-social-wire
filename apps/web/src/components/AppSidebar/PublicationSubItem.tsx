@@ -25,7 +25,7 @@ export function PublicationSubItem({
         className="gap-2"
       >
         <PublicationLeadingAvatar publication={publication} />
-        <span className="truncate">{publication.title}</span>
+        <span className="min-w-0 flex-1 truncate">{publication.title}</span>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );

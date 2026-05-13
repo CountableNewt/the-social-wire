@@ -8,13 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarHeader,
-  SidebarFooter,
+  SidebarResizeHandle,
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { Label } from "@/components/ui/label";
@@ -35,23 +36,9 @@ import {
   PSEUDO_FOLDER_MY_URI,
   rkeyFromURI,
 } from "@/lib/pdsClient";
-import { parseAtUri } from "@/lib/atprotoClient";
+import { viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
 
 const ALL_BRANCH_KEY = "__all__";
-
-function publicationAuthoredByViewer(
-  publication: {
-    publicationId: string;
-    authorDid: string;
-  },
-  viewerDid: string | null | undefined
-): boolean {
-  if (!viewerDid) return false;
-  if (publication.authorDid === viewerDid) return true;
-  if (publication.publicationId === viewerDid) return true;
-  const parsed = parseAtUri(publication.publicationId);
-  return parsed?.did === viewerDid;
-}
 
 interface AppSidebarProps {
   selectedPubId: string | null;
@@ -127,7 +114,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     }
   }, [viewerDid, selectedFolderUri, setSelectedFolderUri]);
 
-  // One bucket per visible pub: folder (folderId) wins over My; else My if viewer-authored; else All.
+  // One bucket per visible pub: folder (folderId) wins over My; else My if on viewer repo; else All.
   const { folderMap, unfolderedPubs, myPublications } = useMemo(() => {
     const folderMap = new Map<string, typeof visiblePubs>();
     const unfolderedPubs: typeof visiblePubs = [];
@@ -143,7 +130,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         continue;
       }
 
-      if (publicationAuthoredByViewer(pub, viewerDid)) {
+      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
         myPublications.push(pub);
       } else {
         unfolderedPubs.push(pub);
@@ -174,7 +161,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       }
     }
 
-    if (publicationAuthoredByViewer(pub, viewerDid)) {
+    if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
       setSelectedFolderUri(PSEUDO_FOLDER_MY_URI);
       return;
     }
@@ -214,11 +201,11 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         }
       }
 
-      if (!expandedAssignedFolder && publicationAuthoredByViewer(pub, viewerDid)) {
+      if (!expandedAssignedFolder && viewerOwnsDiscoveredPublication(pub, viewerDid)) {
         next.add(PSEUDO_FOLDER_MY_URI);
       }
 
-      if (!folderId && !publicationAuthoredByViewer(pub, viewerDid)) {
+      if (!folderId && !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
         next.add(ALL_BRANCH_KEY);
       }
 
@@ -229,9 +216,9 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-0.5">
-            <span className="font-semibold text-sm">The Social Wire</span>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate font-semibold text-sm">The Social Wire</span>
             <span className="inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               Alpha
             </span>
@@ -239,7 +226,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 shrink-0"
             onClick={() => refresh.mutate()}
             disabled={refresh.isPending}
             title="Refresh publications"
@@ -365,7 +352,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
             </>
           )}
         </div>
-        <div className="flex items-start gap-2 px-2 pb-2">
+        <div className="flex min-w-0 items-start gap-2 px-2 pb-2">
           <input
             id="show-hidden-folder"
             type="checkbox"
@@ -375,7 +362,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           />
           <Label
             htmlFor="show-hidden-folder"
-            className="cursor-pointer text-xs leading-snug font-normal text-sidebar-foreground"
+            className="min-w-0 flex-1 cursor-pointer text-xs leading-snug font-normal text-sidebar-foreground"
           >
             Show Hidden Publications folder
           </Label>
@@ -394,6 +381,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <SidebarResizeHandle />
     </Sidebar>
   );
 }

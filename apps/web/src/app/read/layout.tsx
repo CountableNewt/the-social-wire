@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppSidebar } from "@/components/AppSidebar/AppSidebar";
 import { ReadRouteProvider } from "@/contexts/ReadRouteContext";
@@ -9,9 +9,26 @@ import {
   SidebarProvider,
   SidebarInset,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { usePathname } from "next/navigation";
+import { normalizeAtRepoParam } from "@/lib/atprotoClient";
+
+function ClosePublicationsSheetOnMobilePubRoute({
+  selectedPubId,
+}: {
+  selectedPubId: string | null;
+}) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (isMobile && selectedPubId) {
+      setOpenMobile(false);
+    }
+  }, [isMobile, selectedPubId, setOpenMobile]);
+
+  return null;
+}
 
 export default function ReadLayout({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth();
@@ -20,7 +37,7 @@ export default function ReadLayout({ children }: { children: React.ReactNode }) 
 
   // Derive the selected pubId from the URL path: /read/[pubId]
   const selectedPubId = pathname.startsWith("/read/")
-    ? decodeURIComponent(pathname.slice("/read/".length))
+    ? normalizeAtRepoParam(pathname.slice("/read/".length))
     : null;
 
   useEffect(() => {
@@ -45,6 +62,7 @@ export default function ReadLayout({ children }: { children: React.ReactNode }) 
   return (
     <SidebarProvider>
       <ReadRouteProvider>
+        <ClosePublicationsSheetOnMobilePubRoute selectedPubId={selectedPubId} />
         <AppSidebar
           selectedPubId={selectedPubId}
           onSelectPub={(pubId) => router.push(`/read/${encodeURIComponent(pubId)}`)}

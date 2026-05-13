@@ -27,7 +27,9 @@ import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH_DEFAULT_PX = 256 // matches previous 16rem default
+const SIDEBAR_WIDTH_MIN_PX = 200
+const SIDEBAR_WIDTH_MAX_PX = 480
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -40,6 +42,10 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  sidebarWidthPx: number
+  setSidebarWidthPx: React.Dispatch<React.SetStateAction<number>>
+  sidebarResizing: boolean
+  setSidebarResizing: (value: boolean) => void
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -68,6 +74,10 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+  const [sidebarWidthPx, setSidebarWidthPx] = React.useState(
+    SIDEBAR_WIDTH_DEFAULT_PX
+  )
+  const [sidebarResizing, setSidebarResizing] = React.useState(false)
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -122,8 +132,22 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      sidebarWidthPx,
+      setSidebarWidthPx,
+      sidebarResizing,
+      setSidebarResizing,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+      sidebarWidthPx,
+      sidebarResizing,
+    ]
   )
 
   return (
@@ -132,13 +156,15 @@ function SidebarProvider({
         data-slot="sidebar-wrapper"
         style={
           {
-            "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-width": `${sidebarWidthPx}px`,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
             ...style,
           } as React.CSSProperties
         }
         className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+          "group/sidebar-wrapper flex min-h-svh w-full min-w-0 has-data-[variant=inset]:bg-sidebar",
+          sidebarResizing &&
+            "[&_[data-slot=sidebar-gap]]:transition-none [&_[data-slot=sidebar-container]]:transition-none",
           className
         )}
         {...props}
@@ -199,7 +225,9 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
@@ -242,7 +270,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="relative flex size-full min-h-0 min-w-0 flex-col overflow-x-hidden bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
@@ -277,6 +305,126 @@ function SidebarTrigger({
   )
 }
 
+function SidebarResizeHandle({
+  className,
+  side = "left",
+  ...props
+}: React.ComponentProps<"div"> & {
+  side?: "left" | "right"
+}) {
+  const {
+    isMobile,
+    open,
+    sidebarWidthPx,
+    setSidebarWidthPx,
+    setSidebarResizing,
+  } = useSidebar()
+
+  const clampWidth = React.useCallback((value: number) => {
+    return Math.min(
+      SIDEBAR_WIDTH_MAX_PX,
+      Math.max(SIDEBAR_WIDTH_MIN_PX, value)
+    )
+  }, [])
+
+  const onPointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isMobile || !open) return
+      event.preventDefault()
+      const startX = event.clientX
+      const startW = sidebarWidthPx
+      const target = event.currentTarget
+      target.setPointerCapture(event.pointerId)
+      setSidebarResizing(true)
+
+      const onMove = (ev: PointerEvent) => {
+        const delta =
+          side === "left" ? ev.clientX - startX : startX - ev.clientX
+        setSidebarWidthPx(clampWidth(startW + delta))
+      }
+
+      const onEnd = (ev: PointerEvent) => {
+        if (target.hasPointerCapture(ev.pointerId)) {
+          target.releasePointerCapture(ev.pointerId)
+        }
+        target.removeEventListener("pointermove", onMove)
+        target.removeEventListener("pointerup", onEnd)
+        target.removeEventListener("pointercancel", onEnd)
+        setSidebarResizing(false)
+      }
+
+      target.addEventListener("pointermove", onMove)
+      target.addEventListener("pointerup", onEnd)
+      target.addEventListener("pointercancel", onEnd)
+    },
+    [
+      isMobile,
+      open,
+      setSidebarResizing,
+      setSidebarWidthPx,
+      sidebarWidthPx,
+      side,
+      clampWidth,
+    ]
+  )
+
+  const onKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isMobile || !open) return
+      const step = event.shiftKey ? 24 : 8
+      if (side === "left") {
+        if (event.key === "ArrowRight") {
+          event.preventDefault()
+          setSidebarWidthPx((w) => clampWidth(w + step))
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault()
+          setSidebarWidthPx((w) => clampWidth(w - step))
+        }
+      } else {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault()
+          setSidebarWidthPx((w) => clampWidth(w + step))
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault()
+          setSidebarWidthPx((w) => clampWidth(w - step))
+        }
+      }
+    },
+    [clampWidth, isMobile, open, setSidebarWidthPx, side]
+  )
+
+  if (isMobile || !open) {
+    return null
+  }
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuemin={SIDEBAR_WIDTH_MIN_PX}
+      aria-valuemax={SIDEBAR_WIDTH_MAX_PX}
+      aria-valuenow={Math.round(sidebarWidthPx)}
+      aria-label="Resize sidebar width"
+      data-slot="sidebar-resize-handle"
+      tabIndex={0}
+      className={cn(
+        "touch-none select-none",
+        "absolute inset-y-0 z-30 w-px bg-transparent",
+        side === "left"
+          ? "right-0 cursor-col-resize before:absolute before:inset-y-0 before:right-0 before:z-10 before:w-3 before:translate-x-1/2 before:bg-transparent"
+          : "left-0 cursor-col-resize before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-3 before:-translate-x-1/2 before:bg-transparent",
+        "after:pointer-events-none after:absolute after:inset-y-0 after:w-px after:bg-transparent hover:after:bg-sidebar-border",
+        side === "left" ? "after:right-0" : "after:left-0",
+        "focus-visible:after:bg-sidebar-ring focus-visible:outline-none",
+        className
+      )}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      {...props}
+    />
+  )
+}
+
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar()
 
@@ -307,7 +455,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex min-h-0 min-w-0 w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
@@ -334,7 +482,7 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sidebar-header"
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex min-w-0 flex-col gap-2 p-2", className)}
       {...props}
     />
   )
@@ -345,7 +493,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sidebar-footer"
       data-sidebar="footer"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex min-w-0 flex-col gap-2 p-2", className)}
       {...props}
     />
   )
@@ -371,7 +519,7 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        "no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        "no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden",
         className
       )}
       {...props}
@@ -446,7 +594,7 @@ function SidebarGroupContent({
     <div
       data-slot="sidebar-group-content"
       data-sidebar="group-content"
-      className={cn("w-full text-sm", className)}
+      className={cn("w-full min-w-0 text-sm", className)}
       {...props}
     />
   )
@@ -468,7 +616,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn("group/menu-item relative", className)}
+      className={cn("group/menu-item relative min-w-0", className)}
       {...props}
     />
   )
@@ -717,6 +865,7 @@ export {
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
+  SidebarResizeHandle,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
