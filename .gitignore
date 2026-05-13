@@ -30,6 +30,7 @@ DerivedData/
 Thumbs.db
 
 # Editor
+.cursor/
 .vscode/
 .idea/
 *.swp
