@@ -2,6 +2,7 @@
 
 - When asked to commit and push, stage only files changed for the current task, exclude unrelated edits, use a short conventional commit message, and push the active branch (often `main`).
 - Prefer focused diffs: match existing project style, keep imports at the top, and avoid drive-by refactors or unsolicited docs.
+- When a delegated or subagent outcome is already visible in the parent UI, do not restate its full contents unless asked or multi-task synthesis is needed; a brief confirmation is enough (and avoid repeating the same stock confirmation every time).
 
 ## Learned Workspace Facts
 
@@ -11,3 +12,5 @@
 - When bridging `session.fetchHandler` into `@atproto/api`’s `Agent`, satisfy `typeof fetch` (including static `preconnect`) by delegating `preconnect` from global `fetch` on the wrapper.
 - standard.site discovery should cover `site.standard.document` and `site.standard.publication`, and retain `site.standard.entry` for backward compatibility; `services/api`’s Swift `DiscoveryChain.swift` reflects the intended multi-collection behavior.
 - The repository `.gitignore` includes `.cursor/` so local Cursor metadata is not committed.
+- Bridgy blob endpoints (`atproto.brid.gy` → `com.atproto.sync.getBlob`) are unreliable for thumbnails—responses may `400`, and `http://` variants trigger mixed-content upgrades—prefer HTTPS normalization and non-Bridgy fallbacks rather than a single Bridgy blob URL as the only `<img>` source.
+- When normalizing external reader/embed URLs, strip Bridgy-related query noise such as `bridge_completed` (and similar `bridge_*` params); leaving them on can yield publisher-site `404`s in iframes or outbound navigation.

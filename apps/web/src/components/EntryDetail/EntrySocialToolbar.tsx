@@ -87,7 +87,10 @@ export function EntrySocialToolbar({
     <>
       <div
         className={cn(
-          "-mx-1 flex flex-wrap items-center gap-1 border-b border-border pb-3 mb-4 sm:-mx-0 sm:gap-2 sm:pb-3.5 sm:mb-6",
+          "-mx-1 w-full border-b border-border pb-3 mb-4 sm:-mx-0 sm:pb-3.5 sm:mb-6",
+          "max-md:grid max-md:grid-cols-2 max-md:gap-1 max-md:items-stretch",
+          "max-md:[&>button]:w-full max-md:[&>a]:w-full",
+          "md:flex md:flex-wrap md:items-center md:gap-2",
           className
         )}
         role="toolbar"
@@ -170,7 +173,7 @@ export function EntrySocialToolbar({
         ) : null}
 
         {!hasLinkedPost ? (
-          <p className="w-full text-[11px] leading-snug text-muted-foreground sm:text-xs">
+          <p className="w-full max-md:col-span-2 text-[11px] leading-snug text-muted-foreground sm:text-xs">
             Like/Repost need a linked Bluesky post (
             <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
               bskyPostRef
