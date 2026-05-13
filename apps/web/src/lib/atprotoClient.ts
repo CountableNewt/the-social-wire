@@ -14,14 +14,27 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 export const BSKY_APPVIEW_PUBLIC = "https://public.api.bsky.app";
 
 /**
- * Collections probed to decide whether a followed account has standard.site
- * content (aligned with services/api DiscoveryChain + current lexicons).
+ * Publication-shaped collections — probed first so the sidebar shows site/publication
+ * names, not individual article titles (see {@link discoverPublications}).
  */
-export const DISCOVERY_COLLECTIONS = [
-  "site.standard.document",
+const DISCOVERY_PUBLICATION_COLLECTIONS = [
   "site.standard.publication",
-  "site.standard.entry",
   "com.standard.publication",
+] as const;
+
+/**
+ * Post/document collections — only used when the author has no publication record but does
+ * have standard.site posts; sidebar label stays the author/handle, not one article title.
+ */
+const DISCOVERY_CONTENT_COLLECTIONS = [
+  "site.standard.document",
+  "site.standard.entry",
+] as const;
+
+/** Union of collections probed during discovery (publication lexicons first). */
+export const DISCOVERY_COLLECTIONS = [
+  ...DISCOVERY_PUBLICATION_COLLECTIONS,
+  ...DISCOVERY_CONTENT_COLLECTIONS,
 ] as const;
 
 /** Preferred collection for listing posts (current ecosystem); then legacy. */
@@ -522,7 +535,10 @@ export async function discoverPublications(
   async function probeFollow(
     follow: FollowProfile
   ): Promise<DiscoveredPublication | null> {
-    for (const collection of DISCOVERY_COLLECTIONS) {
+    const sidebarLabel =
+      follow.displayName?.trim() || follow.handle || follow.did;
+
+    for (const collection of DISCOVERY_PUBLICATION_COLLECTIONS) {
       const { records: rows } = await listRecordsOnAuthorRepo(
         follow.did,
         collection,
@@ -535,7 +551,7 @@ export async function discoverPublications(
       const title = publicationTitleFromRecord(
         collection,
         firstVal,
-        follow.displayName ?? follow.handle
+        sidebarLabel
       );
 
       return {
@@ -547,6 +563,26 @@ export async function discoverPublications(
         discoveredAt,
       };
     }
+
+    for (const collection of DISCOVERY_CONTENT_COLLECTIONS) {
+      const { records: rows } = await listRecordsOnAuthorRepo(
+        follow.did,
+        collection,
+        { limit: 1, reverse: false },
+        session
+      );
+      if (rows.length === 0) continue;
+
+      return {
+        publicationId: follow.did,
+        authorDid: follow.did,
+        authorHandle: follow.handle,
+        title: sidebarLabel,
+        avatarUrl: follow.avatar,
+        discoveredAt,
+      };
+    }
+
     return null;
   }
 

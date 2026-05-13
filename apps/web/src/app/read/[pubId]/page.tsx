@@ -14,23 +14,30 @@ export default function PubPage({ params }: Props) {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Entry list — fixed width, full height, scrollable */}
-      <div className="w-72 shrink-0 border-r overflow-hidden flex flex-col">
-        <EntryList
-          pubId={pubId}
-          selectedEntryId={selectedEntryId}
-          onSelectEntry={setSelectedEntryId}
-        />
-      </div>
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Article list — second column after publications sidebar */}
+      <aside className="flex w-72 shrink-0 flex-col border-r bg-muted/20 min-h-0">
+        <div className="shrink-0 border-b px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Articles
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <EntryList
+            pubId={pubId}
+            selectedEntryId={selectedEntryId}
+            onSelectEntry={setSelectedEntryId}
+          />
+        </div>
+      </aside>
 
-      {/* Entry detail — flex fill, scrollable */}
-      <div className="flex flex-1 overflow-y-auto">
+      {/* Entry detail */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {selectedEntryId ? (
           <EntryDetail entryId={selectedEntryId} />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground p-8 text-center">
-            Select an entry to read
+          <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
+            Select an article from the list
           </div>
         )}
       </div>
