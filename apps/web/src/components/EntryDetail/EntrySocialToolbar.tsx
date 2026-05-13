@@ -8,7 +8,7 @@ import {
   Repeat,
   Share2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -118,16 +118,19 @@ export function EntrySocialToolbar({
     <>
       <div
         className={cn(
-          "flex flex-wrap items-center gap-2 border-b pb-4 mb-6",
+          "-mx-1 flex flex-wrap items-center gap-1 border-b border-border pb-3 mb-4 sm:-mx-0 sm:gap-2 sm:pb-3.5 sm:mb-6",
           className
         )}
+        role="toolbar"
+        aria-label="Article sharing and reactions"
       >
         <Button
           variant={liked ? "secondary" : "outline"}
           size="sm"
           disabled={!hasLinkedPost || busySocial}
-          className="gap-1.5"
-          title={!hasLinkedPost ? disabledHint : undefined}
+          className="h-11 min-h-[44px] min-w-[44px] justify-center gap-1.5 px-1 sm:h-7 sm:min-h-0 sm:min-w-0 sm:justify-start sm:px-2.5"
+          title={!hasLinkedPost ? disabledHint : liked ? "Unlike" : "Like"}
+          aria-label={liked ? "Unlike" : "Like"}
           onClick={() =>
             toggleLikeMutation.mutate({
               likeUri,
@@ -135,17 +138,26 @@ export function EntrySocialToolbar({
           }
         >
           <Heart
-            className={cn("size-4", liked && "fill-current text-red-600")}
+            className={cn("size-5 sm:size-3.5", liked && "fill-current text-red-600")}
           />
-          {liked ? "Unlike" : "Like"}
+          <span className="hidden sm:inline">
+            {liked ? "Unlike" : "Like"}
+          </span>
         </Button>
 
         <Button
           variant={reposted ? "secondary" : "outline"}
           size="sm"
           disabled={!hasLinkedPost || busySocial}
-          className="gap-1.5"
-          title={!hasLinkedPost ? disabledHint : undefined}
+          className="h-11 min-h-[44px] min-w-[44px] justify-center gap-1.5 px-1 sm:h-7 sm:min-h-0 sm:min-w-0 sm:justify-start sm:px-2.5"
+          title={
+            !hasLinkedPost
+              ? disabledHint
+              : reposted
+                ? "Undo repost"
+                : "Repost"
+          }
+          aria-label={reposted ? "Undo repost" : "Repost"}
           onClick={() => {
             if (reposted) {
               toggleRepostMutation.mutate({ repostUri });
@@ -154,28 +166,34 @@ export function EntrySocialToolbar({
             }
           }}
         >
-          <Repeat className="size-4" />
-          {reposted ? "Undo repost" : "Repost"}
+          <Repeat className="size-5 sm:size-3.5" />
+          <span className="hidden sm:inline">
+            {reposted ? "Undo repost" : "Repost"}
+          </span>
         </Button>
 
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5"
+          className="h-11 min-h-[44px] min-w-[44px] justify-center gap-1.5 px-1 sm:h-7 sm:min-h-0 sm:min-w-0 sm:justify-start sm:px-2.5"
+          title="Quote"
+          aria-label="Quote post"
           onClick={() => setQuoteOpen(true)}
         >
-          <MessageSquareQuote className="size-4" />
-          Quote
+          <MessageSquareQuote className="size-5 sm:size-3.5" />
+          <span className="hidden sm:inline">Quote</span>
         </Button>
 
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5"
+          className="h-11 min-h-[44px] min-w-[44px] justify-center gap-1.5 px-1 sm:h-7 sm:min-h-0 sm:min-w-0 sm:justify-start sm:px-2.5"
+          title="Share"
+          aria-label="Share article"
           onClick={onShare}
         >
-          <Share2 className="size-4" />
-          Share
+          <Share2 className="size-5 sm:size-3.5" />
+          <span className="hidden sm:inline">Share</span>
         </Button>
 
         {(entry.embedUrl ?? entry.originalUrl) ? (
@@ -183,27 +201,33 @@ export function EntrySocialToolbar({
             href={shareArticleUrl(entry)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1 px-1 no-underline sm:h-7 sm:min-h-0 sm:min-w-0 sm:justify-start sm:gap-1.5 sm:px-2.5"
+            )}
+            title="Open canonical article"
+            aria-label="Open canonical article in new tab"
           >
-            <Link2 className="size-3.5" />
-            Canonical link
+            <Link2 className="size-5 sm:size-3.5" />
+            <span className="hidden sm:inline max-w-[9rem] truncate text-xs font-medium">
+              Link
+            </span>
           </a>
         ) : null}
 
         {shareHint ? (
-          <span className="text-xs text-muted-foreground" role="status">
+          <span className="w-full px-1 text-xs text-muted-foreground sm:inline sm:w-auto" role="status">
             {shareHint}
           </span>
         ) : null}
 
         {!hasLinkedPost ? (
-          <p className="w-full text-[11px] leading-snug text-muted-foreground">
-            Quote and Share work from here; Like/Repost require a Bluesky post
-            referenced by{" "}
+          <p className="w-full text-[11px] leading-snug text-muted-foreground sm:text-xs">
+            Like/Repost need a linked Bluesky post (
             <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
               bskyPostRef
-            </code>{" "}
-            on the article record.
+            </code>
+            ). Quote and Share work here.
           </p>
         ) : null}
       </div>

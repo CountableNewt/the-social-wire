@@ -7,16 +7,16 @@ import { EntryList } from "@/components/EntryList/EntryList";
 import { EntryDetail } from "@/components/EntryDetail/EntryDetail";
 import { Button } from "@/components/ui/button";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
-import { normalizeAtRepoParam } from "@/lib/atprotoClient";
+import { readRoutePubIdFromSegments } from "@/lib/atprotoClient";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  params: Promise<{ pubId: string }>;
+  params: Promise<{ pubId: string[] }>;
 }
 
 export default function PubPage({ params }: Props) {
-  const { pubId: rawPubId } = use(params);
-  const pubId = normalizeAtRepoParam(rawPubId);
+  const { pubId: pubSegments } = use(params);
+  const pubId = readRoutePubIdFromSegments(pubSegments);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const { markEntryRead, isEntryRead, isHiddenFolderContext } = useReadRoute();
 
@@ -33,12 +33,12 @@ export default function PubPage({ params }: Props) {
   }, [pubId]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden md:flex-row md:items-stretch">
       {/* Article list — desktop: beside publications sidebar; mobile: full width until an entry opens */}
       <aside
         className={cn(
-          "flex min-h-0 min-w-0 flex-col border-r bg-muted/20",
-          "w-full flex-1 md:w-72 md:shrink-0 md:flex-none",
+          "flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-muted/20",
+          "w-full flex-1 md:h-full md:w-72 md:shrink-0 md:flex-none",
           selectedEntryId && "hidden md:flex"
         )}
       >
@@ -61,7 +61,7 @@ export default function PubPage({ params }: Props) {
       {/* Entry detail */}
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden",
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden md:h-full",
           !selectedEntryId && "hidden md:flex"
         )}
       >

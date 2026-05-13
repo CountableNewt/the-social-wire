@@ -8,6 +8,7 @@ import {
   normalizeDidForOwnershipCompare,
   parseAtUri,
   publicationRepoDid,
+  readRoutePubIdFromSegments,
   repoAndPublicationFilterFromPubId,
   sortEntryListItemsNewestFirst,
   viewerOwnsDiscoveredPublication,
@@ -56,6 +57,33 @@ describe("normalizeAtRepoParam", () => {
       "at://did:plc:x77/site.standard.document/foo%3Abar";
     expect(normalizeAtRepoParam(raw)).toBe(expected);
     expect(parseAtUri(raw)?.rkey).toBe("foo%3Abar");
+  });
+});
+
+describe("readRoutePubIdFromSegments", () => {
+  it("passes through a plain DID unchanged", () => {
+    expect(readRoutePubIdFromSegments(["did:plc:x"])).toBe("did:plc:x");
+    expect(readRoutePubIdFromSegments("did:plc:x")).toBe("did:plc:x");
+  });
+
+  it("joins multiple path segments produced by decoded slashes in publication AT-URIs", () => {
+    expect(
+      readRoutePubIdFromSegments([
+        "at:",
+        "",
+        "did:plc:foo",
+        "site.standard.publication",
+        "rkey1",
+      ])
+    ).toBe("at://did:plc:foo/site.standard.publication/rkey1");
+  });
+
+  it("handles a single encoded-segment pathname shape", () => {
+    const encoded =
+      "at%3A%2F%2Fdid%3Aplc%3Aabc%2Fsite.standard.publication%2Frkey1";
+    expect(readRoutePubIdFromSegments([encoded])).toBe(
+      "at://did:plc:abc/site.standard.publication/rkey1"
+    );
   });
 });
 

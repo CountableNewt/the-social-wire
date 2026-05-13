@@ -153,8 +153,6 @@ export class PDSClient {
     },
     existingRkey?: string
   ): Promise<{ uri: string; cid: string }> {
-    const rkey = existingRkey ?? generateTID();
-
     let prev: PublicationPrefsRecord | null = null;
     if (existingRkey) {
       const current = await this.agent.api.com.atproto.repo.getRecord({
@@ -188,14 +186,23 @@ export class PDSClient {
       ...(folderId !== undefined ? { folderId } : {}),
     };
 
-    const response = await this.agent.api.com.atproto.repo.putRecord({
+    if (!existingRkey) {
+      const created = await this.agent.api.com.atproto.repo.createRecord({
+        repo: this.did,
+        collection: COLLECTION_PUB_PREFS,
+        record: record as unknown as Record<string, unknown>,
+      });
+      return { uri: created.data.uri, cid: created.data.cid };
+    }
+
+    const updated = await this.agent.api.com.atproto.repo.putRecord({
       repo: this.did,
       collection: COLLECTION_PUB_PREFS,
-      rkey,
+      rkey: existingRkey,
       record: record as unknown as Record<string, unknown>,
     });
 
-    return { uri: response.data.uri, cid: response.data.cid };
+    return { uri: updated.data.uri, cid: updated.data.cid };
   }
 
   async deletePublicationPrefs(rkey: string): Promise<void> {
@@ -208,22 +215,6 @@ export class PDSClient {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Generates a TID (timestamp-based ID) suitable for use as an ATProto record key.
- * Format: base32(timestamp_microseconds || clock_id)
- */
-function generateTID(): string {
-  const ts = BigInt(Date.now()) * 1000n;
-  const chars = "234567abcdefghijklmnopqrstuvwxyz";
-  let n = ts;
-  let result = "";
-  for (let i = 0; i < 13; i++) {
-    result = chars[Number(n & 31n)] + result;
-    n >>= 5n;
-  }
-  return result;
-}
 
 /**
  * Extracts the rkey from an at-uri.

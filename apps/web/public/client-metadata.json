@@ -4,7 +4,7 @@
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "redirect_uris": ["https://thesocialwire.app/callback"],
-  "scope": "atproto",
+  "scope": "atproto repo:com.thesocialwire.folder?action=create&action=update&action=delete repo:com.thesocialwire.publicationPrefs?action=create&action=update&action=delete",
   "token_endpoint_auth_method": "none",
   "dpop_bound_access_tokens": true,
   "client_name": "The Social Wire",

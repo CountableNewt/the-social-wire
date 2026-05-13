@@ -35,7 +35,7 @@ export default function ReadLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const pathname = usePathname();
 
-  // Derive the selected pubId from the URL path: /read/[pubId]
+  // Derive the selected pubId from the URL path: /read/[...pubId] (joined suffix)
   const selectedPubId = pathname.startsWith("/read/")
     ? normalizeAtRepoParam(pathname.slice("/read/".length))
     : null;
@@ -60,19 +60,19 @@ export default function ReadLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh max-h-svh min-h-0 overflow-hidden">
       <ReadRouteProvider>
         <ClosePublicationsSheetOnMobilePubRoute selectedPubId={selectedPubId} />
         <AppSidebar
           selectedPubId={selectedPubId}
           onSelectPub={(pubId) => router.push(`/read/${encodeURIComponent(pubId)}`)}
         />
-        <SidebarInset className="flex flex-col min-h-0 flex-1">
-          <header className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
+        <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <header className="flex h-11 min-h-11 shrink-0 items-center gap-1 border-b px-2 sm:h-10 sm:min-h-10 sm:gap-2 sm:px-3 md:px-4">
+            <SidebarTrigger className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 -ml-0.5 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 sm:-ml-1" />
             <Separator orientation="vertical" className="h-4" />
           </header>
-          <main className="flex flex-1 overflow-hidden">{children}</main>
+          <main className="flex min-h-0 flex-1 overflow-hidden">{children}</main>
         </SidebarInset>
       </ReadRouteProvider>
     </SidebarProvider>

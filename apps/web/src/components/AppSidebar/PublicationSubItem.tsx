@@ -24,6 +24,17 @@ import {
 } from "@/hooks/usePublications";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
 
+function notifyMutationFailure(label: string, err: unknown) {
+  console.error(err);
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "Something went wrong. Try again.";
+  window.alert(`${label}: ${message}`);
+}
+
 interface PublicationSubItemProps {
   publication: DiscoveredPublication;
   isSelected: boolean;
@@ -75,7 +86,7 @@ export function PublicationSubItem({
         });
         hapticSuccess();
       } catch (e) {
-        console.error(e);
+        notifyMutationFailure("Could not move publication", e);
       }
     },
     [setFolder, publication.publicationId, prefs, hapticSuccess]
@@ -91,7 +102,10 @@ export function PublicationSubItem({
         });
         hapticSuccess();
       } catch (e) {
-        console.error(e);
+        notifyMutationFailure(
+          hidden ? "Could not hide publication" : "Could not unhide publication",
+          e
+        );
       }
     },
     [hidePublication, publication.publicationId, prefs, hapticSuccess]

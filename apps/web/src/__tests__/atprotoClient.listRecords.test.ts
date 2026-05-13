@@ -89,6 +89,93 @@ describe("listRecordsOnAuthorRepo via listEntries", () => {
   });
 });
 
+describe("listEntries cursor chain (relay-style PDS)", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("follows listRecords cursors across empty pages before returning rows", async () => {
+    let listCalls = 0;
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.href;
+
+      if (url.includes("plc.directory")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              service: [
+                {
+                  id: "#atproto_pds",
+                  type: "AtprotoPersonalDataServer",
+                  serviceEndpoint: "https://pds.emptychain.brid.gy",
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }
+
+      if (url.includes("pds.emptychain.brid.gy") && url.includes("listRecords")) {
+        const sp = new URL(url).searchParams;
+        expect(sp.get("reverse")).toBe("false");
+        listCalls++;
+        if (listCalls === 1) {
+          expect(sp.get("cursor")).toBe(null);
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ records: [], cursor: "gap-page" }),
+              { status: 200, headers: { "Content-Type": "application/json" } }
+            )
+          );
+        }
+        expect(sp.get("cursor")).toBe("gap-page");
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              records: [
+                {
+                  uri: "at://did:plc:gapped/site.standard.document/first",
+                  cid: "c1",
+                  value: {
+                    $type: "site.standard.document",
+                    title: "After gap",
+                    publishedAt: "2025-01-01T00:00:00.000Z",
+                  },
+                },
+              ],
+              cursor: undefined,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const { entries, cursor } = await listEntries(
+      "did:plc:gapped",
+      undefined,
+      50,
+      undefined,
+      {}
+    );
+
+    expect(listCalls).toBe(2);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toBe("After gap");
+    expect(cursor).toBe("1:");
+  });
+});
+
 describe("listRecords full PDS host", () => {
   const originalFetch = globalThis.fetch;
 

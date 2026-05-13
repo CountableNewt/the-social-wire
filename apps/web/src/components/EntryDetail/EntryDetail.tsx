@@ -21,10 +21,10 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 p-8">
+      <div className="space-y-4 p-4 sm:p-6">
         <Skeleton className="h-8 w-3/4" />
         <Skeleton className="h-4 w-1/4" />
-        <div className="space-y-2 pt-4">
+        <div className="space-y-2 pt-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-4 w-full" />
           ))}
@@ -35,7 +35,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
 
   if (error || !entry) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center px-4 py-8 text-sm text-muted-foreground">
         Failed to load entry.
       </div>
     );
@@ -50,19 +50,19 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
   const showEmbed = Boolean(entry.embedUrl);
 
   return (
-    <article className="mx-auto max-w-4xl p-8">
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold leading-tight">{entry.title}</h1>
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+    <article className="w-full max-w-none px-3 pb-8 pt-1 sm:px-4 sm:pb-10 sm:pt-2 md:px-6 lg:px-8">
+      <header className="mb-3 sm:mb-4">
+        <h1 className="text-xl font-bold leading-tight sm:text-2xl">{entry.title}</h1>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:text-sm">
           <time dateTime={entry.publishedAt}>{date}</time>
-          {(entry.embedUrl ?? entry.originalUrl) && (
+          {(entry.embedUrl ?? entry.originalUrl) && !showEmbed && (
             <a
               href={entry.embedUrl ?? entry.originalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 hover:text-foreground transition-colors sm:min-h-0 sm:py-0"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
               View original
             </a>
           )}
@@ -75,7 +75,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
         <EntryArticleEmbed
           url={entry.embedUrl!}
           title={entry.title}
-          className="mb-8"
+          className="mb-5 sm:mb-6"
         />
       ) : null}
 
@@ -84,9 +84,9 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
           No embed URL or HTML body is available for this entry.
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1 sm:space-y-2">
           {showEmbed ? (
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Syndicated HTML
             </p>
           ) : null}

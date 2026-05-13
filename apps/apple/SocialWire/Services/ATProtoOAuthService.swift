@@ -189,7 +189,14 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: "thesocialwire://oauth/callback"),
-            URLQueryItem(name: "scope", value: "atproto"),
+            URLQueryItem(
+                name: "scope",
+                value: [
+                    "atproto",
+                    "repo:com.thesocialwire.folder?action=create&action=update&action=delete",
+                    "repo:com.thesocialwire.publicationPrefs?action=create&action=update&action=delete",
+                ].joined(separator: " ")
+            ),
             URLQueryItem(name: "code_challenge", value: challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "state", value: state),

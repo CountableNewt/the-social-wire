@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import {
   createOAuthAgent,
+  createPublicAppViewAgent,
   type EntryDetail,
 } from "@/lib/atprotoClient";
 
@@ -11,7 +12,7 @@ export const bskyPostViewerKey = (uri: string | undefined) =>
   ["bsky-post-viewer", uri ?? ""] as const;
 
 export function useEntrySocial(entry: EntryDetail | null) {
-  const { session, getOAuthSession } = useAuth();
+  const { getOAuthSession } = useAuth();
   const queryClient = useQueryClient();
   const uri = entry?.bskyPostUri;
   const cid = entry?.bskyPostCid;
@@ -19,10 +20,10 @@ export function useEntrySocial(entry: EntryDetail | null) {
   const viewerQuery = useQuery({
     queryKey: bskyPostViewerKey(uri),
     queryFn: async () => {
-      const oauth = getOAuthSession();
-      if (!oauth || !uri) return null;
-      const agent = createOAuthAgent(oauth);
-      const res = await agent.app.bsky.feed.getPosts({ uris: [uri] });
+      if (!uri) return null;
+      // App View read — must not use PDS-audience OAuth fetch (see AGENTS.md).
+      const agent = createPublicAppViewAgent();
+      const res = await agent.api.app.bsky.feed.getPosts({ uris: [uri] });
       const post = res.data.posts[0];
       if (!post) return null;
       return {
@@ -30,7 +31,7 @@ export function useEntrySocial(entry: EntryDetail | null) {
         repostUri: post.viewer?.repost,
       };
     },
-    enabled: !!session && !!uri && !!cid,
+    enabled: !!uri && !!cid,
     staleTime: 30_000,
   });
 

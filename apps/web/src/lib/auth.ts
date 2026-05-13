@@ -11,6 +11,24 @@ import { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser"
 import { BSKY_APPVIEW_PUBLIC } from "@/lib/atprotoClient";
 
 /**
+ * Space-separated ATProto OAuth scopes. Must stay in sync with
+ * `public/client-metadata.json` (`scope`): authorization servers reject
+ * undeclared scopes.
+ *
+ * `atproto` is required by the ATProto OAuth profile. Repository writes for
+ * Social Wire lexicons need explicit `repo:` permissions; use one scope per
+ * collection with combined `action=` params (permission string syntax).
+ *
+ * **Re-login required after deploy:** widening scopes does not upgrade existing
+ * access tokens; users must sign out and sign in again.
+ */
+export const AT_PROTO_OAUTH_SCOPES = [
+  "atproto",
+  "repo:com.thesocialwire.folder?action=create&action=update&action=delete",
+  "repo:com.thesocialwire.publicationPrefs?action=create&action=update&action=delete",
+].join(" ");
+
+/**
  * Resolve the ATProto OAuth client ID.
  *
  * ATProto OAuth loopback clients MUST use exactly `http://localhost` as the
@@ -62,7 +80,7 @@ export async function getOAuthClient(): Promise<BrowserOAuthClient> {
 export async function signIn(handle: string): Promise<void> {
   const client = await getOAuthClient();
   await client.signInRedirect(handle, {
-    scope: "atproto",
+    scope: AT_PROTO_OAUTH_SCOPES,
   });
   // Browser is redirected — execution stops here.
 }

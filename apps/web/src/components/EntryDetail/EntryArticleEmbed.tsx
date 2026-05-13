@@ -32,18 +32,20 @@ export function EntryArticleEmbed({
   }, []);
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-medium text-foreground">Live Site</span>
+    <div className={cn("flex flex-col gap-1.5 sm:gap-2", className)}>
+      <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground sm:rounded-lg sm:bg-muted/30 sm:px-3 sm:py-2 sm:text-xs">
+        <div className="flex min-w-0 flex-1 basis-[min(100%,12rem)] items-center gap-1.5 sm:basis-auto sm:gap-2">
+          <span className="hidden shrink-0 font-medium text-foreground sm:inline">
+            Live Site
+          </span>
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-w-0 items-center gap-1 truncate hover:text-foreground hover:underline"
+            className="inline-flex min-h-[44px] min-w-0 flex-1 items-center gap-1 truncate py-1.5 hover:text-foreground hover:underline sm:min-h-0 sm:flex-none sm:py-0"
             title={url}
           >
-            <ExternalLink className="size-3.5 shrink-0" />
+            <ExternalLink className="size-3.5 shrink-0 sm:size-4" aria-hidden />
             <span className="truncate">{url}</span>
           </a>
         </div>
@@ -51,30 +53,35 @@ export function EntryArticleEmbed({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={buttonVariants({ variant: "outline", size: "xs" })}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "xs" }),
+            "inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 sm:min-h-0 sm:min-w-0 sm:px-2"
+          )}
+          aria-label="Open in new tab"
         >
-          Open in new tab
+          <ExternalLink className="size-4 sm:hidden" aria-hidden />
+          <span className="hidden sm:inline">Open</span>
         </a>
       </div>
 
       <div className="relative overflow-hidden rounded-lg border bg-background">
         {!loaded && !failed && (
-          <div className="absolute inset-0 z-10 flex flex-col gap-2 p-4">
+          <div className="absolute inset-0 z-10 flex flex-col gap-2 p-3 sm:p-4">
             <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-[min(70vh,560px)] w-full rounded-md" />
+            <Skeleton className="h-[min(78vh,600px)] w-full rounded-md" />
           </div>
         )}
         {failed ? (
-          <div className="flex min-h-[200px] items-center justify-center p-6 text-center text-sm text-muted-foreground">
+          <div className="flex min-h-[200px] items-center justify-center px-4 py-6 text-center text-sm text-muted-foreground">
             This page cannot be embedded (the site may block iframes). Use
-            &quot;Open in new tab&quot; or read the syndicated HTML below.
+            &quot;Open&quot; above or read the syndicated HTML below.
           </div>
         ) : (
           <iframe
             title={`Embedded article: ${title}`}
             src={url}
             className={cn(
-              "block h-[min(78vh,720px)] w-full bg-background",
+              "block h-[min(82vh,760px)] w-full bg-background",
               !loaded && "opacity-0"
             )}
             onLoad={handleLoad}

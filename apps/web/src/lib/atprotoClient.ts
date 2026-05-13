@@ -364,13 +364,19 @@ async function enrichFollowsFromRelay(
 
 /**
  * OAuth-backed Agent with `did` set — required for {@link Agent.post}, {@link Agent.like}, {@link Agent.repost},
- * and {@link Agent.api}.com.atproto.repo.* against the user's **PDS** (correct token audience).
+ * and `com.atproto.repo.*` XRPC against the user's **PDS** (correct token audience).
  *
  * Do **not** use this for arbitrary calls to `bsky.social`: OAuth tokens are usually scoped to the PDS,
- * and App View may reject them. Prefer `Agent` with the default Bluesky service URL and no custom fetch for public reads.
+ * and App View may reject them. Prefer {@link createPublicAppViewAgent} (or `new Agent(BSKY_APPVIEW_PUBLIC)`)
+ * for `app.bsky.*` reads that must not use the PDS-bound OAuth `fetchHandler`.
  */
 export function createOAuthAgent(session: OAuthSession): Agent {
   return new Agent(session);
+}
+
+/** Unauthenticated App View — use for `app.bsky.*` lexicons (e.g. `getPosts`) that must not hit the user PDS. */
+export function createPublicAppViewAgent(): Agent {
+  return new Agent(BSKY_APPVIEW_PUBLIC);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -446,6 +452,23 @@ export function normalizeAtRepoParam(raw: string): string {
     }
   }
   return s;
+}
+
+/**
+ * Publication key from the Next.js `read/[...pubId]` catch-all segments.
+ *
+ * AT-URI publication ids are routed as `router.push(`/read/${encodeURIComponent(uri)}`)`. If `%2F`
+ * is decoded into real path slashes (browser, CDN, reverse proxy), a single `@pubId` param no
+ * longer matches and Next returns **404**. Joining segment arrays restores `at://…/collection/rkey`
+ * (`["at:", "", "did:plc:x", …].join("/")` → correct `//` after `at:`).
+ */
+export function readRoutePubIdFromSegments(pubId: string | string[]): string {
+  const raw = Array.isArray(pubId)
+    ? pubId.length === 0
+      ? ""
+      : pubId.join("/")
+    : pubId;
+  return normalizeAtRepoParam(raw);
 }
 
 /** Parses an AT-URI into its components. */
@@ -1360,33 +1383,43 @@ export async function listEntries(
     }
   }
 
-  for (let i = startIdx; i < colCount; i++) {
+  let i = startIdx;
+  while (i < colCount) {
     if (signal?.aborted) {
       return { entries: [], cursor: undefined };
     }
 
-    const atprotoCursor = i === startIdx ? startAtproto : undefined;
-    const res = await listRecordsOnAuthorRepo(
-      authorDid,
-      LIST_COLLECTIONS_ORDER[i],
-      { limit, cursor: atprotoCursor, reverse: true, signal },
-      oauthSession
-    );
+    let pageCursor: string | undefined = i === startIdx ? startAtproto : undefined;
 
-    if (res.records.length > 0) {
-      const entries = await recordsToListItems(res.records, oauthSession);
-      const nextCursor = computeNextListEntriesPageCursor(
-        i,
-        colCount,
-        res.cursor
+    for (;;) {
+      const res = await listRecordsOnAuthorRepo(
+        authorDid,
+        LIST_COLLECTIONS_ORDER[i],
+        { limit, cursor: pageCursor, reverse: true, signal },
+        oauthSession
       );
-      onProgress?.({ entries, cursor: nextCursor });
-      return { entries, cursor: nextCursor };
+
+      if (res.records.length > 0) {
+        const entries = await recordsToListItems(res.records, oauthSession);
+        const nextCursor = computeNextListEntriesPageCursor(
+          i,
+          colCount,
+          res.cursor
+        );
+        onProgress?.({ entries, cursor: nextCursor });
+        return { entries, cursor: nextCursor };
+      }
+
+      if (res.cursor) {
+        pageCursor = res.cursor;
+        continue;
+      }
+
+      break;
     }
 
-    if (i === startIdx && atprotoCursor !== undefined) {
-      continue;
-    }
+    i += 1;
+    startAtproto = undefined;
   }
 
   return { entries: [], cursor: undefined };
