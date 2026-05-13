@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  # ── Web ───────────────────────────────────────────────────────────────────
+  build-web:
+    name: Build & Test Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: .
+
+      - name: Typecheck
+        run: bunx turbo typecheck --filter=web
+
+      - name: Lint
+        run: bunx turbo lint --filter=web
+
+      - name: Test with coverage
+        run: bunx turbo test --filter=web
+        env:
+          NEXT_PUBLIC_APP_ENV: test
+
+      - name: Build
+        run: bunx turbo build --filter=web
+        env:
+          NEXT_PUBLIC_APP_ENV: test
+          NEXT_PUBLIC_ATPROTO_CLIENT_ID: test-client
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/web/coverage/lcov.info
+          flags: web
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── API ───────────────────────────────────────────────────────────────────
+  test-api:
+    name: Test API (Swift)
+    runs-on: ubuntu-latest
+    container:
+      image: swift:6.1-jammy
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build
+
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Export coverage (llvm-cov)
+        run: |
+          BINARY=$(swift build --show-bin-path)/App
+          llvm-cov export \
+            -format="lcov" \
+            -instr-profile=.build/debug/codecov/default.profdata \
+            "$BINARY" > coverage.lcov
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: services/api/coverage.lcov
+          flags: api
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── iOS build (stub — wired via Xcode Cloud in Phase 1b) ──────────────────
+  # Uncomment when using a macOS runner:
+  # build-apple:
+  #   name: Build Apple
+  #   runs-on: macos-15
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: xcodebuild -project apps/apple/SocialWire.xcodeproj -scheme SocialWire -destination 'platform=iOS Simulator,name=iPhone 16' build
