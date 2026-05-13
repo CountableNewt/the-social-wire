@@ -7,6 +7,8 @@
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
+import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
+
 /**
  * Public App View — identity (`resolveHandle`), graph, profile (`getProfile`).
  * Prefer this host over `bsky.social` for unauthenticated browser reads.
@@ -226,7 +228,8 @@ async function resolvePlcPdsEndpoint(did: string): Promise<string | null> {
         typeof ep === "string" &&
         (s.id === "#atproto_pds" || s.type === "AtprotoPersonalDataServer")
       ) {
-        return ep.replace(/\/+$/, "");
+        const trimmed = ep.replace(/\/+$/, "");
+        return normalizeHttpUrlToHttps(trimmed);
       }
     }
     return null;
@@ -607,32 +610,26 @@ function extractBlobLink(obj: unknown): string | undefined {
   return undefined;
 }
 
-/** PLC often documents `http://` PDS hosts; HTTPS pages can't load blob URLs mixed-content. */
-function normalizePdsBaseForHttpsThumbnail(pds: string): string {
-  const trimmed = pds.trim().replace(/\/+$/, "");
-  if (!/^http:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed.slice("http://".length)}`;
-}
-
 /** HTTPS-ish thumbnail URLs only — used after blob/sync primary for `<img onError>` recovery. */
 function extractHttpsThumbnailOnly(value: Record<string, unknown>): string | undefined {
   const cover = value.coverImage;
   if (typeof cover === "string") {
     const url = extractHttpsUrl(cover);
-    if (url) return url;
+    if (url) return normalizeHttpUrlToHttps(url);
   }
   const thumb = value.thumbnail;
   if (typeof thumb === "string") {
     const url = extractHttpsUrl(thumb);
-    if (url) return url;
+    if (url) return normalizeHttpUrlToHttps(url);
   }
-  return extractHttpsUrl(
+  const ext = extractHttpsUrl(
     str(value.thumbnailUrl),
     str(value.coverImageUrl),
     str(value.image),
     str(value.heroImage),
     str(value.socialImage)
   );
+  return ext ? normalizeHttpUrlToHttps(ext) : undefined;
 }
 
 type ThumbnailCandidate =
@@ -692,7 +689,7 @@ export async function resolveEntryThumbnailUrls(
   if (!candidate) return {};
 
   if (candidate.kind === "https") {
-    return { thumbnailUrl: candidate.url };
+    return { thumbnailUrl: normalizeHttpUrlToHttps(candidate.url) };
   }
 
   const parsed = parseAtUri(entryUri);
@@ -704,7 +701,7 @@ export async function resolveEntryThumbnailUrls(
   const pdsRaw = await plcPdsBaseForRepoDid(repoDid);
   if (!pdsRaw) return {};
 
-  const pds = normalizePdsBaseForHttpsThumbnail(pdsRaw);
+  const pds = normalizeHttpUrlToHttps(pdsRaw);
 
   const httpsFallback =
     candidate.kind === "blob" ? extractHttpsThumbnailOnly(record) : undefined;
@@ -1448,8 +1445,11 @@ export async function getEntry(
   const fields = parseEntryValue(raw);
 
   const embedFromFields = extractHttpsUrl(fields.originalUrl);
-  const embedUrl =
+  const embedResolved =
     embedFromFields ?? (await resolveEmbedUrl(raw, oauthSession));
+  const embedUrl = embedResolved
+    ? normalizeHttpUrlToHttps(embedResolved)
+    : undefined;
 
   const bskyRef = parseStrongRef(raw.bskyPostRef);
 
@@ -1458,7 +1458,9 @@ export async function getEntry(
     title: fields.title,
     publishedAt: fields.publishedAt,
     contentHtml: fields.contentHtml,
-    originalUrl: fields.originalUrl,
+    originalUrl: fields.originalUrl
+      ? normalizeHttpUrlToHttps(fields.originalUrl)
+      : undefined,
     embedUrl,
     bskyPostUri: bskyRef?.uri,
     bskyPostCid: bskyRef?.cid,

@@ -84,18 +84,11 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
           No embed URL or HTML body is available for this entry.
         </p>
       ) : (
-        <div className="space-y-1 sm:space-y-2">
-          {showEmbed ? (
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Syndicated HTML
-            </p>
-          ) : null}
-          <div
-            className="prose prose-sm dark:prose-invert max-w-none"
-            // Safe: content is sanitized before rendering.
-            dangerouslySetInnerHTML={{ __html: safeHTML }}
-          />
-        </div>
+        <div
+          className="prose prose-sm dark:prose-invert max-w-none"
+          // Safe: content is sanitized before rendering.
+          dangerouslySetInnerHTML={{ __html: safeHTML }}
+        />
       )}
     </article>
   );

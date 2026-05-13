@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { cn } from "@/lib/utils";
 
 interface EntryArticleEmbedProps {
@@ -20,6 +21,8 @@ export function EntryArticleEmbed({
 }: EntryArticleEmbedProps) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  const safeUrl = useMemo(() => normalizeHttpUrlToHttps(url), [url]);
 
   const handleLoad = useCallback(() => {
     setLoaded(true);
@@ -39,18 +42,18 @@ export function EntryArticleEmbed({
             Live Site
           </span>
           <a
-            href={url}
+            href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-[44px] min-w-0 flex-1 items-center gap-1 truncate py-1.5 hover:text-foreground hover:underline sm:min-h-0 sm:flex-none sm:py-0"
-            title={url}
+            title={safeUrl}
           >
             <ExternalLink className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-            <span className="truncate">{url}</span>
+            <span className="truncate">{safeUrl}</span>
           </a>
         </div>
         <a
-          href={url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
@@ -74,12 +77,12 @@ export function EntryArticleEmbed({
         {failed ? (
           <div className="flex min-h-[200px] items-center justify-center px-4 py-6 text-center text-sm text-muted-foreground">
             This page cannot be embedded (the site may block iframes). Use
-            &quot;Open&quot; above or read the syndicated HTML below.
+            &quot;Open&quot; above or read the full content below.
           </div>
         ) : (
           <iframe
             title={`Embedded article: ${title}`}
-            src={url}
+            src={safeUrl}
             className={cn(
               "block h-[min(82vh,760px)] w-full bg-background",
               !loaded && "opacity-0"

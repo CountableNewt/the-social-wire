@@ -116,6 +116,42 @@ describe("resolveEntryThumbnailUrl", () => {
     );
   });
 
+  it("uses https://atproto.brid.gy when plc advertises http://atproto.brid.gy", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            service: [
+              {
+                id: "#atproto_pds",
+                type: "AtprotoPersonalDataServer",
+                serviceEndpoint: "http://atproto.brid.gy/",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    ) as typeof fetch;
+
+    const url = await resolveEntryThumbnailUrl(
+      "at://did:plc:bridgyrelay/site.standard.document/rk",
+      {
+        coverImage: {
+          $type: "blob",
+          ref: { $link: "bafyreiabc" },
+          mimeType: "image/jpeg",
+          size: 10,
+        },
+      },
+      undefined
+    );
+
+    expect(url).toBe(
+      "https://atproto.brid.gy/xrpc/com.atproto.sync.getBlob?did=did%3Aplc%3Abridgyrelay&cid=bafyreiabc"
+    );
+  });
+
   it("uses https PDS origin when plc advertises http (mixed-content safe)", async () => {
     globalThis.fetch = mock(() =>
       Promise.resolve(
