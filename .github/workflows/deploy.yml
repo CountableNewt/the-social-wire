@@ -1,0 +1,73 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, dev]
+
+jobs:
+  build-and-deploy-api:
+    name: Build API & Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # for OIDC AWS auth (optional)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Resolve image tag from branch ──────────────────────────────────────
+      - name: Set image tag
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+            echo "APPRUNNER_ARN=${{ secrets.APPRUNNER_PROD_ARN }}" >> $GITHUB_ENV
+            echo "APP_ENV=prod" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=dev" >> $GITHUB_ENV
+            echo "APPRUNNER_ARN=${{ secrets.APPRUNNER_DEV_ARN }}" >> $GITHUB_ENV
+            echo "APP_ENV=dev" >> $GITHUB_ENV
+          fi
+
+      # ── Docker Hub login ────────────────────────────────────────────────────
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Depot build & push ──────────────────────────────────────────────────
+      - uses: depot/setup-action@v1
+        with:
+          oidc: true  # keyless auth via OIDC
+
+      - name: Build and push API image
+        uses: depot/build-push-action@v1
+        with:
+          project: ${{ secrets.DEPOT_PROJECT_ID }}
+          context: services/api
+          file: services/api/Dockerfile
+          push: true
+          tags: |
+            docker.io/stygiantech/social-wire-api:${{ env.IMAGE_TAG }}
+            docker.io/stygiantech/social-wire-api:${{ github.sha }}
+          build-args: |
+            APP_ENV=${{ env.APP_ENV }}
+
+      # ── Deploy to AWS App Runner ────────────────────────────────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to App Runner
+        run: |
+          aws apprunner start-deployment \
+            --service-arn "${{ env.APPRUNNER_ARN }}" \
+            --region us-east-1
+
+  # ── Web deploy (Vercel handles this via its GitHub integration) ────────────
+  # Vercel auto-deploys on push to main (prod) and dev (preview).
+  # Set NEXT_PUBLIC_APP_ENV=prod in Vercel production env vars.
+  # Set NEXT_PUBLIC_APP_ENV=dev in Vercel preview env vars.
