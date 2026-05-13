@@ -86,7 +86,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-sm">The Social Wire</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="font-semibold text-sm">The Social Wire</span>
+            <span className="inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Alpha
+            </span>
+          </div>
           <Button
             variant="ghost"
             size="icon"
