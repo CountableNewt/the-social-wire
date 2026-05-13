@@ -6,7 +6,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { listEntries, getEntry } from "@/lib/atprotoClient";
+import { listEntries, getEntry, repoAndPublicationFilterFromPubId } from "@/lib/atprotoClient";
 import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import { useAuth } from "./useAuth";
 
@@ -17,32 +17,35 @@ export const ENTRIES_QUERY_KEY = (authorDid: string) =>
 export const ENTRY_DETAIL_QUERY_KEY = (entryId: string) =>
   ["entry", entryId] as const;
 
-/**
- * Returns a paginated list of entries for a publication.
- *
- * `authorDid` is the DID of the publication's author. Entries are fetched
- * directly from the ATProto network — no Social Wire service required.
- */
 type EntriesPage = { entries: EntryListItem[]; cursor?: string };
 
-export function useEntries(authorDid: string | null) {
+/**
+ * Returns a paginated list of entries for a publication sidebar selection.
+ *
+ * `publicationKey` is either an **author DID** (legacy discovery row) or a **publication record
+ * AT-URI** (distinct publication on an account).
+ */
+export function useEntries(publicationKey: string | null) {
   const { session, getOAuthSession } = useAuth();
   const queryClient = useQueryClient();
 
   return useInfiniteQuery({
-    queryKey: ENTRIES_QUERY_KEY(authorDid ?? ""),
+    queryKey: ENTRIES_QUERY_KEY(publicationKey ?? ""),
     queryFn: async ({ pageParam, signal }) => {
-      if (!authorDid) return { entries: [], cursor: undefined };
+      if (!publicationKey) return { entries: [], cursor: undefined };
       const oauth = getOAuthSession() ?? undefined;
-      const key = ENTRIES_QUERY_KEY(authorDid);
+      const key = ENTRIES_QUERY_KEY(publicationKey);
+      const { repoDid, publicationAtUri } =
+        repoAndPublicationFilterFromPubId(publicationKey);
       const isFirstInfinitePage = pageParam === undefined;
       return listEntries(
-        authorDid,
+        repoDid,
         pageParam as string | undefined,
         50,
         oauth,
         {
           signal,
+          publicationAtUri,
           onProgress: isFirstInfinitePage
             ? ({ entries, cursor }) => {
                 queryClient.setQueryData<InfiniteData<EntriesPage> | undefined>(
@@ -67,7 +70,7 @@ export function useEntries(authorDid: string | null) {
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.cursor,
-    enabled: !!authorDid && !!session,
+    enabled: !!publicationKey && !!session,
     staleTime: 2 * 60_000,
     gcTime: 1000 * 60 * 60 * 24,
   });

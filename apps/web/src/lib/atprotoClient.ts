@@ -57,7 +57,11 @@ export const ENTRY_COLLECTION = "site.standard.entry";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DiscoveredPublication {
-  /** The author's DID — used as the stable publication identifier. */
+  /**
+   * Stable publication key: the author's DID when discovery inferred a single feed for that
+   * repo, or a **`site.standard.publication` / `com.standard.publication` record AT-URI**
+   * when listing distinct publication records (e.g. multiple pubs on the same account).
+   */
   publicationId: string;
   authorDid: string;
   authorHandle: string;
@@ -100,6 +104,13 @@ interface FollowProfile {
 const MAX_FOLLOWS = 500;
 const FOLLOW_PAGE_LIMIT = 100;
 const DISCOVERY_BATCH_SIZE = 25;
+const OWN_PUBLICATIONS_PAGE_LIMIT = 50;
+
+/** Collections whose record AT-URIs may be used as {@link DiscoveredPublication.publicationId}. */
+export const PUBLICATION_RECORD_COLLECTIONS = new Set<string>([
+  "site.standard.publication",
+  "com.standard.publication",
+]);
 
 const LIST_CURSOR_DOC = "d:";
 const LIST_CURSOR_ENT = "e:";
@@ -310,6 +321,21 @@ export function parseAtUri(
   return { did: match[1], collection: match[2], rkey: match[3] };
 }
 
+/**
+ * Maps a sidebar / route `pubId` to the repo DID for `listRecords`, and optionally the publication
+ * record AT-URI for filtering document/entry `site` to that publication.
+ */
+export function repoAndPublicationFilterFromPubId(pubId: string): {
+  repoDid: string;
+  publicationAtUri?: string;
+} {
+  const parsed = parseAtUri(pubId);
+  if (parsed && PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+    return { repoDid: parsed.did, publicationAtUri: pubId };
+  }
+  return { repoDid: pubId };
+}
+
 function slugFromPath(path: string): string | undefined {
   const parts = path.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : undefined;
@@ -502,6 +528,11 @@ export type ListEntriesOptions = {
     cursor?: string;
   }) => void;
   signal?: AbortSignal;
+  /**
+   * When set, only document/entry records whose `site` field references this publication
+   * AT-URI are returned (scoped publication feed).
+   */
+  publicationAtUri?: string;
 };
 
 function publicationTitleFromRecord(
@@ -528,6 +559,53 @@ export type DiscoverPublicationsOptions = {
    */
   onProgress?: (orderedPublications: DiscoveredPublication[]) => void;
 };
+
+/**
+ * Lists every `site.standard.publication` / `com.standard.publication` record in the author's
+ * repo (paginated). Used so the viewer can see **all** owned publications, not only the first.
+ */
+export async function discoverOwnPublications(
+  authorDid: string,
+  oauthSession: OAuthSession,
+  options?: { signal?: AbortSignal }
+): Promise<DiscoveredPublication[]> {
+  const discoveredAt = new Date().toISOString();
+  const seen = new Set<string>();
+  const out: DiscoveredPublication[] = [];
+
+  for (const collection of DISCOVERY_PUBLICATION_COLLECTIONS) {
+    let cursor: string | undefined;
+    do {
+      if (options?.signal?.aborted) return out;
+      const { records, cursor: next } = await listRecordsOnAuthorRepo(
+        authorDid,
+        collection,
+        {
+          limit: OWN_PUBLICATIONS_PAGE_LIMIT,
+          cursor,
+          reverse: false,
+          signal: options?.signal,
+        },
+        oauthSession
+      );
+      for (const row of records) {
+        if (seen.has(row.uri)) continue;
+        seen.add(row.uri);
+        const val = row.value as Record<string, unknown>;
+        const label = authorDid;
+        out.push({
+          publicationId: row.uri,
+          authorDid,
+          authorHandle: authorDid,
+          title: publicationTitleFromRecord(collection, val, label),
+          discoveredAt,
+        });
+      }
+      cursor = next;
+    } while (cursor);
+  }
+  return out;
+}
 
 /**
  * Discovers followed authors with standard.site-related records.
@@ -610,19 +688,7 @@ export async function discoverPublications(
 
   /** Stable follow order while probes finish out-of-order (parallel batches). */
   const foundByDid = new Map<string, DiscoveredPublication>();
-
-  function snapshotOrdered(): DiscoveredPublication[] {
-    const list: DiscoveredPublication[] = [];
-    for (const f of follows) {
-      const pub = foundByDid.get(f.did);
-      if (pub) list.push(pub);
-    }
-    return list;
-  }
-
-  if (onProgress) {
-    onProgress([]);
-  }
+  let viewerPublications: DiscoveredPublication[] = [];
 
   const discoveredAt = new Date().toISOString();
 
@@ -680,12 +746,55 @@ export async function discoverPublications(
     return null;
   }
 
+  async function hydrateViewerPublications(): Promise<void> {
+    const viewer = follows.find((f) => f.did === userDid);
+    if (!viewer) {
+      viewerPublications = [];
+      return;
+    }
+    const listed = await discoverOwnPublications(userDid, session, {
+      signal,
+    });
+    if (listed.length > 0) {
+      viewerPublications = listed.map((p) => ({
+        ...p,
+        authorHandle: viewer.handle,
+        avatarUrl: viewer.avatar,
+      }));
+      return;
+    }
+    const fallback = await probeFollow(viewer);
+    viewerPublications = fallback ? [fallback] : [];
+  }
+
+  function snapshotOrdered(): DiscoveredPublication[] {
+    const list: DiscoveredPublication[] = [];
+    for (const f of follows) {
+      if (f.did === userDid) {
+        for (const p of viewerPublications) list.push(p);
+      } else {
+        const pub = foundByDid.get(f.did);
+        if (pub) list.push(pub);
+      }
+    }
+    return list;
+  }
+
+  onProgress?.([]);
+
+  await hydrateViewerPublications();
+  if (signal?.aborted) {
+    return snapshotOrdered();
+  }
+  onProgress?.(snapshotOrdered());
+
   for (let i = 0; i < follows.length; i += DISCOVERY_BATCH_SIZE) {
     if (signal?.aborted) break;
 
     const batch = follows.slice(i, i + DISCOVERY_BATCH_SIZE);
     await Promise.allSettled(
       batch.map(async (follow) => {
+        if (follow.did === userDid) return;
         const pub = await probeFollow(follow);
         if (pub) {
           foundByDid.set(follow.did, pub);
@@ -698,10 +807,131 @@ export async function discoverPublications(
   return snapshotOrdered();
 }
 
+function decodePublicationListCursor(cursor: string | undefined): {
+  colIdx: number;
+  atproto?: string;
+  matchSkip: number;
+} {
+  if (cursor === undefined || cursor === "") {
+    return { colIdx: 0, matchSkip: 0 };
+  }
+  if (!cursor.startsWith("p|")) {
+    return { colIdx: 0, matchSkip: 0 };
+  }
+  const parts = cursor.slice(2).split("|");
+  const colIdx = Math.max(0, parseInt(parts[0] ?? "0", 10) || 0);
+  const rawAt = parts[1];
+  const atproto =
+    rawAt !== undefined && rawAt !== ""
+      ? decodeURIComponent(rawAt)
+      : undefined;
+  const matchSkip = Math.max(0, parseInt(parts[2] ?? "0", 10) || 0);
+  return { colIdx, atproto: atproto || undefined, matchSkip };
+}
+
+function encodePublicationListCursor(
+  colIdx: number,
+  atproto: string | undefined,
+  matchSkip: number
+): string {
+  return `p|${colIdx}|${encodeURIComponent(atproto ?? "")}|${matchSkip}`;
+}
+
+function entryRecordMatchesPublication(
+  recordValue: unknown,
+  publicationAtUri: string
+): boolean {
+  if (!recordValue || typeof recordValue !== "object") return false;
+  const site = (recordValue as Record<string, unknown>).site;
+  if (typeof site === "string") return site === publicationAtUri;
+  const ref = parseStrongRef(site);
+  return ref?.uri === publicationAtUri;
+}
+
+async function listEntriesForPublicationScope(
+  authorDid: string,
+  publicationAtUri: string,
+  cursor: string | undefined,
+  limit: number,
+  oauthSession: OAuthSession | undefined,
+  options: Pick<ListEntriesOptions, "onProgress" | "signal">
+): Promise<{ entries: EntryListItem[]; cursor?: string }> {
+  const { onProgress, signal } = options;
+  const colCount = LIST_COLLECTIONS_ORDER.length;
+  const initial = decodePublicationListCursor(cursor);
+  let col = Math.min(Math.max(initial.colIdx, 0), colCount - 1);
+  let listCursor = initial.atproto;
+  let matchSkip = initial.matchSkip;
+  const out: EntryListItem[] = [];
+
+  while (out.length < limit && col < colCount) {
+    if (signal?.aborted) {
+      return { entries: [], cursor: undefined };
+    }
+
+    const res = await listRecordsOnAuthorRepo(
+      authorDid,
+      LIST_COLLECTIONS_ORDER[col],
+      {
+        limit: OWN_PUBLICATIONS_PAGE_LIMIT,
+        cursor: listCursor,
+        reverse: false,
+        signal,
+      },
+      oauthSession
+    );
+
+    const filteredItems = recordsToListItems(
+      res.records.filter((r) =>
+        entryRecordMatchesPublication(r.value, publicationAtUri)
+      )
+    );
+    const slice = filteredItems.slice(matchSkip);
+    const need = limit - out.length;
+    const chunk = slice.slice(0, need);
+    out.push(...chunk);
+
+    if (out.length >= limit) {
+      let nextCursor: string | undefined;
+      if (chunk.length < slice.length) {
+        nextCursor = encodePublicationListCursor(
+          col,
+          listCursor,
+          matchSkip + chunk.length
+        );
+      } else if (res.cursor) {
+        nextCursor = encodePublicationListCursor(col, res.cursor, 0);
+      } else if (col + 1 < colCount) {
+        nextCursor = encodePublicationListCursor(col + 1, undefined, 0);
+      }
+      const payload = { entries: out, cursor: nextCursor };
+      onProgress?.(payload);
+      return payload;
+    }
+
+    if (res.cursor) {
+      listCursor = res.cursor;
+      matchSkip = 0;
+      continue;
+    }
+
+    col += 1;
+    listCursor = undefined;
+    matchSkip = 0;
+  }
+
+  const payload = { entries: out, cursor: undefined };
+  onProgress?.(payload);
+  return payload;
+}
+
 /**
  * Lists entries for a given author handle or DID (documents first, then legacy entry collections).
  * Cursors encode the collection index in {@link LIST_COLLECTIONS_ORDER} so pagination stays on one
  * NSID at a time; legacy `d:` / `e:` cursors from older clients are still accepted.
+ *
+ * With `options.publicationAtUri`, only records whose **`site`** matches that publication AT-URI
+ * are returned, using `p|`-prefixed cursors.
  */
 export async function listEntries(
   authorDid: string,
@@ -710,7 +940,19 @@ export async function listEntries(
   oauthSession?: OAuthSession,
   options?: ListEntriesOptions
 ): Promise<{ entries: EntryListItem[]; cursor?: string }> {
-  const { onProgress, signal } = options ?? {};
+  const { onProgress, signal, publicationAtUri } = options ?? {};
+
+  if (publicationAtUri) {
+    return listEntriesForPublicationScope(
+      authorDid,
+      publicationAtUri,
+      cursor,
+      limit,
+      oauthSession,
+      { onProgress, signal }
+    );
+  }
+
   const mode = decodeListCursor(cursor);
   const colCount = LIST_COLLECTIONS_ORDER.length;
 

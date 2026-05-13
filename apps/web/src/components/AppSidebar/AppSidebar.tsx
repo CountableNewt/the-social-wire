@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { Label } from "@/components/ui/label";
-import { FolderItem } from "./FolderItem";
-import { PublicationItem } from "./PublicationItem";
+import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useFolders } from "@/hooks/useFolders";
@@ -36,6 +35,9 @@ import {
   PSEUDO_FOLDER_MY_URI,
   rkeyFromURI,
 } from "@/lib/pdsClient";
+import { parseAtUri } from "@/lib/atprotoClient";
+
+const ALL_BRANCH_KEY = "__all__";
 
 function publicationAuthoredByViewer(
   publication: {
@@ -45,9 +47,10 @@ function publicationAuthoredByViewer(
   viewerDid: string | null | undefined
 ): boolean {
   if (!viewerDid) return false;
-  return (
-    publication.authorDid === viewerDid || publication.publicationId === viewerDid
-  );
+  if (publication.authorDid === viewerDid) return true;
+  if (publication.publicationId === viewerDid) return true;
+  const parsed = parseAtUri(publication.publicationId);
+  return parsed?.did === viewerDid;
 }
 
 interface AppSidebarProps {
@@ -60,6 +63,19 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const { session, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const { selectedFolderUri, setSelectedFolderUri } = useReadRoute();
+
+  const [expandedKeys, setExpandedKeys] = useState(
+    () => new Set<string>([ALL_BRANCH_KEY])
+  );
+
+  const toggleExpanded = useCallback((key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -80,13 +96,11 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const refresh = useRefreshDiscovery();
   const { showHiddenFolder, setShowHiddenFolder } = useShowHiddenFolder();
 
-  // Build a map: publicationId → prefs record
   const prefsMap = useMemo(
     () => new Map(prefs.map((p) => [p.value.publicationId, p])),
     [prefs]
   );
 
-  // Filter visible (non-hidden) publications
   const visiblePubs = useMemo(
     () =>
       publications.filter((p) => {
@@ -113,26 +127,25 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     }
   }, [viewerDid, selectedFolderUri, setSelectedFolderUri]);
 
-  // Group publications: unfoldered "All Publications" excludes viewer-authored (those use My Publications);
-  // user folders still list assigned pubs regardless of author.
+  // One bucket per visible pub: folder (folderId) wins over My; else My if viewer-authored; else All.
   const { folderMap, unfolderedPubs, myPublications } = useMemo(() => {
     const folderMap = new Map<string, typeof visiblePubs>();
     const unfolderedPubs: typeof visiblePubs = [];
     const myPublications: typeof visiblePubs = [];
 
     for (const pub of visiblePubs) {
-      const mine = publicationAuthoredByViewer(pub, viewerDid);
-      if (mine) {
-        myPublications.push(pub);
-      }
-
       const pref = prefsMap.get(pub.publicationId);
       const folderId = pref?.value.folderId;
       if (folderId) {
         const list = folderMap.get(folderId) ?? [];
         list.push(pub);
         folderMap.set(folderId, list);
-      } else if (!mine) {
+        continue;
+      }
+
+      if (publicationAuthoredByViewer(pub, viewerDid)) {
+        myPublications.push(pub);
+      } else {
         unfolderedPubs.push(pub);
       }
     }
@@ -140,20 +153,78 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     return { folderMap, unfolderedPubs, myPublications };
   }, [visiblePubs, prefsMap, viewerDid]);
 
-  // Filter by selected folder (or show all)
-  const displayedPubs = useMemo(() => {
-    if (selectedFolderUri === PSEUDO_FOLDER_HIDDEN_URI) return hiddenPubs;
-    if (selectedFolderUri === PSEUDO_FOLDER_MY_URI) return myPublications;
-    if (!selectedFolderUri) return unfolderedPubs;
-    const rkey = rkeyFromURI(selectedFolderUri);
-    return folderMap.get(rkey) ?? [];
+  useEffect(() => {
+    if (!selectedPubId) return;
+
+    const pref = prefsMap.get(selectedPubId);
+    if (pref?.value.hidden) {
+      setSelectedFolderUri(PSEUDO_FOLDER_HIDDEN_URI);
+      return;
+    }
+
+    const pub = publications.find((p) => p.publicationId === selectedPubId);
+    if (!pub) return;
+
+    const folderId = pref?.value.folderId;
+    if (folderId) {
+      const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
+      if (folder) {
+        setSelectedFolderUri(folder.uri);
+        return;
+      }
+    }
+
+    if (publicationAuthoredByViewer(pub, viewerDid)) {
+      setSelectedFolderUri(PSEUDO_FOLDER_MY_URI);
+      return;
+    }
+
+    setSelectedFolderUri(null);
   }, [
-    selectedFolderUri,
-    unfolderedPubs,
-    folderMap,
-    hiddenPubs,
-    myPublications,
+    selectedPubId,
+    publications,
+    prefsMap,
+    folders,
+    viewerDid,
+    setSelectedFolderUri,
   ]);
+
+  useEffect(() => {
+    if (!selectedPubId) return;
+
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+
+      const pref = prefsMap.get(selectedPubId);
+      if (pref?.value.hidden) {
+        next.add(PSEUDO_FOLDER_HIDDEN_URI);
+        return next;
+      }
+
+      const pub = publications.find((p) => p.publicationId === selectedPubId);
+      if (!pub) return next;
+
+      const folderId = pref?.value.folderId;
+      let expandedAssignedFolder = false;
+      if (folderId) {
+        const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
+        if (folder) {
+          next.add(folder.uri);
+          expandedAssignedFolder = true;
+        }
+      }
+
+      if (!expandedAssignedFolder && publicationAuthoredByViewer(pub, viewerDid)) {
+        next.add(PSEUDO_FOLDER_MY_URI);
+      }
+
+      if (!folderId && !publicationAuthoredByViewer(pub, viewerDid)) {
+        next.add(ALL_BRANCH_KEY);
+      }
+
+      return next;
+    });
+  }, [selectedPubId, publications, prefsMap, folders, viewerDid]);
 
   return (
     <Sidebar>
@@ -181,97 +252,82 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Folders */}
         <SidebarGroup>
-          <SidebarGroupLabel>Folders</SidebarGroupLabel>
+          <SidebarGroupLabel>Folders & publications</SidebarGroupLabel>
           <SidebarMenu>
-            {foldersLoading ? (
-              <SidebarSkeleton count={3} />
+            {foldersLoading || pubsLoading ? (
+              <SidebarSkeleton count={5} />
             ) : (
               <>
-                {/* "All Publications" pseudo-folder */}
-                <FolderItem
+                <FolderBranch
+                  expandKey={ALL_BRANCH_KEY}
                   folder={{
-                    uri: "__all__",
-                    cid: "",
-                    value: {
-                      $type: "com.thesocialwire.folder",
-                      name: "All Publications",
-                      createdAt: "",
-                    },
+                    name: "All Publications",
+                    icon: undefined,
+                    iconImage: undefined,
                   }}
-                  isSelected={selectedFolderUri === null}
-                  onSelect={() => setSelectedFolderUri(null)}
+                  isActive={selectedFolderUri === null}
+                  expanded={expandedKeys.has(ALL_BRANCH_KEY)}
+                  onToggleExpanded={() => toggleExpanded(ALL_BRANCH_KEY)}
+                  publications={unfolderedPubs}
+                  emptyLabel="No unfoldered publications. Follow feeds or assign items to a folder."
+                  selectedPubId={selectedPubId}
+                  onSelectPub={onSelectPub}
+                  nameSuffix="unfoldered"
                 />
                 {viewerDid ? (
-                  <FolderItem
+                  <FolderBranch
+                    expandKey={PSEUDO_FOLDER_MY_URI}
                     folder={{
-                      uri: PSEUDO_FOLDER_MY_URI,
-                      cid: "",
-                      value: {
-                        $type: "com.thesocialwire.folder",
-                        name: "My Publications",
-                        createdAt: "",
-                      },
+                      name: "My Publications",
+                      icon: undefined,
+                      iconImage: undefined,
                     }}
-                    isSelected={selectedFolderUri === PSEUDO_FOLDER_MY_URI}
-                    onSelect={setSelectedFolderUri}
+                    isActive={selectedFolderUri === PSEUDO_FOLDER_MY_URI}
+                    expanded={expandedKeys.has(PSEUDO_FOLDER_MY_URI)}
+                    onToggleExpanded={() => toggleExpanded(PSEUDO_FOLDER_MY_URI)}
+                    publications={myPublications}
+                    emptyLabel="No publications on your account discovered yet."
+                    selectedPubId={selectedPubId}
+                    onSelectPub={onSelectPub}
                   />
                 ) : null}
-                {folders.map((f) => (
-                  <FolderItem
-                    key={f.uri}
-                    folder={f}
-                    isSelected={selectedFolderUri === f.uri}
-                    onSelect={setSelectedFolderUri}
-                  />
-                ))}
+                {folders.map((f) => {
+                  const rkey = rkeyFromURI(f.uri);
+                  return (
+                    <FolderBranch
+                      key={f.uri}
+                      expandKey={f.uri}
+                      folder={f.value}
+                      isActive={selectedFolderUri === f.uri}
+                      expanded={expandedKeys.has(f.uri)}
+                      onToggleExpanded={() => toggleExpanded(f.uri)}
+                      publications={folderMap.get(rkey) ?? []}
+                      emptyLabel="No publications in this folder."
+                      selectedPubId={selectedPubId}
+                      onSelectPub={onSelectPub}
+                    />
+                  );
+                })}
                 {showHiddenFolder ? (
-                  <FolderItem
+                  <FolderBranch
+                    expandKey={PSEUDO_FOLDER_HIDDEN_URI}
                     folder={{
-                      uri: PSEUDO_FOLDER_HIDDEN_URI,
-                      cid: "",
-                      value: {
-                        $type: "com.thesocialwire.folder",
-                        name: "Hidden Publications",
-                        createdAt: "",
-                      },
+                      name: "Hidden Publications",
+                      icon: undefined,
+                      iconImage: undefined,
                     }}
-                    isSelected={selectedFolderUri === PSEUDO_FOLDER_HIDDEN_URI}
-                    onSelect={setSelectedFolderUri}
+                    isActive={selectedFolderUri === PSEUDO_FOLDER_HIDDEN_URI}
+                    expanded={expandedKeys.has(PSEUDO_FOLDER_HIDDEN_URI)}
+                    onToggleExpanded={() => toggleExpanded(PSEUDO_FOLDER_HIDDEN_URI)}
+                    publications={hiddenPubs}
+                    emptyLabel="No hidden publications."
+                    selectedPubId={selectedPubId}
+                    onSelectPub={onSelectPub}
                   />
                 ) : null}
                 <NewFolderDialog />
               </>
-            )}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        {/* Publications */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Publications</SidebarGroupLabel>
-          <SidebarMenu>
-            {pubsLoading ? (
-              <SidebarSkeleton count={5} />
-            ) : displayedPubs.length === 0 ? (
-              <p className="px-2 py-1 text-xs text-muted-foreground">
-                {selectedFolderUri === PSEUDO_FOLDER_HIDDEN_URI
-                  ? "No hidden publications."
-                  : selectedFolderUri === PSEUDO_FOLDER_MY_URI
-                    ? "No publications on your account discovered yet."
-                    : selectedFolderUri
-                      ? "No publications in this folder."
-                      : "No publications found. Try refreshing."}
-              </p>
-            ) : (
-              displayedPubs.map((pub) => (
-                <PublicationItem
-                  key={pub.publicationId}
-                  publication={pub}
-                  isSelected={selectedPubId === pub.publicationId}
-                  onSelect={onSelectPub}
-                />
-              ))
             )}
           </SidebarMenu>
         </SidebarGroup>
@@ -346,7 +402,9 @@ function SidebarSkeleton({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <Skeleton key={i} className="h-8 w-full rounded-md" />
+        <SidebarMenuItem key={i}>
+          <Skeleton className="h-8 w-full rounded-md" />
+        </SidebarMenuItem>
       ))}
     </>
   );
