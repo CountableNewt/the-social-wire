@@ -239,3 +239,79 @@ export function useCreateSkyreaderFeedSubscription() {
       }),
   });
 }
+
+/**
+ * Resolve a pasted link (https, AT-URI, handle, DID) then create either
+ * `site.standard.graph.subscription` or Skyreader RSS subscription on the PDS.
+ */
+export function useAddPublicationFromAnyLink() {
+  const client = usePDSClient();
+  const qc = useQueryClient();
+  const { session } = useAuth();
+  const did = session?.did ?? null;
+
+  return useMutation({
+    mutationFn: async (input: { link: string; title?: string }) => {
+      if (!client) throw new Error("No PDS client — not signed in");
+      const res = await fetch("/api/resolve-add-publication", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: input.link }),
+      });
+      const json = (await res.json()) as {
+        kind?: unknown;
+        error?: string;
+        publicationAtUri?: unknown;
+        feedUrl?: unknown;
+        title?: unknown;
+      };
+
+      const errMsg =
+        typeof json.error === "string" ? json.error : "Could not resolve link";
+      if (!res.ok) throw new Error(errMsg);
+
+      if (json.kind === "standard-site" && typeof json.publicationAtUri === "string") {
+        await client.createPublicationSubscription({
+          publication: json.publicationAtUri,
+        });
+        return {
+          kind: "standard-site" as const,
+          navigatePubId: json.publicationAtUri,
+        };
+      }
+
+      if (json.kind === "rss" && typeof json.feedUrl === "string") {
+        const normalized = normalizeRssFeedUrlInput(json.feedUrl);
+        if (!normalized) throw new Error("Invalid feed URL from resolver");
+        const resolvedTitle =
+          typeof json.title === "string" ? json.title.trim() : "";
+        await client.createSkyreaderFeedSubscription({
+          feedUrl: normalized,
+          title:
+            input.title?.trim() ||
+            (resolvedTitle ? resolvedTitle : undefined),
+          siteUrl: (() => {
+            try {
+              return new URL(normalized).origin;
+            } catch {
+              return undefined;
+            }
+          })(),
+        });
+        return {
+          kind: "rss" as const,
+          navigatePubId: rssPublicationIdFromNormalizedFeedUrl(normalized),
+        };
+      }
+
+      throw new Error(
+        typeof json.error === "string" ? json.error : "Unexpected resolver response."
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PUBLICATION_SUBSCRIPTIONS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY });
+      if (did) qc.invalidateQueries({ queryKey: DISCOVERY_QUERY_KEY(did) });
+    },
+  });
+}

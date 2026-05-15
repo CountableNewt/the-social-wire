@@ -36,9 +36,11 @@ mock.module("@/hooks/useAuth", () => ({
   useAuth: () => ({
     session: { did: "did:plc:testuser" },
     isLoading: false,
+    oauthSessionReloadSeq: 0,
     applyOAuthSession: () => {},
     getOAuthSession: () => null,
     getAuthFetch: () => null,
+    reconcileOAuthSession: async () => false,
     signIn: async () => {},
     signOut: async () => {},
   }),

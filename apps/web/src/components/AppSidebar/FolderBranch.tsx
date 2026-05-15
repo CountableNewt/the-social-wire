@@ -83,7 +83,7 @@ export function FolderBranch({
         ) : null}
       </SidebarMenuButton>
       {expanded ? (
-        <SidebarMenuSub id={subId} aria-label={folder.name}>
+        <SidebarMenuSub id={subId} aria-label={folder.name} className="mt-1.5">
           {publications.length === 0 ? (
             <SidebarMenuSubItem>
               <span className="block min-w-0 break-words px-2 py-0.5 text-xs text-muted-foreground">

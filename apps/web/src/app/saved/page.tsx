@@ -69,7 +69,7 @@ export default function SavedPage() {
   useEffect(() => {
     if (!selectedRowId) return;
     if (!data.some((r) => rowId(r) === selectedRowId)) {
-      queueMicrotask(() => setSelectedRowId(null));
+      setSelectedRowId(null);
     }
   }, [data, selectedRowId]);
 

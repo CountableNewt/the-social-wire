@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { SIDEBAR_GLASS_ROW_ACTION } from "@/components/ui/sidebar";
 import {
   Dialog,
   DialogClose,
@@ -24,35 +25,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
-import { useCreateSkyreaderFeedSubscription } from "@/hooks/usePublications";
+import { useAddPublicationFromAnyLink } from "@/hooks/usePublications";
 import { usePDSClient } from "@/hooks/usePDSClient";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
-import { Loader2, Rss } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
-  rssPublicationIdFromNormalizedFeedUrl,
-  normalizeRssFeedUrlInput,
-} from "@/lib/rssFeedCore";
+  looksLikeOAuthScopeOrSessionError,
+  looksLikeStaleOAuthStorageError,
+} from "@/lib/oauthSessionSignals";
+import { CirclePlus, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-/** True when RSS subscription write likely failed for auth / scope reasons. */
-function looksLikeOAuthScopeOrSessionError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = `${error.message} ${String(error.cause ?? "")}`.toLowerCase();
-  if (msg.includes("no pds client")) return true;
-  if (/\b401\b|\b403\b|\binvalid token\b|\bexpired\b/.test(msg)) return true;
-  if (/\bunauthorized\b|\bforbidden\b|\bpermission\b|\bscope\b/.test(msg)) {
-    return true;
-  }
-  const anyErr = error as { status?: number };
-  const st = typeof anyErr.status === "number" ? anyErr.status : undefined;
-  if (st === 401 || st === 403) return true;
-  return false;
-}
-
-export function AddRssFeedDialog() {
+export function AddPublicationDialog() {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
-  const descriptionId = `${useId()}-rss-desc`;
+  const descriptionId = `${useId()}-add-pub-desc`;
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next);
@@ -63,42 +49,44 @@ export function AddRssFeedDialog() {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2" />
+          <Button
+            variant="ghost"
+            className={cn(SIDEBAR_GLASS_ROW_ACTION)}
+          />
         }
       >
-        <Rss className="h-4 w-4" />
-        Add RSS Feed
+        <CirclePlus className="h-4 w-4 shrink-0" />
+        Add Publication
       </DialogTrigger>
-      {/* Keep Dialog.Portal/Popup outside the keyed subtree so Base UI open/close stays in sync */}
       <DialogContent aria-describedby={descriptionId}>
         <DialogHeader>
-          <DialogTitle>Add RSS Feed</DialogTitle>
+          <DialogTitle>Add Publication</DialogTitle>
           <DialogDescription id={descriptionId}>
-            Subscribe to any public RSS or Atom feed. A Skyreader-compatible record (
-            <code className="text-[10px]">app.skyreader.feed.subscription</code>) is saved on your
-            PDS.
+            Paste any link, a Bluesky handle, a DID, or a publication AT-URI. We look for{" "}
+            <code className="text-[10px]">/.well-known/site.standard.publication</code> first, then try
+            RSS/Atom and save a Skyreader-compatible feed subscription if needed (
+            <code className="text-[10px]">app.skyreader.feed.subscription</code>) on your PDS.
           </DialogDescription>
         </DialogHeader>
-        <AddRssFeedInner key={formKey} onCloseRequest={() => handleOpenChange(false)} />
+        <AddPublicationInner key={formKey} onCloseRequest={() => handleOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-interface AddRssFeedInnerProps {
+interface AddPublicationInnerProps {
   onCloseRequest: () => void;
 }
 
-interface SkyreaderSignInFieldsProps {
+interface PublicationAuthFieldsProps {
   idPrefix: string;
-  /** Narrow explainer shown above the handle field */
   lead: ReactNode | null;
 }
 
-function SkyreaderSignInFields({ idPrefix, lead }: SkyreaderSignInFieldsProps) {
+function PublicationAuthFields({ idPrefix, lead }: PublicationAuthFieldsProps) {
   const { signIn } = useAuth();
   const { data: profile } = useViewerProfile();
-  const handleId = `${idPrefix}-skyreader-handle`;
+  const handleId = `${idPrefix}-authorize-handle`;
 
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -140,7 +128,7 @@ function SkyreaderSignInFields({ idPrefix, lead }: SkyreaderSignInFieldsProps) {
         <Input
           id={handleId}
           type="text"
-          name="skyreader-handle"
+          name="publication-authorize-handle"
           autoCapitalize="none"
           autoCorrect="off"
           autoComplete="username"
@@ -171,66 +159,78 @@ function SkyreaderSignInFields({ idPrefix, lead }: SkyreaderSignInFieldsProps) {
               Redirecting…
             </>
           ) : (
-            "Authorize RSS (Skyreader) access"
+            "Authorize publication subscriptions"
           )}
         </Button>
       </DialogFooter>
       <p className="text-xs text-muted-foreground">
-        Signing in sends you to your PDS to approve repository access including{" "}
-        <code className="text-[10px]">app.skyreader.feed.subscription</code>. Use the same account
-        you use for The Social Wire.
+        Signing in grants repository access including{" "}
+        <code className="text-[10px]">site.standard.graph.subscription</code> and{" "}
+        <code className="text-[10px]">app.skyreader.feed.subscription</code>.
       </p>
     </form>
   );
 }
 
-function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
+function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
   const labelId = useId();
-  const urlId = `${labelId}-url`;
+  const linkId = `${labelId}-link`;
   const titleId = `${labelId}-title`;
   const router = useRouter();
-  const { session, isLoading: authLoading } = useAuth();
+  const { session, isLoading: authLoading, reconcileOAuthSession } = useAuth();
   const client = usePDSClient();
 
-  const [feedUrl, setFeedUrl] = useState("");
+  const [link, setLink] = useState("");
   const [title, setTitle] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showScopeReconnect, setShowScopeReconnect] = useState(false);
 
-  const createSkyreader = useCreateSkyreaderFeedSubscription();
+  const addPublication = useAddPublicationFromAnyLink();
 
   const oauthReady = !!client;
   const signedOut = !session?.did && !authLoading;
-  const sessionPendingOAuth =
-    !!session?.did && !oauthReady && !authLoading;
+  const sessionPendingOAuth = !!session?.did && !oauthReady && !authLoading;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!feedUrl.trim() || finishing) return;
+    if (!link.trim() || finishing) return;
     setSubmitError(null);
     setShowScopeReconnect(false);
-    const normalized = normalizeRssFeedUrlInput(feedUrl);
-    if (!normalized) {
-      setSubmitError("Enter a valid http(s) URL.");
-      return;
-    }
 
     setFinishing(true);
     try {
-      await createSkyreader.mutateAsync({
-        feedUrl: normalized,
+      const result = await addPublication.mutateAsync({
+        link: link.trim(),
         title: title.trim() || undefined,
       });
-      const pubId = rssPublicationIdFromNormalizedFeedUrl(normalized);
       onCloseRequest();
-      router.push(`/read/${encodeURIComponent(pubId)}`);
+      router.push(`/read/${encodeURIComponent(result.navigatePubId)}`);
     } catch (err) {
       console.error(err);
+      if (looksLikeStaleOAuthStorageError(err)) {
+        try {
+          const restored = await reconcileOAuthSession();
+          if (restored) {
+            setShowScopeReconnect(false);
+            setSubmitError(
+              "Your browser session was out of sync; we refreshed it from storage. Tap Add again to finish."
+            );
+            return;
+          }
+        } catch (reconcileErr) {
+          console.error(reconcileErr);
+        }
+        setShowScopeReconnect(true);
+        setSubmitError(
+          "This browser lost its ATProto OAuth session (common with multiple tabs or a dev reload). Sign in below to reconnect."
+        );
+        return;
+      }
       if (looksLikeOAuthScopeOrSessionError(err)) {
         setShowScopeReconnect(true);
         setSubmitError(
-          "Authorization issue — sign in again to allow RSS subscriptions on your PDS."
+          "Authorization issue — sign in again so we can save publication or RSS subscriptions on your PDS."
         );
       } else {
         setSubmitError(
@@ -242,7 +242,7 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
     }
   }
 
-  const pending = finishing || createSkyreader.isPending;
+  const pending = finishing || addPublication.isPending;
 
   return (
     <>
@@ -264,8 +264,8 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
       ) : signedOut ? (
         <div className="space-y-4 py-2">
           <p className="text-sm text-muted-foreground">
-            Sign in with your Bluesky or ATProto account so we can write Skyreader-compatible RSS
-            subscriptions to your PDS.
+            Sign in to create standard.site graph subscriptions or RSS-backed publications on your
+            PDS.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link href="/login" className={cn(buttonVariants({ variant: "default" }))}>
@@ -277,12 +277,12 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
           </div>
         </div>
       ) : sessionPendingOAuth ? (
-        <SkyreaderSignInFields
+        <PublicationAuthFields
           idPrefix={labelId}
           lead={
             <p>
-              Your account is remembered, but this browser does not have an active ATProto OAuth
-              session. Authorize below to reconnect and save RSS feeds.
+              Your account is remembered, but this browser does not have an active OAuth session.
+              Authorize below to add publications from links.
             </p>
           }
         />
@@ -290,27 +290,29 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
         <>
           {showScopeReconnect ? (
             <div className="rounded-md border border-border bg-muted/40 p-3">
-              <p className="text-sm font-medium text-foreground">Skyreader authorization</p>
+              <p className="text-sm font-medium text-foreground">Subscription scopes</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                If you joined before RSS support was added, your saved login may omit the RSS
-                collection scope. Signing in again refreshes permission for{" "}
+                If you joined before this feature, sign in again to include{" "}
+                <code className="text-[10px]">site.standard.graph.subscription</code> and{" "}
                 <code className="text-[10px]">app.skyreader.feed.subscription</code>.
               </p>
               <div className="mt-3">
-                <SkyreaderSignInFields idPrefix={`${labelId}-re`} lead={null} />
+                <PublicationAuthFields idPrefix={`${labelId}-re`} lead={null} />
               </div>
             </div>
           ) : null}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor={urlId}>Feed URL</Label>
+              <Label htmlFor={linkId}>Link</Label>
               <Input
-                id={urlId}
-                type="url"
-                inputMode="url"
-                placeholder="https://example.com/feed.xml"
-                value={feedUrl}
-                onChange={(e) => setFeedUrl(e.target.value)}
+                id={linkId}
+                type="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="https://a.blog/about, alice.bsky.social, or publication AT-URI"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
                 autoFocus={!showScopeReconnect}
                 required
               />
@@ -319,7 +321,7 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
               <Label htmlFor={titleId}>Title (optional)</Label>
               <Input
                 id={titleId}
-                placeholder="Friendly name shown in the sidebar"
+                placeholder="Override sidebar label — mainly used for RSS feeds"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -338,10 +340,10 @@ function AddRssFeedInner({ onCloseRequest }: AddRssFeedInnerProps) {
               </DialogClose>
               <button
                 type="submit"
-                disabled={!feedUrl.trim() || pending}
+                disabled={!link.trim() || pending}
                 className={cn(buttonVariants())}
               >
-                {pending ? "Saving…" : "Subscribe"}
+                {pending ? "Adding…" : "Add"}
               </button>
             </DialogFooter>
           </form>

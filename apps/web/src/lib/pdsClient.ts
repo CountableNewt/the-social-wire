@@ -14,6 +14,8 @@ import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import {
   resolveNativeSavedSubjectPreview,
   type NativeSavedSubjectPreview,
+  parseAtUri,
+  PUBLICATION_RECORD_COLLECTIONS,
 } from "@/lib/atprotoClient";
 import {
   latrExternalRkeyFromNormalizedUrl,
@@ -379,6 +381,39 @@ export class PDSClient {
       cursor = response.data.cursor ?? undefined;
     } while (cursor);
     return all;
+  }
+
+  /**
+   * Subscribe to a standard.site publication via `site.standard.graph.subscription`
+   * (`publication`: AT-URI or bare author DID).
+   */
+  async createPublicationSubscription(input: {
+    publication: string;
+  }): Promise<{ uri: string; cid: string }> {
+    const publication = input.publication.trim();
+    if (!publication) throw new Error("Missing publication");
+
+    if (publication.startsWith("at://")) {
+      const parsed = parseAtUri(publication);
+      if (!parsed || !PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+        throw new Error(
+          "Publication must be a site.standard.publication or com.standard.publication AT-URI"
+        );
+      }
+    } else if (!publication.startsWith("did:")) {
+      throw new Error("Publication must be an AT-URI or author DID");
+    }
+
+    const record: PublicationSubscriptionRecord = {
+      $type: COLLECTION_STANDARD_SITE_SUBSCRIPTION,
+      publication,
+    };
+    const response = await this.agent.api.com.atproto.repo.createRecord({
+      repo: this.did,
+      collection: COLLECTION_STANDARD_SITE_SUBSCRIPTION,
+      record: record as unknown as Record<string, unknown>,
+    });
+    return { uri: response.data.uri, cid: response.data.cid };
   }
 
   async listSkyreaderFeedSubscriptions(): Promise<

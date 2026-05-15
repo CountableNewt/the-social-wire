@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { LogOut, RefreshCw, Bookmark } from "lucide-react";
+import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,21 +19,15 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
   SidebarResizeHandle,
+  SIDEBAR_GLASS_ICON,
+  SIDEBAR_GLASS_SEGMENTED,
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
-import { AddRssFeedDialog } from "./AddRssFeedDialog";
+import { AddPublicationDialog } from "./AddPublicationDialog";
 import { useAuth } from "@/hooks/useAuth";
-import { useFolders } from "@/hooks/useFolders";
-import {
-  useDiscovery,
-  usePublicationPrefs,
-  usePublicationSubscriptions,
-  useRefreshDiscovery,
-  useSkyreaderFeedSubscriptions,
-  skyreaderSubscriptionsToDiscoveredPublications,
-} from "@/hooks/usePublications";
+import { usePublicationSidebarData } from "@/hooks/usePublicationSidebarData";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
 import {
@@ -41,16 +36,14 @@ import {
   type PublicationPrefsRecord,
   type RepoRecord,
 } from "@/lib/pdsClient";
-import {
-  normalizeAtRepoParam,
-  parseAtUri,
-  type DiscoveredPublication,
-  viewerOwnsDiscoveredPublication,
-} from "@/lib/atprotoClient";
+import { type DiscoveredPublication, viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
 import { cn } from "@/lib/utils";
 import { PublicationSubItem } from "./PublicationSubItem";
 
 type PublicationTab = "subscribed" | "following";
+
+const SIDEBAR_SEC_FOLDERS = "__sidebar_sec:folders";
+const SIDEBAR_SEC_PUBLICATIONS = "__sidebar_sec:publications";
 
 interface AppSidebarProps {
   selectedPubId: string | null;
@@ -64,7 +57,9 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const { selectedFolderUri, setSelectedFolderUri } = useReadRoute();
 
-  const [expandedKeys, setExpandedKeys] = useState(() => new Set<string>());
+  const [expandedKeys, setExpandedKeys] = useState(
+    () => new Set<string>([SIDEBAR_SEC_FOLDERS, SIDEBAR_SEC_PUBLICATIONS])
+  );
   const [publicationTab, setPublicationTab] =
     useState<PublicationTab>("subscribed");
 
@@ -89,132 +84,18 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     }
   }
 
-  const { data: folders = [], isLoading: foldersLoading } = useFolders();
-  const { data: publications = [], isLoading: pubsLoading } = useDiscovery();
-  const { data: prefs = [] } = usePublicationPrefs();
-  const { data: subscriptions = [], isLoading: subscriptionsLoading } =
-    usePublicationSubscriptions();
-  const { data: skyreaderRecords = [], isLoading: skyreaderSubsLoading } =
-    useSkyreaderFeedSubscriptions();
-  const subscriptionsBlockLoading =
-    subscriptionsLoading || skyreaderSubsLoading;
+  const {
+    folders,
+    prefsMap,
+    allPublicationRows,
+    folderMap,
+    unfolderedPubs,
+    followingTabPublications,
+    sidebarListsLoading,
+    refresh,
+    viewerDid,
+  } = usePublicationSidebarData();
   const { data: profile, isLoading: profileLoading } = useViewerProfile();
-  const refresh = useRefreshDiscovery();
-
-  const prefsMap = useMemo(
-    () => new Map(prefs.map((p) => [p.value.publicationId, p])),
-    [prefs]
-  );
-
-  const visiblePubs = useMemo(
-    () =>
-      publications.filter((p) => {
-        const pref = prefsMap.get(p.publicationId);
-        return !pref?.value.hidden;
-      }),
-    [publications, prefsMap]
-  );
-
-  const rssPublicationRows = useMemo(
-    () =>
-      skyreaderSubscriptionsToDiscoveredPublications(skyreaderRecords),
-    [skyreaderRecords]
-  );
-
-  const allPublicationRows = useMemo(
-    () => [...publications, ...rssPublicationRows],
-    [publications, rssPublicationRows]
-  );
-
-  const rssPublicationRowsVisible = useMemo(
-    () =>
-      rssPublicationRows.filter((p) => !prefsMap.get(p.publicationId)?.value.hidden),
-    [rssPublicationRows, prefsMap]
-  );
-
-  const viewerDid = session?.did;
-
-  const subscriptionPublicationKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const subscription of subscriptions) {
-      addPublicationSubscriptionKey(keys, subscription.value.publication);
-    }
-    return keys;
-  }, [subscriptions]);
-
-  const isSubscribedPublication = useCallback(
-    (pub: (typeof visiblePubs)[number]) =>
-      publicationSubscriptionKeys(pub).some((key) =>
-        subscriptionPublicationKeys.has(key)
-      ),
-    [subscriptionPublicationKeys]
-  );
-
-  const { graphSubscribedPubs, followOwnedUnsubscribedPubs } = useMemo(() => {
-    const graphSubscribedPubs: typeof visiblePubs = [];
-    const followOwnedUnsubscribedPubs: typeof visiblePubs = [];
-
-    if (!viewerDid) {
-      return { graphSubscribedPubs, followOwnedUnsubscribedPubs };
-    }
-
-    for (const pub of visiblePubs) {
-      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        graphSubscribedPubs.push(pub);
-      } else if (isSubscribedPublication(pub)) {
-        graphSubscribedPubs.push(pub);
-      } else {
-        followOwnedUnsubscribedPubs.push(pub);
-      }
-    }
-
-    return { graphSubscribedPubs, followOwnedUnsubscribedPubs };
-  }, [visiblePubs, viewerDid, isSubscribedPublication]);
-
-  const subscribedPubs = useMemo(() => {
-    const merged: DiscoveredPublication[] = [...graphSubscribedPubs];
-    const ids = new Set(graphSubscribedPubs.map((p) => p.publicationId));
-    for (const r of rssPublicationRowsVisible) {
-      if (!ids.has(r.publicationId)) {
-        merged.push(r);
-        ids.add(r.publicationId);
-      }
-    }
-    return merged;
-  }, [graphSubscribedPubs, rssPublicationRowsVisible]);
-
-  const { folderMap, myPublications, unfolderedPubs } = useMemo(() => {
-    const folderMap = new Map<string, typeof subscribedPubs>();
-    const myPublications: typeof subscribedPubs = [];
-    const unfolderedPubs: typeof subscribedPubs = [];
-
-    for (const pub of subscribedPubs) {
-      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        myPublications.push(pub);
-        continue;
-      }
-
-      const pref = prefsMap.get(pub.publicationId);
-      const folderId = pref?.value.folderId;
-      if (folderId) {
-        const list = folderMap.get(folderId) ?? [];
-        list.push(pub);
-        folderMap.set(folderId, list);
-        continue;
-      }
-
-      unfolderedPubs.push(pub);
-    }
-
-    return { folderMap, myPublications, unfolderedPubs };
-  }, [subscribedPubs, prefsMap, viewerDid]);
-
-  const followingTabPublications = useMemo(() => {
-    const myPublicationIds = new Set(myPublications.map((pub) => pub.publicationId));
-    return followOwnedUnsubscribedPubs.filter(
-      (pub) => !myPublicationIds.has(pub.publicationId)
-    );
-  }, [followOwnedUnsubscribedPubs, myPublications]);
 
   useEffect(() => {
     if (!selectedPubId) return;
@@ -244,30 +125,26 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   useEffect(() => {
     if (!selectedPubId) return;
 
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setExpandedKeys((prev) => {
-        const pref = prefsMap.get(selectedPubId);
-        const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
-        if (!pub) return prev;
+    setExpandedKeys((prev) => {
+      const pref = prefsMap.get(selectedPubId);
+      const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
+      if (!pub) return prev;
 
-        const folderId = pref?.value.folderId;
-        if (!folderId) return prev;
-
+      const next = new Set(prev);
+      const folderId = pref?.value.folderId;
+      if (folderId) {
         const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-        if (!folder || prev.has(folder.uri)) return prev;
+        if (folder) {
+          next.add(folder.uri);
+          next.add(SIDEBAR_SEC_FOLDERS);
+        }
+      } else if (!viewerDid || !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
+        next.add(SIDEBAR_SEC_PUBLICATIONS);
+      }
 
-        const next = new Set(prev);
-        next.add(folder.uri);
-        return next;
-      });
+      return next;
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedPubId, allPublicationRows, prefsMap, folders]);
+  }, [selectedPubId, allPublicationRows, prefsMap, folders, viewerDid]);
 
   return (
     <Sidebar>
@@ -281,8 +158,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           </div>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
+            size="icon-sm"
+            className={cn(SIDEBAR_GLASS_ICON, "size-8 shrink-0")}
             onClick={() => refresh.mutate()}
             disabled={refresh.isPending}
             title="Refresh Publications"
@@ -298,7 +175,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         <div className="shrink-0 border-b border-sidebar-border bg-sidebar">
           <SidebarGroup>
             <SidebarGroupLabel>Read Later</SidebarGroupLabel>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1.5">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
@@ -312,9 +189,9 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          {!foldersLoading && !pubsLoading && !subscriptionsBlockLoading ? (
+          {!sidebarListsLoading ? (
             <SidebarGroup className="pt-0">
-              <SidebarMenu>
+              <SidebarMenu className="gap-1.5">
                 <PublicationTabs
                   activeTab={publicationTab}
                   onTabChange={setPublicationTab}
@@ -325,64 +202,98 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         </div>
         <div className="no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
           <SidebarGroup>
-            <SidebarMenu>
-              {foldersLoading || pubsLoading || subscriptionsBlockLoading ? (
+            <SidebarMenu className="gap-4">
+              {sidebarListsLoading ? (
                 <SidebarSkeleton count={5} />
               ) : publicationTab === "subscribed" ? (
                 <>
                   <div className="h-1" aria-hidden />
-                  <SidebarSectionLabel>Folders</SidebarSectionLabel>
-                  {folders.map((f) => {
-                    const rkey = rkeyFromURI(f.uri);
-                    return (
-                      <FolderBranch
-                        key={f.uri}
-                        expandKey={f.uri}
-                        folder={f.value}
-                        isActive={selectedFolderUri === f.uri}
-                        expanded={expandedKeys.has(f.uri)}
-                        onToggleExpanded={() => toggleExpanded(f.uri)}
-                        publications={folderMap.get(rkey) ?? []}
-                        emptyLabel="No publications in this folder."
-                        selectedPubId={selectedPubId}
-                        onSelectPub={onSelectPub}
-                        folders={folders}
-                        prefsMap={prefsMap}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      type="button"
+                      onClick={() => toggleExpanded(SIDEBAR_SEC_FOLDERS)}
+                      aria-expanded={expandedKeys.has(SIDEBAR_SEC_FOLDERS)}
+                      className="gap-2"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "size-4 shrink-0 transition-transform",
+                          expandedKeys.has(SIDEBAR_SEC_FOLDERS) && "rotate-90"
+                        )}
+                        aria-hidden
                       />
-                    );
-                  })}
-                  <NewFolderDialog />
-                  <AddRssFeedDialog />
-                  <SidebarSectionLabel>Publications</SidebarSectionLabel>
-                  <PublicationList
-                    publications={unfolderedPubs}
-                    emptyLabel="No subscribed publications outside folders."
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                  />
-                  <SidebarSectionLabel>My Publications</SidebarSectionLabel>
-                  <PublicationList
-                    publications={myPublications}
-                    emptyLabel="No publications on your account discovered yet."
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                  />
+                      <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+                        Folders
+                      </span>
+                    </SidebarMenuButton>
+                    {expandedKeys.has(SIDEBAR_SEC_FOLDERS) ? (
+                      <SidebarMenuSub
+                        aria-label="Folders"
+                        className="mt-1.5"
+                      >
+                        {folders.map((f) => {
+                          const rkey = rkeyFromURI(f.uri);
+                          return (
+                            <FolderBranch
+                              key={f.uri}
+                              expandKey={f.uri}
+                              folder={f.value}
+                              isActive={selectedFolderUri === f.uri}
+                              expanded={expandedKeys.has(f.uri)}
+                              onToggleExpanded={() => toggleExpanded(f.uri)}
+                              publications={folderMap.get(rkey) ?? []}
+                              emptyLabel="No publications in this folder."
+                              selectedPubId={selectedPubId}
+                              onSelectPub={onSelectPub}
+                              folders={folders}
+                              prefsMap={prefsMap}
+                            />
+                          );
+                        })}
+                        <SidebarMenuItem>
+                          <NewFolderDialog />
+                        </SidebarMenuItem>
+                      </SidebarMenuSub>
+                    ) : null}
+                  </SidebarMenuItem>
+                  <CollapsibleSidebarSubSection
+                    title="Publications"
+                    expanded={expandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
+                    onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
+                    subAriaLabel="Subscribed publications"
+                  >
+                    <PublicationMenuSubEntries
+                      publications={unfolderedPubs}
+                      selectedPubId={selectedPubId}
+                      onSelectPub={onSelectPub}
+                      folders={folders}
+                      prefsMap={prefsMap}
+                    />
+                    <SidebarMenuSubItem className="p-0">
+                      <AddPublicationDialog />
+                    </SidebarMenuSubItem>
+                  </CollapsibleSidebarSubSection>
                 </>
               ) : (
                 <>
-                  <SidebarSectionLabel>Publications</SidebarSectionLabel>
-                  <PublicationList
-                    publications={followingTabPublications}
-                    emptyLabel="No unsubscribed publications from followed accounts."
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                  />
+                  <div className="h-1" aria-hidden />
+                  <CollapsibleSidebarSubSection
+                    title="Publications"
+                    expanded={expandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
+                    onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
+                    subAriaLabel="Publications from followed accounts"
+                  >
+                    <PublicationMenuSubEntries
+                      publications={followingTabPublications}
+                      selectedPubId={selectedPubId}
+                      onSelectPub={onSelectPub}
+                      folders={folders}
+                      prefsMap={prefsMap}
+                    />
+                    <SidebarMenuSubItem className="p-0">
+                      <AddPublicationDialog />
+                    </SidebarMenuSubItem>
+                  </CollapsibleSidebarSubSection>
                 </>
               )}
             </SidebarMenu>
@@ -391,38 +302,45 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="border-t px-2 py-3">
-        <div className="flex min-w-0 items-start gap-3 px-2 pb-2">
+        <SidebarMenu className="gap-2 px-2">
           {profileLoading ? (
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <Skeleton className="size-10 shrink-0 rounded-full" />
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-3 w-full max-w-[12rem]" />
+            <SidebarMenuItem>
+              <div className="flex min-w-0 flex-1 items-start gap-3 px-2 py-1">
+                <Skeleton className="size-10 shrink-0 rounded-full" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-3 w-full max-w-[12rem]" />
+                </div>
               </div>
-            </div>
+            </SidebarMenuItem>
           ) : (
-            <>
-              <Avatar
-                src={profile?.avatar}
-                alt={profile?.displayName || profile?.handle || session?.did || "Account"}
-                size={40}
-                className="shrink-0"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium leading-tight text-sidebar-foreground">
-                  {profile?.displayName?.trim() ||
-                    profile?.handle ||
-                    session?.did ||
-                    "—"}
-                </p>
-                <p className="truncate text-[11px] leading-tight text-muted-foreground">
-                  {session?.did ?? ""}
-                </p>
-              </div>
-            </>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Your profile & publications"
+                isActive={pathname.startsWith("/me")}
+                render={<Link href="/me/publications" prefetch />}
+                className="h-auto min-h-0 items-start gap-3 overflow-visible py-2.5 whitespace-normal"
+              >
+                <Avatar
+                  src={profile?.avatar}
+                  alt={profile?.displayName || profile?.handle || session?.did || "Account"}
+                  size={40}
+                  className="shrink-0"
+                />
+                <div className="min-w-0 flex-1 py-px text-left">
+                  <p className="truncate text-sm font-medium leading-tight">
+                    {profile?.displayName?.trim() ||
+                      profile?.handle ||
+                      session?.did ||
+                      "—"}
+                  </p>
+                  <p className="truncate text-[11px] leading-snug text-muted-foreground">
+                    {session?.did ?? ""}
+                  </p>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           )}
-        </div>
-        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
@@ -451,7 +369,7 @@ function PublicationTabs({
   return (
     <SidebarMenuItem>
       <div
-        className="grid grid-cols-2 gap-0.5 rounded-md bg-sidebar-accent/50 p-0.5"
+        className={cn(SIDEBAR_GLASS_SEGMENTED)}
         role="tablist"
         aria-label="Publication source"
       >
@@ -488,10 +406,10 @@ function PublicationTabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "min-w-0 rounded px-2 py-1.5 text-center text-xs font-medium transition-colors",
+        "flex h-8 min-h-8 min-w-0 items-center justify-center rounded-lg px-3 py-0 text-center text-xs font-medium transition-[background-color,border-color,box-shadow,color] backdrop-blur-sm hover:[box-shadow:var(--purple-glow-hover)] active:[box-shadow:var(--purple-glow-selected)]",
         active
-          ? "bg-sidebar text-sidebar-foreground shadow-sm"
-          : "text-muted-foreground hover:text-sidebar-foreground"
+          ? "border-sidebar-border/80 bg-sidebar font-semibold text-sidebar-foreground shadow-inner dark:border-sidebar-border dark:bg-sidebar-accent/90 dark:text-sidebar-accent-foreground"
+          : "border border-transparent bg-transparent text-muted-foreground hover:border-sidebar-border/55 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground dark:hover:bg-sidebar-accent/38"
       )}
     >
       <span className="block truncate">{children}</span>
@@ -499,46 +417,73 @@ function PublicationTabButton({
   );
 }
 
-function SidebarSectionLabel({ children }: { children: ReactNode }) {
+function CollapsibleSidebarSubSection({
+  title,
+  expanded,
+  onToggle,
+  subAriaLabel,
+  children,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  subAriaLabel: string;
+  children: ReactNode;
+}) {
+  const subId = `sidebar-collapsible-sub-${useId().replace(/:/g, "")}`;
+
   return (
     <SidebarMenuItem>
-      <div className="px-2 pt-2 pb-1 text-xs font-medium text-sidebar-foreground/70">
-        {children}
-      </div>
+      <SidebarMenuButton
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={subId}
+        className="gap-2"
+      >
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 transition-transform",
+            expanded && "rotate-90"
+          )}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+          {title}
+        </span>
+      </SidebarMenuButton>
+      {expanded ? (
+        <SidebarMenuSub
+          id={subId}
+          aria-label={subAriaLabel}
+          className="mt-1.5"
+        >
+          {children}
+        </SidebarMenuSub>
+      ) : null}
     </SidebarMenuItem>
   );
 }
 
-function PublicationList({
+function PublicationMenuSubEntries({
   publications,
-  emptyLabel,
   selectedPubId,
   onSelectPub,
   folders,
   prefsMap,
 }: {
   publications: DiscoveredPublication[];
-  emptyLabel: string;
   selectedPubId: string | null;
   onSelectPub: (pubId: string) => void;
   folders: RepoRecord<FolderRecord>[];
   prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
 }) {
   if (publications.length === 0) {
-    return (
-      <SidebarMenuSubItem>
-        <span className="block min-w-0 break-words px-2 py-1 text-xs text-muted-foreground">
-          {emptyLabel}
-        </span>
-      </SidebarMenuSubItem>
-    );
+    return null;
   }
 
   return (
-    <SidebarMenuSub
-      className="mx-0 translate-x-0 border-l-0 px-0"
-      aria-label="Following publications"
-    >
+    <>
       {publications.map((pub) => (
         <PublicationSubItem
           key={pub.publicationId}
@@ -549,40 +494,8 @@ function PublicationList({
           prefsMap={prefsMap}
         />
       ))}
-    </SidebarMenuSub>
+    </>
   );
-}
-
-function publicationSubscriptionKeys(pub: DiscoveredPublication): string[] {
-  const keys = new Set<string>();
-  addPublicationSubscriptionKey(keys, pub.subscriptionPublicationId);
-  addPublicationSubscriptionKey(keys, pub.publicationId);
-  return [...keys];
-}
-
-function addPublicationSubscriptionKey(keys: Set<string>, value: string | undefined) {
-  if (!value) return;
-  const normalized = normalizeAtRepoParam(value);
-
-  // Bare DID — subscriptions and content-only publications both key by DID.
-  if (normalized.startsWith("did:")) {
-    keys.add(normalized);
-    return;
-  }
-
-  const parsed = parseAtUri(normalized);
-  if (!parsed) return;
-
-  keys.add(normalized);
-  // Index the author DID so subscriptions stored as AT-URIs match
-  // content-only follows whose publicationId is just the DID.
-  keys.add(parsed.did);
-  // Cross-collection alias: site.standard.publication ↔ com.standard.publication
-  if (parsed.collection === "site.standard.publication") {
-    keys.add(`at://${parsed.did}/com.standard.publication/${parsed.rkey}`);
-  } else if (parsed.collection === "com.standard.publication") {
-    keys.add(`at://${parsed.did}/site.standard.publication/${parsed.rkey}`);
-  }
 }
 
 function SidebarSkeleton({ count }: { count: number }) {
@@ -590,7 +503,7 @@ function SidebarSkeleton({ count }: { count: number }) {
     <>
       {Array.from({ length: count }).map((_, i) => (
         <SidebarMenuItem key={i}>
-          <Skeleton className="h-8 w-full rounded-md" />
+          <Skeleton className="h-9 w-full rounded-lg" />
         </SidebarMenuItem>
       ))}
     </>

@@ -12,14 +12,12 @@ export function useShowHiddenFolder() {
   const [showHiddenFolder, setShowHiddenFolderState] = useState(false);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      try {
-        const raw = window.localStorage.getItem(SHOW_HIDDEN_FOLDER_STORAGE_KEY);
-        setShowHiddenFolderState(raw === "true");
-      } catch {
-        // ignore
-      }
-    });
+    try {
+      const raw = window.localStorage.getItem(SHOW_HIDDEN_FOLDER_STORAGE_KEY);
+      setShowHiddenFolderState(raw === "true");
+    } catch {
+      // ignore
+    }
   }, []);
 
   const setShowHiddenFolder = useCallback((next: boolean) => {
