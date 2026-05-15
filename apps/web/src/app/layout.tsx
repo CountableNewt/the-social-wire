@@ -8,6 +8,9 @@ import { EnvironmentBanner } from "@/components/shared/EnvironmentBanner";
 const siteUrl = (() => {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (explicit) return explicit.replace(/\/$/, "");
+  if (process.env.VERCEL_ENV === "production") {
+    return "https://thesocialwire.app";
+  }
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel.replace(/^https?:\/\//i, "")}`;
   return "https://thesocialwire.app";
@@ -22,20 +25,12 @@ export const metadata: Metadata = {
     title: "The Social Wire",
     description: "A reader for the standard.site publishing ecosystem",
     url: "/",
-    images: [
-      {
-        url: "/og/the-social-wire.png",
-        width: 1535,
-        height: 1024,
-        alt: "The Social Wire",
-      },
-    ],
+    /* og:image / twitter:image: `opengraph-image.tsx` + `twitter-image.tsx` */
   },
   twitter: {
     card: "summary_large_image",
     title: "The Social Wire",
     description: "A reader for the standard.site publishing ecosystem",
-    images: ["/og/the-social-wire.png"],
   },
 };
 
