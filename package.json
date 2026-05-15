@@ -8,13 +8,15 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:web": "bun --cwd apps/web dev",
+    "locks:freeze-text": "bun install --save-text-lockfile --frozen-lockfile --lockfile-only",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "clean": "turbo clean"
   },
   "devDependencies": {
-    "turbo": "latest"
+    "turbo": "2.9.14"
   },
-  "packageManager": "bun@1.2.0"
+  "packageManager": "bun@1.3.14"
 }

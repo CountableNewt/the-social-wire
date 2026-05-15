@@ -1,0 +1,67 @@
+{
+  "lexicon": 1,
+  "id": "com.latr.saved.external",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Per-user wrapper that gives a non-ATProto URL a stable AT URI in the user's repo (one record per user per normalized URL).",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": [
+          "url",
+          "normalizedUrl",
+          "fingerprint",
+          "createdAt"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Original URL as saved."
+          },
+          "normalizedUrl": {
+            "type": "string",
+            "description": "Canonical normalized URL for deduplication."
+          },
+          "fingerprint": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Hash of normalizedUrl (e.g. sha256 hex) for debugging and portability."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "excerpt": {
+            "type": "string",
+            "maxLength": 8192
+          },
+          "site": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "image": {
+            "type": "string",
+            "format": "uri"
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "author": {
+            "type": "string",
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  }
+}

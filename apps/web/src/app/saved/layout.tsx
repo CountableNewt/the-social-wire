@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppSidebar } from "@/components/AppSidebar/AppSidebar";
 import { ReadRouteProvider } from "@/contexts/ReadRouteContext";
@@ -9,36 +9,13 @@ import {
   SidebarProvider,
   SidebarInset,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 
-function ClosePublicationsSheetOnMobilePubRoute({
-  selectedPubId,
-}: {
-  selectedPubId: string | null;
-}) {
-  const { isMobile, setOpenMobile } = useSidebar();
-
-  useEffect(() => {
-    if (isMobile && selectedPubId) {
-      setOpenMobile(false);
-    }
-  }, [isMobile, selectedPubId, setOpenMobile]);
-
-  return null;
-}
-
-export default function ReadLayout({ children }: { children: React.ReactNode }) {
+/** Authenticated chrome with publication sidebar — same shell as `/read`. */
+export default function SavedLayout({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-
-  // Derive the selected pubId from the URL path: /read/[...pubId] (joined suffix)
-  const selectedPubId = pathname.startsWith("/read/")
-    ? normalizeAtRepoParam(pathname.slice("/read/".length))
-    : null;
 
   useEffect(() => {
     if (!isLoading && !session) {
@@ -55,22 +32,20 @@ export default function ReadLayout({ children }: { children: React.ReactNode }) 
   }
 
   if (!session) {
-    // Redirect in progress; render nothing to avoid flash
     return null;
   }
 
   return (
     <SidebarProvider className="h-[calc(100svh-var(--environment-banner-height,0px))] min-h-[calc(100svh-var(--environment-banner-height,0px))] max-h-[calc(100svh-var(--environment-banner-height,0px))] overflow-hidden overscroll-none">
       <ReadRouteProvider>
-        <ClosePublicationsSheetOnMobilePubRoute selectedPubId={selectedPubId} />
-        <AppSidebar
-          selectedPubId={selectedPubId}
-          onSelectPub={(pubId) => router.push(`/read/${encodeURIComponent(pubId)}`)}
-        />
+        <AppSidebar selectedPubId={null} onSelectPub={(pubId) => router.push(`/read/${encodeURIComponent(pubId)}`)} />
         <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <header className="flex h-11 min-h-11 shrink-0 items-center gap-1 border-b px-2 sm:h-10 sm:min-h-10 sm:gap-2 sm:px-3 md:px-4">
             <SidebarTrigger className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 -ml-0.5 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 sm:-ml-1" />
             <Separator orientation="vertical" className="h-4" />
+            <span className="truncate px-2 text-sm font-medium text-muted-foreground">
+              Read Later
+            </span>
           </header>
           <main className="flex min-h-0 flex-1 overflow-hidden">{children}</main>
         </SidebarInset>

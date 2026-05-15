@@ -11,8 +11,11 @@ import {
 export type { DiscoveredPublication };
 
 export const PUB_PREFS_QUERY_KEY = ["publicationPrefs"] as const;
+export const PUBLICATION_SUBSCRIPTIONS_QUERY_KEY = [
+  "publicationSubscriptions",
+] as const;
 export const DISCOVERY_QUERY_KEY = (did: string) =>
-  ["discovery", did] as const;
+  ["discovery", "publication-icons-v1", did] as const;
 
 // ── Publication prefs ─────────────────────────────────────────────────────────
 
@@ -24,6 +27,16 @@ export function usePublicationPrefs() {
   return useQuery({
     queryKey: PUB_PREFS_QUERY_KEY,
     queryFn: () => client!.listPublicationPrefs(),
+    enabled: !!client,
+    staleTime: 30_000,
+  });
+}
+
+export function usePublicationSubscriptions() {
+  const client = usePDSClient();
+  return useQuery({
+    queryKey: PUBLICATION_SUBSCRIPTIONS_QUERY_KEY,
+    queryFn: () => client!.listPublicationSubscriptions(),
     enabled: !!client,
     staleTime: 30_000,
   });

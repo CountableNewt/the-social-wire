@@ -162,7 +162,7 @@ function SidebarProvider({
           } as React.CSSProperties
         }
         className={cn(
-          "group/sidebar-wrapper flex min-h-svh w-full min-w-0 has-data-[variant=inset]:bg-sidebar",
+          "group/sidebar-wrapper flex min-h-[calc(100svh-var(--environment-banner-height,0px))] w-full min-w-0 has-data-[variant=inset]:bg-sidebar",
           sidebarResizing &&
             "[&_[data-slot=sidebar-gap]]:transition-none [&_[data-slot=sidebar-container]]:transition-none",
           className
@@ -258,7 +258,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed bottom-0 top-[var(--environment-banner-height,0px)] z-10 hidden h-[calc(100svh-var(--environment-banner-height,0px))] w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -404,7 +404,7 @@ function SidebarResizeHandle({
       aria-valuemin={SIDEBAR_WIDTH_MIN_PX}
       aria-valuemax={SIDEBAR_WIDTH_MAX_PX}
       aria-valuenow={Math.round(sidebarWidthPx)}
-      aria-label="Resize sidebar width"
+      aria-label="Resize Sidebar Width"
       data-slot="sidebar-resize-handle"
       tabIndex={0}
       className={cn(

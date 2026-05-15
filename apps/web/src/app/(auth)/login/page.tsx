@@ -23,7 +23,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex min-h-[calc(100svh-var(--environment-banner-height,0px))] flex-1 items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight">The Social Wire</h1>
@@ -65,7 +65,7 @@ export default function LoginPage() {
             disabled={isPending || !handle.trim()}
             className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
           >
-            {isPending ? "Signing in…" : "Continue with ATProto"}
+            {isPending ? "Signing In…" : "Continue with ATProto"}
           </button>
         </form>
 

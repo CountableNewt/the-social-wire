@@ -7,7 +7,10 @@
 ## Learned Workspace Facts
 
 - The Next.js app lives in `apps/web`; common checks are `bun run turbo run build --filter=web...` and targeted `bun test` under `apps/web`.
+- The `/saved` read-later route uses the same three-pane shell as `/read` (list column, detail with `EntryArticleEmbed`; `saved/layout` keeps `main` overflow-hidden and `saved/settings` scrolls inside the page).
+- LATR Link HTTPS read-later merges and persists via `com.latr.saved.*` records on the user’s PDS (lexicons in `packages/lexicons`).
 - ATProto OAuth uses `atproto` scope: `useAuth().session` is a lightweight `{ did }` shape; anything that needs `fetchHandler` / OAuth on the wire must use `getOAuthSession()` (`OAuthSession`).
+- **Local `next dev`:** parameterized loopback OAuth builds `http://localhost?redirect_uri=…` (with `127.0.0.1`/`[::1]` and `/callback`) when `NEXT_PUBLIC_APP_ENV` is `local` or unset in development; production uses discoverable client metadata (see `apps/web/src/lib/auth.ts` and README).
 - OAuth access tokens here are typically audience-bound to the user’s PDS, not the Bluesky App View—use a plain `Agent('https://bsky.social')` without OAuth-backed `fetch` for public App View reads (e.g. follows, `app.bsky.actor.getProfile`), and use a session-backed `Agent` / `createOAuthAgent` for `com.atproto.repo.*` and other PDS-targeted calls; do not attach the OAuth token to arbitrary `bsky.social` XRPC.
 - When bridging `session.fetchHandler` into `@atproto/api`’s `Agent`, satisfy `typeof fetch` (including static `preconnect`) by delegating `preconnect` from global `fetch` on the wrapper.
 - standard.site discovery should cover `site.standard.document` and `site.standard.publication`, and retain `site.standard.entry` for backward compatibility; `services/api`’s Swift `DiscoveryChain.swift` reflects the intended multi-collection behavior.

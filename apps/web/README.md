@@ -23,12 +23,15 @@ The app runs at [http://localhost:3000](http://localhost:3000).
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in:
+Copy `.env.local` in `apps/web` (see **Environment Variables**). No secrets are required for local ATProto OAuth loopback.
 
 | Variable | Description |
 |----------|-------------|
-| `NEXT_PUBLIC_APP_ENV` | `prod` / `dev` / `local` — controls the environment banner |
-| `NEXT_PUBLIC_ATPROTO_CLIENT_ID` | OAuth client ID (URL of `client-metadata.json`) |
+| `NEXT_PUBLIC_APP_ENV` | `prod` / `dev` / `local` — banner + OAuth mode (see **Local ATProto OAuth** below); defaults to `local` in the banner when unset |
+| `NEXT_PUBLIC_ATPROTO_CLIENT_ID` | OAuth client ID for **hosted** builds: URL of discoverable `client-metadata.json` |
+| `NEXT_PUBLIC_ATPROTO_LOOPBACK_ORIGIN` | Optional: `http://127.0.0.1:PORT` — SSR / first-paint port fallback for loopback redirects |
+| `NEXT_PUBLIC_ATPROTO_LOOPBACK_CALLBACK_PATH` | Optional loopback redirect path (default `/callback`) |
+| `NEXT_PUBLIC_ATPROTO_LOOPBACK_FORCE` | Optional: `true` / `false` — override whether parameterized loopback OAuth is used in dev |
 
 ## Architecture
 
@@ -40,6 +43,17 @@ Authentication uses ATProto OAuth (PKCE + DPoP) via `@atproto/oauth-client-brows
 - `src/hooks/useAuth.tsx` — `AuthProvider` context; exposes `session.did`, `getAuthFetch()`, `getOAuthSession()`
 - `src/lib/pdsClient.ts` — XRPC helpers for reading/writing ATProto records on the user's PDS (`new Agent(oauthSession)`)
 - `src/lib/atprotoClient.ts` — public ATProto XRPC helpers for discovery and standard.site entry reads
+
+#### Local ATProto OAuth (`next dev`)
+
+Local dev does **not** read your hosted `public/client-metadata.json`. The browser uses a **parameterized loopback** client ID (`http://localhost?redirect_uri=…&scope=…` per `@atproto/oauth-types`, RFC 8252).
+
+- **When it applies:** `NEXT_PUBLIC_APP_ENV === "local"`, or **`next dev` with `NEXT_PUBLIC_APP_ENV` unset** (`NODE_ENV === "development"`). Production / `next build` bundles use `NEXT_PUBLIC_ATPROTO_CLIENT_ID` or the default `https://thesocialwire.app/client-metadata.json`.
+- **Redirect URIs:** `http://127.0.0.1:<devPort>/callback` and `http://[::1]:<devPort>/callback`, derived from `window.location.port` when you sign in. The client may redirect **`localhost` → `127.0.0.1`** after load so IndexedDB matches the redirect origin.
+- **Overrides:** `NEXT_PUBLIC_ATPROTO_LOOPBACK_ORIGIN` (port fallback when `window` is missing), `NEXT_PUBLIC_ATPROTO_LOOPBACK_CALLBACK_PATH` (default `/callback`), `NEXT_PUBLIC_ATPROTO_LOOPBACK_FORCE=false` to force hosted client ID in dev.
+- **Callback route:** Never run idle `oauthClient.init()` concurrently on **`/callback`**, or a race can strip `#code=` / `#state=` when the OAuth client redirects `localhost → 127.0.0.1`. `AuthProvider` skips restore on that path until `handleCallback()` finishes.
+
+Sign in with a **real** handle; tokens are issued by your PDS. There is **no OAuth bypass** — that would not produce valid `com.atproto.repo.*` writes to a real PDS.
 
 ### Data Flow
 

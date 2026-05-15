@@ -112,9 +112,9 @@ export function PublicationSubItem({
   );
 
   const folderSubmenuLabel = useMemo(() => {
-    if (!currentFolderId) return "Move to folder";
+    if (!currentFolderId) return "Move to Folder";
     const match = folders.find((f) => rkeyFromURI(f.uri) === currentFolderId);
-    return match ? `In "${match.value.name}"` : "Move to folder";
+    return match ? `In "${match.value.name}"` : "Move to Folder";
   }, [currentFolderId, folders]);
 
   return (
@@ -137,7 +137,7 @@ export function PublicationSubItem({
             disabled={busy}
             onClick={() => setNewFolderDialogOpen(true)}
           >
-            New folder…
+            New Folder…
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuSub>
@@ -182,7 +182,7 @@ export function PublicationSubItem({
           <ContextMenuSeparator />
           {isHidden ? (
             <ContextMenuItem disabled={busy} onClick={() => void setHidden(false)}>
-              Unhide publication
+              Unhide Publication
             </ContextMenuItem>
           ) : (
             <ContextMenuItem
@@ -190,7 +190,7 @@ export function PublicationSubItem({
               disabled={busy}
               onClick={() => void setHidden(true)}
             >
-              Hide publication
+              Hide Publication
             </ContextMenuItem>
           )}
         </ContextMenuContent>
@@ -198,9 +198,9 @@ export function PublicationSubItem({
       <ControlledCreateFolderDialog
         open={newFolderDialogOpen}
         onOpenChange={setNewFolderDialogOpen}
-        dialogTitle="New folder"
+        dialogTitle="New Folder"
         description={`“${publication.title}” moves into this folder when you create it.`}
-        submitLabel="Create & move"
+        submitLabel="Create & Move"
         pendingSubmitLabel="Saving…"
         onCreated={async ({ uri }) => {
           await assignFolder(rkeyFromURI(uri));
@@ -217,7 +217,7 @@ function PublicationLeadingAvatar({
 }) {
   return (
     <Avatar
-      src={publication.avatarUrl}
+      src={publication.iconUrl ?? publication.avatarUrl}
       alt=""
       size={20}
       className="shrink-0"

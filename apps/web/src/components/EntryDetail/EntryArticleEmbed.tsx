@@ -45,7 +45,7 @@ function IframeLoadFailedMessage({ href }: { href: string }) {
         className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-primary hover:underline"
       >
         <ExternalLink className="size-4 shrink-0" aria-hidden />
-        Open in new tab
+        Open in New Tab
       </a>
     </div>
   );

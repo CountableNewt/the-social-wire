@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Link2, MessageSquareQuote, Repeat } from "lucide-react";
+import { BookmarkPlus, Check, Heart, Link2, MessageSquareQuote, Repeat } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,19 +13,17 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useEntrySocial } from "@/hooks/useEntrySocial";
+import {
+  useHttpsUrlIsLatrSaved,
+  useSaveHttpsReadLaterMutation,
+} from "@/hooks/useLatrSaved";
 import type { EntryDetail } from "@/lib/atprotoClient";
-import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
+import { canonicalArticleHttpsUrl } from "@/lib/articleCanonicalUrl";
 import { cn } from "@/lib/utils";
 
 function shareArticleUrl(entry: EntryDetail): string {
-  const raw =
-    entry.embedUrl ??
-    entry.originalUrl ??
-    (typeof window !== "undefined" ? window.location.href : "");
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return normalizeHttpUrlToHttps(raw);
-  }
-  return raw;
+  const canon = canonicalArticleHttpsUrl(entry);
+  return canon ?? "";
 }
 
 interface EntrySocialToolbarProps {
@@ -45,6 +43,10 @@ export function EntrySocialToolbar({
     hasLinkedPost,
   } = useEntrySocial(entry);
 
+  const canonUrl = canonicalArticleHttpsUrl(entry);
+  const alreadyLatrSaved = useHttpsUrlIsLatrSaved(canonUrl ?? null);
+  const saveLaterMut = useSaveHttpsReadLaterMutation();
+
   const [repostOpen, setRepostOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [quoteText, setQuoteText] = useState("");
@@ -58,6 +60,8 @@ export function EntrySocialToolbar({
     toggleLikeMutation.isPending ||
     toggleRepostMutation.isPending ||
     viewerQuery.isLoading;
+
+  const savingLater = saveLaterMut.isPending;
 
   const disabledHint = hasLinkedPost
     ? undefined
@@ -94,7 +98,7 @@ export function EntrySocialToolbar({
           className
         )}
         role="toolbar"
-        aria-label="Article sharing and reactions"
+        aria-label="Article Sharing and Reactions"
       >
         <Button
           variant={liked ? "secondary" : "outline"}
@@ -125,7 +129,7 @@ export function EntrySocialToolbar({
             !hasLinkedPost
               ? disabledHint
               : reposted
-                ? "Undo repost"
+                ? "Undo Repost"
                 : "Repost"
           }
           onClick={() => {
@@ -138,7 +142,7 @@ export function EntrySocialToolbar({
         >
           <Repeat className="size-5 shrink-0 sm:size-3.5" />
           <span className="text-xs font-medium sm:text-sm">
-            {reposted ? "Undo repost" : "Repost"}
+            {reposted ? "Undo Repost" : "Repost"}
           </span>
         </Button>
 
@@ -146,14 +150,46 @@ export function EntrySocialToolbar({
           variant="outline"
           size="sm"
           className="h-11 min-h-[44px] justify-center gap-1.5 px-2 sm:h-7 sm:min-h-0 sm:justify-start sm:px-2.5"
-          title="Quote post"
+          title="Quote Post"
           onClick={() => setQuoteOpen(true)}
         >
           <MessageSquareQuote className="size-5 shrink-0 sm:size-3.5" />
           <span className="text-xs font-medium sm:text-sm">Quote</span>
         </Button>
 
-        {(entry.embedUrl ?? entry.originalUrl) ? (
+        {canonUrl ? (
+          <Button
+            variant={alreadyLatrSaved ? "secondary" : "outline"}
+            size="sm"
+            disabled={
+              busySocial || savingLater || alreadyLatrSaved || !canonUrl
+            }
+            className="h-11 min-h-[44px] justify-center gap-1.5 px-2 sm:h-7 sm:min-h-0 sm:justify-start sm:px-2.5"
+            title={
+              alreadyLatrSaved
+                ? "Already in Read Later"
+                : "Save Canonical URL to PDS Read Later (L@tr Compatible)"
+            }
+            onClick={() => {
+              if (!canonUrl) return;
+              saveLaterMut.mutate({
+                url: canonUrl,
+                title: entry.title?.trim() || undefined,
+              });
+            }}
+          >
+            {alreadyLatrSaved ? (
+              <Check className="size-5 shrink-0 text-emerald-600 sm:size-3.5" />
+            ) : (
+              <BookmarkPlus className="size-5 shrink-0 sm:size-3.5" />
+            )}
+            <span className="text-xs font-medium sm:text-sm">
+              {alreadyLatrSaved ? "Saved" : "Save"}
+            </span>
+          </Button>
+        ) : null}
+
+        {canonUrl ? (
           <a
             href={shareArticleUrl(entry)}
             target="_blank"
@@ -162,8 +198,8 @@ export function EntrySocialToolbar({
               buttonVariants({ variant: "outline", size: "sm" }),
               "inline-flex h-11 min-h-[44px] items-center justify-center gap-1 px-2 no-underline sm:h-7 sm:min-h-0 sm:justify-start sm:gap-1.5 sm:px-2.5"
             )}
-            title="Open canonical article"
-            aria-label="Open canonical article in new tab"
+            title="Open Canonical Article"
+            aria-label="Open Canonical Article in New Tab"
           >
             <Link2 className="size-5 shrink-0 sm:size-3.5" />
             <span className="max-w-[5rem] truncate text-xs font-medium sm:max-w-[9rem] sm:text-sm">
@@ -186,7 +222,7 @@ export function EntrySocialToolbar({
       <Dialog open={repostOpen} onOpenChange={setRepostOpen}>
         <DialogContent showCloseButton className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Repost this Article?</DialogTitle>
+            <DialogTitle>Repost This Article?</DialogTitle>
             <DialogDescription>
               This repeats the linked Bluesky post to your followers. You can
               undo a repost anytime from this toolbar.
@@ -245,7 +281,7 @@ export function EntrySocialToolbar({
               disabled={!quoteText.trim() || quoteMutation.isPending}
               onClick={submitQuote}
             >
-              Post quote
+              Post Quote
             </Button>
           </DialogFooter>
         </DialogContent>
