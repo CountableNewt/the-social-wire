@@ -212,20 +212,18 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     queueMicrotask(() => {
       if (cancelled) return;
       setExpandedKeys((prev) => {
-        const next = new Set(prev);
-
         const pref = prefsMap.get(selectedPubId);
         const pub = publications.find((p) => p.publicationId === selectedPubId);
-        if (!pub) return next;
+        if (!pub) return prev;
 
         const folderId = pref?.value.folderId;
-        if (folderId) {
-          const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-          if (folder) {
-            next.add(folder.uri);
-          }
-        }
+        if (!folderId) return prev;
 
+        const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
+        if (!folder || prev.has(folder.uri)) return prev;
+
+        const next = new Set(prev);
+        next.add(folder.uri);
         return next;
       });
     });

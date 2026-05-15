@@ -53,11 +53,12 @@ export function useConfiguredReadLaterService() {
 
   return useMemo(
     () => ({
-      ...prefs,
+      isLoading: prefs.isLoading,
+      data: prefs.data,
       serviceId: localServiceId,
       service: findReadLaterService(localServiceId),
     }),
-    [localServiceId, prefs]
+    [prefs.isLoading, prefs.data, localServiceId]
   );
 }
 

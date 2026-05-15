@@ -473,10 +473,11 @@ export class PDSClient {
 
   // ── L@tr read-later (`com.latr.saved.*`) ──────────────────────────────────
 
-  async listLatrSavedExternals(): Promise<RepoRecord<LatrSavedExternalRecord>[]> {
+  async listLatrSavedExternals(signal?: AbortSignal): Promise<RepoRecord<LatrSavedExternalRecord>[]> {
     const all: RepoRecord<LatrSavedExternalRecord>[] = [];
     let cursor: string | undefined;
     do {
+      signal?.throwIfAborted();
       const response = await this.agent.api.com.atproto.repo.listRecords({
         repo: this.did,
         collection: COLLECTION_LATR_SAVED_EXTERNAL,
@@ -491,10 +492,11 @@ export class PDSClient {
     return all;
   }
 
-  async listLatrSavedItems(): Promise<RepoRecord<LatrSavedItemRecord>[]> {
+  async listLatrSavedItems(signal?: AbortSignal): Promise<RepoRecord<LatrSavedItemRecord>[]> {
     const all: RepoRecord<LatrSavedItemRecord>[] = [];
     let cursor: string | undefined;
     do {
+      signal?.throwIfAborted();
       const response = await this.agent.api.com.atproto.repo.listRecords({
         repo: this.did,
         collection: COLLECTION_LATR_SAVED_ITEM,
@@ -682,9 +684,10 @@ export class PDSClient {
   }
 
   /** Joins wrappers with queue rows for read-later browsing. */
-  async listMergedLatrSaves(): Promise<MergedLatrSave[]> {
-    const externals = await this.listLatrSavedExternals();
-    const items = await this.listLatrSavedItems();
+  async listMergedLatrSaves(signal?: AbortSignal): Promise<MergedLatrSave[]> {
+    const externals = await this.listLatrSavedExternals(signal);
+    const items = await this.listLatrSavedItems(signal);
+    signal?.throwIfAborted();
     const rows = mergeExternalsAndItemsToHttpsRows(externals, items).filter(
       (row) => row.state !== "archived"
     );

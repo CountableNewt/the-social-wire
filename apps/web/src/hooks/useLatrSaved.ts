@@ -12,9 +12,9 @@ export function useLatrMergedHttpsSaves() {
   const client = usePDSClient();
   return useQuery({
     queryKey: LATR_SAVED_QUERY_KEY,
-    queryFn: async (): Promise<MergedLatrSave[]> => {
+    queryFn: async ({ signal }): Promise<MergedLatrSave[]> => {
       if (!client) return [];
-      return client.listMergedLatrSaves();
+      return client.listMergedLatrSaves(signal);
     },
     enabled: !!client,
     staleTime: 15_000,
