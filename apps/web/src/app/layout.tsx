@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Script from "next/script";
+import type { CSSProperties } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -10,19 +10,32 @@ export const metadata: Metadata = {
   description: "A reader for the standard.site publishing ecosystem",
 };
 
+const env = process.env.NEXT_PUBLIC_APP_ENV ?? "local";
+const environmentBannerHeight = env === "prod" ? "0px" : "32px";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <Script id="dark-mode" strategy="beforeInteractive">{`
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          document.documentElement.classList.add('dark');
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        <script
+          id="dark-mode"
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');}catch(e){}})();`,
+          }}
+        />
+      </head>
+      <body
+        className="min-h-full flex flex-col"
+        style={
+          {
+            "--environment-banner-height": environmentBannerHeight,
+          } as CSSProperties
         }
-      `}</Script>
-      <body className="min-h-full flex flex-col">
+      >
         <Providers>
           <EnvironmentBanner />
           {children}

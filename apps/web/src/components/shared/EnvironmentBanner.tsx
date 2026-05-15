@@ -38,7 +38,7 @@ export function EnvironmentBanner() {
     <div
       role="banner"
       aria-label={`${config.label} environment`}
-      className={`sticky top-0 z-50 flex items-center justify-center gap-2 px-4 py-1.5 text-xs font-medium ${config.className}`}
+      className={`relative z-50 flex h-[var(--environment-banner-height)] shrink-0 items-center justify-center gap-2 px-4 text-xs font-medium ${config.className}`}
     >
       <span className="rounded bg-black/10 px-1.5 py-0.5 font-mono font-bold tracking-wider">
         {config.label}

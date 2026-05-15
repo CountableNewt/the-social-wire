@@ -43,6 +43,16 @@ function shouldDehydrateQuery(query: Query): boolean {
   );
 }
 
+function getBrowserStorage(): Storage | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -58,8 +68,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const [persister] = useState(() =>
     createSyncStoragePersister({
-      storage:
-        typeof window === "undefined" ? undefined : window.localStorage,
+      storage: getBrowserStorage(),
       key: QUERY_PERSIST_KEY,
       /** Discovery + entry streams: throttle persist writes. */
       throttleTime: 2000,

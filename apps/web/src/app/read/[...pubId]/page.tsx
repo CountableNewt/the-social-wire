@@ -73,7 +73,7 @@ export default function PubPage({ params }: Props) {
                 variant="ghost"
                 size="icon-sm"
                 className="size-11 shrink-0 rounded-lg"
-                aria-label="Back to articles"
+                aria-label="Back to Articles"
                 onClick={() => setSelectedEntryId(null)}
               >
                 <ChevronLeft className="size-5" />

@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+
+# Bun: this repo uses text bun.lock (Bun 1.2+). Ignore legacy binary lock if an old Bun recreates it.
+bun.lockb
+
 .pnp
 .pnp.js
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { LogOut, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,11 +15,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
   SidebarResizeHandle,
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,19 +27,27 @@ import { useFolders } from "@/hooks/useFolders";
 import {
   useDiscovery,
   usePublicationPrefs,
+  usePublicationSubscriptions,
   useRefreshDiscovery,
 } from "@/hooks/usePublications";
-import { useShowHiddenFolder } from "@/hooks/useShowHiddenFolder";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
 import {
-  PSEUDO_FOLDER_HIDDEN_URI,
-  PSEUDO_FOLDER_MY_URI,
   rkeyFromURI,
+  type FolderRecord,
+  type PublicationPrefsRecord,
+  type RepoRecord,
 } from "@/lib/pdsClient";
-import { viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
+import {
+  normalizeAtRepoParam,
+  parseAtUri,
+  type DiscoveredPublication,
+  viewerOwnsDiscoveredPublication,
+} from "@/lib/atprotoClient";
+import { cn } from "@/lib/utils";
+import { PublicationSubItem } from "./PublicationSubItem";
 
-const ALL_BRANCH_KEY = "__all__";
+type PublicationTab = "subscribed" | "following";
 
 interface AppSidebarProps {
   selectedPubId: string | null;
@@ -48,13 +56,14 @@ interface AppSidebarProps {
 
 export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { session, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const { selectedFolderUri, setSelectedFolderUri } = useReadRoute();
 
-  const [expandedKeys, setExpandedKeys] = useState(
-    () => new Set<string>([ALL_BRANCH_KEY])
-  );
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set<string>());
+  const [publicationTab, setPublicationTab] =
+    useState<PublicationTab>("subscribed");
 
   const toggleExpanded = useCallback((key: string) => {
     setExpandedKeys((prev) => {
@@ -80,9 +89,10 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const { data: folders = [], isLoading: foldersLoading } = useFolders();
   const { data: publications = [], isLoading: pubsLoading } = useDiscovery();
   const { data: prefs = [] } = usePublicationPrefs();
+  const { data: subscriptions = [], isLoading: subscriptionsLoading } =
+    usePublicationSubscriptions();
   const { data: profile, isLoading: profileLoading } = useViewerProfile();
   const refresh = useRefreshDiscovery();
-  const { showHiddenFolder, setShowHiddenFolder } = useShowHiddenFolder();
 
   const prefsMap = useMemo(
     () => new Map(prefs.map((p) => [p.value.publicationId, p])),
@@ -98,30 +108,56 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     [publications, prefsMap]
   );
 
-  const hiddenPubs = useMemo(
-    () =>
-      publications.filter((p) => {
-        const pref = prefsMap.get(p.publicationId);
-        return !!pref?.value.hidden;
-      }),
-    [publications, prefsMap]
-  );
-
   const viewerDid = session?.did;
 
-  useEffect(() => {
-    if (!viewerDid && selectedFolderUri === PSEUDO_FOLDER_MY_URI) {
-      setSelectedFolderUri(null);
+  const subscriptionPublicationKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const subscription of subscriptions) {
+      addPublicationSubscriptionKey(keys, subscription.value.publication);
     }
-  }, [viewerDid, selectedFolderUri, setSelectedFolderUri]);
+    return keys;
+  }, [subscriptions]);
 
-  // One bucket per visible pub: folder (folderId) wins over My; else My if on viewer repo; else All.
-  const { folderMap, unfolderedPubs, myPublications } = useMemo(() => {
-    const folderMap = new Map<string, typeof visiblePubs>();
-    const unfolderedPubs: typeof visiblePubs = [];
-    const myPublications: typeof visiblePubs = [];
+  const isSubscribedPublication = useCallback(
+    (pub: (typeof visiblePubs)[number]) =>
+      publicationSubscriptionKeys(pub).some((key) =>
+        subscriptionPublicationKeys.has(key)
+      ),
+    [subscriptionPublicationKeys]
+  );
+
+  const { subscribedPubs, followOwnedUnsubscribedPubs } = useMemo(() => {
+    const subscribedPubs: typeof visiblePubs = [];
+    const followOwnedUnsubscribedPubs: typeof visiblePubs = [];
+
+    if (!viewerDid) {
+      return { subscribedPubs, followOwnedUnsubscribedPubs };
+    }
 
     for (const pub of visiblePubs) {
+      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
+        subscribedPubs.push(pub);
+      } else if (isSubscribedPublication(pub)) {
+        subscribedPubs.push(pub);
+      } else {
+        followOwnedUnsubscribedPubs.push(pub);
+      }
+    }
+
+    return { subscribedPubs, followOwnedUnsubscribedPubs };
+  }, [visiblePubs, viewerDid, isSubscribedPublication]);
+
+  const { folderMap, myPublications, unfolderedPubs } = useMemo(() => {
+    const folderMap = new Map<string, typeof subscribedPubs>();
+    const myPublications: typeof subscribedPubs = [];
+    const unfolderedPubs: typeof subscribedPubs = [];
+
+    for (const pub of subscribedPubs) {
+      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
+        myPublications.push(pub);
+        continue;
+      }
+
       const pref = prefsMap.get(pub.publicationId);
       const folderId = pref?.value.folderId;
       if (folderId) {
@@ -131,25 +167,23 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         continue;
       }
 
-      if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        myPublications.push(pub);
-      } else {
-        unfolderedPubs.push(pub);
-      }
+      unfolderedPubs.push(pub);
     }
 
-    return { folderMap, unfolderedPubs, myPublications };
-  }, [visiblePubs, prefsMap, viewerDid]);
+    return { folderMap, myPublications, unfolderedPubs };
+  }, [subscribedPubs, prefsMap, viewerDid]);
+
+  const followingTabPublications = useMemo(() => {
+    const myPublicationIds = new Set(myPublications.map((pub) => pub.publicationId));
+    return followOwnedUnsubscribedPubs.filter(
+      (pub) => !myPublicationIds.has(pub.publicationId)
+    );
+  }, [followOwnedUnsubscribedPubs, myPublications]);
 
   useEffect(() => {
     if (!selectedPubId) return;
 
     const pref = prefsMap.get(selectedPubId);
-    if (pref?.value.hidden) {
-      setSelectedFolderUri(PSEUDO_FOLDER_HIDDEN_URI);
-      return;
-    }
-
     const pub = publications.find((p) => p.publicationId === selectedPubId);
     if (!pub) return;
 
@@ -162,57 +196,44 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       }
     }
 
-    if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-      setSelectedFolderUri(PSEUDO_FOLDER_MY_URI);
-      return;
-    }
-
     setSelectedFolderUri(null);
   }, [
     selectedPubId,
     publications,
     prefsMap,
     folders,
-    viewerDid,
     setSelectedFolderUri,
   ]);
 
   useEffect(() => {
     if (!selectedPubId) return;
 
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
 
-      const pref = prefsMap.get(selectedPubId);
-      if (pref?.value.hidden) {
-        next.add(PSEUDO_FOLDER_HIDDEN_URI);
-        return next;
-      }
+        const pref = prefsMap.get(selectedPubId);
+        const pub = publications.find((p) => p.publicationId === selectedPubId);
+        if (!pub) return next;
 
-      const pub = publications.find((p) => p.publicationId === selectedPubId);
-      if (!pub) return next;
-
-      const folderId = pref?.value.folderId;
-      let expandedAssignedFolder = false;
-      if (folderId) {
-        const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-        if (folder) {
-          next.add(folder.uri);
-          expandedAssignedFolder = true;
+        const folderId = pref?.value.folderId;
+        if (folderId) {
+          const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
+          if (folder) {
+            next.add(folder.uri);
+          }
         }
-      }
 
-      if (!expandedAssignedFolder && viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        next.add(PSEUDO_FOLDER_MY_URI);
-      }
-
-      if (!folderId && !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        next.add(ALL_BRANCH_KEY);
-      }
-
-      return next;
+        return next;
+      });
     });
-  }, [selectedPubId, publications, prefsMap, folders, viewerDid]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPubId, publications, prefsMap, folders]);
 
   return (
     <Sidebar>
@@ -230,7 +251,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
             className="h-7 w-7 shrink-0"
             onClick={() => refresh.mutate()}
             disabled={refresh.isPending}
-            title="Refresh publications"
+            title="Refresh Publications"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${refresh.isPending ? "animate-spin" : ""}`}
@@ -241,88 +262,87 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Folders & Publications</SidebarGroupLabel>
+          <SidebarGroupLabel>Read Later</SidebarGroupLabel>
           <SidebarMenu>
-            {foldersLoading || pubsLoading ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                type="button"
+                tooltip="Read Later Links"
+                isActive={pathname.startsWith("/saved")}
+                onClick={() => router.push("/saved")}
+              >
+                <Bookmark />
+                <span>Saved</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarMenu>
+            {foldersLoading || pubsLoading || subscriptionsLoading ? (
               <SidebarSkeleton count={5} />
             ) : (
               <>
-                <FolderBranch
-                  expandKey={ALL_BRANCH_KEY}
-                  folder={{
-                    name: "All Publications",
-                    icon: undefined,
-                    iconImage: undefined,
-                  }}
-                  isActive={selectedFolderUri === null}
-                  expanded={expandedKeys.has(ALL_BRANCH_KEY)}
-                  onToggleExpanded={() => toggleExpanded(ALL_BRANCH_KEY)}
-                  publications={unfolderedPubs}
-                  emptyLabel="No unfoldered publications. Follow feeds or assign items to a folder."
-                  selectedPubId={selectedPubId}
-                  onSelectPub={onSelectPub}
-                  folders={folders}
-                  prefsMap={prefsMap}
-                  nameSuffix="unfoldered"
+                <PublicationTabs
+                  activeTab={publicationTab}
+                  onTabChange={setPublicationTab}
                 />
-                {viewerDid ? (
-                  <FolderBranch
-                    expandKey={PSEUDO_FOLDER_MY_URI}
-                    folder={{
-                      name: "My Publications",
-                      icon: undefined,
-                      iconImage: undefined,
-                    }}
-                    isActive={selectedFolderUri === PSEUDO_FOLDER_MY_URI}
-                    expanded={expandedKeys.has(PSEUDO_FOLDER_MY_URI)}
-                    onToggleExpanded={() => toggleExpanded(PSEUDO_FOLDER_MY_URI)}
-                    publications={myPublications}
-                    emptyLabel="No publications on your account discovered yet."
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                  />
-                ) : null}
-                {folders.map((f) => {
-                  const rkey = rkeyFromURI(f.uri);
-                  return (
-                    <FolderBranch
-                      key={f.uri}
-                      expandKey={f.uri}
-                      folder={f.value}
-                      isActive={selectedFolderUri === f.uri}
-                      expanded={expandedKeys.has(f.uri)}
-                      onToggleExpanded={() => toggleExpanded(f.uri)}
-                      publications={folderMap.get(rkey) ?? []}
-                      emptyLabel="No publications in this folder."
+                {publicationTab === "subscribed" ? (
+                  <>
+                    <div className="h-1" aria-hidden />
+                    <SidebarSectionLabel>Folders</SidebarSectionLabel>
+                    {folders.map((f) => {
+                      const rkey = rkeyFromURI(f.uri);
+                      return (
+                        <FolderBranch
+                          key={f.uri}
+                          expandKey={f.uri}
+                          folder={f.value}
+                          isActive={selectedFolderUri === f.uri}
+                          expanded={expandedKeys.has(f.uri)}
+                          onToggleExpanded={() => toggleExpanded(f.uri)}
+                          publications={folderMap.get(rkey) ?? []}
+                          emptyLabel="No publications in this folder."
+                          selectedPubId={selectedPubId}
+                          onSelectPub={onSelectPub}
+                          folders={folders}
+                          prefsMap={prefsMap}
+                        />
+                      );
+                    })}
+                    <NewFolderDialog />
+                    <SidebarSectionLabel>Publications</SidebarSectionLabel>
+                    <PublicationList
+                      publications={unfolderedPubs}
+                      emptyLabel="No subscribed publications outside folders."
                       selectedPubId={selectedPubId}
                       onSelectPub={onSelectPub}
                       folders={folders}
                       prefsMap={prefsMap}
                     />
-                  );
-                })}
-                {showHiddenFolder ? (
-                  <FolderBranch
-                    expandKey={PSEUDO_FOLDER_HIDDEN_URI}
-                    folder={{
-                      name: "Hidden Publications",
-                      icon: undefined,
-                      iconImage: undefined,
-                    }}
-                    isActive={selectedFolderUri === PSEUDO_FOLDER_HIDDEN_URI}
-                    expanded={expandedKeys.has(PSEUDO_FOLDER_HIDDEN_URI)}
-                    onToggleExpanded={() => toggleExpanded(PSEUDO_FOLDER_HIDDEN_URI)}
-                    publications={hiddenPubs}
-                    emptyLabel="No hidden publications."
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                  />
-                ) : null}
-                <NewFolderDialog />
+                    <SidebarSectionLabel>My Publications</SidebarSectionLabel>
+                    <PublicationList
+                      publications={myPublications}
+                      emptyLabel="No publications on your account discovered yet."
+                      selectedPubId={selectedPubId}
+                      onSelectPub={onSelectPub}
+                      folders={folders}
+                      prefsMap={prefsMap}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <SidebarSectionLabel>Publications</SidebarSectionLabel>
+                    <PublicationList
+                      publications={followingTabPublications}
+                      emptyLabel="No unsubscribed publications from followed accounts."
+                      selectedPubId={selectedPubId}
+                      onSelectPub={onSelectPub}
+                      folders={folders}
+                      prefsMap={prefsMap}
+                    />
+                  </>
+                )}
               </>
             )}
           </SidebarMenu>
@@ -361,31 +381,16 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
             </>
           )}
         </div>
-        <div className="flex min-w-0 items-center gap-2 px-2 pb-2">
-          <Switch
-            id="show-hidden-folder"
-            size="sm"
-            checked={showHiddenFolder}
-            onCheckedChange={setShowHiddenFolder}
-            className="shrink-0"
-          />
-          <Label
-            htmlFor="show-hidden-folder"
-            className="min-w-0 flex-1 cursor-pointer text-xs leading-snug font-normal text-sidebar-foreground"
-          >
-            Show Hidden Publications folder
-          </Label>
-        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
-              tooltip="Log out"
+              tooltip="Log Out"
               disabled={loggingOut}
               onClick={() => void handleLogout()}
             >
               <LogOut />
-              <span>{loggingOut ? "Signing out…" : "Log out"}</span>
+              <span>{loggingOut ? "Signing Out…" : "Log Out"}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -393,6 +398,143 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       <SidebarResizeHandle />
     </Sidebar>
   );
+}
+
+function PublicationTabs({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: PublicationTab;
+  onTabChange: (tab: PublicationTab) => void;
+}) {
+  return (
+    <SidebarMenuItem>
+      <div
+        className="grid grid-cols-2 gap-0.5 rounded-md bg-sidebar-accent/50 p-0.5"
+        role="tablist"
+        aria-label="Publication source"
+      >
+        <PublicationTabButton
+          active={activeTab === "subscribed"}
+          onClick={() => onTabChange("subscribed")}
+        >
+          Subscribed
+        </PublicationTabButton>
+        <PublicationTabButton
+          active={activeTab === "following"}
+          onClick={() => onTabChange("following")}
+        >
+          Following
+        </PublicationTabButton>
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
+function PublicationTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "min-w-0 rounded px-2 py-1.5 text-center text-xs font-medium transition-colors",
+        active
+          ? "bg-sidebar text-sidebar-foreground shadow-sm"
+          : "text-muted-foreground hover:text-sidebar-foreground"
+      )}
+    >
+      <span className="block truncate">{children}</span>
+    </button>
+  );
+}
+
+function SidebarSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <SidebarMenuItem>
+      <div className="px-2 pt-2 pb-1 text-xs font-medium text-sidebar-foreground/70">
+        {children}
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
+function PublicationList({
+  publications,
+  emptyLabel,
+  selectedPubId,
+  onSelectPub,
+  folders,
+  prefsMap,
+}: {
+  publications: DiscoveredPublication[];
+  emptyLabel: string;
+  selectedPubId: string | null;
+  onSelectPub: (pubId: string) => void;
+  folders: RepoRecord<FolderRecord>[];
+  prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
+}) {
+  if (publications.length === 0) {
+    return (
+      <SidebarMenuSubItem>
+        <span className="block min-w-0 break-words px-2 py-1 text-xs text-muted-foreground">
+          {emptyLabel}
+        </span>
+      </SidebarMenuSubItem>
+    );
+  }
+
+  return (
+    <SidebarMenuSub
+      className="mx-0 translate-x-0 border-l-0 px-0"
+      aria-label="Following publications"
+    >
+      {publications.map((pub) => (
+        <PublicationSubItem
+          key={pub.publicationId}
+          publication={pub}
+          isSelected={selectedPubId === pub.publicationId}
+          onSelect={onSelectPub}
+          folders={folders}
+          prefsMap={prefsMap}
+        />
+      ))}
+    </SidebarMenuSub>
+  );
+}
+
+function publicationSubscriptionKeys(pub: DiscoveredPublication): string[] {
+  const keys = new Set<string>();
+  addPublicationSubscriptionKey(keys, pub.subscriptionPublicationId);
+  addPublicationSubscriptionKey(keys, pub.publicationId);
+  return [...keys];
+}
+
+function addPublicationSubscriptionKey(keys: Set<string>, value: string | undefined) {
+  if (!value) return;
+  const normalized = normalizeAtRepoParam(value);
+  const parsed = parseAtUri(normalized);
+  if (!parsed) return;
+
+  keys.add(normalized);
+  if (parsed.collection === "site.standard.publication") {
+    keys.add(
+      `at://${parsed.did}/com.standard.publication/${parsed.rkey}`
+    );
+  } else if (parsed.collection === "com.standard.publication") {
+    keys.add(
+      `at://${parsed.did}/site.standard.publication/${parsed.rkey}`
+    );
+  }
 }
 
 function SidebarSkeleton({ count }: { count: number }) {

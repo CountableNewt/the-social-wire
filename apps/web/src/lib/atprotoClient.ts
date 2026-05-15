@@ -68,9 +68,11 @@ export interface DiscoveredPublication {
    * when listing distinct publication records (e.g. multiple pubs on the same account).
    */
   publicationId: string;
+  subscriptionPublicationId?: string;
   authorDid: string;
   authorHandle: string;
   title: string;
+  iconUrl?: string;
   avatarUrl?: string;
   discoveredAt: string;
 }
@@ -109,6 +111,13 @@ export interface EntryDetail {
   /** Linked Bluesky post — enables native like/repost/quote via ATProto. */
   bskyPostUri?: string;
   bskyPostCid?: string;
+}
+
+export interface NativeSavedSubjectPreview {
+  url: string;
+  title?: string;
+  excerpt?: string;
+  image?: string;
 }
 
 interface FollowProfile {
@@ -516,7 +525,7 @@ export function repoAndPublicationFilterFromPubId(pubId: string): {
  * this still extracts the embedded DID.
  */
 export function publicationRepoDid(pubId: string): string {
-  let { repoDid } = repoAndPublicationFilterFromPubId(pubId);
+  const { repoDid } = repoAndPublicationFilterFromPubId(pubId);
   const parsedRepo = parseAtUri(repoDid);
   if (parsedRepo?.did) return parsedRepo.did;
   return repoDid;
@@ -608,6 +617,10 @@ function extractBlobLink(obj: unknown): string | undefined {
     if (typeof link === "string") return link;
   }
   return undefined;
+}
+
+function recordObject(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : undefined;
 }
 
 /** HTTPS-ish thumbnail URLs only — used after blob/sync primary for `<img onError>` recovery. */
@@ -805,6 +818,105 @@ async function resolveEmbedUrl(
   );
 }
 
+function externalCardFromRecordValue(
+  value: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const embed = recordObject(value.embed);
+  const embedExternal = recordObject(embed?.external);
+  if (embedExternal) return embedExternal;
+
+  const media = recordObject(embed?.media);
+  const mediaExternal = recordObject(media?.external);
+  if (mediaExternal) return mediaExternal;
+
+  return recordObject(value.external);
+}
+
+async function resolveBlobImageUrlForRecord(
+  recordUri: string,
+  blob: unknown
+): Promise<string | undefined> {
+  const cid = extractBlobLink(blob);
+  if (!cid) return undefined;
+
+  const parsed = parseAtUri(recordUri);
+  if (!parsed) return undefined;
+
+  const repoDid = await resolveRepoDid(parsed.did);
+  if (!repoDid?.startsWith("did:")) return undefined;
+
+  const pdsRaw = await plcPdsBaseForRepoDid(repoDid);
+  if (!pdsRaw) return undefined;
+
+  const pds = normalizeHttpUrlToHttps(pdsRaw);
+  if (isBridgyAtprotoPdsEndpoint(pds)) return undefined;
+
+  const params = new URLSearchParams({
+    did: repoDid,
+    cid,
+  });
+  return `${pds}/xrpc/com.atproto.sync.getBlob?${params}`;
+}
+
+/**
+ * Resolves link-preview metadata for a saved native ATProto subject when the
+ * subject record itself carries an external URL/OpenGraph-style card.
+ */
+export async function resolveNativeSavedSubjectPreview(
+  subjectUri: string,
+  oauthSession?: OAuthSession
+): Promise<NativeSavedSubjectPreview | null> {
+  const parsed = parseAtUri(subjectUri);
+  if (!parsed) return null;
+
+  const raw = (await getRecordOnAuthorRepo(
+    parsed.did,
+    parsed.collection,
+    parsed.rkey,
+    oauthSession
+  )) as Record<string, unknown> | null;
+  if (!raw) return null;
+
+  const external = externalCardFromRecordValue(raw);
+  if (external) {
+    const url = extractHttpsUrl(
+      str(external.uri),
+      str(external.url),
+      str(external.href)
+    );
+    if (url) {
+      const imageFromUrl = extractHttpsUrl(
+        str(external.image),
+        str(external.imageUrl),
+        str(external.thumb),
+        str(external.thumbnailUrl)
+      );
+      const image =
+        imageFromUrl ?? (await resolveBlobImageUrlForRecord(subjectUri, external.thumb));
+      return {
+        url: normalizeHttpUrlToHttps(url),
+        ...(str(external.title) ? { title: str(external.title) } : {}),
+        ...(str(external.description)
+          ? { excerpt: str(external.description) }
+          : {}),
+        ...(image ? { image: normalizeHttpUrlToHttps(image) } : {}),
+      };
+    }
+  }
+
+  const fields = parseEntryValue(raw);
+  const embedFromFields = extractHttpsUrl(fields.originalUrl);
+  const embedResolved =
+    embedFromFields ?? (await resolveEmbedUrl(raw, oauthSession));
+  if (!embedResolved) return null;
+
+  return {
+    url: normalizeHttpUrlToHttps(embedResolved),
+    ...(fields.title ? { title: fields.title } : {}),
+    ...(fields.summary ? { excerpt: fields.summary } : {}),
+  };
+}
+
 type ListEntriesCursorMode =
   | { phase: "initial" }
   | { phase: "page"; colIdx: number; atproto?: string };
@@ -939,6 +1051,47 @@ function publicationTitleFromRecord(
   return t ?? fallback;
 }
 
+async function publicationIconUrlFromRecord(
+  recordUri: string,
+  value: Record<string, unknown>
+): Promise<string | undefined> {
+  const directUrl = extractHttpsUrl(
+    str(value.icon),
+    str(value.iconUrl),
+    str(value.iconImage),
+    str(value.iconImageUrl),
+    str(value.favicon),
+    str(value.avatarUrl),
+    str(value.logoUrl)
+  );
+  if (directUrl) return normalizeHttpUrlToHttps(directUrl);
+
+  const iconBlobCid =
+    extractBlobLink(value.icon) ??
+    extractBlobLink(value.iconImage) ??
+    extractBlobLink(value.avatar) ??
+    extractBlobLink(value.logo);
+  if (!iconBlobCid) return undefined;
+
+  const parsed = parseAtUri(recordUri);
+  if (!parsed) return undefined;
+
+  const repoDid = await resolveRepoDid(parsed.did);
+  if (!repoDid?.startsWith("did:")) return undefined;
+
+  const pdsRaw = await plcPdsBaseForRepoDid(repoDid);
+  if (!pdsRaw) return undefined;
+
+  const pds = normalizeHttpUrlToHttps(pdsRaw);
+  if (isBridgyAtprotoPdsEndpoint(pds)) return undefined;
+
+  const params = new URLSearchParams({
+    did: repoDid,
+    cid: iconBlobCid,
+  });
+  return `${pds}/xrpc/com.atproto.sync.getBlob?${params}`;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export type DiscoverPublicationsOptions = {
@@ -986,9 +1139,11 @@ export async function discoverOwnPublications(
         const label = authorDid;
         out.push({
           publicationId: row.uri,
+          subscriptionPublicationId: row.uri,
           authorDid,
           authorHandle: authorDid,
           title: publicationTitleFromRecord(collection, val, label),
+          iconUrl: await publicationIconUrlFromRecord(row.uri, val),
           discoveredAt,
         });
       }
@@ -1107,9 +1262,11 @@ export async function discoverPublications(
 
       return {
         publicationId: follow.did,
+        subscriptionPublicationId: rows[0]!.uri,
         authorDid: follow.did,
         authorHandle: follow.handle,
         title,
+        iconUrl: await publicationIconUrlFromRecord(rows[0]!.uri, firstVal),
         avatarUrl: follow.avatar,
         discoveredAt,
       };

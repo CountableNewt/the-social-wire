@@ -12,8 +12,15 @@ The only data we write to the user's PDS is what the protocol doesn't already ha
 |---------|---------|
 | `com.thesocialwire.folder` | A named folder for organizing publications |
 | `com.thesocialwire.publicationPrefs` | Folder assignment, sort order, and visibility for a discovered publication |
+| `com.thesocialwire.preferences` | Account-level Social Wire preferences, including the configured read-later service |
+| `com.latr.saved.external` | L@tr (latr.link) wrapper for normalized HTTPS URLs (read-later interoperability) |
+| `com.latr.saved.item` | L@tr read-later queue item pointing at `subjectUri` (external wrapper or ATProto record) |
 
 All records are public by default (ATProto repos are public). Any client that can read a PDS can see a user's Social Wire folders and preferences.
+
+### L@tr (read-later) compatibility
+
+[L@tr / latr-link](https://tangled.org/samclemente.me/latr-link/) defines **`com.latr.saved.external`** and **`com.latr.saved.item`** so read-later slots live entirely on the user’s PDS. The Social Wire **reads and writes** the same collections (deterministic keys and URL normalization aligned with upstream L@tr) so items saved here appear alongside other L@tr clients during OAuth-scoped **`com.atproto.repo.*`** access.
 
 ---
 
@@ -47,6 +54,15 @@ A named folder in the user's sidebar.
 ```
 
 ---
+
+### `com.thesocialwire.preferences`
+
+Account-level preferences for The Social Wire. This record is keyed as `self`
+and stores non-sensitive configuration such as the read-later service used by
+`/saved`.
+
+Do not store third-party API tokens, passwords, refresh tokens, or secrets in
+this record. ATProto repo records are public by default.
 
 ### `com.thesocialwire.publicationPrefs`
 

@@ -12,6 +12,9 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
   createAuthFetch,
   getSession,
+  getStoredOAuthDid,
+  localLoopbackCanonicalHref,
+  pathnameIsOAuthCallbackRoute,
   signIn as authSignIn,
   signOut as authSignOut,
 } from "@/lib/auth";
@@ -67,14 +70,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const oauthSessionRef = useRef<OAuthSession | null>(null);
 
   useEffect(() => {
-    getSession()
-      .then((oauthSession) => {
-        if (oauthSession) {
-          oauthSessionRef.current = oauthSession;
-          setSession({ did: oauthSession.did });
-        }
+    if (typeof window === "undefined") return;
+
+    if (pathnameIsOAuthCallbackRoute(window.location.pathname)) {
+      setIsLoading(false);
+      return;
+    }
+
+    const canonicalHref = localLoopbackCanonicalHref(window.location.href);
+    if (canonicalHref) {
+      window.location.replace(canonicalHref);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const storedDid = getStoredOAuthDid();
+      if (storedDid && !cancelled) {
+        setSession({ did: storedDid });
+      }
+
+      if (!cancelled) setIsLoading(false);
+
+      const oauthSession = await getSession();
+      if (!cancelled && oauthSession) {
+        oauthSessionRef.current = oauthSession;
+        setSession({ did: oauthSession.did });
+      }
+    })()
+      .catch((err) => {
+        console.error("OAuth session restore failed:", err);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSignIn = useCallback(async (handle: string) => {
@@ -93,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const applyOAuthSession = useCallback((oauthSession: OAuthSession) => {
     oauthSessionRef.current = oauthSession;
     setSession({ did: oauthSession.did });
+    setIsLoading(false);
   }, []);
 
   const getOAuthSession = useCallback((): OAuthSession | null => {

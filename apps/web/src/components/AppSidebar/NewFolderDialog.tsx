@@ -102,7 +102,7 @@ function CreateFolderFormFields({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor={iconId}>Icon (optional)</Label>
+          <Label htmlFor={iconId}>Icon (Optional)</Label>
           <Input
             id={iconId}
             value={icon}
