@@ -48,7 +48,7 @@ describe("rssFeedServer", () => {
 
   it("parses RSS and maps list rows", async () => {
     const norm = "https://example.com/feed.xml";
-    const items = await rssItemsSortedNewestFirst(MIN_RSS, norm);
+    const items = await rssItemsSortedNewestFirst(MIN_RSS);
     expect(items.length).toBe(1);
     const row = rssParserItemToListItem(norm, items[0]!);
     expect(row.title).toBe("Hello");

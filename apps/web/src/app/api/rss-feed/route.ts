@@ -8,6 +8,8 @@ import {
   rssEntryIdDecode,
 } from "@/lib/rssFeedCore";
 import {
+  feedBrandingFromParsed,
+  parseRssFeedXml,
   rssParserItemToDetail,
   rssParserItemToListItem,
   pickRssParserItemByStableKey,
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
     }
     try {
       const xml = await fetchFeedXml(validFeed.url.href);
-      const items = await rssItemsSortedNewestFirst(xml, normalized);
+      const items = await rssItemsSortedNewestFirst(xml);
       const match = pickRssParserItemByStableKey(items, decoded.itemKey);
 
       if (!match) {
@@ -85,6 +87,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: validFeed.reason }, { status: 400 });
   }
 
+  const brandingOnly = req.nextUrl.searchParams.get("brandingOnly") === "1";
+  if (brandingOnly) {
+    try {
+      const xml = await fetchFeedXml(validFeed.url.href);
+      const parsed = await parseRssFeedXml(xml);
+      const branding = feedBrandingFromParsed(parsed, normalizedStored);
+      let faviconFallbackUrl: string | undefined;
+      try {
+        faviconFallbackUrl = `${new URL(normalizedStored).origin}/favicon.ico`;
+      } catch {
+        faviconFallbackUrl = undefined;
+      }
+      return NextResponse.json({
+        normalizedUrl: normalizedStored,
+        ...branding,
+        ...(faviconFallbackUrl ? { faviconFallbackUrl } : {}),
+      });
+    } catch {
+      return NextResponse.json({ error: "failed to fetch feed" }, { status: 502 });
+    }
+  }
+
   const rawLimit = req.nextUrl.searchParams.get("limit");
   let limit = DEFAULT_LIMIT;
   if (rawLimit !== null && rawLimit !== "") {
@@ -101,7 +125,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const xml = await fetchFeedXml(validFeed.url.href);
-    const items = await rssItemsSortedNewestFirst(xml, normalizedStored);
+    const items = await rssItemsSortedNewestFirst(xml);
 
     const page: EntryListItem[] = items
       .slice(offset, offset + limit)

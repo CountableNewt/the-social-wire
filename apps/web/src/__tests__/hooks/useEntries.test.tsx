@@ -216,7 +216,7 @@ describe("useEntry", () => {
       );
 
       globalThis.fetch = assignFetchPreconnect(
-        mock(async (_input: RequestInfo | URL) =>
+        mock(async () =>
           new Response(
             JSON.stringify({
               entry: {

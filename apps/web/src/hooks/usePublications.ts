@@ -22,7 +22,9 @@ import {
   standardSiteSubscriptionTargetFromDiscovery,
 } from "@/lib/publicationSubscriptionMatch";
 import {
+  isRssPublicationId,
   normalizeRssFeedUrlInput,
+  normalizedFeedUrlFromRssPublicationId,
   rssPublicationIdFromNormalizedFeedUrl,
 } from "@/lib/rssFeedCore";
 
@@ -353,6 +355,78 @@ export function useCreateSkyreaderFeedSubscription() {
         feedUrl: normalized,
         title: input.title?.trim() || undefined,
         siteUrl: siteHost,
+      });
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY,
+      }),
+  });
+}
+
+export function useRefreshSkyreaderSubscriptionIcon() {
+  const client = usePDSClient();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      publication,
+    }: {
+      publication: DiscoveredPublication;
+    }) => {
+      if (!client) throw new Error("No PDS client — not signed in");
+      if (!isRssPublicationId(publication.publicationId)) {
+        throw new Error("Only RSS publications support favicon refresh.");
+      }
+
+      const feedUrl = normalizedFeedUrlFromRssPublicationId(publication.publicationId);
+      if (!feedUrl?.trim()) throw new Error("Invalid RSS publication id.");
+
+      const subUri = publication.subscriptionPublicationId?.trim();
+      if (!subUri) throw new Error("Missing Skyreader subscription record.");
+
+      const parsed = parseAtUri(normalizeAtRepoParam(subUri));
+      if (
+        !parsed ||
+        parsed.collection !== COLLECTION_SKYREADER_FEED_SUBSCRIPTION
+      ) {
+        throw new Error("Publication is not backed by a Skyreader subscription.");
+      }
+
+      const qs = new URLSearchParams({
+        url: feedUrl.trim(),
+        brandingOnly: "1",
+      });
+      const res = await fetch(`/api/rss-feed?${qs.toString()}`);
+      const json = (await res.json()) as {
+        error?: string;
+        feedIconUrl?: string;
+        faviconFallbackUrl?: string;
+        siteUrl?: string;
+      };
+
+      if (!res.ok) {
+        throw new Error(
+          typeof json.error === "string" ? json.error : "Could not fetch feed branding."
+        );
+      }
+
+      const icon =
+        typeof json.feedIconUrl === "string" && json.feedIconUrl.trim()
+          ? json.feedIconUrl.trim()
+          : typeof json.faviconFallbackUrl === "string" && json.faviconFallbackUrl.trim()
+            ? json.faviconFallbackUrl.trim()
+            : null;
+
+      const sitePatch =
+        typeof json.siteUrl === "string" && json.siteUrl.trim()
+          ? json.siteUrl.trim()
+          : undefined;
+
+      await client.updateSkyreaderFeedSubscription({
+        rkey: parsed.rkey,
+        customIconUrl: icon,
+        ...(sitePatch !== undefined ? { siteUrl: sitePatch } : {}),
       });
     },
     onSuccess: () =>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,34 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   } = usePublicationSidebarData();
   const { data: profile, isLoading: profileLoading } = useViewerProfile();
 
+  const selectionExpandedKeys = useMemo(() => {
+    const next = new Set<string>();
+    if (!selectedPubId) return next;
+
+    const pref = prefsMap.get(selectedPubId);
+    const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
+    if (!pub) return next;
+
+    const folderId = pref?.value.folderId;
+    if (folderId) {
+      const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
+      if (folder) {
+        next.add(folder.uri);
+        next.add(SIDEBAR_SEC_FOLDERS);
+      }
+    } else if (!viewerDid || !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
+      next.add(SIDEBAR_SEC_PUBLICATIONS);
+    }
+
+    return next;
+  }, [selectedPubId, allPublicationRows, prefsMap, folders, viewerDid]);
+
+  const effectiveExpandedKeys = useMemo(() => {
+    const merged = new Set(expandedKeys);
+    for (const k of selectionExpandedKeys) merged.add(k);
+    return merged;
+  }, [expandedKeys, selectionExpandedKeys]);
+
   useEffect(() => {
     if (!selectedPubId) return;
 
@@ -124,30 +152,6 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     folders,
     setSelectedFolderUri,
   ]);
-
-  useEffect(() => {
-    if (!selectedPubId) return;
-
-    setExpandedKeys((prev) => {
-      const pref = prefsMap.get(selectedPubId);
-      const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
-      if (!pub) return prev;
-
-      const next = new Set(prev);
-      const folderId = pref?.value.folderId;
-      if (folderId) {
-        const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-        if (folder) {
-          next.add(folder.uri);
-          next.add(SIDEBAR_SEC_FOLDERS);
-        }
-      } else if (!viewerDid || !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        next.add(SIDEBAR_SEC_PUBLICATIONS);
-      }
-
-      return next;
-    });
-  }, [selectedPubId, allPublicationRows, prefsMap, folders, viewerDid]);
 
   return (
     <Sidebar>
@@ -215,13 +219,13 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     <SidebarMenuButton
                       type="button"
                       onClick={() => toggleExpanded(SIDEBAR_SEC_FOLDERS)}
-                      aria-expanded={expandedKeys.has(SIDEBAR_SEC_FOLDERS)}
+                      aria-expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_FOLDERS)}
                       className="gap-2"
                     >
                       <ChevronRight
                         className={cn(
                           "size-4 shrink-0 transition-transform",
-                          expandedKeys.has(SIDEBAR_SEC_FOLDERS) && "rotate-90"
+                          effectiveExpandedKeys.has(SIDEBAR_SEC_FOLDERS) && "rotate-90"
                         )}
                         aria-hidden
                       />
@@ -229,7 +233,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                         Folders
                       </span>
                     </SidebarMenuButton>
-                    {expandedKeys.has(SIDEBAR_SEC_FOLDERS) ? (
+                    {effectiveExpandedKeys.has(SIDEBAR_SEC_FOLDERS) ? (
                       <SidebarMenuSub
                         aria-label="Folders"
                         className="mt-1.5"
@@ -242,7 +246,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                               expandKey={f.uri}
                               folder={f.value}
                               isActive={selectedFolderUri === f.uri}
-                              expanded={expandedKeys.has(f.uri)}
+                              expanded={effectiveExpandedKeys.has(f.uri)}
                               onToggleExpanded={() => toggleExpanded(f.uri)}
                               publications={folderMap.get(rkey) ?? []}
                               emptyLabel="No publications in this folder."
@@ -262,9 +266,9 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                   </SidebarMenuItem>
                   <CollapsibleSidebarSubSection
                     title="Publications"
-                    expanded={expandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
+                    expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
                     onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
-                    subAriaLabel="Subscribed publications"
+                    subAriaLabel="Subscribed Publications"
                   >
                     <PublicationMenuSubEntries
                       publications={unfolderedPubs}
@@ -284,9 +288,9 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                   <div className="h-1" aria-hidden />
                   <CollapsibleSidebarSubSection
                     title="Publications"
-                    expanded={expandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
+                    expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
                     onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
-                    subAriaLabel="Publications from followed accounts"
+                    subAriaLabel="Publications From Followed Accounts"
                   >
                     <PublicationMenuSubEntries
                       publications={followingTabPublications}
@@ -322,7 +326,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           ) : (
             <SidebarMenuItem>
               <SidebarMenuButton
-                tooltip="Your profile & publications"
+                tooltip="Your Profile & Publications"
                 isActive={pathname.startsWith("/me")}
                 render={<Link href="/me/publications" prefetch />}
                 className="h-auto min-h-0 items-start gap-3 overflow-visible py-2.5 whitespace-normal"
@@ -377,7 +381,7 @@ function PublicationTabs({
       <div
         className={cn(SIDEBAR_GLASS_SEGMENTED)}
         role="tablist"
-        aria-label="Publication source"
+        aria-label="Publication Source"
       >
         <PublicationTabButton
           active={activeTab === "subscribed"}

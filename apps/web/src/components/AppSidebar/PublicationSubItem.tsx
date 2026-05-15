@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Check } from "lucide-react";
+import {
+  BookmarkPlus,
+  BookmarkX,
+  Check,
+  FolderInput,
+  FolderPlus,
+  RefreshCw,
+} from "lucide-react";
 import { useWebHaptics } from "web-haptics/react";
 import {
   ContextMenu,
@@ -28,11 +35,13 @@ import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type { FolderRecord, PublicationPrefsRecord, RepoRecord } from "@/lib/pdsClient";
 import { rkeyFromURI } from "@/lib/pdsClient";
 import {
+  useRefreshSkyreaderSubscriptionIcon,
   useSetPublicationFolder,
   useSubscribeToPublication,
   useUnsubscribePublication,
 } from "@/hooks/usePublications";
 import { standardSiteSubscriptionTargetFromDiscovery } from "@/lib/publicationSubscriptionMatch";
+import { isRssPublicationId } from "@/lib/rssFeedCore";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
 
 export type PublicationSidebarTab = "following" | "subscribed";
@@ -69,6 +78,7 @@ export function PublicationSubItem({
   const setFolder = useSetPublicationFolder();
   const subscribe = useSubscribeToPublication();
   const unsubscribe = useUnsubscribePublication();
+  const refreshSkyreaderIcon = useRefreshSkyreaderSubscriptionIcon();
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [unsubscribeDialogOpen, setUnsubscribeDialogOpen] = useState(false);
 
@@ -80,8 +90,15 @@ export function PublicationSubItem({
     [publication]
   );
 
+  const canRefreshSkyreaderFavicon =
+    Boolean(publication.subscriptionPublicationId) &&
+    isRssPublicationId(publication.publicationId);
+
   const busy =
-    setFolder.isPending || subscribe.isPending || unsubscribe.isPending;
+    setFolder.isPending ||
+    subscribe.isPending ||
+    unsubscribe.isPending ||
+    refreshSkyreaderIcon.isPending;
 
   const hapticLight = useCallback(() => {
     if (isSupported) void trigger("light");
@@ -133,10 +150,19 @@ export function PublicationSubItem({
     }
   }, [unsubscribe, publication, hapticSuccess]);
 
+  const handleRefreshSkyreaderFavicon = useCallback(async () => {
+    try {
+      await refreshSkyreaderIcon.mutateAsync({ publication });
+      hapticSuccess();
+    } catch (e) {
+      notifyMutationFailure("Could not refresh favicon", e);
+    }
+  }, [refreshSkyreaderIcon, publication, hapticSuccess]);
+
   const folderSubmenuLabel = useMemo(() => {
-    if (!currentFolderId) return "Move to Folder";
+    if (!currentFolderId) return "Move To Folder";
     const match = folders.find((f) => rkeyFromURI(f.uri) === currentFolderId);
-    return match ? `In "${match.value.name}"` : "Move to Folder";
+    return match ? `In "${match.value.name}"` : "Move To Folder";
   }, [currentFolderId, folders]);
 
   return (
@@ -157,13 +183,18 @@ export function PublicationSubItem({
         <ContextMenuContent className="min-w-[11rem]">
           <ContextMenuItem
             disabled={busy}
+            className="gap-2"
             onClick={() => setNewFolderDialogOpen(true)}
           >
+            <FolderPlus className="size-4 shrink-0 opacity-70" aria-hidden />
             New Folder…
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuSub>
-            <ContextMenuSubTrigger disabled={busy}>{folderSubmenuLabel}</ContextMenuSubTrigger>
+            <ContextMenuSubTrigger disabled={busy} className="gap-2">
+              <FolderInput className="size-4 shrink-0 opacity-70" aria-hidden />
+              {folderSubmenuLabel}
+            </ContextMenuSubTrigger>
             <ContextMenuSubContent className="max-h-[min(50vh,280px)] overflow-y-auto">
               <ContextMenuItem
                 disabled={busy}
@@ -206,14 +237,29 @@ export function PublicationSubItem({
               <ContextMenuSeparator />
               <ContextMenuItem
                 disabled={busy || subscribeTarget === null}
+                className="gap-2"
                 title={
                   subscribeTarget === null
-                    ? "No publication record or DID available to subscribe with."
+                    ? "No Publication Record Or DID Available To Subscribe With."
                     : undefined
                 }
                 onClick={() => void handleSubscribe()}
               >
+                <BookmarkPlus className="size-4 shrink-0 opacity-70" aria-hidden />
                 {subscribe.isPending ? "Subscribing…" : "Subscribe"}
+              </ContextMenuItem>
+            </>
+          ) : null}
+          {sidebarTab === "subscribed" && canRefreshSkyreaderFavicon ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                disabled={busy}
+                className="gap-2"
+                onClick={() => void handleRefreshSkyreaderFavicon()}
+              >
+                <RefreshCw className="size-4 shrink-0 opacity-70" aria-hidden />
+                {refreshSkyreaderIcon.isPending ? "Refreshing…" : "Refresh Favicon"}
               </ContextMenuItem>
             </>
           ) : null}
@@ -223,8 +269,10 @@ export function PublicationSubItem({
               <ContextMenuItem
                 variant="destructive"
                 disabled={busy}
+                className="gap-2"
                 onClick={() => setUnsubscribeDialogOpen(true)}
               >
+                <BookmarkX className="size-4 shrink-0 opacity-70" aria-hidden />
                 Unsubscribe
               </ContextMenuItem>
             </>

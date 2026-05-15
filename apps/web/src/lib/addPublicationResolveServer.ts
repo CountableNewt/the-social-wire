@@ -109,7 +109,7 @@ async function looksLikeRssFeed(normalizedFeedHref: string): Promise<{
     }
     const xml = (await res.text()) ?? "";
     const parsed = await parseRssFeedXml(xml);
-    const items = await rssItemsSortedNewestFirst(xml, normalizedFeedHref);
+    const items = await rssItemsSortedNewestFirst(xml);
     const feedTitle =
       typeof parsed.title === "string" ? parsed.title.trim() : undefined;
     if (items.length === 0 && !feedTitle) return { ok: false };

@@ -485,6 +485,51 @@ export class PDSClient {
     });
   }
 
+  /**
+   * Updates branding fields on an existing Skyreader subscription (`putRecord`).
+   */
+  async updateSkyreaderFeedSubscription(params: {
+    rkey: string;
+    /** Pass `null` or empty string to clear `customIconUrl` on the record. Omit to leave unchanged. */
+    customIconUrl?: string | null;
+    /** Pass `null` or empty string to clear `siteUrl`. Omit to leave unchanged. */
+    siteUrl?: string | null;
+  }): Promise<{ uri: string; cid: string }> {
+    const current = await this.agent.api.com.atproto.repo.getRecord({
+      repo: this.did,
+      collection: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      rkey: params.rkey,
+    });
+    const prev = current.data.value as unknown as SkyreaderFeedSubscriptionRecord;
+    const now = new Date().toISOString();
+
+    const record: Record<string, unknown> = {
+      ...(prev as unknown as Record<string, unknown>),
+      $type: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      updatedAt: now,
+    };
+
+    if (params.customIconUrl !== undefined) {
+      const t = params.customIconUrl?.trim();
+      if (!t) delete record.customIconUrl;
+      else record.customIconUrl = t;
+    }
+
+    if (params.siteUrl !== undefined) {
+      const t = params.siteUrl?.trim();
+      if (!t) delete record.siteUrl;
+      else record.siteUrl = t;
+    }
+
+    const updated = await this.agent.api.com.atproto.repo.putRecord({
+      repo: this.did,
+      collection: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      rkey: params.rkey,
+      record,
+    });
+    return { uri: updated.data.uri, cid: updated.data.cid };
+  }
+
   async upsertPublicationPrefs(
     publicationId: string,
     updates: Partial<Pick<PublicationPrefsRecord, "sortOrder" | "hidden">> & {

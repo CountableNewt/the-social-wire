@@ -5,8 +5,8 @@ import {
   type FormEvent,
   type ReactNode,
   useCallback,
-  useEffect,
   useId,
+  useMemo,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -81,23 +81,16 @@ interface AddPublicationInnerProps {
 interface PublicationAuthFieldsProps {
   idPrefix: string;
   lead: ReactNode | null;
+  seedHandle: string;
 }
 
-function PublicationAuthFields({ idPrefix, lead }: PublicationAuthFieldsProps) {
+function PublicationAuthFields({ idPrefix, lead, seedHandle }: PublicationAuthFieldsProps) {
   const { signIn } = useAuth();
-  const { data: profile } = useViewerProfile();
   const handleId = `${idPrefix}-authorize-handle`;
 
-  const [handle, setHandle] = useState("");
+  const [handle, setHandle] = useState(seedHandle);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const h = profile?.handle?.trim();
-    if (h && !h.startsWith("did:")) {
-      setHandle((prev) => (prev.trim() === "" ? h : prev));
-    }
-  }, [profile?.handle]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -159,7 +152,7 @@ function PublicationAuthFields({ idPrefix, lead }: PublicationAuthFieldsProps) {
               Redirecting…
             </>
           ) : (
-            "Authorize publication subscriptions"
+            "Authorize Publication Subscriptions"
           )}
         </Button>
       </DialogFooter>
@@ -187,6 +180,12 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
   const [showScopeReconnect, setShowScopeReconnect] = useState(false);
 
   const addPublication = useAddPublicationFromAnyLink();
+
+  const { data: profile } = useViewerProfile();
+  const authorizeSeedHandle = useMemo(() => {
+    const h = profile?.handle?.trim();
+    return h && !h.startsWith("did:") ? h : "";
+  }, [profile?.handle]);
 
   const oauthReady = !!client;
   const signedOut = !session?.did && !authLoading;
@@ -253,7 +252,7 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
             role="status"
           >
             <Loader2 className="h-8 w-8 animate-spin opacity-70" aria-hidden />
-            Checking your ATProto session…
+            Checking Your ATProto Session…
           </div>
           <div className="flex justify-end">
             <DialogClose render={<Button type="button" variant="outline" />}>
@@ -269,7 +268,7 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
           </p>
           <div className="flex flex-wrap gap-2">
             <Link href="/login" className={cn(buttonVariants({ variant: "default" }))}>
-              Sign in to continue
+              Sign In To Continue
             </Link>
             <DialogClose render={<Button type="button" variant="outline" />}>
               Cancel
@@ -278,7 +277,9 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
         </div>
       ) : sessionPendingOAuth ? (
         <PublicationAuthFields
+          key={authorizeSeedHandle ? `oauth:${authorizeSeedHandle}` : "oauth-pending"}
           idPrefix={labelId}
+          seedHandle={authorizeSeedHandle}
           lead={
             <p>
               Your account is remembered, but this browser does not have an active OAuth session.
@@ -290,14 +291,23 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
         <>
           {showScopeReconnect ? (
             <div className="rounded-md border border-border bg-muted/40 p-3">
-              <p className="text-sm font-medium text-foreground">Subscription scopes</p>
+              <p className="text-sm font-medium text-foreground">Subscription Scopes</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 If you joined before this feature, sign in again to include{" "}
                 <code className="text-[10px]">site.standard.graph.subscription</code> and{" "}
                 <code className="text-[10px]">app.skyreader.feed.subscription</code>.
               </p>
               <div className="mt-3">
-                <PublicationAuthFields idPrefix={`${labelId}-re`} lead={null} />
+                <PublicationAuthFields
+                  key={
+                    authorizeSeedHandle
+                      ? `reauth:${authorizeSeedHandle}`
+                      : "reauth-pending"
+                  }
+                  idPrefix={`${labelId}-re`}
+                  seedHandle={authorizeSeedHandle}
+                  lead={null}
+                />
               </div>
             </div>
           ) : null}
@@ -318,7 +328,7 @@ function AddPublicationInner({ onCloseRequest }: AddPublicationInnerProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor={titleId}>Title (optional)</Label>
+              <Label htmlFor={titleId}>Title (Optional)</Label>
               <Input
                 id={titleId}
                 placeholder="Override sidebar label — mainly used for RSS feeds"

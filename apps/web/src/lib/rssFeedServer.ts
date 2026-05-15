@@ -208,8 +208,7 @@ export function rssParserItemToDetail(
 }
 
 export async function rssItemsSortedNewestFirst(
-  xml: string,
-  normalizedFeedUrl: string
+  xml: string
 ): Promise<Array<RssParserItemFields & Record<string, unknown>>> {
   const parsed = await parseRssFeedXml(xml);
   const items = (parsed.items ?? []) as Array<

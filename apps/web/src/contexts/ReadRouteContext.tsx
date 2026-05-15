@@ -35,7 +35,9 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setReadMap(loadReadState(window.localStorage));
+    queueMicrotask(() => {
+      setReadMap(loadReadState(window.localStorage));
+    });
   }, []);
 
   const resolvedSelectedFolderUri =
