@@ -30,6 +30,7 @@ export const AT_PROTO_OAUTH_SCOPES = [
   "repo:com.thesocialwire.preferences?action=create&action=update&action=delete",
   "repo:com.latr.saved.external?action=create&action=update&action=delete",
   "repo:com.latr.saved.item?action=create&action=update&action=delete",
+  "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete",
 ].join(" ");
 
 /**

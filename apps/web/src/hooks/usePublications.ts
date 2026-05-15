@@ -7,12 +7,20 @@ import {
   discoverPublications,
   type DiscoveredPublication,
 } from "@/lib/atprotoClient";
+import type { RepoRecord, SkyreaderFeedSubscriptionRecord } from "@/lib/pdsClient";
+import {
+  normalizeRssFeedUrlInput,
+  rssPublicationIdFromNormalizedFeedUrl,
+} from "@/lib/rssFeedCore";
 
 export type { DiscoveredPublication };
 
 export const PUB_PREFS_QUERY_KEY = ["publicationPrefs"] as const;
 export const PUBLICATION_SUBSCRIPTIONS_QUERY_KEY = [
   "publicationSubscriptions",
+] as const;
+export const SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY = [
+  "skyreaderFeedSubscriptions",
 ] as const;
 export const DISCOVERY_QUERY_KEY = (did: string) =>
   ["discovery", "publication-icons-v1", did] as const;
@@ -40,6 +48,66 @@ export function usePublicationSubscriptions() {
     enabled: !!client,
     staleTime: 30_000,
   });
+}
+
+export function useSkyreaderFeedSubscriptions() {
+  const client = usePDSClient();
+  return useQuery({
+    queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY,
+    queryFn: () => client!.listSkyreaderFeedSubscriptions(),
+    enabled: !!client,
+    staleTime: 30_000,
+  });
+}
+
+/** Sidebar rows backed by RSS `feedUrl` on Skyreader subscription records (not Bluesky discovery). */
+export function skyreaderSubscriptionsToDiscoveredPublications(
+  records: RepoRecord<SkyreaderFeedSubscriptionRecord>[]
+): DiscoveredPublication[] {
+  const out: DiscoveredPublication[] = [];
+  const seenPublicationIds = new Set<string>();
+
+  for (const row of records) {
+    const v = row.value;
+    const rawUrl = v.feedUrl?.trim();
+    if (!rawUrl) continue;
+    const src = v.sourceType?.trim().toLowerCase();
+    if (src && src !== "rss") continue;
+
+    const normalized = normalizeRssFeedUrlInput(rawUrl);
+    if (!normalized) continue;
+
+    const publicationId = rssPublicationIdFromNormalizedFeedUrl(normalized);
+    if (seenPublicationIds.has(publicationId)) continue;
+    seenPublicationIds.add(publicationId);
+
+    let hostLabel = normalized;
+    try {
+      hostLabel = new URL(normalized).hostname;
+    } catch {
+      /* keep string */
+    }
+
+    const title =
+      v.customTitle?.trim() ||
+      v.title?.trim() ||
+      hostLabel ||
+      "RSS feed";
+
+    out.push({
+      publicationId,
+      subscriptionPublicationId: row.uri,
+      authorDid: "did:web:skyreader.rss",
+      authorHandle: "RSS",
+      title,
+      iconUrl: v.customIconUrl?.trim()
+        ? v.customIconUrl.trim()
+        : undefined,
+      discoveredAt: v.updatedAt ?? v.createdAt,
+    });
+  }
+
+  return out;
 }
 
 // ── Discovery ─────────────────────────────────────────────────────────────────
@@ -138,5 +206,36 @@ export function useHidePublication() {
       );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: PUB_PREFS_QUERY_KEY }),
+  });
+}
+
+export function useCreateSkyreaderFeedSubscription() {
+  const client = usePDSClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { feedUrl: string; title?: string }) => {
+      if (!client) throw new Error("No PDS client — not signed in");
+      const normalized = normalizeRssFeedUrlInput(input.feedUrl);
+      if (!normalized) {
+        throw new Error("Enter a valid feed URL");
+      }
+      const siteHost = (() => {
+        try {
+          return new URL(normalized).origin;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      return client.createSkyreaderFeedSubscription({
+        feedUrl: normalized,
+        title: input.title?.trim() || undefined,
+        siteUrl: siteHost,
+      });
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY,
+      }),
   });
 }

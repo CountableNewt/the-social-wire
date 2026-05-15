@@ -29,6 +29,9 @@ export const COLLECTION_PUB_PREFS = "com.thesocialwire.publicationPrefs";
 export const COLLECTION_PREFERENCES = "com.thesocialwire.preferences";
 export const COLLECTION_STANDARD_SITE_SUBSCRIPTION =
   "site.standard.graph.subscription";
+/** Skyreader RSS/Atom subscriptions (writes require OAuth repo scope). */
+export const COLLECTION_SKYREADER_FEED_SUBSCRIPTION =
+  "app.skyreader.feed.subscription";
 export const COLLECTION_LATR_SAVED_EXTERNAL = "com.latr.saved.external";
 export const COLLECTION_LATR_SAVED_ITEM = "com.latr.saved.item";
 export const PREFERENCES_RKEY = "self";
@@ -60,6 +63,24 @@ export interface PublicationPrefsRecord {
 export interface PublicationSubscriptionRecord {
   $type: typeof COLLECTION_STANDARD_SITE_SUBSCRIPTION;
   publication: string;
+}
+
+export interface SkyreaderFeedSubscriptionRecord {
+  $type: typeof COLLECTION_SKYREADER_FEED_SUBSCRIPTION;
+  createdAt: string;
+  updatedAt?: string;
+  feedUrl?: string;
+  title?: string;
+  siteUrl?: string;
+  category?: string;
+  tags?: string[];
+  source?: string;
+  sourceType?: string;
+  subjectDid?: string;
+  collectionNsid?: string;
+  customTitle?: string;
+  customIconUrl?: string;
+  externalRef?: string;
 }
 
 export type ReadLaterServicePreference =
@@ -358,6 +379,63 @@ export class PDSClient {
       cursor = response.data.cursor ?? undefined;
     } while (cursor);
     return all;
+  }
+
+  async listSkyreaderFeedSubscriptions(): Promise<
+    RepoRecord<SkyreaderFeedSubscriptionRecord>[]
+  > {
+    const all: RepoRecord<SkyreaderFeedSubscriptionRecord>[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await this.agent.api.com.atproto.repo.listRecords({
+        repo: this.did,
+        collection: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+        limit: 100,
+        cursor,
+      });
+      all.push(
+        ...(response.data.records as unknown as RepoRecord<SkyreaderFeedSubscriptionRecord>[])
+      );
+      cursor = response.data.cursor ?? undefined;
+    } while (cursor);
+    return all;
+  }
+
+  /**
+   * Creates a TID-keyed Skyreader feed subscription (`app.skyreader.feed.subscription`).
+   */
+  async createSkyreaderFeedSubscription(input: {
+    feedUrl: string;
+    title?: string;
+    siteUrl?: string;
+  }): Promise<{ uri: string; cid: string }> {
+    const now = new Date().toISOString();
+    const record: SkyreaderFeedSubscriptionRecord = {
+      $type: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      createdAt: now,
+      updatedAt: now,
+      feedUrl: input.feedUrl,
+      source: "the-social-wire",
+      sourceType: "rss",
+      ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+      ...(input.siteUrl?.trim()
+        ? { siteUrl: input.siteUrl.trim() }
+        : {}),
+    };
+    const response = await this.agent.api.com.atproto.repo.createRecord({
+      repo: this.did,
+      collection: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      record: record as unknown as Record<string, unknown>,
+    });
+    return { uri: response.data.uri, cid: response.data.cid };
+  }
+
+  async deleteSkyreaderFeedSubscription(rkey: string): Promise<void> {
+    await this.agent.api.com.atproto.repo.deleteRecord({
+      repo: this.did,
+      collection: COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
+      rkey,
+    });
   }
 
   async upsertPublicationPrefs(

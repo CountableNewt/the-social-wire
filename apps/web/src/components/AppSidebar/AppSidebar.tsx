@@ -22,6 +22,7 @@ import {
 import { Avatar } from "@/components/shared/Avatar";
 import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
+import { AddRssFeedDialog } from "./AddRssFeedDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useFolders } from "@/hooks/useFolders";
 import {
@@ -29,6 +30,8 @@ import {
   usePublicationPrefs,
   usePublicationSubscriptions,
   useRefreshDiscovery,
+  useSkyreaderFeedSubscriptions,
+  skyreaderSubscriptionsToDiscoveredPublications,
 } from "@/hooks/usePublications";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
@@ -91,6 +94,10 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const { data: prefs = [] } = usePublicationPrefs();
   const { data: subscriptions = [], isLoading: subscriptionsLoading } =
     usePublicationSubscriptions();
+  const { data: skyreaderRecords = [], isLoading: skyreaderSubsLoading } =
+    useSkyreaderFeedSubscriptions();
+  const subscriptionsBlockLoading =
+    subscriptionsLoading || skyreaderSubsLoading;
   const { data: profile, isLoading: profileLoading } = useViewerProfile();
   const refresh = useRefreshDiscovery();
 
@@ -106,6 +113,23 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         return !pref?.value.hidden;
       }),
     [publications, prefsMap]
+  );
+
+  const rssPublicationRows = useMemo(
+    () =>
+      skyreaderSubscriptionsToDiscoveredPublications(skyreaderRecords),
+    [skyreaderRecords]
+  );
+
+  const allPublicationRows = useMemo(
+    () => [...publications, ...rssPublicationRows],
+    [publications, rssPublicationRows]
+  );
+
+  const rssPublicationRowsVisible = useMemo(
+    () =>
+      rssPublicationRows.filter((p) => !prefsMap.get(p.publicationId)?.value.hidden),
+    [rssPublicationRows, prefsMap]
   );
 
   const viewerDid = session?.did;
@@ -126,26 +150,38 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     [subscriptionPublicationKeys]
   );
 
-  const { subscribedPubs, followOwnedUnsubscribedPubs } = useMemo(() => {
-    const subscribedPubs: typeof visiblePubs = [];
+  const { graphSubscribedPubs, followOwnedUnsubscribedPubs } = useMemo(() => {
+    const graphSubscribedPubs: typeof visiblePubs = [];
     const followOwnedUnsubscribedPubs: typeof visiblePubs = [];
 
     if (!viewerDid) {
-      return { subscribedPubs, followOwnedUnsubscribedPubs };
+      return { graphSubscribedPubs, followOwnedUnsubscribedPubs };
     }
 
     for (const pub of visiblePubs) {
       if (viewerOwnsDiscoveredPublication(pub, viewerDid)) {
-        subscribedPubs.push(pub);
+        graphSubscribedPubs.push(pub);
       } else if (isSubscribedPublication(pub)) {
-        subscribedPubs.push(pub);
+        graphSubscribedPubs.push(pub);
       } else {
         followOwnedUnsubscribedPubs.push(pub);
       }
     }
 
-    return { subscribedPubs, followOwnedUnsubscribedPubs };
+    return { graphSubscribedPubs, followOwnedUnsubscribedPubs };
   }, [visiblePubs, viewerDid, isSubscribedPublication]);
+
+  const subscribedPubs = useMemo(() => {
+    const merged: DiscoveredPublication[] = [...graphSubscribedPubs];
+    const ids = new Set(graphSubscribedPubs.map((p) => p.publicationId));
+    for (const r of rssPublicationRowsVisible) {
+      if (!ids.has(r.publicationId)) {
+        merged.push(r);
+        ids.add(r.publicationId);
+      }
+    }
+    return merged;
+  }, [graphSubscribedPubs, rssPublicationRowsVisible]);
 
   const { folderMap, myPublications, unfolderedPubs } = useMemo(() => {
     const folderMap = new Map<string, typeof subscribedPubs>();
@@ -184,7 +220,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     if (!selectedPubId) return;
 
     const pref = prefsMap.get(selectedPubId);
-    const pub = publications.find((p) => p.publicationId === selectedPubId);
+    const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
     if (!pub) return;
 
     const folderId = pref?.value.folderId;
@@ -199,7 +235,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     setSelectedFolderUri(null);
   }, [
     selectedPubId,
-    publications,
+    allPublicationRows,
     prefsMap,
     folders,
     setSelectedFolderUri,
@@ -213,7 +249,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       if (cancelled) return;
       setExpandedKeys((prev) => {
         const pref = prefsMap.get(selectedPubId);
-        const pub = publications.find((p) => p.publicationId === selectedPubId);
+        const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
         if (!pub) return prev;
 
         const folderId = pref?.value.folderId;
@@ -231,7 +267,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedPubId, publications, prefsMap, folders]);
+  }, [selectedPubId, allPublicationRows, prefsMap, folders]);
 
   return (
     <Sidebar>
@@ -276,7 +312,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          {!foldersLoading && !pubsLoading && !subscriptionsLoading ? (
+          {!foldersLoading && !pubsLoading && !subscriptionsBlockLoading ? (
             <SidebarGroup className="pt-0">
               <SidebarMenu>
                 <PublicationTabs
@@ -290,7 +326,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         <div className="no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
           <SidebarGroup>
             <SidebarMenu>
-              {foldersLoading || pubsLoading || subscriptionsLoading ? (
+              {foldersLoading || pubsLoading || subscriptionsBlockLoading ? (
                 <SidebarSkeleton count={5} />
               ) : publicationTab === "subscribed" ? (
                 <>
@@ -316,6 +352,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     );
                   })}
                   <NewFolderDialog />
+                  <AddRssFeedDialog />
                   <SidebarSectionLabel>Publications</SidebarSectionLabel>
                   <PublicationList
                     publications={unfolderedPubs}
