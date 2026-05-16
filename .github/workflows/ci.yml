@@ -112,7 +112,7 @@ jobs:
 
       - name: Export lcov from llvm-cov
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           # Use the llvm-cov bundled with the active Swift toolchain (PATH may pick an older system llvm-cov on Ubuntu, which rejects Swift's profdata).
           _swift="$(command -v swift)"
           LLVM_COV="$(dirname "$(readlink -f "$_swift" 2>/dev/null || echo "$_swift")")/llvm-cov"
