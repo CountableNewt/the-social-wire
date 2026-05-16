@@ -19,25 +19,29 @@ struct App: AsyncParsableCommand {
     abstract: "The Social Wire API Service"
   )
 
-  @Option(name: .long, help: "Port to bind on")
-  var port: Int = Int(ProcessInfo.processInfo.environment["PORT"] ?? "8080") ?? 8080
+  @Option(name: .long, help: "Port to bind on (overrides PORT from environment / .env)")
+  var port: Int?
 
-  @Option(name: .long, help: "Hostname to bind on")
-  var hostname: String = "0.0.0.0"
+  @Option(name: .long, help: "Hostname to bind on (overrides BIND_HOST from environment / .env)")
+  var hostname: String?
 
   mutating func run() async throws {
     var logger = Logger(label: "com.thesocialwire.api")
     logger.logLevel = .info
 
     // ── Config ────────────────────────────────────────────────────────────────
-    let config = AppConfig.fromEnvironment()
+    let environment = AppEnvironmentLoader.mergeProcessWithDotenv()
+    let config = AppConfig.fromEnvironment(environment)
+
+    let listenPort = port ?? Int(environment["PORT"] ?? "8080") ?? 8080
+    let listenHost = hostname ?? environment["BIND_HOST"] ?? "0.0.0.0"
 
     logger.info(
       "Starting Social Wire API",
       metadata: [
         "env":     .string(config.appEnv.rawValue),
         "backend": .string(config.cacheBackend.description),
-        "port":    .string("\(port)"),
+        "port":    .string("\(listenPort)"),
       ]
     )
 
@@ -47,6 +51,7 @@ struct App: AsyncParsableCommand {
     // ── Router ────────────────────────────────────────────────────────────────
     let router = Router(context: AppRequestContext.self)
     router.get("/health") { _, _ in ["status": "ok"] }
+    OAuthMetadataRoutes(oauthPublicOrigin: config.oauthPublicOrigin).register(on: router)
 
     let authMiddleware = ATProtoAuthMiddleware(
       httpClient: httpClient,
@@ -80,7 +85,7 @@ struct App: AsyncParsableCommand {
 
         let app = Application(
           router: router,
-          configuration: .init(address: .hostname(hostname, port: port))
+          configuration: .init(address: .hostname(listenHost, port: listenPort))
         )
         try await app.run()
 
@@ -103,7 +108,7 @@ struct App: AsyncParsableCommand {
 
         let app = Application(
           router: router,
-          configuration: .init(address: .hostname(hostname, port: port))
+          configuration: .init(address: .hostname(listenHost, port: listenPort))
         )
 
         // Run the Postgres pool and HTTP server together; cancel both on exit.

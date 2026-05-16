@@ -24,9 +24,30 @@ Swift/Hummingbird service that handles publication discovery and content retriev
 | `SQLITE_DB_PATH` | | `./social-wire.sqlite` | Path to the SQLite file. Only used when `APP_ENV=local` |
 | `SUPABASE_DATABASE_URL` | ✅ (dev/prod) | — | Postgres connection string. Required when `APP_ENV=dev` or `prod` |
 | `PORT` | | `8080` | Port the server listens on |
+| `BIND_HOST` | | `0.0.0.0` | Address the server binds to (`--hostname` overrides) |
+| `DOTENV_PATH` | | `.env` | Path to dotenv file (relative paths are resolved from the process working directory, usually `services/api`) |
 | `ATPROTO_PLC_URL` | | `https://plc.directory` | PLC directory for DID resolution |
+| `OAUTH_PUBLIC_ORIGIN` | | — | Public base URL for iOS OAuth metadata (e.g. `https://abc.ngrok-free.app`). When set, `GET /ios-client-metadata.json` uses this for `client_id` / `client_uri` instead of inferring from request headers. See **OAuth client metadata (Swift)** below. |
 
 `SQLITE_DB_PATH` and `SUPABASE_DATABASE_URL` are mutually exclusive — the service picks one based on `APP_ENV`.
+
+### Dotenv (`.env`)
+
+On startup the service loads a dotenv file and merges it with the process environment. **Shell and container env vars always override** the file (same behavior as common `.env` tooling).
+
+- Default file: **`.env`** in the current working directory (typically `services/api` when you `cd services/api && swift run App`).
+- Override path: set **`DOTENV_PATH`** to a relative or absolute path.
+
+Example:
+
+```bash
+cd services/api
+cp .env.example .env
+# edit .env, then:
+swift run App
+```
+
+A missing or unreadable file is ignored; only `process` + CLI flags apply.
 
 ## Local development
 
@@ -49,6 +70,18 @@ APP_ENV=local swift run App
 The API will be available at:
 - Direct: `http://localhost:8080`
 - Via Caddy: `https://api.localhost` (trust Caddy's local CA with `caddy trust`)
+
+### OAuth client metadata (Swift)
+
+`GET /ios-client-metadata.json` serves ATProto **native** client metadata (same shape as [`apps/web/public/ios-client-metadata.json`](../../apps/web/public/ios-client-metadata.json)). No auth.
+
+- **Origin resolution:** If `OAUTH_PUBLIC_ORIGIN` is set (e.g. `https://your-tunnel.example`), it becomes the JSON `client_id` / `client_uri` base. Otherwise the server uses `X-Forwarded-Proto` + HTTP `:authority` (the `Host` header in HTTP/1), or infers `http` for `localhost` / `127.*` and `https` otherwise.
+- **Real device + Bluesky:** The authorization server must fetch `client_id` from the **public internet**. For local `swift run`, use **ngrok**, **Cloudflare Tunnel**, or similar, then set `OAUTH_PUBLIC_ORIGIN` to your tunnel URL (or rely on `Host` / `X-Forwarded-Proto` from the tunnel).
+- **iOS:** Set **Info.plist** `ATProtoOAuthClientID` to `https://<public-host>/ios-client-metadata.json` and register the matching URL scheme (reversed host labels); see [`apps/apple/README.md`](../../apps/apple/README.md).
+
+```bash
+curl -sS http://127.0.0.1:8080/ios-client-metadata.json | jq .
+```
 
 ## Running tests
 
@@ -89,6 +122,7 @@ See [`packages/spec/openapi.yaml`](../../packages/spec/openapi.yaml) for the ful
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check (no auth) |
+| `GET` | `/ios-client-metadata.json` | ATProto native OAuth client metadata (no auth; CORS `*`) |
 | `POST` | `/discovery/refresh` | Trigger follow graph re-scan |
 | `GET` | `/discovery/{userDid}` | Get cached discovery results |
 | `GET` | `/publications/{pubId}/entries` | Paginated entry list |

@@ -2,9 +2,11 @@ import Foundation
 
 /// Configuration loaded from environment variables at startup.
 struct AppConfig: Sendable {
-  let atprotoPLCURL: String
-  let appEnv: AppEnvironment
-  let cacheBackend: CacheBackend
+    let atprotoPLCURL: String
+    let appEnv: AppEnvironment
+    let cacheBackend: CacheBackend
+    /// When set (e.g. `https://your-tunnel.example`), used as the OAuth metadata base URL instead of inferring from each request.
+    let oauthPublicOrigin: String?
 
   enum AppEnvironment: String, Sendable {
     case local
@@ -44,10 +46,14 @@ struct AppConfig: Sendable {
       backend = .postgres(url: dbURL)
     }
 
+    let oauthRaw = env["OAUTH_PUBLIC_ORIGIN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let oauthPublicOrigin = (oauthRaw?.isEmpty == false) ? oauthRaw : nil
+
     return AppConfig(
       atprotoPLCURL: plcURL,
       appEnv: appEnv,
-      cacheBackend: backend
+      cacheBackend: backend,
+      oauthPublicOrigin: oauthPublicOrigin
     )
   }
 }

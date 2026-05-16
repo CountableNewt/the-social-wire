@@ -98,4 +98,19 @@ struct AppConfigTests {
     let config = AppConfig.fromEnvironment(["APP_ENV": "staging"])
     #expect(config.appEnv == .local)
   }
+
+  @Test("OAUTH_PUBLIC_ORIGIN is nil when unset")
+  func oauthOriginUnset() {
+    let config = AppConfig.fromEnvironment([:])
+    #expect(config.oauthPublicOrigin == nil)
+  }
+
+  @Test("OAUTH_PUBLIC_ORIGIN is trimmed when set")
+  func oauthOriginSet() {
+    let config = AppConfig.fromEnvironment([
+      "OAUTH_PUBLIC_ORIGIN": "  https://tunnel.example  ",
+    ])
+    #expect(config.oauthPublicOrigin == "https://tunnel.example")
+  }
 }
+
