@@ -33,7 +33,9 @@ struct PDSClientTests {
             entryId: "at://did:plc:alice/entry/abc",
             title: "Test",
             summary: nil,
-            publishedAt: Date()
+            publishedAt: Date(),
+            originalURL: nil,
+            imageURL: nil
         )
         #expect(entry.id == entry.entryId)
     }

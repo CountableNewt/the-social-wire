@@ -5,10 +5,12 @@ import WebKit
 /// A strict client-side CSP is applied via the WKWebView configuration.
 struct EntryDetailView: View {
     let entry: EntryModel
+    var onSave: (EntryDetailModel) async -> Void = { _ in }
     @EnvironmentObject var authService: ATProtoOAuthService
     @State private var fullEntry: EntryDetailModel?
     @State private var isLoading = false
     @State private var loadError: Error?
+    @State private var isSaving = false
 
     var body: some View {
         ScrollView {
@@ -33,6 +35,30 @@ struct EntryDetailView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top)
+
+                if let fullEntry {
+                    HStack(spacing: 8) {
+                        Button {
+                            Task {
+                                isSaving = true
+                                await onSave(fullEntry)
+                                isSaving = false
+                            }
+                        } label: {
+                            Label(isSaving ? "Saving" : "Save", systemImage: "archivebox")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(fullEntry.originalURL == nil || isSaving)
+
+                        if let url = fullEntry.originalURL {
+                            ShareLink(item: url) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
 
                 Divider()
 
@@ -75,6 +101,20 @@ struct EntryDetailView: View {
             loadError = error
         }
         isLoading = false
+    }
+}
+
+struct WebPreview: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        WKWebView()
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        if webView.url != url {
+            webView.load(URLRequest(url: url))
+        }
     }
 }
 

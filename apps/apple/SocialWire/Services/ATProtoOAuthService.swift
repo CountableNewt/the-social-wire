@@ -87,7 +87,7 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
         }
 
         // 5. Exchange code for tokens
-        try await handleCallbackURL(callbackURL)
+        await handleCallbackURL(callbackURL)
     }
 
     /// Handles the callback URL from the OAuth redirect.
@@ -195,6 +195,12 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
                     "atproto",
                     "repo:com.thesocialwire.folder?action=create&action=update&action=delete",
                     "repo:com.thesocialwire.publicationPrefs?action=create&action=update&action=delete",
+                    "repo:com.thesocialwire.preferences?action=create&action=update",
+                    "repo:site.standard.graph.subscription?action=create&action=delete",
+                    "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete",
+                    "repo:com.latr.saved.external?action=create&action=update&action=delete",
+                    "repo:com.latr.saved.item?action=create&action=update&action=delete",
+                    "repo:com.thesocialwire.entryReadState?action=create&action=update&action=delete",
                 ].joined(separator: " ")
             ),
             URLQueryItem(name: "code_challenge", value: challenge),

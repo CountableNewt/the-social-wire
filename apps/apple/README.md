@@ -20,10 +20,10 @@ apps/apple/
     Views/
       ContentView.swift           # Root: routes to LoginView or MainSplitView
       LoginView.swift             # Handle input + signIn
-      MainSplitView.swift         # NavigationSplitView (3-column) + MainViewModel
+      MainSplitView.swift         # App sidebar + reader/saved/publications/settings state
       FolderListView.swift        # Sidebar: folders + publications
       EntryListView.swift         # Column 2: entry list
-      EntryDetailView.swift       # Column 3: WKWebView HTML renderer
+      EntryDetailView.swift       # Article HTML renderer + web preview bridge
     Services/
       ATProtoOAuthService.swift   # PKCE + DPoP OAuth, ASWebAuthenticationSession
       PDSClient.swift             # XRPC helpers (actor), models
@@ -62,6 +62,10 @@ Add `thesocialwire` as a URL scheme in `Info.plist`:
 | `ATPROTO_PLC_URL` | PLC directory URL (default: `https://plc.directory`) |
 | `ATPROTO_CLIENT_ID` | OAuth client metadata URL (default: `https://thesocialwire.com/client-metadata.json`) |
 
+The native client requests the same repository scopes used by the web reader for folders,
+publication preferences, standard.site subscriptions, Skyreader RSS subscriptions,
+LATR saved links, and synced entry read state.
+
 ## Keychain Entitlement
 
 The app stores the ATProto refresh token in the Keychain.
@@ -81,7 +85,7 @@ Tests use the **Swift Testing** framework (`@Test`, `#expect`, `#require`).
 
 - `ATProtoOAuthService` — `@MainActor ObservableObject` that owns the `AuthSession`. All OAuth state transitions (sign-in, callback, refresh, sign-out) go through this service.
 - `PDSClient` — `actor` for authenticated user PDS records plus public ATProto discovery/content reads.
-- `MainViewModel` — `@MainActor ObservableObject` that coordinates the three-column split view.
+- `MainViewModel` — `@MainActor ObservableObject` that coordinates the app sidebar, article reader, saved links, publication collections, settings, and synced read/unread state.
 
 ### Data Flow
 
@@ -90,6 +94,8 @@ ATProtoOAuthService
   └─ AuthSession { did, pdsURL, accessToken, refreshToken }
        └─ PDSClient
             ├─ User PDS → com.thesocialwire.folder + com.thesocialwire.publicationPrefs
+            ├─ User PDS → site.standard.graph.subscription + app.skyreader.feed.subscription
+            ├─ User PDS → com.latr.saved.* + com.thesocialwire.entryReadState
             └─ Public ATProto XRPC → follows + site.standard.entry records
 ```
 
