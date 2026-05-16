@@ -7,9 +7,38 @@ on:
     branches: [main, dev]
 
 jobs:
+  # Path gates — branch protection must allow skipped jobs (or use separate workflows per surface).
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'turbo.json'
+              - '.github/workflows/ci.yml'
+            api:
+              - 'services/api/**'
+              - 'packages/spec/openapi.yaml'
+              - '.github/workflows/ci.yml'
+
   # ── Web ───────────────────────────────────────────────────────────────────
   build-web:
     name: Build & Test Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -53,6 +82,8 @@ jobs:
 
   test-api:
     name: Swift API (Package)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

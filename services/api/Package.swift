@@ -12,8 +12,9 @@ let package = Package(
     .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
     // Postgres driver (for Supabase cache — used in dev/prod)
     .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
-    // SQLite via GRDB (used in local mode)
-    .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0"),
+    // SQLite via GRDB (used in local mode). ≥7.10 disables WAL snapshot APIs on Linux
+    // (distro libsqlite lacks sqlite3_snapshot_*); see GRDB Package.swift SQLITE_DISABLE_SNAPSHOT.
+    .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0"),
     // JWT / DPoP verification
     .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
     .package(url: "https://github.com/apple/swift-crypto.git", from: "3.14.0"),

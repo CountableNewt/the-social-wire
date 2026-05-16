@@ -92,31 +92,40 @@ actor SQLiteCache: CacheStore {
     for userDID: String
   ) async throws -> (publications: [DiscoveredPublication], lastRefreshedAt: Date?)? {
 
-    let rows = try await db.read { db in
-      try Row.fetchAll(db, sql: """
+    let rowValues: [(String, String, String?, String, String?, String)] = try await db.read { db in
+      let rows = try Row.fetchAll(db, sql: """
         SELECT publication_id, author_did, author_handle, title, avatar_url, discovered_at
         FROM discovery_cache
         WHERE user_did = ?
         ORDER BY discovered_at DESC
         """, arguments: [userDID])
+      return rows.map { row in
+        (
+          row["publication_id"],
+          row["author_did"],
+          row["author_handle"],
+          row["title"],
+          row["avatar_url"],
+          row["discovered_at"]
+        )
+      }
     }
 
-    guard !rows.isEmpty else { return nil }
+    guard !rowValues.isEmpty else { return nil }
 
     let iso = ISO8601DateFormatter()
     var publications: [DiscoveredPublication] = []
     var latestDate: Date?
 
-    for row in rows {
-      let discoveredAtStr: String = row["discovered_at"]
+    for (publicationId, authorDid, authorHandle, title, avatarUrl, discoveredAtStr) in rowValues {
       let discoveredAt = iso.date(from: discoveredAtStr) ?? Date(timeIntervalSince1970: 0)
 
       publications.append(DiscoveredPublication(
-        publicationId: row["publication_id"],
-        authorDid:     row["author_did"],
-        authorHandle:  row["author_handle"],
-        title:         row["title"],
-        avatarUrl:     row["avatar_url"],
+        publicationId: publicationId,
+        authorDid:     authorDid,
+        authorHandle:  authorHandle,
+        title:         title,
+        avatarUrl:     avatarUrl,
         discoveredAt:  discoveredAt
       ))
 
@@ -186,33 +195,42 @@ actor SQLiteCache: CacheStore {
   func cachedEntry(for entryURI: String) async throws -> EntryDetail? {
     let iso = ISO8601DateFormatter()
 
-    let row = try await db.read { db in
-      try Row.fetchOne(db, sql: """
-        SELECT entry_uri, title, content, original_url, published_at, cached_at
-        FROM entry_cache
-        WHERE entry_uri = ?
-        LIMIT 1
-        """, arguments: [entryURI])
-    }
+    let fields: (entryUri: String, title: String, content: String, originalUrl: String?, publishedAt: String?, cachedAt: String)? =
+      try await db.read { db in
+        guard let row = try Row.fetchOne(db, sql: """
+          SELECT entry_uri, title, content, original_url, published_at, cached_at
+          FROM entry_cache
+          WHERE entry_uri = ?
+          LIMIT 1
+          """, arguments: [entryURI])
+        else { return nil }
 
-    guard let row else { return nil }
+        return (
+          row["entry_uri"],
+          row["title"],
+          row["content"],
+          row["original_url"],
+          row["published_at"],
+          row["cached_at"]
+        )
+      }
 
-    let cachedAtStr: String = row["cached_at"]
-    let cachedAt = iso.date(from: cachedAtStr) ?? Date(timeIntervalSince1970: 0)
+    guard let fields else { return nil }
+
+    let cachedAt = iso.date(from: fields.cachedAt) ?? Date(timeIntervalSince1970: 0)
 
     guard Date().timeIntervalSince(cachedAt) <= Self.entryTTL else {
       return nil
     }
 
-    let publishedAtStr: String? = row["published_at"]
-    let publishedAt = publishedAtStr.flatMap { iso.date(from: $0) } ?? cachedAt
+    let publishedAt = fields.publishedAt.flatMap { iso.date(from: $0) } ?? cachedAt
 
     return EntryDetail(
-      entryId:     row["entry_uri"],
-      title:       row["title"],
+      entryId:     fields.entryUri,
+      title:       fields.title,
       publishedAt: publishedAt,
-      contentHtml: row["content"],
-      originalUrl: row["original_url"]
+      contentHtml: fields.content,
+      originalUrl: fields.originalUrl
     )
   }
 
@@ -248,20 +266,28 @@ actor SQLiteCache: CacheStore {
   func cachedPdsRepoRecord(ownerDid: String, scopeKey: String) async throws -> PdsCachedRepoRecordPayload? {
     let iso = ISO8601DateFormatter()
 
-    let row = try await db.read { db in
-      try Row.fetchOne(db, sql: """
-        SELECT cid, json_body, cached_at, expires_at
-        FROM pds_repo_record_cache
-        WHERE owner_did = ? AND scope_key = ?
-        LIMIT 1
-        """,
-        arguments: [ownerDid, scopeKey])
-    }
+    let fields: (cid: String?, jsonBody: String, cachedAt: String, expiresAt: String)? =
+      try await db.read { db in
+        guard let row = try Row.fetchOne(db, sql: """
+          SELECT cid, json_body, cached_at, expires_at
+          FROM pds_repo_record_cache
+          WHERE owner_did = ? AND scope_key = ?
+          LIMIT 1
+          """,
+          arguments: [ownerDid, scopeKey])
+        else { return nil }
 
-    guard let row else { return nil }
+        return (
+          row["cid"],
+          row["json_body"],
+          row["cached_at"],
+          row["expires_at"]
+        )
+      }
 
-    let expiresAtStr: String = row["expires_at"]
-    guard let expiresAt = iso.date(from: expiresAtStr) else { return nil }
+    guard let fields else { return nil }
+
+    guard let expiresAt = iso.date(from: fields.expiresAt) else { return nil }
     if expiresAt <= Date() {
       try await db.write { db in
         try db.execute(sql: """
@@ -272,13 +298,9 @@ actor SQLiteCache: CacheStore {
       return nil
     }
 
-    let cachedAtStr: String = row["cached_at"]
-    let cachedAt = iso.date(from: cachedAtStr) ?? Date(timeIntervalSince1970: 0)
+    let cachedAt = iso.date(from: fields.cachedAt) ?? Date(timeIntervalSince1970: 0)
 
-    let cid: String? = row["cid"]
-    let body: String = row["json_body"]
-
-    return PdsCachedRepoRecordPayload(cid: cid, jsonBody: body, cachedAt: cachedAt)
+    return PdsCachedRepoRecordPayload(cid: fields.cid, jsonBody: fields.jsonBody, cachedAt: cachedAt)
   }
 
   func storePdsRepoRecordPayload(
