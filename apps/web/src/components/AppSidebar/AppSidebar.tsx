@@ -140,11 +140,23 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     isEntryRead
   );
 
-  const readSidebarScope = useReadSidebarScopeOptional();
+  const setPublicationsInReadShell =
+    useReadSidebarScopeOptional()?.setPublicationsInSidebarTab;
 
   useEffect(() => {
-    readSidebarScope?.setPublicationsInSidebarTab(publicationsForUnread);
-  }, [readSidebarScope, publicationsForUnread]);
+    if (!setPublicationsInReadShell) return;
+    setPublicationsInReadShell((prev) => {
+      if (
+        prev.length === publicationsForUnread.length &&
+        prev.every(
+          (p, i) => p.publicationId === publicationsForUnread[i]?.publicationId
+        )
+      ) {
+        return prev;
+      }
+      return publicationsForUnread;
+    });
+  }, [publicationsForUnread, setPublicationsInReadShell]);
 
   const allFolderedPublicationsForBulk = useMemo(() => {
     const seen = new Set<string>();

@@ -33,7 +33,7 @@ export function ReadSidebarScopeProvider({ children }: { children: ReactNode }) 
       publicationsInSidebarTab,
       setPublicationsInSidebarTab,
     }),
-    [publicationsInSidebarTab]
+    [publicationsInSidebarTab, setPublicationsInSidebarTab]
   );
 
   return (
