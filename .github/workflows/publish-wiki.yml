@@ -19,8 +19,11 @@ jobs:
   wiki:
     runs-on: ubuntu-latest
     steps:
+      # rsync mirrors docs/wiki into the wiki repo working tree; shallow checkout is enough.
       - uses: actions/checkout@v4
 
+      # --delete removes wiki pages/files not present under docs/wiki/. Wiki edits committed only on
+      # the wiki remote (and never mirrored here) will be wiped on the next sync unless excluded or added to docs/wiki/.
       - name: Sync docs/wiki to GitHub Wiki
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,7 +42,7 @@ jobs:
             git init
             git remote add origin "$WIKI_REMOTE"
           fi
-          cp -f "${REPO_ROOT}/docs/wiki/"*.md .
+          rsync -av --delete --exclude='.git' "${REPO_ROOT}/docs/wiki/" ./
           git add -A
           if git diff --staged --quiet; then
             echo "No wiki changes."
