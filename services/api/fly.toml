@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for the-social-wire-dev on 2026-05-18T01:13:03Z
+# fly.toml app configuration file generated for social-wire-api on 2026-05-18T01:27:43Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -14,6 +14,8 @@ primary_region = 'ams'
 
 [env]
   PORT = '8080'
+  # `/ios-client-metadata.json` derives `redirect_uris` from the request Host (`client_id` origin), reversed —
+  # no separate redirect override. `OAUTH_PUBLIC_ORIGIN` applies only to `/oauth/client-metadata.json`.
 
 [http_service]
   internal_port = 8080

@@ -2,6 +2,9 @@ import Foundation
 
 /// ATProto native OAuth client metadata (`application_type: native`), aligned with
 /// `apps/web/public/ios-client-metadata.json`.
+///
+/// **[ATProto]** For discoverable clients, **`redirect_uris`** use the host of **`client_id`** (the metadata URL’s
+/// origin) with labels reversed — same rule as the native app’s URL scheme.
 enum IosOAuthClientMetadata {
   enum BuildError: Error {
     case invalidPublicOrigin
@@ -23,12 +26,12 @@ enum IosOAuthClientMetadata {
   static func buildJSON(publicOrigin: String) throws -> Data {
     var trimmed = publicOrigin.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.hasSuffix("/") { trimmed.removeLast() }
-    guard let host = URL(string: trimmed)?.host, !host.isEmpty else {
+    guard let originHost = URL(string: trimmed)?.host, !originHost.isEmpty else {
       throw BuildError.invalidPublicOrigin
     }
     let base = trimmed
     let client_id = "\(base)/ios-client-metadata.json"
-    let redirect = nativeRedirectURI(host: host)
+    let redirect = nativeRedirectURI(host: originHost)
     let doc = MetadataBody(
       client_id: client_id,
       application_type: "native",

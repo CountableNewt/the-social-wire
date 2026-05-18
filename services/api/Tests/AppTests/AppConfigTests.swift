@@ -113,6 +113,20 @@ struct AppConfigTests {
     #expect(config.oauthPublicOrigin == "https://tunnel.example")
   }
 
+  @Test("OAUTH_IOS_METADATA_ORIGIN is nil when unset")
+  func iosMetadataOriginUnset() {
+    let config = AppConfig.fromEnvironment([:])
+    #expect(config.oauthIosMetadataOrigin == nil)
+  }
+
+  @Test("OAUTH_IOS_METADATA_ORIGIN is trimmed when set")
+  func iosMetadataOriginSet() {
+    let config = AppConfig.fromEnvironment([
+      "OAUTH_IOS_METADATA_ORIGIN": "  https://ios-tunnel.example  ",
+    ])
+    #expect(config.oauthIosMetadataOrigin == "https://ios-tunnel.example")
+  }
+
   @Test("ENABLE_LEGACY_CONTENT_API defaults false")
   func legacyDiscoveryDefaultDisabled() {
     let config = AppConfig.fromEnvironment([:])

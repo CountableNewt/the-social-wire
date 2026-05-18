@@ -8,6 +8,11 @@ struct IosOAuthClientMetadataTests {
   @Test("native URL scheme reverses host labels")
   func nativeScheme() {
     #expect(IosOAuthClientMetadata.nativeURLScheme(host: "thesocialwire.app") == "app.thesocialwire")
+    #expect(IosOAuthClientMetadata.nativeURLScheme(host: "api.thesocialwire.app") == "app.thesocialwire.api")
+    #expect(
+      IosOAuthClientMetadata.nativeURLScheme(host: "api.testing.thesocialwire.app")
+        == "app.thesocialwire.testing.api"
+    )
     #expect(IosOAuthClientMetadata.nativeURLScheme(host: "app.example.com") == "com.example.app")
   }
 
@@ -20,6 +25,15 @@ struct IosOAuthClientMetadataTests {
     #expect(redirects == ["com.example:/oauth/callback"])
     #expect(obj["application_type"] as? String == "native")
     #expect(obj["dpop_bound_access_tokens"] as? Bool == true)
+  }
+
+  @Test("buildJSON redirect_uris follow client_id host (API subdomain → reversed-api scheme)")
+  func buildJSONApiHostRedirects() throws {
+    let data = try IosOAuthClientMetadata.buildJSON(publicOrigin: "https://api.example.com")
+    let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(obj["client_id"] as? String == "https://api.example.com/ios-client-metadata.json")
+    let redirects = try #require(obj["redirect_uris"] as? [String])
+    #expect(redirects == ["com.example.api:/oauth/callback"])
   }
 
   @Test("buildJSON includes port in client_id when present in origin")
