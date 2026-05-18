@@ -4,11 +4,11 @@ Native SwiftUI client for The Social Wire.
 
 ## Development
 
-Generate the Xcode project:
+Generate or refresh the Xcode project from **`apps/apple`**: `xcodegen generate` (sources use traditional **groups**, so new top-level files under **`SocialWire/`** need a regen to appear in Xcode).
 
 ### Cursor / VS Code + SweetPad
 
-The repository root has no **`Package.swift`** (this target is Xcode + XcodeGen, not SPM). At the repo root the Swift VS Code extension’s **“Swift: Build All”** runs **`swift build`** and fails with *Could not find Package.swift*. Use **SweetPad: Build / Build & Run** instead, after **SweetPad: Select Xcode workspace** if needed—the workspace default is **[`.vscode/settings.json`](../../.vscode/settings.json)** → **`apps/apple/SocialWire.xcodeproj`**.
+The repository root has no **`Package.swift`** (this target is Xcode + XcodeGen, not SPM). At the repo root the Swift VS Code extension’s **“Swift: Build All”** runs **`swift build`** and fails with *Could not find Package.swift*. Use **SweetPad: Build / Build & Run** instead, after **SweetPad: Select Xcode workspace** if needed—the workspace default is **[`.vscode/settings.json`](../../.vscode/settings.json)** → **`apps/apple/The Social Wire.xcodeproj`**.
 
 For **`services/api`** Swift Package Manager work inside the same window, temporarily set **`swift.disableSwiftPackageManagerIntegration`** to **`false`** in your user settings, or open **`services/api`** as its own window / multi-root workspace entry.
 
@@ -16,8 +16,8 @@ For **`services/api`** Swift Package Manager work inside the same window, tempor
 
 ```
 apps/apple/
-  project.yml                    # XcodeGen source for SocialWire.xcodeproj
-  SocialWire.xcodeproj/           # Generated Xcode project
+  project.yml                    # XcodeGen source for The Social Wire.xcodeproj
+  The Social Wire.xcodeproj/      # Generated Xcode project (targets still named SocialWire for module/binary)
   SocialWire/
     App/
       SocialWireApp.swift         # @main entry point, ATProto OAuth callback handler

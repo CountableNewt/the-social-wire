@@ -119,4 +119,4 @@ jobs:
   #   runs-on: macos-15
   #   steps:
   #     - uses: actions/checkout@v6
-  #     - run: xcodebuild -project apps/apple/SocialWire.xcodeproj -scheme SocialWire -destination 'platform=iOS Simulator,name=iPhone 16' build
+  #     - run: xcodebuild -project 'apps/apple/The Social Wire.xcodeproj' -scheme SocialWire -destination 'platform=iOS Simulator,name=iPhone 16' build

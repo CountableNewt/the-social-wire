@@ -1,7 +1,10 @@
-name: SocialWire
+name: The Social Wire
 options:
   minimumXcodeGenVersion: 2.43.0
-  defaultSourceDirectoryType: syncedFolder
+  # Use **`group`** (not **`syncedFolder`**) so **Assets.xcassets** gets explicit build membership and a normal
+  # Compile Asset Catalog phase. **`syncedFolder`** on XcodeGen before 2.45 can omit resources; Xcode also hides
+  # per-file Target Membership for synchronized roots.
+  defaultSourceDirectoryType: group
   deploymentTarget:
     iOS: "17.0"
 configs:
@@ -21,10 +24,14 @@ targets:
     platform: iOS
     sources:
       - path: SocialWire
+      # `.xcassets` outside this folder — e.g. `apps/apple/Media.xcassets` — will NOT be merged in; move it under
+      # `SocialWire/` or add a second `- path:` entry with `type: folder.assetcatalog`, then run `xcodegen generate`.
     info:
       path: SocialWire/Info.plist
       properties:
         CFBundleDisplayName: The Social Wire
+        # Short bundle name (Settings, Spotlight, etc.); **`PRODUCT_NAME`** stays `SocialWire` for module / binary paths.
+        CFBundleName: The Social Wire
         CFBundleURLTypes:
           - CFBundleURLName: com.samclemente.the-social-wire.oauth
             CFBundleURLSchemes:
@@ -48,6 +55,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.samclemente.the-social-wire
         PRODUCT_NAME: SocialWire
+        PRODUCT_MODULE_NAME: SocialWire
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_ENTITLEMENTS: SocialWire/SocialWire.entitlements
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.news
