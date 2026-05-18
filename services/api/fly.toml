@@ -1,22 +1,19 @@
-# fly.toml app configuration file generated for social-wire-api on 2026-05-18T01:08:18Z
+# fly.toml app configuration file generated for the-social-wire-dev on 2026-05-18T01:13:03Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "social-wire-api"
-primary_region = "ord"
+app = 'the-social-wire-dev'
+primary_region = 'ams'
 
 [build]
   dockerfile = 'Dockerfile'
 
+[deploy]
+  wait_timeout = '10m0s'
+
 [env]
   PORT = '8080'
-
-# Default deploy wait is 5m; slow image pulls + rolling health on 2 machines can exceed that and
-# surface as "request canceled" from the Machines API poll. 10m matches Fly's recommended fix.
-
-[deploy]
-  wait_timeout = "10m"
 
 [http_service]
   internal_port = 8080
@@ -26,11 +23,11 @@ primary_region = "ord"
   min_machines_running = 0
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "10s"
-    grace_period = "60s"
-    method = "GET"
-    path = "/health"
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '1m0s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
   memory = '1gb'
