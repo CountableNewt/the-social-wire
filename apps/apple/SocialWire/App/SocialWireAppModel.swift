@@ -84,6 +84,7 @@ final class SocialWireAppModel {
 
     func signIn(handle: String) async {
         do {
+            errorMessage = nil
             try await authService.signIn(handle: handle)
             await refreshAll()
         } catch {
@@ -93,6 +94,7 @@ final class SocialWireAppModel {
 
     func handleOAuthCallback(_ url: URL) async {
         do {
+            errorMessage = nil
             try await authService.handleCallbackURL(url)
             await refreshAll()
         } catch {

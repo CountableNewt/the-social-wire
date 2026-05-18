@@ -3,8 +3,11 @@ import CryptoKit
 import Foundation
 import SwiftUI
 
+/// Uses **`@Observable`** (not `ObservableObject`) so **`SocialWireAppModel`**’s computed **`isSignedIn`**
+/// notifies SwiftUI when **`session`** changes — otherwise **`RootView`** can stay on **`LoginView`** after OAuth succeeds.
 @MainActor
-final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+@Observable
+final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let scopes = [
         "atproto",
         "repo:com.thesocialwire.folder?action=create&action=update&action=delete",
@@ -17,7 +20,7 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
         "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete"
     ].joined(separator: " ")
 
-    @Published private(set) var session: AuthSession?
+    private(set) var session: AuthSession?
 
     let dpop = DPoPService()
     private let keychain = KeychainStore()
@@ -85,12 +88,15 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
         do {
             let callbackURL: URL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 let webSession = ASWebAuthenticationSession(url: authURL, callbackURLScheme: ATProtoOAuthConfig.callbackURLScheme) { url, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else if let url {
-                        continuation.resume(returning: url)
-                    } else {
-                        continuation.resume(throwing: SocialWireError.badResponse("OAuth callback did not include a URL."))
+                    // Completion may not be on the main actor; hop before touching OAuth state.
+                    Task { @MainActor in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else if let url {
+                            continuation.resume(returning: url)
+                        } else {
+                            continuation.resume(throwing: SocialWireError.badResponse("OAuth callback did not include a URL."))
+                        }
                     }
                 }
                 webSession.presentationContextProvider = self
@@ -105,6 +111,12 @@ final class ATProtoOAuthService: NSObject, ObservableObject, ASWebAuthentication
     }
 
     func handleCallbackURL(_ url: URL) async throws {
+        // **`onOpenURL`** can fire after **`ASWebAuthenticationSession`** already finished — second call would miss
+        // pending PKCE state and surface a bogus error while signed in.
+        if session != nil {
+            return
+        }
+
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw SocialWireError.badResponse("Invalid OAuth callback URL.")
         }
