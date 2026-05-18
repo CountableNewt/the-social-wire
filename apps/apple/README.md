@@ -6,11 +6,45 @@ Native SwiftUI client for The Social Wire.
 
 Generate the Xcode project:
 
-```sh
-xcodegen generate
+## Project Structure
+
+```
+apps/apple/
+  project.yml                    # XcodeGen source for SocialWire.xcodeproj
+  SocialWire.xcodeproj/           # Generated Xcode project
+  SocialWire/
+    App/
+      SocialWireApp.swift         # @main entry point, ATProto OAuth callback handler
+    Views/
+      ContentView.swift           # Root: routes to LoginView or MainSplitView
+      LoginView.swift             # Handle input + signIn
+      MainSplitView.swift         # NavigationSplitView (3-column) + MainViewModel
+      FolderListView.swift        # Sidebar: folders + publications
+      EntryListView.swift         # Column 2: entry list
+      EntryDetailView.swift       # Column 3: WKWebView HTML renderer
+    Services/
+      ATProtoOAuthService.swift   # PKCE OAuth + ASWebAuthenticationSession
+      PDSClient.swift             # XRPC helpers (actor), models
+    Utilities/
+      KeychainWrapper.swift       # Secure refresh token storage
+  SocialWireTests/
+    KeychainWrapperTests.swift    # @Test macros, Swift Testing
+    PDSClientTests.swift
 ```
 
-Run tests from `apps/apple` (use a concrete simulator id if `name=iPhone 16` is ambiguous):
+## ATProto OAuth Setup
+
+The app signs in with **OAuth 2.0 authorization code + PKCE** (`code_challenge_method=S256`) via `ASWebAuthenticationSession`.
+
+- **Authorize**: opens `{pds}/oauth/authorize` with `client_id`, `redirect_uri`, PKCE challenge, and a scope list (today limited to `atproto` plus Social Wire folder/publication prefs collections — narrower than the web client until parity work lands).
+- **Callback**: `thesocialwire://oauth/callback` delivers `code` → exchanged over **`POST {pds}/oauth/token`** with `grant_type=authorization_code`, PKCE verifier, `redirect_uri`, and `client_id`.
+- **Refresh**: `POST {pds}/oauth/token` with `grant_type=refresh_token`; refresh token lives in Keychain.
+
+DPoP proofs are **not** attached to token requests in this codebase yet (tokens may still be DPoP-bound depending on PDS policy—the Swift client does not implement the proof headers here).
+
+Source of truth: [`SocialWire/Services/ATProtoOAuthService.swift`](SocialWire/Services/ATProtoOAuthService.swift) (note: file-level comments may still mention DPoP; behaviour matches this README).
+
+### Required URL Scheme
 
 ```sh
 xcodebuild test -scheme SocialWire -destination 'platform=iOS Simulator,id=<Simulator-UUID>'
@@ -18,7 +52,11 @@ xcodebuild test -scheme SocialWire -destination 'platform=iOS Simulator,id=<Simu
 
 ## OAuth client metadata (production vs preview)
 
-Production uses `client_id` **`https://thesocialwire.app/ios-client-metadata.json`**, served from [`apps/web/public/ios-client-metadata.json`](../web/public/ios-client-metadata.json).
+| Variable | Description |
+|----------|-------------|
+| `ATPROTO_PLC_URL` | PLC directory URL (default: `https://plc.directory`) |
+| `ATPROTO_CLIENT_ID` | Discoverable OAuth **`client_id`** URL used as `client_id` in authorize/token requests (code fallback: `https://thesocialwire.com/client-metadata.json`). Prefer aligning with hosted prod (`https://thesocialwire.app/client-metadata.json`, same origin as [`client-metadata.json`](../../apps/web/public/client-metadata.json)) or whichever **`ios-client-metadata.json`** / tunnel metadata URL your deployment publishes — mismatched `client_id`/redirect URIs break OAuth. |
+| `ATPROTO_APPVIEW_PUBLIC` | Optional Bluesky App View base for handle resolution (default `https://public.api.bsky.app`). |
 
 Until that file is live on production, you can:
 

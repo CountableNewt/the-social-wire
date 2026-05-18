@@ -1,0 +1,35 @@
+# Default app name; CI passes `--app` from GitHub secrets.
+# Monorepo: deploy with `fly deploy ./services/api` from repo root (see README + deploy.yml).
+app = "social-wire-api"
+primary_region = "ord"
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8080'
+
+# Default deploy wait is 5m; slow image pulls + rolling health on 2 machines can exceed that and
+# surface as "request canceled" from the Machines API poll. 10m matches Fly's recommended fix.
+[deploy]
+  wait_timeout = "10m"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
