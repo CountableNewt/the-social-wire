@@ -2,5 +2,14 @@
   "version": "1",
   "name": "Social Wire API",
   "type": "collection",
-  "ignore": ["node_modules", ".git"]
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "size": 0.0020847320556640625,
+  "filesCount": 12,
+  "presets": {
+    "requestType": "http",
+    "requestUrl": "https://api.thesocialwire.app"
+  }
 }

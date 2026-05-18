@@ -1,129 +1,86 @@
 import SwiftUI
 
-/// Three-column split view: folders/publications | entry list | entry detail.
-/// Collapses to a navigation stack on iPhone (NavigationSplitView adapts automatically).
 struct MainSplitView: View {
-    @EnvironmentObject var authService: ATProtoOAuthService
-    @StateObject private var viewModel = MainViewModel()
+    @Environment(SocialWireAppModel.self) private var appModel
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @State private var showingAddPublication = false
+    @State private var showingNewFolder = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            // Column 1: Folders + publication list
-            FolderListView(viewModel: viewModel)
-                .navigationTitle("The Social Wire")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            Task { await viewModel.refreshDiscovery() }
-                        } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .disabled(viewModel.isRefreshing)
-                    }
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Sign Out", role: .destructive) {
-                            Task { await authService.signOut() }
-                        }
-                    }
-                }
+        @Bindable var model = appModel
 
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SidebarView(
+                showingAddPublication: $showingAddPublication,
+                showingNewFolder: $showingNewFolder
+            )
         } content: {
-            // Column 2: Entry list for selected publication
-            if let pub = viewModel.selectedPublication {
-                EntryListView(publication: pub, viewModel: viewModel)
-                    .navigationTitle(pub.title)
-            } else {
-                ContentUnavailableView(
-                    "Select a Publication",
-                    systemImage: "newspaper",
-                    description: Text("Choose a publication from the sidebar.")
-                )
-            }
-
+            contentColumn
         } detail: {
-            // Column 3: Entry detail
-            if let entry = viewModel.selectedEntry {
-                EntryDetailView(entry: entry)
+            detailColumn
+        }
+        .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $showingAddPublication) {
+            AddPublicationView()
+        }
+        .sheet(isPresented: $showingNewFolder) {
+            NewFolderView()
+        }
+        .refreshable {
+            await appModel.refreshAll()
+        }
+        .onChange(of: model.selectedSidebar) { _, selection in
+            Task { await handleSidebarSelection(selection) }
+        }
+    }
+
+    @ViewBuilder
+    private var contentColumn: some View {
+        switch appModel.selectedSidebar ?? .readingList {
+        case .readingList:
+            PublicationCollectionView(title: "Reading List", publications: appModel.unfolderedPublications)
+        case .saved:
+            SavedLinksView()
+        case .myPublications:
+            PublicationCollectionView(title: "My Publications", publications: appModel.myPublications)
+        case .following:
+            PublicationCollectionView(title: "Following", publications: appModel.followingPublications)
+        case .hidden:
+            PublicationCollectionView(title: "Hidden Publications", publications: appModel.hiddenPublications)
+        case .settings:
+            SettingsView()
+        case .folder(let folderURI):
+            if let folder = appModel.folders.first(where: { $0.uri == folderURI }) {
+                PublicationCollectionView(title: folder.value.name, publications: appModel.publications(in: folder))
             } else {
-                ContentUnavailableView(
-                    "Select an Entry",
-                    systemImage: "doc.text",
-                    description: Text("Choose an entry to read.")
-                )
+                ContentUnavailableView("Folder Missing", systemImage: "folder")
             }
-        }
-        .task {
-            guard let session = authService.session else { return }
-            await viewModel.load(session: session)
-        }
-    }
-}
-
-// ── ViewModel ─────────────────────────────────────────────────────────────────
-
-@MainActor
-final class MainViewModel: ObservableObject {
-    @Published var folders: [FolderModel] = []
-    @Published var publications: [PublicationModel] = []
-    @Published var entries: [EntryModel] = []
-    @Published var selectedPublication: PublicationModel?
-    @Published var selectedEntry: EntryModel?
-    @Published var isRefreshing = false
-    @Published var error: Error?
-
-    private var session: AuthSession?
-    private var pdsClient: PDSClient?
-
-    func load(session: AuthSession) async {
-        self.session = session
-        self.pdsClient = PDSClient(session: session)
-
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.loadFolders() }
-            group.addTask { await self.loadDiscovery() }
+        case .publication:
+            EntryListView()
         }
     }
 
-    func selectPublication(_ pub: PublicationModel) {
-        selectedPublication = pub
-        selectedEntry = nil
-        Task { await loadEntries(for: pub) }
-    }
-
-    func selectEntry(_ entry: EntryModel) {
-        selectedEntry = entry
-    }
-
-    func refreshDiscovery() async {
-        isRefreshing = true
-        defer { isRefreshing = false }
-        await loadDiscovery()
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────
-
-    private func loadFolders() async {
-        do {
-            folders = try await pdsClient?.listFolders() ?? []
-        } catch {
-            self.error = error
+    @ViewBuilder
+    private var detailColumn: some View {
+        if let save = appModel.selectedSavedLink {
+            SavedLinkDetailView(save: save)
+        } else if let entry = appModel.selectedEntry {
+            EntryDetailView(entry: entry)
+        } else {
+            ContentUnavailableView("Select an Item", systemImage: "doc.text", description: Text("Choose an article or saved link to preview."))
         }
     }
 
-    private func loadDiscovery() async {
-        guard let did = session?.did else { return }
-        do {
-            publications = try await pdsClient?.discoveredPublications(for: did) ?? []
-        } catch {
-            self.error = error
-        }
-    }
-
-    private func loadEntries(for pub: PublicationModel) async {
-        do {
-            entries = try await pdsClient?.entries(for: pub.publicationId) ?? []
-        } catch {
-            self.error = error
+    private func handleSidebarSelection(_ selection: SidebarSelection?) async {
+        guard let selection else { return }
+        switch selection {
+        case .publication(let id):
+            if let publication = appModel.publications.first(where: { $0.publicationId == id }) {
+                await appModel.selectPublication(publication)
+            }
+        default:
+            appModel.selectedEntry = nil
+            appModel.selectedSavedLink = nil
         }
     }
 }
