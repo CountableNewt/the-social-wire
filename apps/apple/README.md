@@ -1,12 +1,10 @@
-# The Social Wire — Apple
+# The Social Wire iOS
 
-SwiftUI client for The Social Wire, targeting iOS 17+ (iPhone + iPad).
+Native SwiftUI client for The Social Wire.
 
-## Prerequisites
+## Development
 
-- Xcode 16+ (Swift 6.1)
-- iOS 17+ deployment target
-- An ATProto account (Bluesky or any PDS)
+Generate the Xcode project:
 
 ## Project Structure
 
@@ -48,21 +46,11 @@ Source of truth: [`SocialWire/Services/ATProtoOAuthService.swift`](SocialWire/Se
 
 ### Required URL Scheme
 
-Add `thesocialwire` as a URL scheme in `Info.plist`:
-
-```xml
-<key>CFBundleURLTypes</key>
-<array>
-  <dict>
-    <key>CFBundleURLSchemes</key>
-    <array>
-      <string>thesocialwire</string>
-    </array>
-  </dict>
-</array>
+```sh
+xcodebuild test -scheme SocialWire -destination 'platform=iOS Simulator,id=<Simulator-UUID>'
 ```
 
-### Environment Variables (via Xcode scheme)
+## OAuth client metadata (production vs preview)
 
 | Variable | Description |
 |----------|-------------|
@@ -70,36 +58,16 @@ Add `thesocialwire` as a URL scheme in `Info.plist`:
 | `ATPROTO_CLIENT_ID` | Discoverable OAuth **`client_id`** URL used as `client_id` in authorize/token requests (code fallback: `https://thesocialwire.com/client-metadata.json`). Prefer aligning with hosted prod (`https://thesocialwire.app/client-metadata.json`, same origin as [`client-metadata.json`](../../apps/web/public/client-metadata.json)) or whichever **`ios-client-metadata.json`** / tunnel metadata URL your deployment publishes — mismatched `client_id`/redirect URIs break OAuth. |
 | `ATPROTO_APPVIEW_PUBLIC` | Optional Bluesky App View base for handle resolution (default `https://public.api.bsky.app`). |
 
-## Keychain Entitlement
+Until that file is live on production, you can:
 
-The app stores the ATProto refresh token in the Keychain.
-Ensure the `Keychain Sharing` entitlement is configured in Xcode
-(even without a shared access group — required for Keychain access on device).
+**A. Next.js / Vercel** — Deploy **`apps/web`** to a **Vercel preview** (or staging host) so `ios-client-metadata.json` is reachable over HTTPS, then follow the steps below using that URL.
 
-## Running Tests
+**B. Swift API (local + tunnel)** — Run [`services/api`](../../services/api/README.md) (`APP_ENV=local swift run App`). Expose it with **ngrok** (or similar), set `OAUTH_PUBLIC_ORIGIN` to the tunnel URL if needed, then use `https://<tunnel>/ios-client-metadata.json` as `ATProtoOAuthClientID`.
 
-```
-cd apps/apple && xcodegen generate
-Cmd+U in Xcode
-```
+Then:
 
-Tests use the **Swift Testing** framework (`@Test`, `#expect`, `#require`).
+1. Ensure **client metadata** matches that URL: for Vercel/Next, edit the deployed JSON; for Swift API, `GET /ios-client-metadata.json` already returns a consistent `client_id` + `redirect_uris` for the resolved public origin.
+2. In the iOS target **Info** plist, add **`ATProtoOAuthClientID`** (string) with that same metadata URL.
+3. Under **URL Types**, add the matching **URL Scheme** (reversed host labels, e.g. `app.vercel.my-app`) so the OAuth callback can open the app.
 
-## Architecture
-
-- `ATProtoOAuthService` — `@MainActor ObservableObject` that owns the `AuthSession`. All OAuth state transitions (sign-in, callback, refresh, sign-out) go through this service.
-- `PDSClient` — `actor` for authenticated user PDS records plus public ATProto discovery/content reads.
-- `MainViewModel` — `@MainActor ObservableObject` that coordinates the three-column split view.
-
-### Data Flow
-
-```
-ATProtoOAuthService
-  └─ AuthSession { did, pdsURL, accessToken, refreshToken }
-       └─ PDSClient
-            ├─ User PDS → com.thesocialwire.folder + com.thesocialwire.publicationPrefs
-            └─ Public ATProto XRPC → follows + site.standard.entry records
-```
-
-User organisation data (folders, publication prefs) is stored on the user's own PDS.
-Discovery and content reads go directly to ATProto XRPC endpoints.
+With no plist override, the app falls back to `https://thesocialwire.app/ios-client-metadata.json` and scheme `app.thesocialwire`.
