@@ -1,42 +1,5 @@
 import Foundation
 
-struct GatewayHTTPResult: Sendable {
-    let statusCode: Int
-    let etagHeader: String?
-    let body: Data
-}
-
-/// JSON bundle returned by **`GET /v1/sync/preferences`** (`PreferenceSyncService.finalizePreferences`).
-struct SyncPreferencesEnvelope: Codable, Sendable {
-    let etag: String?
-    let revision: String?
-    let cid: String?
-    let cachedAt: String?
-    let record: PreferencesRecord?
-}
-
-struct AppViewEntryListResponse: Codable, Sendable {
-    let entries: [EntryListItem]
-    let cursor: String?
-}
-
-struct AppViewEnrollResponse: Codable, Sendable {
-    let indexed: Int
-}
-
-private struct AppViewReadMarkBody: Encodable, Sendable {
-    let subjectUri: String
-    let readAt: String
-}
-
-private struct AppViewReadMarkDeleteBody: Encodable, Sendable {
-    let subjectUri: String
-}
-
-private struct AppViewEnrollBody: Encodable, Sendable {
-    let authorDids: [String]
-}
-
 /// Authenticated calls to **`SocialWireAPIEnvironment.baseURL`** (DPoP + access JWT), mirroring PDS **`XRPCClient`** semantics.
 @MainActor
 final class SocialWireGatewayClient {
@@ -56,14 +19,6 @@ final class SocialWireGatewayClient {
 
     func fetchSyncPreferences(ifNoneMatch: String?) async throws -> GatewayHTTPResult {
         try await authorizedGET(path: "/v1/sync/preferences", query: [:], ifNoneMatch: ifNoneMatch)
-    }
-
-    func fetchCachedPdsRecord(collection: String, rkey: String, ifNoneMatch: String?) async throws -> GatewayHTTPResult {
-        try await authorizedGET(
-            path: "/v1/pds/cache/record",
-            query: ["collection": collection, "rkey": rkey],
-            ifNoneMatch: ifNoneMatch
-        )
     }
 
     func fetchCachedPdsRecord(collection: String, rkey: String, ifNoneMatch: String?) async throws -> GatewayHTTPResult {

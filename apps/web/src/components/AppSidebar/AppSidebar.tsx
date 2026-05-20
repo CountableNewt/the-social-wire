@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubItem,
   SidebarResizeHandle,
   SIDEBAR_GLASS_ICON,
-  SIDEBAR_GLASS_SEGMENTED,
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { FolderBranch } from "./FolderBranch";
@@ -34,25 +32,21 @@ import { useSidebarUnreadCounts } from "@/hooks/useSidebarUnreadCounts";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
 import { useReadSidebarScopeOptional } from "@/contexts/ReadSidebarScopeContext";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
-import {
-  rkeyFromURI,
-  type FolderRecord,
-  type PublicationPrefsRecord,
-  type RepoRecord,
-} from "@/lib/pdsClient";
+import { rkeyFromURI } from "@/lib/pdsClient";
 import { type DiscoveredPublication, viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
 import { sumUnreadForPublications } from "@/lib/unreadCounts";
 import { cn } from "@/lib/utils";
-import {
-  PublicationSubItem,
-  type PublicationSidebarTab,
-} from "./PublicationSubItem";
 import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
-
-type PublicationTab = "subscribed" | "following";
-
-const SIDEBAR_SEC_FOLDERS = "__sidebar_sec:folders";
-const SIDEBAR_SEC_PUBLICATIONS = "__sidebar_sec:publications";
+import {
+  SIDEBAR_SEC_FOLDERS,
+  SIDEBAR_SEC_PUBLICATIONS,
+  type PublicationTab,
+} from "./appSidebarConstants";
+import { AppSidebarSkeleton } from "./AppSidebarSkeleton";
+import { CollapsibleSidebarSubSection } from "./CollapsibleSidebarSubSection";
+import { PublicationMenuSubEntries } from "./PublicationMenuSubEntries";
+import { PublicationTabs } from "./PublicationTabs";
+import { UnreadSidebarBadge } from "./UnreadSidebarBadge";
 
 interface AppSidebarProps {
   selectedPubId: string | null;
@@ -308,7 +302,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
           <SidebarGroup className="px-2 pb-2 pt-4">
             <SidebarMenu className="gap-4">
               {sidebarListsLoading ? (
-                <SidebarSkeleton count={5} />
+                <AppSidebarSkeleton count={5} />
               ) : publicationTab === "subscribed" ? (
                 <>
                   <SidebarMenuItem>
@@ -497,192 +491,5 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
       </SidebarFooter>
       <SidebarResizeHandle />
     </Sidebar>
-  );
-}
-
-function UnreadSidebarBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  const label = String(count);
-  return (
-    <SidebarMenuBadge aria-label={`${label} unread`}>{label}</SidebarMenuBadge>
-  );
-}
-
-function PublicationTabs({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: PublicationTab;
-  onTabChange: (tab: PublicationTab) => void;
-}) {
-  return (
-    <SidebarMenuItem>
-      <div
-        className={cn(SIDEBAR_GLASS_SEGMENTED)}
-        role="tablist"
-        aria-label="Publication Source"
-      >
-        <PublicationTabButton
-          active={activeTab === "subscribed"}
-          onClick={() => onTabChange("subscribed")}
-        >
-          Subscribed
-        </PublicationTabButton>
-        <PublicationTabButton
-          active={activeTab === "following"}
-          onClick={() => onTabChange("following")}
-        >
-          Following
-        </PublicationTabButton>
-      </div>
-    </SidebarMenuItem>
-  );
-}
-
-function PublicationTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "flex h-8 min-h-8 min-w-0 items-center justify-center rounded-lg px-3 py-0 text-center text-xs font-medium transition-[background-color,border-color,box-shadow,color] backdrop-blur-sm hover:[box-shadow:var(--purple-glow-hover)] active:[box-shadow:var(--purple-glow-selected)]",
-        active
-          ? "border-sidebar-border/80 bg-sidebar font-semibold text-sidebar-foreground shadow-inner dark:border-sidebar-border dark:bg-sidebar-accent/90 dark:text-sidebar-accent-foreground"
-          : "border border-transparent bg-transparent text-muted-foreground hover:border-sidebar-border/55 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground dark:hover:bg-sidebar-accent/38"
-      )}
-    >
-      <span className="block truncate">{children}</span>
-    </button>
-  );
-}
-
-function CollapsibleSidebarSubSection({
-  title,
-  unreadCount = 0,
-  expanded,
-  onToggle,
-  subAriaLabel,
-  readBulkPublications,
-  readBulkMarkAllReadConfirmation,
-  children,
-}: {
-  title: string;
-  unreadCount?: number;
-  expanded: boolean;
-  onToggle: () => void;
-  subAriaLabel: string;
-  readBulkPublications?: DiscoveredPublication[];
-  /** Required when `readBulkPublications` is provided */
-  readBulkMarkAllReadConfirmation?: ReactNode;
-  children: ReactNode;
-}) {
-  const subId = `sidebar-collapsible-sub-${useId().replace(/:/g, "")}`;
-
-  const toggleButton = (
-    <SidebarMenuButton
-      type="button"
-      onClick={onToggle}
-      aria-expanded={expanded}
-      aria-controls={subId}
-      className={cn("gap-2", unreadCount > 0 && "relative pr-8")}
-    >
-      <ChevronRight
-        className={cn(
-          "size-4 shrink-0 transition-transform",
-          expanded && "rotate-90"
-        )}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
-        {title}
-      </span>
-      <UnreadSidebarBadge count={unreadCount} />
-    </SidebarMenuButton>
-  );
-
-  return (
-    <SidebarMenuItem>
-      {readBulkPublications !== undefined &&
-      readBulkMarkAllReadConfirmation !== undefined ? (
-        <SidebarReadBulkMenuWrap
-          publications={readBulkPublications}
-          markAllReadConfirmation={readBulkMarkAllReadConfirmation}
-        >
-          {toggleButton}
-        </SidebarReadBulkMenuWrap>
-      ) : (
-        toggleButton
-      )}
-      {expanded ? (
-        <SidebarMenuSub
-          id={subId}
-          aria-label={subAriaLabel}
-          className="mt-1.5"
-        >
-          {children}
-        </SidebarMenuSub>
-      ) : null}
-    </SidebarMenuItem>
-  );
-}
-
-function PublicationMenuSubEntries({
-  publications,
-  publicationUnreadCounts,
-  selectedPubId,
-  onSelectPub,
-  folders,
-  prefsMap,
-  sidebarTab,
-}: {
-  publications: DiscoveredPublication[];
-  publicationUnreadCounts: Map<string, number>;
-  selectedPubId: string | null;
-  onSelectPub: (pubId: string) => void;
-  folders: RepoRecord<FolderRecord>[];
-  prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
-  sidebarTab: PublicationSidebarTab;
-}) {
-  if (publications.length === 0) {
-    return null;
-  }
-
-  return (
-    <>
-      {publications.map((pub) => (
-        <PublicationSubItem
-          key={pub.publicationId}
-          publication={pub}
-          unreadCount={publicationUnreadCounts.get(pub.publicationId) ?? 0}
-          isSelected={selectedPubId === pub.publicationId}
-          onSelect={onSelectPub}
-          folders={folders}
-          prefsMap={prefsMap}
-          sidebarTab={sidebarTab}
-        />
-      ))}
-    </>
-  );
-}
-
-function SidebarSkeleton({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }).map((_, i) => (
-        <SidebarMenuItem key={i}>
-          <Skeleton className="h-9 w-full rounded-lg" />
-        </SidebarMenuItem>
-      ))}
-    </>
   );
 }

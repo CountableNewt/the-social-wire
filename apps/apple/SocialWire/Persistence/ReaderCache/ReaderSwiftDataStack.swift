@@ -1,48 +1,6 @@
 import Foundation
 import SwiftData
 
-@Model
-final class PersistedGatewayResponse {
-    @Attribute(.unique) var cacheKey: String
-    var etagValue: String?
-    var body: Data?
-    var cachedAt: Date
-
-    init(cacheKey: String, etagValue: String?, body: Data?, cachedAt: Date = Date()) {
-        self.cacheKey = cacheKey
-        self.etagValue = etagValue
-        self.body = body
-        self.cachedAt = cachedAt
-    }
-}
-
-/// Cached entry-list slice for stale-while-revalidate (bounded eviction at coordinator level).
-@Model
-final class PersistedPublicationEntries {
-    @Attribute(.unique) var publicationId: String
-    var entriesPayload: Data
-    var cachedAt: Date
-
-    init(publicationId: String, entriesPayload: Data, cachedAt: Date = Date()) {
-        self.publicationId = publicationId
-        self.entriesPayload = entriesPayload
-        self.cachedAt = cachedAt
-    }
-}
-
-@Model
-final class PersistedEntryDetail {
-    @Attribute(.unique) var entryId: String
-    var detailPayload: Data
-    var cachedAt: Date
-
-    init(entryId: String, detailPayload: Data, cachedAt: Date = Date()) {
-        self.entryId = entryId
-        self.detailPayload = detailPayload
-        self.cachedAt = cachedAt
-    }
-}
-
 enum ReaderSwiftDataStack {
     static func makeReaderContainer() throws -> ModelContainer {
         let schema = Schema([
