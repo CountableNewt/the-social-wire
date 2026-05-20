@@ -17,7 +17,7 @@ const pub: DiscoveredPublication = {
 describe("usePublicationSidebarData helpers", () => {
   it("subscription keys intersect discovered publication keys", () => {
     const keys = new Set<string>();
-    addPublicationSubscriptionLookupKeys(keys, "did:plc:author");
+    addPublicationSubscriptionLookupKeys(keys, pub.publicationId);
     const matchKeys = publicationSubscriptionMatchKeys(pub);
     expect(matchKeys.some((k) => keys.has(k))).toBe(true);
   });

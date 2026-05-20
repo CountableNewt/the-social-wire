@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   environmentBannerHeight,
   getAppEnv,
+  isDevDebugUiEnabled,
   normalizeAppEnv,
   shouldShowEnvironmentBanner,
 } from "@/lib/appEnv";
@@ -57,5 +58,12 @@ describe("environment banner", () => {
     expect(shouldShowEnvironmentBanner("prod")).toBe(false);
     expect(environmentBannerHeight("prod")).toBe("0px");
     expect(environmentBannerHeight("dev")).toBe("32px");
+  });
+
+  it("enables debug UI on dev and local only", () => {
+    env.NEXT_PUBLIC_APP_ENV = "dev";
+    expect(isDevDebugUiEnabled()).toBe(true);
+    env.NEXT_PUBLIC_APP_ENV = "prod";
+    expect(isDevDebugUiEnabled()).toBe(false);
   });
 });

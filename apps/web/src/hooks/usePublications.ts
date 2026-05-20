@@ -1,13 +1,17 @@
 "use client";
 
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { usePDSClient } from "./usePDSClient";
 import { useAuth } from "./useAuth";
 import {
   discoverPublications,
+  discoveredPublicationFromAtUri,
   normalizeAtRepoParam,
   parseAtUri,
+  PUBLICATION_RECORD_COLLECTIONS,
+  publicationRepoDid,
   type DiscoveredPublication,
 } from "@/lib/atprotoClient";
 import {
@@ -43,7 +47,7 @@ export const SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY = [
   "skyreaderFeedSubscriptions",
 ] as const;
 export const DISCOVERY_QUERY_KEY = (did: string) =>
-  ["discovery", "publication-icons-v1", did] as const;
+  ["discovery", "publications-v2", did] as const;
 
 // ── Publication prefs ─────────────────────────────────────────────────────────
 
@@ -148,6 +152,57 @@ export function skyreaderSubscriptionsToDiscoveredPublications(
   }
 
   return out;
+}
+
+/** Sidebar rows for graph subscriptions not already present in discovery/RSS rows. */
+export function useGraphSubscriptionPublications(
+  subscriptions: RepoRecord<{ publication?: string }>[],
+  existingRows: DiscoveredPublication[]
+) {
+  const { getOAuthSession } = useAuth();
+
+  const existingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of existingRows) {
+      for (const key of publicationSubscriptionMatchKeys(row)) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }, [existingRows]);
+
+  const orphanPublicationUris = useMemo(() => {
+    const uris = new Set<string>();
+    for (const row of subscriptions) {
+      const raw = row.value.publication?.trim();
+      if (!raw) continue;
+      const normalized = normalizeAtRepoParam(raw);
+      const parsed = parseAtUri(normalized);
+      if (!parsed || !PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+        continue;
+      }
+      const lookup = new Set<string>();
+      addPublicationSubscriptionLookupKeys(lookup, normalized);
+      if ([...lookup].some((key) => existingKeys.has(key))) continue;
+      uris.add(normalized);
+    }
+    return [...uris].sort();
+  }, [subscriptions, existingKeys]);
+
+  return useQuery({
+    queryKey: ["graphSubscriptionPublications", orphanPublicationUris],
+    queryFn: async (): Promise<DiscoveredPublication[]> => {
+      const oauthSession = getOAuthSession();
+      const rows = await Promise.all(
+        orphanPublicationUris.map((uri) =>
+          discoveredPublicationFromAtUri(uri, oauthSession ?? undefined)
+        )
+      );
+      return rows.filter((row): row is DiscoveredPublication => row !== null);
+    },
+    enabled: orphanPublicationUris.length > 0,
+    staleTime: 30_000,
+  });
 }
 
 /** Fire-and-forget enrollment of followed author DIDs into the thin AppView index. */
@@ -449,7 +504,7 @@ export function useRefreshSkyreaderSubscriptionIcon() {
 export function useAddPublicationFromAnyLink() {
   const client = usePDSClient();
   const qc = useQueryClient();
-  const { session } = useAuth();
+  const { session, getOAuthSession } = useAuth();
   const did = session?.did ?? null;
 
   return useMutation({
@@ -481,6 +536,7 @@ export function useAddPublicationFromAnyLink() {
         return {
           kind: "standard-site" as const,
           navigatePubId: json.publicationAtUri,
+          authorDid: publicationRepoDid(json.publicationAtUri),
         };
       }
 
@@ -519,10 +575,27 @@ export function useAddPublicationFromAnyLink() {
         typeof json.error === "string" ? json.error : "Unexpected resolver response."
       );
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: PUBLICATION_SUBSCRIPTIONS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["graphSubscriptionPublications"] });
       if (did) qc.invalidateQueries({ queryKey: DISCOVERY_QUERY_KEY(did) });
+      const oauthSession = getOAuthSession();
+      if (
+        result?.kind === "standard-site" &&
+        typeof result.authorDid === "string" &&
+        oauthSession
+      ) {
+        maybeEnrollDiscoveryAuthors(oauthSession, [
+          {
+            publicationId: result.navigatePubId,
+            authorDid: result.authorDid,
+            authorHandle: result.authorDid,
+            title: "",
+            discoveredAt: new Date().toISOString(),
+          },
+        ]);
+      }
     },
   });
 }

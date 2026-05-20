@@ -317,6 +317,24 @@ describe("entryRecordMatchesPublication", () => {
       )
     ).toBe(false);
   });
+
+  it("matches publicationUri field used by some standard.site publishers", () => {
+    expect(
+      entryRecordMatchesPublication(
+        {
+          publicationUri: pub,
+          title: "Offprint post",
+        },
+        pub
+      )
+    ).toBe(true);
+  });
+
+  it("matches publication field alias", () => {
+    expect(
+      entryRecordMatchesPublication({ publication: pub }, pub)
+    ).toBe(true);
+  });
 });
 
 describe("decodeListEntriesPageCursor", () => {

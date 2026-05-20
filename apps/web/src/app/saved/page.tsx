@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Archive, ChevronLeft, ExternalLink, Settings, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/hooks/useLatrSaved";
 import { useConfiguredReadLaterService } from "@/hooks/useReadLaterPreferences";
 import { READ_LATER_SERVICES } from "@/lib/readLaterServices";
+import { recordKindFromLatrSave } from "@/lib/recordKindDebug";
 import { cn } from "@/lib/utils";
 import type { MergedLatrSave } from "@/lib/pdsClient";
 
@@ -201,6 +203,10 @@ export default function SavedPage() {
                 <p className="mt-1 truncate text-[11px] text-muted-foreground">
                   {rowSubtitle(row)}
                 </p>
+                <DevRecordKindBadge
+                  info={recordKindFromLatrSave(row)}
+                  className="mt-1"
+                />
               </div>
             </button>
           );
@@ -266,6 +272,10 @@ export default function SavedPage() {
                       ? hostnamePreview(selectedUrl)
                       : selectedRow.subjectUri}
                   </p>
+                  <DevRecordKindBadge
+                    info={recordKindFromLatrSave(selectedRow)}
+                    className="mt-1"
+                  />
                 </div>
               </div>
               <div className="flex w-full shrink-0 items-center justify-end gap-2 px-2 pb-2 md:w-auto md:px-0 md:pb-0">

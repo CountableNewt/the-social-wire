@@ -47,6 +47,8 @@ import {
 import { useCachedBulkReadActions } from "@/hooks/useCachedBulkReadActions";
 import { standardSiteSubscriptionTargetFromDiscovery } from "@/lib/publicationSubscriptionMatch";
 import { isRssPublicationId } from "@/lib/rssFeedCore";
+import { recordKindFromPublication } from "@/lib/recordKindDebug";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { cn } from "@/lib/utils";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
 
@@ -182,6 +184,11 @@ export function PublicationSubItem({
     return match ? `In "${match.value.name}"` : "Move To Folder";
   }, [currentFolderId, folders]);
 
+  const recordKind = useMemo(
+    () => recordKindFromPublication(publication),
+    [publication]
+  );
+
   return (
     <SidebarMenuSubItem>
       <ContextMenu onOpenChange={handleOpenChange}>
@@ -197,7 +204,10 @@ export function PublicationSubItem({
             )}
           >
             <PublicationLeadingAvatar publication={publication} />
-            <span className="min-w-0 flex-1 truncate">{publication.title}</span>
+            <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+              <span className="w-full truncate">{publication.title}</span>
+              <DevRecordKindBadge info={recordKind} />
+            </span>
             {unreadCount > 0 ? (
               <SidebarMenuBadge
                 className="top-1/2 -translate-y-1/2"

@@ -34,3 +34,8 @@ export function shouldShowEnvironmentBanner(appEnv: AppEnv): boolean {
 export function environmentBannerHeight(appEnv: AppEnv): string {
   return shouldShowEnvironmentBanner(appEnv) ? "32px" : "0px";
 }
+
+/** Non-production UI affordances (record-kind badges, extra debug chrome). */
+export function isDevDebugUiEnabled(): boolean {
+  return shouldShowEnvironmentBanner(getAppEnv());
+}

@@ -43,7 +43,6 @@ export function addPublicationSubscriptionLookupKeys(
   if (!parsed) return;
 
   keys.add(normalized);
-  keys.add(parsed.did);
   if (parsed.collection === "site.standard.publication") {
     keys.add(`at://${parsed.did}/com.standard.publication/${parsed.rkey}`);
   } else if (parsed.collection === "com.standard.publication") {

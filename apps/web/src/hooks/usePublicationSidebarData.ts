@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFolders } from "@/hooks/useFolders";
 import {
   useDiscovery,
+  useGraphSubscriptionPublications,
   usePublicationPrefs,
   usePublicationSubscriptions,
   useRefreshDiscovery,
@@ -30,7 +31,8 @@ export function usePublicationSidebarData() {
     usePublicationSubscriptions();
   const { data: skyreaderRecords = [], isLoading: skyreaderSubsLoading } =
     useSkyreaderFeedSubscriptions();
-  const subscriptionsBlockLoading = subscriptionsLoading || skyreaderSubsLoading;
+  const subscriptionsBlockLoading =
+    subscriptionsLoading || skyreaderSubsLoading || graphSubsLoading;
   const refresh = useRefreshDiscovery();
 
   const prefsMap = useMemo(
@@ -42,16 +44,25 @@ export function usePublicationSidebarData() {
   );
 
   /** Discovery rows (Subscriptions / Following segmentation does not hide entire publications). */
-  const visiblePubs = useMemo(() => publications, [publications]);
+  const visiblePubs = useMemo(
+    () => [...publications, ...graphSubscriptionRows],
+    [publications, graphSubscriptionRows]
+  );
 
   const rssPublicationRows = useMemo(
     () => skyreaderSubscriptionsToDiscoveredPublications(skyreaderRecords),
     [skyreaderRecords]
   );
 
+  const { data: graphSubscriptionRows = [], isLoading: graphSubsLoading } =
+    useGraphSubscriptionPublications(subscriptions, [
+      ...publications,
+      ...rssPublicationRows,
+    ]);
+
   const allPublicationRows = useMemo(
-    () => [...publications, ...rssPublicationRows],
-    [publications, rssPublicationRows]
+    () => [...publications, ...rssPublicationRows, ...graphSubscriptionRows],
+    [publications, rssPublicationRows, graphSubscriptionRows]
   );
 
   const rssPublicationRowsVisible = useMemo(() => rssPublicationRows, [rssPublicationRows]);
@@ -110,8 +121,14 @@ export function usePublicationSidebarData() {
         ids.add(r.publicationId);
       }
     }
+    for (const r of graphSubscriptionRows) {
+      if (!ids.has(r.publicationId)) {
+        merged.push(r);
+        ids.add(r.publicationId);
+      }
+    }
     return merged;
-  }, [graphSubscribedPubs, rssPublicationRowsVisible]);
+  }, [graphSubscribedPubs, rssPublicationRowsVisible, graphSubscriptionRows]);
 
   const { folderMap, myPublications, unfolderedPubs } = useMemo(() => {
     const folderMapInner = new Map<string, typeof subscribedPubs>();

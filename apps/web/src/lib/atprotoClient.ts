@@ -1176,6 +1176,41 @@ export async function discoverOwnPublications(
 }
 
 /**
+ * Hydrates a sidebar row from a publication AT-URI (e.g. manual graph subscription
+ * on an author the viewer does not follow).
+ */
+export async function discoveredPublicationFromAtUri(
+  publicationAtUri: string,
+  oauthSession?: OAuthSession
+): Promise<DiscoveredPublication | null> {
+  const normalized = normalizeAtRepoParam(publicationAtUri.trim());
+  const parsed = parseAtUri(normalized);
+  if (!parsed || !PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+    return null;
+  }
+
+  const value = await getRecordOnAuthorRepo(
+    parsed.did,
+    parsed.collection,
+    parsed.rkey,
+    oauthSession
+  );
+  if (!value || typeof value !== "object") return null;
+
+  const recordValue = value as Record<string, unknown>;
+  const discoveredAt = new Date().toISOString();
+  return {
+    publicationId: normalized,
+    subscriptionPublicationId: normalized,
+    authorDid: parsed.did,
+    authorHandle: parsed.did,
+    title: publicationTitleFromRecord(parsed.collection, recordValue, parsed.rkey),
+    iconUrl: await publicationIconUrlFromRecord(normalized, recordValue),
+    discoveredAt,
+  };
+}
+
+/**
  * Discovers followed authors with standard.site-related records.
  *
  * Follow subjects come from:
@@ -1255,44 +1290,52 @@ export async function discoverPublications(
   }
 
   /** Stable follow order while probes finish out-of-order (parallel batches). */
-  const foundByDid = new Map<string, DiscoveredPublication>();
+  const foundByDid = new Map<string, DiscoveredPublication[]>();
   let viewerPublications: DiscoveredPublication[] = [];
 
   const discoveredAt = new Date().toISOString();
 
-  async function probeFollow(
+  async function probeAuthorPublications(
     follow: FollowProfile
-  ): Promise<DiscoveredPublication | null> {
+  ): Promise<DiscoveredPublication[]> {
     const sidebarLabel =
       follow.displayName?.trim() || follow.handle || follow.did;
+    const seen = new Set<string>();
+    const pubs: DiscoveredPublication[] = [];
 
     for (const collection of DISCOVERY_PUBLICATION_COLLECTIONS) {
-      const { records: rows } = await listRecordsOnAuthorRepo(
-        follow.did,
-        collection,
-        { limit: 1, reverse: false },
-        session
-      );
-      if (rows.length === 0) continue;
-
-      const firstVal = rows[0]!.value as Record<string, unknown>;
-      const title = publicationTitleFromRecord(
-        collection,
-        firstVal,
-        sidebarLabel
-      );
-
-      return {
-        publicationId: follow.did,
-        subscriptionPublicationId: rows[0]!.uri,
-        authorDid: follow.did,
-        authorHandle: follow.handle,
-        title,
-        iconUrl: await publicationIconUrlFromRecord(rows[0]!.uri, firstVal),
-        avatarUrl: follow.avatar,
-        discoveredAt,
-      };
+      let cursor: string | undefined;
+      do {
+        const { records: rows, cursor: next } = await listRecordsOnAuthorRepo(
+          follow.did,
+          collection,
+          {
+            limit: OWN_PUBLICATIONS_PAGE_LIMIT,
+            cursor,
+            reverse: false,
+          },
+          session
+        );
+        for (const row of rows) {
+          if (seen.has(row.uri)) continue;
+          seen.add(row.uri);
+          const val = row.value as Record<string, unknown>;
+          pubs.push({
+            publicationId: row.uri,
+            subscriptionPublicationId: row.uri,
+            authorDid: follow.did,
+            authorHandle: follow.handle,
+            title: publicationTitleFromRecord(collection, val, sidebarLabel),
+            iconUrl: await publicationIconUrlFromRecord(row.uri, val),
+            avatarUrl: follow.avatar,
+            discoveredAt,
+          });
+        }
+        cursor = next;
+      } while (cursor);
     }
+
+    if (pubs.length > 0) return pubs;
 
     for (const collection of DISCOVERY_CONTENT_COLLECTIONS) {
       const { records: rows } = await listRecordsOnAuthorRepo(
@@ -1303,17 +1346,19 @@ export async function discoverPublications(
       );
       if (rows.length === 0) continue;
 
-      return {
-        publicationId: follow.did,
-        authorDid: follow.did,
-        authorHandle: follow.handle,
-        title: sidebarLabel,
-        avatarUrl: follow.avatar,
-        discoveredAt,
-      };
+      return [
+        {
+          publicationId: follow.did,
+          authorDid: follow.did,
+          authorHandle: follow.handle,
+          title: sidebarLabel,
+          avatarUrl: follow.avatar,
+          discoveredAt,
+        },
+      ];
     }
 
-    return null;
+    return [];
   }
 
   async function hydrateViewerPublications(): Promise<void> {
@@ -1333,8 +1378,8 @@ export async function discoverPublications(
       }));
       return;
     }
-    const fallback = await probeFollow(viewer);
-    viewerPublications = fallback ? [fallback] : [];
+    const fallback = await probeAuthorPublications(viewer);
+    viewerPublications = fallback;
   }
 
   function snapshotOrdered(): DiscoveredPublication[] {
@@ -1343,8 +1388,8 @@ export async function discoverPublications(
       if (f.did === userDid) {
         for (const p of viewerPublications) list.push(p);
       } else {
-        const pub = foundByDid.get(f.did);
-        if (pub) list.push(pub);
+        const pubs = foundByDid.get(f.did);
+        if (pubs) list.push(...pubs);
       }
     }
     return list;
@@ -1365,9 +1410,9 @@ export async function discoverPublications(
     await Promise.allSettled(
       batch.map(async (follow) => {
         if (follow.did === userDid) return;
-        const pub = await probeFollow(follow);
-        if (pub) {
-          foundByDid.set(follow.did, pub);
+        const pubs = await probeAuthorPublications(follow);
+        if (pubs.length > 0) {
+          foundByDid.set(follow.did, pubs);
           onProgress?.(snapshotOrdered());
         }
       })
@@ -1453,6 +1498,25 @@ function publicationFilterEquivalenceKeys(publicationAtUri: string): Set<string>
   return keys;
 }
 
+/** Extracts a publication AT-URI reference from an entry/document record. */
+function publicationRefFromEntryRecord(
+  recordValue: Record<string, unknown>
+): string | null {
+  for (const key of ["site", "publication", "publicationUri", "publicationId"]) {
+    const val = recordValue[key];
+    if (typeof val === "string") {
+      const got = canonicalPublicationAtUriKey(val);
+      if (got) return got;
+    }
+    const ref = parseStrongRef(val);
+    if (ref?.uri) {
+      const got = canonicalPublicationAtUriKey(ref.uri);
+      if (got) return got;
+    }
+  }
+  return null;
+}
+
 export function entryRecordMatchesPublication(
   recordValue: unknown,
   publicationAtUri: string
@@ -1460,15 +1524,10 @@ export function entryRecordMatchesPublication(
   if (!recordValue || typeof recordValue !== "object") return false;
   const wantKeys = publicationFilterEquivalenceKeys(publicationAtUri);
   if (wantKeys.size === 0) return false;
-  const site = (recordValue as Record<string, unknown>).site;
-  if (typeof site === "string") {
-    const got = canonicalPublicationAtUriKey(site);
-    return got !== null && wantKeys.has(got);
-  }
-  const ref = parseStrongRef(site);
-  if (!ref?.uri) return false;
-  const got = canonicalPublicationAtUriKey(ref.uri);
-  return got !== null && wantKeys.has(got);
+  const gotKey = publicationRefFromEntryRecord(
+    recordValue as Record<string, unknown>
+  );
+  return gotKey !== null && wantKeys.has(gotKey);
 }
 
 async function listEntriesForPublicationScope(

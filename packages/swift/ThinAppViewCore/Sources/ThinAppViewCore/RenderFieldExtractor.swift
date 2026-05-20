@@ -32,11 +32,13 @@ public enum RenderFieldExtractor {
   }
 
   public static func publicationSiteField(from record: [String: Any]) -> String? {
-    if let site = string(record["site"]) {
-      return site
-    }
-    if let ref = record["site"] as? [String: Any], let uri = string(ref["uri"]) {
-      return uri
+    for key in ["site", "publication", "publicationUri", "publicationId"] {
+      if let site = string(record[key]) {
+        return site
+      }
+      if let ref = record[key] as? [String: Any], let uri = string(ref["uri"]) {
+        return uri
+      }
     }
     return nil
   }

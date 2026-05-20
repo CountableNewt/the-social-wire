@@ -30,6 +30,22 @@ struct RenderFieldExtractorTests {
       )
     )
   }
+
+  @Test("reads publicationUri from document records")
+  func publicationUriField() {
+    let pub = "at://did:plc:abc/site.standard.publication/offprint"
+    let record: [String: Any] = [
+      "publicationUri": pub,
+      "title": "Post",
+    ]
+    #expect(RenderFieldExtractor.publicationSiteField(from: record) == pub)
+    #expect(
+      RenderFieldExtractor.matchesPublication(
+        siteField: RenderFieldExtractor.publicationSiteField(from: record),
+        publicationAtUri: pub
+      )
+    )
+  }
 }
 
 @Suite("SQLiteThinAppViewStore")

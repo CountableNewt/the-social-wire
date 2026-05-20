@@ -59,9 +59,31 @@ describe("publicationSubscriptionMatch", () => {
       keys,
       "at://did:plc:author/site.standard.publication/key1"
     );
-    expect(keys.has("did:plc:author")).toBe(true);
+    expect(keys.has("did:plc:author")).toBe(false);
     expect(keys.has("at://did:plc:author/com.standard.publication/key1")).toBe(
       true
     );
+  });
+
+  it("does not cross-match two publications by the same author", () => {
+    const pubA = makePublication(
+      "at://did:plc:author/site.standard.publication/a",
+      "did:plc:author"
+    );
+    const pubB = makePublication(
+      "at://did:plc:author/site.standard.publication/b",
+      "did:plc:author"
+    );
+    const subKeys = new Set<string>();
+    addPublicationSubscriptionLookupKeys(
+      subKeys,
+      "at://did:plc:author/site.standard.publication/b"
+    );
+    expect(
+      publicationSubscriptionMatchKeys(pubA).some((k) => subKeys.has(k))
+    ).toBe(false);
+    expect(
+      publicationSubscriptionMatchKeys(pubB).some((k) => subKeys.has(k))
+    ).toBe(true);
   });
 });

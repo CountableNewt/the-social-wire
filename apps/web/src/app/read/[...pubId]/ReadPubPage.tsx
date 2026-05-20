@@ -4,12 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import { EntryDetail } from "@/components/EntryDetail/EntryDetail";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { Button } from "@/components/ui/button";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
+import { recordKindFromPubId } from "@/lib/recordKindDebug";
 import { cn } from "@/lib/utils";
 
 export default function ReadPubPage({ pubId }: { pubId: string }) {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const publicationKind = recordKindFromPubId(pubId);
   const {
     markEntryRead,
     markEntryUnread,
@@ -77,9 +80,12 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
         )}
       >
         <div className="shrink-0 border-b px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Articles
-          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Articles
+            </p>
+            <DevRecordKindBadge info={publicationKind} />
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           <EntryList

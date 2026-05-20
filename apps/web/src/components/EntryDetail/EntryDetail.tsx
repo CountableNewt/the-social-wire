@@ -4,8 +4,10 @@ import { useMemo } from "react";
 import { ExternalLink } from "lucide-react";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { EntrySocialToolbar } from "@/components/EntryDetail/EntrySocialToolbar";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEntry } from "@/hooks/useEntries";
+import { recordKindFromEntryId } from "@/lib/recordKindDebug";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { sanitizeHTMLWithLinks } from "@/lib/sanitize";
 import { cn } from "@/lib/utils";
@@ -109,6 +111,9 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
       </div>
 
       <div className="order-2 shrink-0 md:order-1">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <DevRecordKindBadge info={recordKindFromEntryId(entry.entryId)} />
+        </div>
         <EntrySocialToolbar
           entry={entry}
           className={cn(
