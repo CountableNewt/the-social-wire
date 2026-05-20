@@ -1,13 +1,13 @@
 import Foundation
 
 /// Extracts Level-1 list-row fields from standard.site-shaped ATProto records.
-enum RenderFieldExtractor {
+public enum RenderFieldExtractor {
   static let publicationRecordCollections: Set<String> = [
     "site.standard.publication",
     "com.standard.publication",
   ]
 
-  static func extractRenderFields(from record: [String: Any]) -> ContentRenderFields {
+  public static func extractRenderFields(from record: [String: Any]) -> ContentRenderFields {
     let title =
       string(record["title"])
       ?? string(record["name"])
@@ -31,7 +31,7 @@ enum RenderFieldExtractor {
     )
   }
 
-  static func publicationSiteField(from record: [String: Any]) -> String? {
+  public static func publicationSiteField(from record: [String: Any]) -> String? {
     if let site = string(record["site"]) {
       return site
     }
@@ -41,7 +41,7 @@ enum RenderFieldExtractor {
     return nil
   }
 
-  static func createdAtDate(from record: [String: Any], fallback render: ContentRenderFields) -> Date {
+  public static func createdAtDate(from record: [String: Any], fallback render: ContentRenderFields) -> Date {
     if let parsed = parseISO8601(render.publishedAt) {
       return parsed
     }
@@ -49,20 +49,20 @@ enum RenderFieldExtractor {
   }
 
   /// Matches web `entryRecordMatchesPublication` site equivalence keys.
-  static func matchesPublication(siteField: String?, publicationAtUri: String) -> Bool {
+  public static func matchesPublication(siteField: String?, publicationAtUri: String) -> Bool {
     guard let siteField else { return false }
     let wantKeys = publicationFilterEquivalenceKeys(publicationAtUri: publicationAtUri)
     guard let got = canonicalPublicationAtUriKey(siteField) else { return false }
     return wantKeys.contains(got)
   }
 
-  static func canonicalPublicationAtUriKey(_ uri: String) -> String? {
+  public static func canonicalPublicationAtUriKey(_ uri: String) -> String? {
     guard let parsed = parseAtUri(uri) else { return nil }
     let did = parsed.did.lowercased().hasPrefix("did:plc:") ? parsed.did.lowercased() : parsed.did
     return "at://\(did)/\(parsed.collection)/\(parsed.rkey)"
   }
 
-  static func publicationFilterEquivalenceKeys(publicationAtUri: String) -> Set<String> {
+  public static func publicationFilterEquivalenceKeys(publicationAtUri: String) -> Set<String> {
     var keys = Set<String>()
     if let primary = canonicalPublicationAtUriKey(publicationAtUri) {
       keys.insert(primary)
@@ -79,7 +79,7 @@ enum RenderFieldExtractor {
     return keys
   }
 
-  static func parseAtUri(_ uri: String) -> (did: String, collection: String, rkey: String)? {
+  public static func parseAtUri(_ uri: String) -> (did: String, collection: String, rkey: String)? {
     let pattern = #"^at://([^/]+)/([^/]+)/([^/]+)$"#
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
     let range = NSRange(uri.startIndex..., in: uri)
@@ -98,7 +98,7 @@ enum RenderFieldExtractor {
     )
   }
 
-  static func buildEntryUri(did: String, collection: String, rkey: String) -> String {
+  public static func buildEntryUri(did: String, collection: String, rkey: String) -> String {
     "at://\(did)/\(collection)/\(rkey)"
   }
 

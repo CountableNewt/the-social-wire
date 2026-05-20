@@ -23,6 +23,7 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       api: ${{ steps.filter.outputs.api }}
+      worker: ${{ steps.filter.outputs.worker }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,7 +42,15 @@ jobs:
               - '.github/workflows/ci.yml'
             api:
               - 'services/api/**'
+              - 'packages/swift/ThinAppViewCore/**'
               - 'packages/spec/openapi.yaml'
+              - '.github/workflows/ci.yml'
+            worker:
+              - 'services/worker/**'
+              - 'packages/swift/ThinAppViewCore/**'
+              - 'supabase/**'
+              - 'scripts/fly-deploy-worker.sh'
+              - 'scripts/wait-for-supabase-ci.sh'
               - '.github/workflows/ci.yml'
 
   # ── Web ───────────────────────────────────────────────────────────────────
@@ -109,6 +118,115 @@ jobs:
 
       - name: Test
         run: swift test
+
+  test-worker:
+    name: Swift Worker (Package)
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache Swift PM build artifacts (ThinAppViewCore)
+        uses: actions/cache@v5
+        with:
+          path: packages/swift/ThinAppViewCore/.build
+          key: ${{ runner.os }}-swift-core-swift-6.2.4-${{ hashFiles('packages/swift/ThinAppViewCore/Package.resolved') }}
+
+      - name: Cache Swift PM build artifacts (Worker)
+        uses: actions/cache@v5
+        with:
+          path: services/worker/.build
+          key: ${{ runner.os }}-swift-worker-swift-6.2.4-${{ hashFiles('services/worker/Package.resolved', 'packages/swift/ThinAppViewCore/Package.resolved') }}
+
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.4"
+          skip-verify-signature: true
+
+      - name: Test ThinAppViewCore
+        working-directory: packages/swift/ThinAppViewCore
+        run: swift test
+
+      - name: Build Worker
+        working-directory: services/worker
+        run: swift build
+
+  # ── Fly.io (push only: after CI jobs + Supabase migrations when applicable) ─
+  deploy-api:
+    name: Deploy API (Fly.io)
+    needs: [changes, build-web, test-api]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      (github.ref_name == 'main' || github.ref_name == 'dev') &&
+      needs.changes.result == 'success' &&
+      needs.build-web.result != 'failure' &&
+      needs.build-web.result != 'cancelled' &&
+      needs.test-api.result != 'failure' &&
+      needs.test-api.result != 'cancelled' &&
+      (needs.build-web.result == 'success' || needs.build-web.result == 'skipped') &&
+      (needs.test-api.result == 'success' || needs.test-api.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Wait for Supabase migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-for-supabase-ci.sh "${{ github.sha }}"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_DEV: ${{ secrets.FLY_APP_DEV }}
+          FLY_APP_PROD: ${{ secrets.FLY_APP_PROD }}
+        run: bash scripts/fly-deploy-api.sh "${{ github.ref_name }}"
+
+  deploy-worker:
+    name: Deploy AppView Worker (Fly.io)
+    needs: [changes, build-web, test-worker]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      (github.ref_name == 'main' || github.ref_name == 'dev') &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.worker == 'true' &&
+      needs.build-web.result != 'failure' &&
+      needs.build-web.result != 'cancelled' &&
+      needs.test-worker.result != 'failure' &&
+      needs.test-worker.result != 'cancelled' &&
+      (needs.build-web.result == 'success' || needs.build-web.result == 'skipped') &&
+      (needs.test-worker.result == 'success' || needs.test-worker.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Wait for Supabase migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-for-supabase-ci.sh "${{ github.sha }}"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      - name: Deploy worker to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_WORKER_APP_DEV: ${{ secrets.FLY_WORKER_APP_DEV }}
+          FLY_WORKER_APP_PROD: ${{ secrets.FLY_WORKER_APP_PROD }}
+        run: bash scripts/fly-deploy-worker.sh "${{ github.ref_name }}"
 
   # Swift API CI restored — see `services/api/README.md`
 

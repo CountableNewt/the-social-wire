@@ -1,57 +1,52 @@
 name: Deploy
 
-# Run only after CI completes successfully on push to main/dev (never in parallel with a failing CI run).
+# Automatic deploy runs at the end of CI (.github/workflows/ci.yml) so it uses the
+# pushed branch workflow — workflow_run only reads the default-branch copy of this
+# file and is easy to misconfigure across main/dev.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main, dev]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - main
+      deploy_worker:
+        description: Also deploy Thin AppView worker
+        required: true
+        type: boolean
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Latest push wins; avoid overlapping Fly deploys from rapid commits.
-concurrency:
-  group: deploy-api-${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
-  cancel-in-progress: true
-
 jobs:
   deploy-api:
     name: Deploy API (Fly.io)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      # Per-environment Fly apps (create both in the Fly org, then set repo secrets).
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}" = "main" ]; then
-            APP="${{ secrets.FLY_APP_PROD }}"
-          else
-            APP="${{ secrets.FLY_APP_DEV }}"
-          fi
-          if [ -z "${APP}" ]; then
-            echo '::error::Missing Fly app name — set repository secrets FLY_APP_PROD and FLY_APP_DEV.'
-            exit 1
-          fi
-          flyctl deploy ./services/api --app "${APP}" --remote-only
+          FLY_APP_DEV: ${{ secrets.FLY_APP_DEV }}
+          FLY_APP_PROD: ${{ secrets.FLY_APP_PROD }}
+        run: bash scripts/fly-deploy-api.sh "${{ inputs.branch }}"
+
+      - name: Deploy worker to Fly.io
+        if: inputs.deploy_worker
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_WORKER_APP_DEV: ${{ secrets.FLY_WORKER_APP_DEV }}
+          FLY_WORKER_APP_PROD: ${{ secrets.FLY_WORKER_APP_PROD }}
+        run: bash scripts/fly-deploy-worker.sh "${{ inputs.branch }}"
 
   # ── Web deploy (Vercel handles this via its GitHub integration) ────────────
   # Vercel auto-deploys on push to main (prod) and dev (preview).
-  # Set NEXT_PUBLIC_APP_ENV=prod in Vercel production env vars.
-  # Set NEXT_PUBLIC_APP_ENV=dev in Vercel preview env vars.

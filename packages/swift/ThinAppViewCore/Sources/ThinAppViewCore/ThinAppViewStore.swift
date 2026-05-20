@@ -1,7 +1,7 @@
 import Foundation
 
 /// Persistence for thin AppView `content_items` and `read_marks`.
-protocol ThinAppViewStore: Actor {
+public protocol ThinAppViewStore: Actor {
   func upsertContentItem(_ item: IndexedContentItem) async throws
   func deleteContentItem(uri: String) async throws
 

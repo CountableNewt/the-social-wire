@@ -1,19 +1,19 @@
-// AppCommand.swift — program entry point with `serve` and `worker` subcommands.
+// AppCommand.swift — program entry point for the HTTP API server.
 
 import ArgumentParser
 import AsyncHTTPClient
 import Foundation
 import Hummingbird
 import Logging
-import NIOSSL
 import PostgresNIO
+import ThinAppViewCore
 
 @main
 @available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
 struct App: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     abstract: "The Social Wire API Service",
-    subcommands: [Serve.self, Worker.self],
+    subcommands: [Serve.self],
     defaultSubcommand: Serve.self
   )
 }
@@ -100,129 +100,6 @@ struct Serve: AsyncParsableCommand {
     try? await httpClient.shutdown()
     if let serverError { throw serverError }
   }
-}
-
-struct Worker: AsyncParsableCommand {
-  static let configuration = CommandConfiguration(abstract: "Run the thin AppView ingestion worker")
-
-  mutating func run() async throws {
-    var logger = Logger(label: "com.thesocialwire.worker")
-    logger.logLevel = .info
-    let workerLogger = logger
-
-    let environment = AppEnvironmentLoader.mergeProcessWithDotenv()
-    let config = AppConfig.fromEnvironment(environment)
-    guard config.thinAppView.enabled else {
-      throw WorkerCommandError.thinAppViewDisabled
-    }
-
-    let httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
-
-    let store: any ThinAppViewStore
-    switch config.cacheBackend {
-    case .sqlite(let path):
-      store = try SQLiteThinAppViewStore(path: path, logger: workerLogger)
-    case .postgres(let urlString):
-      let pgConfig = try makePostgresConfig(from: urlString, logger: workerLogger)
-      let pgPool = PostgresClient(configuration: pgConfig, backgroundLogger: workerLogger)
-      store = PostgresThinAppViewStore(pool: pgPool, logger: workerLogger)
-      try await withThrowingTaskGroup(of: Void.self) { group in
-        group.addTask { await pgPool.run() }
-        group.addTask {
-          try await Self.runWorkerLoops(
-            store: store,
-            config: config,
-            httpClient: httpClient,
-            logger: workerLogger
-          )
-        }
-        try await group.next()
-        group.cancelAll()
-      }
-      try? await httpClient.shutdown()
-      return
-    }
-
-    try await Self.runWorkerLoops(
-      store: store,
-      config: config,
-      httpClient: httpClient,
-      logger: workerLogger
-    )
-
-    try? await httpClient.shutdown()
-  }
-
-  private static func runWorkerLoops(
-    store: any ThinAppViewStore,
-    config: AppConfig,
-    httpClient: HTTPClient,
-    logger: Logger
-  ) async throws {
-    let thinConfig = config.thinAppView
-    let indexer = ThinAppViewIndexer(store: store, config: thinConfig, logger: logger)
-    let firehose = FirehoseSubscriber(
-      relayURL: thinConfig.relayWebSocketURL,
-      indexer: indexer,
-      logger: logger
-    )
-    let cleanup = ThinAppViewTtlCleanupJob(store: store, config: thinConfig, logger: logger)
-
-    logger.info("Starting thin AppView worker")
-
-    try await withThrowingTaskGroup(of: Void.self) { group in
-      group.addTask { await firehose.runForever() }
-      group.addTask { await cleanup.runForever() }
-      try await group.next()
-      group.cancelAll()
-    }
-  }
-}
-
-enum WorkerCommandError: Error, CustomStringConvertible {
-  case thinAppViewDisabled
-
-  var description: String {
-    "ENABLE_THIN_APPVIEW must be true to run the worker."
-  }
-}
-
-private func makePostgresConfig(
-  from urlString: String,
-  logger: Logger
-) throws -> PostgresClient.Configuration {
-  guard
-    let url = URL(string: urlString),
-    let host = url.host,
-    !host.isEmpty
-  else {
-    logger.critical("SUPABASE_DATABASE_URL is not a valid URL", metadata: ["url": .string(urlString)])
-    throw PostgresConfigError.invalidURL(urlString)
-  }
-
-  let port = url.port ?? 5432
-  let username = url.user ?? "postgres"
-  let password = url.password
-  let database: String? = {
-    let raw = String(url.path.drop(while: { $0 == "/" }))
-    return raw.isEmpty ? nil : raw
-  }()
-
-  var tls = TLSConfiguration.makeClientConfiguration()
-  tls.certificateVerification = .none
-
-  return PostgresClient.Configuration(
-    host: host,
-    port: port,
-    username: username,
-    password: password,
-    database: database,
-    tls: .prefer(tls)
-  )
-}
-
-enum PostgresConfigError: Error {
-  case invalidURL(String)
 }
 
 extension AppConfig.CacheBackend {

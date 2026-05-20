@@ -2,11 +2,11 @@
 import Foundation
 import Logging
 
-actor SQLiteThinAppViewStore: ThinAppViewStore {
+public actor SQLiteThinAppViewStore: ThinAppViewStore {
   private let db: DatabasePool
   private let logger: Logger
 
-  init(path dbPath: String, logger: Logger) throws {
+public init(path dbPath: String, logger: Logger) throws {
     self.logger = logger
     var config = Configuration()
     config.label = "com.thesocialwire.thin-appview"
@@ -57,7 +57,7 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
       """)
   }
 
-  func upsertContentItem(_ item: IndexedContentItem) async throws {
+  public func upsertContentItem(_ item: IndexedContentItem) async throws {
     let renderJSON = try item.render.encodedJSON()
     let createdAt = Self.isoString(from: item.createdAt)
     let indexedAt = Self.isoString(from: item.indexedAt)
@@ -93,13 +93,13 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
     }
   }
 
-  func deleteContentItem(uri: String) async throws {
+  public func deleteContentItem(uri: String) async throws {
     try await db.write { db in
       try db.execute(sql: "DELETE FROM content_items WHERE uri = ?", arguments: [uri])
     }
   }
 
-  func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {
+  public func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {
     let createdAtIso = Self.isoString(from: createdAt)
     try await db.write { db in
       try db.execute(
@@ -113,7 +113,7 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
     }
   }
 
-  func deleteReadMark(viewerDid: String, subjectUri: String) async throws {
+  public func deleteReadMark(viewerDid: String, subjectUri: String) async throws {
     try await db.write { db in
       try db.execute(
         sql: "DELETE FROM read_marks WHERE viewer_did = ? AND subject_uri = ?",
@@ -122,13 +122,13 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
     }
   }
 
-  func purgeReadMarks(viewerDid: String) async throws {
+  public func purgeReadMarks(viewerDid: String) async throws {
     try await db.write { db in
       try db.execute(sql: "DELETE FROM read_marks WHERE viewer_did = ?", arguments: [viewerDid])
     }
   }
 
-  func listEntries(
+  public func listEntries(
     viewerDid: String,
     authorDid: String,
     publicationAtUri: String?,
@@ -204,7 +204,7 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
     return AppViewEntryListResponse(entries: items, cursor: nextCursor)
   }
 
-  func deleteExpiredContent(before: Date) async throws -> Int {
+  public func deleteExpiredContent(before: Date) async throws -> Int {
     let beforeIso = Self.isoString(from: before)
     return try await db.write { db in
       try db.execute(
@@ -215,7 +215,7 @@ actor SQLiteThinAppViewStore: ThinAppViewStore {
     }
   }
 
-  func deleteExpiredReadMarks(before: Date) async throws -> Int {
+  public func deleteExpiredReadMarks(before: Date) async throws -> Int {
     let beforeIso = Self.isoString(from: before)
     return try await db.write { db in
       try db.execute(

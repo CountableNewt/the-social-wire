@@ -1,6 +1,6 @@
 import Foundation
 
-enum ThinAppViewCursor {
+public enum ThinAppViewCursor {
   static func encode(createdAt: Date, uri: String) -> String {
     let iso = ISO8601DateFormatter().string(from: createdAt)
     return "\(iso)|\(uri)"
@@ -17,7 +17,7 @@ enum ThinAppViewCursor {
   }
 }
 
-enum ThinAppViewQuerySupport {
+public enum ThinAppViewQuerySupport {
   static func entryListItems(from rows: [(uri: String, renderJSON: String, createdAt: Date)]) -> [AppViewEntryListItem] {
     let decoder = JSONDecoder()
     let iso = ISO8601DateFormatter()
@@ -61,6 +61,6 @@ extension ContentRenderFields {
   }
 }
 
-enum ThinAppViewStoreError: Error {
+public enum ThinAppViewStoreError: Error {
   case encodingFailed
 }

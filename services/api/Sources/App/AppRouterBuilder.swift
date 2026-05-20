@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Foundation
 import Hummingbird
 import Logging
+import ThinAppViewCore
 
 enum AppRouterBuilder {
   /// Builds the HTTP router wired like production (`App.swift`).

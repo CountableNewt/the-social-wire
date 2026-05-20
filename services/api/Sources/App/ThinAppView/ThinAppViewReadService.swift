@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Foundation
 import Hummingbird
 import Logging
+import ThinAppViewCore
 import NIOCore
 
 actor ThinAppViewReadService {

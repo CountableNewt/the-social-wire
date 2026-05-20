@@ -1,7 +1,7 @@
 import Foundation
+import Logging
 import Testing
-
-@testable import App
+import ThinAppViewCore
 
 @Suite("RenderFieldExtractor")
 struct RenderFieldExtractorTests {
@@ -81,7 +81,7 @@ struct SQLiteThinAppViewStoreTests {
       viewerDid: "did:plc:viewer",
       authorDid: "did:plc:author",
       publicationAtUri: nil,
-      filter: .unread,
+      filter: EntryListFilter.unread,
       cursor: nil,
       limit: 10
     )
@@ -89,5 +89,3 @@ struct SQLiteThinAppViewStoreTests {
     #expect(unread.entries.first?.entryId.contains("/two") == true)
   }
 }
-
-import Logging

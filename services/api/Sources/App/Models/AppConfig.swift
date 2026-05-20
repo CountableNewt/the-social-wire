@@ -1,4 +1,5 @@
 import Foundation
+import ThinAppViewCore
 
 /// Configuration loaded from environment variables at startup.
 struct AppConfig: Sendable {

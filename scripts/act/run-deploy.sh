@@ -32,6 +32,6 @@ fi
 EVENT="$(mktemp)"
 cleanup() { rm -f "$EVENT"; }
 trap cleanup EXIT
-printf '{"ref":"refs/heads/dev"}\n' >"$EVENT"
+printf '{"ref":"refs/heads/dev","inputs":{"branch":"dev"}}\n' >"$EVENT"
 
 exec act workflow_dispatch -W .github/workflows/deploy.yml -e "$EVENT" --secret-file "$SECRETS" --reuse "$@"

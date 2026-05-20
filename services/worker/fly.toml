@@ -1,0 +1,22 @@
+# fly.toml — Thin AppView ingestion worker (dev).
+#
+# Deploy from repo root:
+#   bash scripts/fly-deploy-worker.sh dev
+
+app = 'the-social-wire-dev-worker'
+primary_region = 'ams'
+
+[build]
+  dockerfile = 'services/worker/Dockerfile'
+
+[deploy]
+  wait_timeout = '10m0s'
+
+[env]
+  ENABLE_THIN_APPVIEW = 'true'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

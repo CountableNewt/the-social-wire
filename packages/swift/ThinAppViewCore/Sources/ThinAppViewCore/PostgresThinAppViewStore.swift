@@ -2,16 +2,16 @@ import Foundation
 import Logging
 import PostgresNIO
 
-actor PostgresThinAppViewStore: ThinAppViewStore {
+public actor PostgresThinAppViewStore: ThinAppViewStore {
   private let pool: PostgresClient
   private let logger: Logger
 
-  init(pool: PostgresClient, logger: Logger) {
+public init(pool: PostgresClient, logger: Logger) {
     self.pool = pool
     self.logger = logger
   }
 
-  func upsertContentItem(_ item: IndexedContentItem) async throws {
+  public func upsertContentItem(_ item: IndexedContentItem) async throws {
     let renderJSON = try item.render.encodedJSON()
     try await pool.query(
       """
@@ -33,14 +33,14 @@ actor PostgresThinAppViewStore: ThinAppViewStore {
     )
   }
 
-  func deleteContentItem(uri: String) async throws {
+  public func deleteContentItem(uri: String) async throws {
     try await pool.query(
       "DELETE FROM content_items WHERE uri = \(uri)",
       logger: logger
     )
   }
 
-  func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {
+  public func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {
     try await pool.query(
       """
       INSERT INTO read_marks (viewer_did, subject_uri, created_at)
@@ -51,7 +51,7 @@ actor PostgresThinAppViewStore: ThinAppViewStore {
     )
   }
 
-  func deleteReadMark(viewerDid: String, subjectUri: String) async throws {
+  public func deleteReadMark(viewerDid: String, subjectUri: String) async throws {
     try await pool.query(
       """
       DELETE FROM read_marks
@@ -61,14 +61,14 @@ actor PostgresThinAppViewStore: ThinAppViewStore {
     )
   }
 
-  func purgeReadMarks(viewerDid: String) async throws {
+  public func purgeReadMarks(viewerDid: String) async throws {
     try await pool.query(
       "DELETE FROM read_marks WHERE viewer_did = \(viewerDid)",
       logger: logger
     )
   }
 
-  func listEntries(
+  public func listEntries(
     viewerDid: String,
     authorDid: String,
     publicationAtUri: String?,
@@ -191,7 +191,7 @@ actor PostgresThinAppViewStore: ThinAppViewStore {
     return AppViewEntryListResponse(entries: items, cursor: nextCursor)
   }
 
-  func deleteExpiredContent(before: Date) async throws -> Int {
+  public func deleteExpiredContent(before: Date) async throws -> Int {
     let rows = try await pool.query(
       "DELETE FROM content_items WHERE expires_at <= \(before) RETURNING uri",
       logger: logger
@@ -201,7 +201,7 @@ actor PostgresThinAppViewStore: ThinAppViewStore {
     return count
   }
 
-  func deleteExpiredReadMarks(before: Date) async throws -> Int {
+  public func deleteExpiredReadMarks(before: Date) async throws -> Int {
     let rows = try await pool.query(
       "DELETE FROM read_marks WHERE created_at <= \(before) RETURNING subject_uri",
       logger: logger

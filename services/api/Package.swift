@@ -7,6 +7,7 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
+    .package(path: "../../packages/swift/ThinAppViewCore"),
     // HTTP server
     .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.6.0"),
     .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
@@ -31,6 +32,7 @@ let package = Package(
     .executableTarget(
       name: "App",
       dependencies: [
+        .product(name: "ThinAppViewCore", package: "ThinAppViewCore"),
         .product(name: "Hummingbird", package: "hummingbird"),
         .product(name: "HummingbirdAuth", package: "hummingbird-auth"),
         .product(name: "PostgresNIO", package: "postgres-nio"),

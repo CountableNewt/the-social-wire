@@ -1,5 +1,6 @@
 import Foundation
 import Hummingbird
+import ThinAppViewCore
 
 struct ThinAppViewRoutes {
   let readService: ThinAppViewReadService
@@ -58,4 +59,4 @@ struct ThinAppViewRoutes {
   }
 }
 
-extension AppViewEntryListResponse: ResponseEncodable {}
+extension AppViewEntryListResponse: @retroactive ResponseEncodable {}

@@ -1,26 +1,26 @@
 import Foundation
 
 /// Environment-driven configuration for the GDPR-safe thin AppView index.
-struct ThinAppViewConfig: Sendable {
-  static let contentCollections: [String] = [
+public struct ThinAppViewConfig: Sendable {
+public static let contentCollections: [String] = [
     "site.standard.document",
     "com.standard.document",
     "site.standard.entry",
     "com.standard.entry",
   ]
 
-  static let readStateCollection = "com.thesocialwire.entryReadState"
+public static let readStateCollection = "com.thesocialwire.entryReadState"
 
-  static let defaultRelayWebSocketURL =
+public static let defaultRelayWebSocketURL =
     "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=site.standard.document&wantedCollections=com.standard.document&wantedCollections=site.standard.entry&wantedCollections=com.standard.entry&wantedCollections=com.thesocialwire.entryReadState"
 
-  let enabled: Bool
-  let relayWebSocketURL: String
-  let contentRetentionSeconds: TimeInterval
-  let readMarkRetentionSeconds: TimeInterval
-  let maxEnrollAuthors: Int
+public let enabled: Bool
+public let relayWebSocketURL: String
+public let contentRetentionSeconds: TimeInterval
+public let readMarkRetentionSeconds: TimeInterval
+public let maxEnrollAuthors: Int
 
-  static func fromEnvironment(
+public static func fromEnvironment(
     _ env: [String: String] = ProcessInfo.processInfo.environment
   ) -> ThinAppViewConfig {
     ThinAppViewConfig(
@@ -33,7 +33,7 @@ struct ThinAppViewConfig: Sendable {
     )
   }
 
-  static let disabled = ThinAppViewConfig(
+public static let disabled = ThinAppViewConfig(
     enabled: false,
     relayWebSocketURL: defaultRelayWebSocketURL,
     contentRetentionSeconds: 30 * 24 * 60 * 60,

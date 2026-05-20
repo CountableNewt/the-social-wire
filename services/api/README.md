@@ -6,7 +6,7 @@ Swift/Hummingbird gateway that complements the Next.js web app: publishes OAuth 
 
 - **OAuth surface**: exposes `GET /oauth/client-metadata.json` (SPA/Tunnel) alongside `GET /ios-client-metadata.json`; scope literals come from **`ATProtoOAuthScopes`** so Swift + Next.js stay aligned (`apps/web/public/client-metadata.json` remains the authoring reference).
 - **Authenticated sync lanes**: forwards `Authorization` + **`DPoP`** headers verbatim to ATProto repos for `GET /v1/sync/preferences` and selective `GET /v1/pds/cache/record?collection=&rkey=` reads (short TTL SQLite/Supabase cache via `pds_repo_record_cache`).
-- **Thin AppView (optional)**: when **`ENABLE_THIN_APPVIEW=true`**, mounts **`/v1/appview/*`** for Level-1 entry timelines, read-mark write-through, enrollment backfill, and privacy purge; a separate **`App worker`** Fly process ingests Jetstream commits into **`content_items`** / **`read_marks`** (EU **`ams`**).
+- **Thin AppView (optional)**: when **`ENABLE_THIN_APPVIEW=true`**, mounts **`/v1/appview/*`** for Level-1 entry timelines, read-mark write-through, enrollment backfill, and privacy purge; ingestion runs in a separate **`services/worker`** Fly app (see that package’s README).
 - **Legacy reader APIs (migration only)**: follow-graph discovery (`DiscoveryService`) plus publication entry surfaces (`ContentService`) compile in-tree yet register **only** when `ENABLE_LEGACY_CONTENT_API=true` for phased cutovers without deleting code paths prematurely.
 
 LATRHTTPS merge APIs deliberately stay elsewhere—consume those flows through the deployed web stack.
@@ -66,8 +66,9 @@ cd infra/docker && docker compose up
 cd services/api
 APP_ENV=local swift run App
 
-# Optional: Thin AppView worker (ingestion + TTL cleanup)
-APP_ENV=local ENABLE_THIN_APPVIEW=true swift run App worker
+# Optional: Thin AppView worker (ingestion + TTL cleanup) — separate package
+cd ../worker
+APP_ENV=local ENABLE_THIN_APPVIEW=true swift run Worker
 ```
 
 - Direct HTTP: [`http://127.0.0.1:8080`](http://127.0.0.1:8080)
@@ -196,12 +197,14 @@ Hummingbird router
      CacheStore / ThinAppViewStore ──► Supabase/SQLite (ams)
 ```
 
-Deploy the ingestion worker as a separate Fly process when **`ENABLE_THIN_APPVIEW`** is on:
+Deploy the ingestion worker as a **separate Fly app** when **`ENABLE_THIN_APPVIEW`** is on (see **`services/worker/`**):
 
 ```bash
 # From repo root
-fly deploy ./services/api --config services/api/fly.worker.toml
+bash scripts/fly-deploy-worker.sh dev   # or main
 ```
+
+CI deploys the worker automatically when **`worker`** paths change (`services/worker/**`, `packages/swift/ThinAppViewCore/**`, `supabase/**`, etc.) — see **`deploy-worker`** in `ci.yml`. Set GitHub secrets **`FLY_WORKER_APP_DEV`** / **`FLY_WORKER_APP_PROD`** (e.g. `the-social-wire-dev-worker`).
 
 See [docs/architecture/appview.md](../../docs/architecture/appview.md) and [docs/wiki/Thin-AppView.md](../../docs/wiki/Thin-AppView.md).
 
@@ -210,12 +213,12 @@ See [docs/architecture/appview.md](../../docs/architecture/appview.md) and [docs
 Build a local tag:
 
 ```bash
-docker build -t social-wire-api:local services/api/
+docker build -f services/api/Dockerfile -t social-wire-api:local .
 ```
 
 ## Deployment (Fly.io)
 
-[`deploy.yml`](../../.github/workflows/deploy.yml) runs after **CI succeeds** on pushes to **`main`** and **`dev`** (`workflow_run`), or manually via **workflow_dispatch**: `flyctl deploy ./services/api --remote-only` from the **repo root**, so the [build context](https://fly.io/docs/launch/monorepo/) is this package directory and [`fly.toml`](fly.toml) / `Dockerfile` resolve correctly.
+[`deploy.yml`](../../.github/workflows/deploy.yml) is **manual only** (`workflow_dispatch`). **Automatic** Fly deploy runs as the last job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) on pushes to **`main`** / **`dev`**: CI jobs must pass (or be skipped for unchanged paths), then [`scripts/wait-for-supabase-ci.sh`](../../scripts/wait-for-supabase-ci.sh) waits for migrations when `supabase/**` changed, then [`scripts/fly-deploy-api.sh`](../../scripts/fly-deploy-api.sh) deploys **`FLY_APP_DEV`** or **`FLY_APP_PROD`**. Uses the **pushed branch** workflow file (not default-branch `workflow_run`, which silently broke dev deploys).
 
 **Native Fly ↔ GitHub deploy:** Fly usually clones the repo and runs deploy from the **repository root**, so it looks for **`./fly.toml` at root** unless you set a **subdirectory / root directory** for the app in the Fly dashboard (name varies by UI) to **`services/api`**, or use this workflow instead of the hosted GitHub deploy.
 
@@ -224,8 +227,18 @@ docker build -t social-wire-api:local services/api/
 | Secret | Purpose |
 |--------|---------|
 | `FLY_API_TOKEN` | Deploy token from [Fly access tokens](https://fly.io/docs/flyctl/auth-token/) |
-| `FLY_APP_PROD` | Fly app name for `main` (e.g. `social-wire-api`) |
-| `FLY_APP_DEV` | Fly app name for `dev` (e.g. `social-wire-api-dev`) |
+Create Fly apps once (requires `fly auth login`):
+
+```bash
+bash scripts/fly-create-apps.sh
+```
+
+| Secret | App name |
+|--------|----------|
+| `FLY_APP_DEV` | `the-social-wire-dev` |
+| `FLY_APP_PROD` | `the-social-wire-prod` |
+| `FLY_WORKER_APP_DEV` | `the-social-wire-dev-worker` |
+| `FLY_WORKER_APP_PROD` | `the-social-wire-prod-worker` |
 
 Create both apps in your Fly org (`fly apps create …`), then set **`SUPABASE_DATABASE_URL`**, **`APP_ENV`** (`prod` / `dev`), and any other runtime vars with `fly secrets set` (or the dashboard). **`OAUTH_PUBLIC_ORIGIN`** should match the HTTPS URL clients use for OAuth metadata when it differs from the default Fly hostname.
 

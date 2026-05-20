@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import Logging
 import NIOCore
+import ThinAppViewCore
 
 actor ThinAppViewEnrollService {
   private let store: any ThinAppViewStore

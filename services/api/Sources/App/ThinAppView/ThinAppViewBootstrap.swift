@@ -1,6 +1,7 @@
 import Foundation
 import Logging
 import PostgresNIO
+import ThinAppViewCore
 
 enum ThinAppViewBootstrap {
   static func makeStore(config: AppConfig, logger: Logger, postgresPool: PostgresClient?) throws -> (any ThinAppViewStore)? {

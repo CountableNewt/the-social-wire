@@ -1,21 +1,19 @@
-import AsyncHTTPClient
 import Foundation
 import Logging
-import NIOCore
 
 /// Indexes repo commits into `content_items` and `read_marks`.
-actor ThinAppViewIndexer {
+public actor ThinAppViewIndexer {
   private let store: any ThinAppViewStore
   private let config: ThinAppViewConfig
   private let logger: Logger
 
-  init(store: any ThinAppViewStore, config: ThinAppViewConfig, logger: Logger) {
+  public init(store: any ThinAppViewStore, config: ThinAppViewConfig, logger: Logger) {
     self.store = store
     self.config = config
     self.logger = logger
   }
 
-  func handleCommit(
+  public func handleCommit(
     repoDid: String,
     collection: String,
     rkey: String,
