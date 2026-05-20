@@ -9,6 +9,7 @@ RUN apt-get update \
 
 COPY packages/swift/ThinAppViewCore/Package.swift packages/swift/ThinAppViewCore/Package.resolved* packages/swift/ThinAppViewCore/
 COPY packages/swift/ThinAppViewCore/Sources packages/swift/ThinAppViewCore/Sources
+COPY packages/swift/ThinAppViewCore/Tests packages/swift/ThinAppViewCore/Tests
 
 COPY services/worker/Package.swift services/worker/Package.resolved* services/worker/
 COPY services/worker/Sources services/worker/Sources
