@@ -138,9 +138,18 @@ If you use a **single** hosted project for both branches, set the same ref/passw
 **Troubleshooting `password authentication failed` (SQLSTATE 28P01):**
 
 1. In Supabase **Project Settings → Database**, confirm the password or **reset** it.
-2. Update the matching GitHub secret (`SUPABASE_DEV_DB_PASSWORD` or `SUPABASE_PROD_DB_PASSWORD`) with the **plain password** (not a `postgres://` URI).
-3. Prefer adding **`SUPABASE_DEV_DATABASE_URL`** / **`SUPABASE_PROD_DATABASE_URL`**: copy the **Session pooler** connection string from **Connect** (port **5432**). This avoids pooler auth quirks with `--password` on the CLI.
+2. Update **both** GitHub secrets with the **new** password:
+   - **`SUPABASE_DEV_DATABASE_URL`** / **`SUPABASE_PROD_DATABASE_URL`** — full **Session pooler** URI from **Connect → Session mode → port 5432** (`postgresql://postgres.[ref]:[pass]@…pooler.supabase.com:5432/postgres`). URL-encode special characters in the password (`@`, `#`, `%`, etc.).
+   - **`SUPABASE_DEV_DB_PASSWORD`** / **`SUPABASE_PROD_DB_PASSWORD`** — the same plain password (no `postgres://` prefix).
+3. If CI logs show `DATABASE_URL uses direct host db.*.supabase.co`, the **`SUPABASE_*_DATABASE_URL` secret was not updated** to the pooler URI — paste the Connect string again (host must contain `pooler.supabase.com`, user `postgres.[ref]`).
 4. Ensure the ref secret matches the project whose password you copied (dev vs prod).
+
+Local check (requires Supabase CLI + secrets in env or `scripts/act/.secrets`):
+
+```bash
+export SUPABASE_ACCESS_TOKEN=… SUPABASE_DEV_PROJECT_REF=… SUPABASE_DEV_DATABASE_URL=…
+bash scripts/supabase-verify-connection.sh dev
+```
 
 **Troubleshooting `network is unreachable` / IPv6 dial errors:**
 
