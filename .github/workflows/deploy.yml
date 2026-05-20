@@ -1,26 +1,36 @@
 name: Deploy
 
+# Run only after CI completes successfully on push to main/dev (never in parallel with a failing CI run).
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main, dev]
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Latest push wins; avoid overlapping Fly deploys from rapid commits.
 concurrency:
-  group: deploy-api-${{ github.workflow }}-${{ github.ref }}
+  group: deploy-api-${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   deploy-api:
     name: Deploy API (Fly.io)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@v1
 
@@ -30,7 +40,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ github.ref_name }}" = "main" ]; then
+          if [ "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}" = "main" ]; then
             APP="${{ secrets.FLY_APP_PROD }}"
           else
             APP="${{ secrets.FLY_APP_DEV }}"

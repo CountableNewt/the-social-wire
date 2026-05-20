@@ -206,7 +206,7 @@ docker build -t social-wire-api:local services/api/
 
 ## Deployment (Fly.io)
 
-[`deploy.yml`](../../.github/workflows/deploy.yml) runs on pushes to **`main`** and **`dev`**: `flyctl deploy ./services/api --remote-only` from the **repo root**, so the [build context](https://fly.io/docs/launch/monorepo/) is this package directory and [`fly.toml`](fly.toml) / `Dockerfile` resolve correctly.
+[`deploy.yml`](../../.github/workflows/deploy.yml) runs after **CI succeeds** on pushes to **`main`** and **`dev`** (`workflow_run`), or manually via **workflow_dispatch**: `flyctl deploy ./services/api --remote-only` from the **repo root**, so the [build context](https://fly.io/docs/launch/monorepo/) is this package directory and [`fly.toml`](fly.toml) / `Dockerfile` resolve correctly.
 
 **Native Fly ↔ GitHub deploy:** Fly usually clones the repo and runs deploy from the **repository root**, so it looks for **`./fly.toml` at root** unless you set a **subdirectory / root directory** for the app in the Fly dashboard (name varies by UI) to **`services/api`**, or use this workflow instead of the hosted GitHub deploy.
 

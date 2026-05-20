@@ -29,11 +29,9 @@ if ! docker info &>/dev/null; then
   exit 1
 fi
 
-AFTER="$(git rev-parse HEAD)"
-BEFORE="$(git rev-parse "${AFTER}^" 2>/dev/null || printf '%s' '0000000000000000000000000000000000000000')"
 EVENT="$(mktemp)"
 cleanup() { rm -f "$EVENT"; }
 trap cleanup EXIT
-printf '{"ref":"refs/heads/dev","before":"%s","after":"%s","repository":{"default_branch":"main"}}\n' "$BEFORE" "$AFTER" >"$EVENT"
+printf '{"ref":"refs/heads/dev"}\n' >"$EVENT"
 
-exec act push -W .github/workflows/deploy.yml -e "$EVENT" --secret-file "$SECRETS" --reuse "$@"
+exec act workflow_dispatch -W .github/workflows/deploy.yml -e "$EVENT" --secret-file "$SECRETS" --reuse "$@"

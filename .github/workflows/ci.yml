@@ -48,7 +48,7 @@ jobs:
   build-web:
     name: Build & Test Web
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -85,7 +85,7 @@ jobs:
   test-api:
     name: Swift API (Package)
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
