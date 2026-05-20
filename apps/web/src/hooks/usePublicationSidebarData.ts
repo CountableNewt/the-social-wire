@@ -31,9 +31,21 @@ export function usePublicationSidebarData() {
     usePublicationSubscriptions();
   const { data: skyreaderRecords = [], isLoading: skyreaderSubsLoading } =
     useSkyreaderFeedSubscriptions();
+  const refresh = useRefreshDiscovery();
+
+  const rssPublicationRows = useMemo(
+    () => skyreaderSubscriptionsToDiscoveredPublications(skyreaderRecords),
+    [skyreaderRecords]
+  );
+
+  const { data: graphSubscriptionRows = [], isLoading: graphSubsLoading } =
+    useGraphSubscriptionPublications(subscriptions, [
+      ...publications,
+      ...rssPublicationRows,
+    ]);
+
   const subscriptionsBlockLoading =
     subscriptionsLoading || skyreaderSubsLoading || graphSubsLoading;
-  const refresh = useRefreshDiscovery();
 
   const prefsMap = useMemo(
     () =>
@@ -48,17 +60,6 @@ export function usePublicationSidebarData() {
     () => [...publications, ...graphSubscriptionRows],
     [publications, graphSubscriptionRows]
   );
-
-  const rssPublicationRows = useMemo(
-    () => skyreaderSubscriptionsToDiscoveredPublications(skyreaderRecords),
-    [skyreaderRecords]
-  );
-
-  const { data: graphSubscriptionRows = [], isLoading: graphSubsLoading } =
-    useGraphSubscriptionPublications(subscriptions, [
-      ...publications,
-      ...rssPublicationRows,
-    ]);
 
   const allPublicationRows = useMemo(
     () => [...publications, ...rssPublicationRows, ...graphSubscriptionRows],

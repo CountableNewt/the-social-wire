@@ -8,7 +8,7 @@ describe("usePublications query keys", () => {
   it("DISCOVERY_QUERY_KEY includes viewer DID", () => {
     expect(DISCOVERY_QUERY_KEY("did:plc:viewer")).toEqual([
       "discovery",
-      "publication-icons-v1",
+      "publications-v2",
       "did:plc:viewer",
     ]);
   });
