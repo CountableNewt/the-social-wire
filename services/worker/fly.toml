@@ -1,7 +1,8 @@
-# fly.toml — Thin AppView ingestion worker (dev).
+# Thin AppView ingestion worker (dev).
 #
-# Deploy from repo root:
-#   bash scripts/fly-deploy-worker.sh dev
+# Deploy from this directory (uses monorepo root as Docker build context):
+#   fly deploy ../.. --config services/worker/fly.toml --app the-social-wire-dev-worker
+# Or: bash deploy.sh dev
 
 app = 'the-social-wire-dev-worker'
 primary_region = 'ams'

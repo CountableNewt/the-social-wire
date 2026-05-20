@@ -1,6 +1,4 @@
-# Production Thin AppView worker (main). Dev uses fly.toml.
-#
-# Deploy: bash scripts/fly-deploy-worker.sh main
+# Production worker (main). Dev uses fly.toml.
 
 app = 'the-social-wire-prod-worker'
 primary_region = 'ams'

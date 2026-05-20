@@ -6,22 +6,9 @@
 set -euo pipefail
 
 BRANCH="${1:?usage: fly-deploy-worker.sh dev|main}"
-CONFIG="${FLY_WORKER_CONFIG:-}"
-if [ -z "$CONFIG" ]; then
-  if [ "$BRANCH" = "main" ]; then
-    CONFIG="services/worker/fly.prod.toml"
-  else
-    CONFIG="services/worker/fly.toml"
-  fi
-fi
 
 if [ -z "${FLY_API_TOKEN:-}" ]; then
   echo '::error::Missing FLY_API_TOKEN.'
-  exit 1
-fi
-
-if [ ! -f "$CONFIG" ]; then
-  echo "::error::Missing worker config: ${CONFIG}"
   exit 1
 fi
 
@@ -36,5 +23,7 @@ if [ -z "$APP" ]; then
   exit 1
 fi
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "::notice::Fly worker deploy → ${APP} (${BRANCH})"
-flyctl deploy . --config "$CONFIG" --app "$APP" --remote-only
+cd "$ROOT/services/worker"
+exec bash deploy.sh "$BRANCH"

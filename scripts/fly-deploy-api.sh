@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
 # Deploy services/api to Fly.io for dev or main.
 #
-# Requires: FLY_API_TOKEN, FLY_APP_DEV / FLY_APP_PROD (or pass branch).
+# Requires: FLY_API_TOKEN, FLY_APP_DEV / FLY_APP_PROD.
 # Usage: bash scripts/fly-deploy-api.sh dev|main
 set -euo pipefail
 
 BRANCH="${1:?usage: fly-deploy-api.sh dev|main}"
-CONFIG="${FLY_API_CONFIG:-}"
-
-if [ -z "$CONFIG" ]; then
-  if [ "$BRANCH" = "main" ]; then
-    CONFIG="services/api/fly.prod.toml"
-  else
-    CONFIG="services/api/fly.toml"
-  fi
-fi
 
 if [ -z "${FLY_API_TOKEN:-}" ]; then
   echo '::error::Missing FLY_API_TOKEN.'
@@ -32,5 +23,7 @@ if [ -z "$APP" ]; then
   exit 1
 fi
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "::notice::Fly deploy → ${APP} (${BRANCH})"
-flyctl deploy . --config "$CONFIG" --app "$APP" --remote-only
+cd "$ROOT/services/api"
+exec bash deploy.sh "$BRANCH"

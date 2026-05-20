@@ -1,7 +1,8 @@
 # fly.toml app configuration file generated for social-wire-api on 2026-05-18T01:27:43Z
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# Deploy from this directory (monorepo root = Docker build context):
+#   fly deploy ../.. --config services/api/fly.toml --app the-social-wire-dev
+# Or: bash deploy.sh dev
 
 app = 'the-social-wire-dev'
 primary_region = 'ams'

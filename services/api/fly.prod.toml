@@ -1,7 +1,6 @@
-# Production API (main). Dev uses fly.toml (the-social-wire-dev).
+# Production API (main). Dev uses fly.toml.
 #
-# Deploy: bash scripts/fly-deploy-api.sh main
-#   (uses --app from FLY_APP_PROD; this file documents the prod app name.)
+# Deploy: bash deploy.sh main
 
 app = 'the-social-wire-prod'
 primary_region = 'ams'

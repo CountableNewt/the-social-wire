@@ -14,13 +14,23 @@ APP_ENV=local ENABLE_THIN_APPVIEW=true swift run Worker
 
 ## Deploy
 
-From repo root (Docker build context is the monorepo):
+From **`services/worker`** (Fly uses the monorepo root as Docker build context for `packages/`):
 
 ```bash
-bash scripts/fly-deploy-worker.sh dev   # or main
+cd services/worker
+bash deploy.sh dev    # or main
 ```
 
-Fly configs: `fly.toml` (dev), `fly.prod.toml` (prod).
+Or explicitly:
+
+```bash
+cd services/worker
+fly deploy ../.. --config services/worker/fly.toml --app the-social-wire-dev-worker
+```
+
+From repo root, CI uses `bash scripts/fly-deploy-worker.sh dev`.
+
+Configs: `fly.toml` (dev), `fly.prod.toml` (prod).
 
 ## Environment
 
