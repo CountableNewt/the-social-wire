@@ -10,9 +10,8 @@ public enum DPoPHtu {
     let trimmedHost = trimmedAuthority(for: request) ?? trimmedHostHeader(from: request.headers)
     guard let authority = trimmedHost, !authority.isEmpty else { return nil }
 
-    let scheme =
-      trimmedLowercasedScheme(request.head.scheme)
-      ?? ForwardedHTTP.inferredScheme(forAuthority: authority, headers: request.headers)
+    // Prefer ingress `X-Forwarded-Proto` over the internal hop scheme (Fly terminates TLS as HTTP).
+    let scheme = ForwardedHTTP.inferredScheme(forAuthority: authority, headers: request.headers)
 
     var pathFragment = request.uri.path
     if pathFragment.isEmpty { pathFragment = "/" }
@@ -43,11 +42,6 @@ public enum DPoPHtu {
     return headers[hostName]?
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .nilIfEmpty
-  }
-
-  private static func trimmedLowercasedScheme(_ raw: String?) -> String? {
-    guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else { return nil }
-    return s.lowercased()
   }
 
   private static func normalize(_ raw: String) -> String {
