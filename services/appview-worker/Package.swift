@@ -33,7 +33,7 @@ let package = Package(
       name: "AppViewWorkerTests",
       dependencies: [
         "AppViewWorker",
-        "ThinAppViewCore",
+        .product(name: "ThinAppViewCore", package: "ThinAppViewCore"),
         .product(name: "Logging", package: "swift-log"),
       ],
       path: "Tests/AppViewWorkerTests",

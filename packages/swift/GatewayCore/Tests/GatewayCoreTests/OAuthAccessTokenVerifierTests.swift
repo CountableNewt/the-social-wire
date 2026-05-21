@@ -3,7 +3,7 @@ import Foundation
 import Logging
 import Testing
 
-@testable import App
+@testable import GatewayCore
 
 @Suite("OAuthAccessTokenJWT")
 struct OAuthAccessTokenJWTTests {

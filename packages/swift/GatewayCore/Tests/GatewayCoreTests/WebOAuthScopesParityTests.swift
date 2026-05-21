@@ -1,17 +1,18 @@
 import Foundation
 import Testing
 
-@testable import App
+@testable import GatewayCore
 
 @Suite("ATProtoOAuthScopes parity")
 struct WebOAuthScopesParityTests {
   private func repoPublicClientMetadataURL() throws -> URL {
-    // …/social-wire/services/api/Tests/AppTests/<this file>.swift → repo root
+    // …/packages/swift/GatewayCore/Tests/GatewayCoreTests/<this file>.swift → repo root
     URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent() // AppTests
+      .deletingLastPathComponent() // GatewayCoreTests
       .deletingLastPathComponent() // Tests
-      .deletingLastPathComponent() // services/api
-      .deletingLastPathComponent() // services
+      .deletingLastPathComponent() // GatewayCore
+      .deletingLastPathComponent() // swift
+      .deletingLastPathComponent() // packages
       .deletingLastPathComponent() // repo root (the-social-wire)
       .appending(component: "apps")
       .appending(component: "web")

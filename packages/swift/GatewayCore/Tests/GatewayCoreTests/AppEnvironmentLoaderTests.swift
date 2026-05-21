@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import App
+@testable import GatewayCore
 
 @Suite("AppEnvironmentLoader")
 struct AppEnvironmentLoaderTests {

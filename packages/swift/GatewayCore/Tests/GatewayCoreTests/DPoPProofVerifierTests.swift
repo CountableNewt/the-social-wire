@@ -2,7 +2,7 @@ import Crypto
 import Foundation
 import Testing
 
-@testable import App
+@testable import GatewayCore
 
 private struct CanonicalJSON {
   let encoder: JSONEncoder = {

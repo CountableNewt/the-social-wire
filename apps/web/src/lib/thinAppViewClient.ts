@@ -116,9 +116,7 @@ export async function getEntryFromAppView(
   return {
     entryId: json.entryId,
     title: json.title,
-    summary: json.summary,
     publishedAt: json.publishedAt,
-    thumbnailUrl: json.thumbnailUrl,
     contentHtml: json.contentHtml ?? json.summary ?? "",
   };
 }

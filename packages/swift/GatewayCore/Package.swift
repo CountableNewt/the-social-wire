@@ -38,6 +38,8 @@ let package = Package(
       name: "GatewayCoreTests",
       dependencies: [
         "GatewayCore",
+        .product(name: "AsyncHTTPClient", package: "async-http-client"),
+        .product(name: "Hummingbird", package: "hummingbird"),
         .product(name: "Logging", package: "swift-log"),
         .product(name: "JWTKit", package: "jwt-kit"),
         .product(name: "Crypto", package: "swift-crypto"),

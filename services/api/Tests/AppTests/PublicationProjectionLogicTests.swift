@@ -1,4 +1,5 @@
 import Foundation
+import GatewayCore
 import Testing
 @testable import App
 

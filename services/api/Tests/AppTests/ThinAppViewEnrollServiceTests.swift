@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import GatewayCore
 import Logging
 import Testing
 import ThinAppViewCore

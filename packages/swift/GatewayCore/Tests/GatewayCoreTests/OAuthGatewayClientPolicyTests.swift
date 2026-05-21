@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 import Testing
 
-@testable import App
+@testable import GatewayCore
 
 @Suite("OAuthGatewayClientPolicy")
 struct OAuthGatewayClientPolicyTests {
