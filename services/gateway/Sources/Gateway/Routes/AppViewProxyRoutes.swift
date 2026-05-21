@@ -24,6 +24,7 @@ private extension HTTPResponse.Status {
 /// Forwards AppView read routes to the AppView service during distributed deployment.
 struct AppViewProxyRoutes {
   let baseURL: String
+  let internalSecret: String?
   let httpClient: HTTPClient
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
@@ -69,10 +70,11 @@ struct AppViewProxyRoutes {
     method: String
   ) async throws -> Response {
     guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-    var url = "\(normalizeBase(baseURL))\(path)"
+    var pathWithQuery = path
     if let query = request.uri.query, !query.isEmpty {
-      url += "?\(query)"
+      pathWithQuery += "?\(query)"
     }
+    let url = "\(normalizeBase(baseURL))\(pathWithQuery)"
     var fwd = HTTPClientRequest(url: url)
     switch method {
     case "GET": fwd.method = .GET
@@ -84,6 +86,19 @@ struct AppViewProxyRoutes {
     fwd.headers.add(name: "Accept", value: "application/json")
     fwd.headers.add(name: "Authorization", value: auth.authorizationForwardingValue)
     if let dpop = auth.dpopProof { fwd.headers.add(name: "DPoP", value: dpop) }
+
+    if let internalSecret {
+      let signed = try GatewayInternalTrust.signedHeaders(
+        secret: internalSecret,
+        did: auth.did,
+        method: method,
+        pathWithQuery: pathWithQuery
+      )
+      for header in signed {
+        fwd.headers.add(name: header.name, value: header.value)
+      }
+    }
+
     if method == "POST" || method == "PUT" || method == "DELETE" {
       let body = try await request.body.collect(upTo: 4 * 1024 * 1024)
       if body.readableBytes > 0 {
