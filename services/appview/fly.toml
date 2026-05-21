@@ -1,10 +1,12 @@
-# Deploy: fly deploy ../.. --config services/appview/fly.toml --app the-social-wire-dev-appview
+# Deploy from repo root: bash services/appview/deploy.sh dev
+# Or: fly deploy ../.. --config services/appview/fly.toml --app the-social-wire-dev-appview
 
 app = 'the-social-wire-dev-appview'
 primary_region = 'ams'
 
 [build]
   dockerfile = 'Dockerfile'
+  context = '../..'
 
 [deploy]
   wait_timeout = '10m0s'

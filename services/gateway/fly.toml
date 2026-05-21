@@ -1,10 +1,12 @@
-# Deploy: fly deploy ../.. --config services/gateway/fly.toml --app the-social-wire-dev-gateway
+# Deploy from repo root: bash services/gateway/deploy.sh dev
+# Or: fly deploy ../.. --config services/gateway/fly.toml --app the-social-wire-dev-gateway
 
 app = 'the-social-wire-dev-gateway'
 primary_region = 'ams'
 
 [build]
   dockerfile = 'Dockerfile'
+  context = '../..'
 
 [deploy]
   wait_timeout = '10m0s'
