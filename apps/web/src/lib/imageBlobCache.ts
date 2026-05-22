@@ -142,6 +142,11 @@ export async function fetchCachedImageObjectUrl(
   const url = normalizeImageCacheKey(rawUrl);
   if (!url) return undefined;
 
+  // Cross-origin `<img src>` does not need CORS; `fetch()` does (e.g. cdn.bsky.app avatars).
+  if (!isSameOriginImageUrl(url)) {
+    return url;
+  }
+
   const cached = await readCachedBlob(url);
   if (cached) {
     return URL.createObjectURL(cached);
