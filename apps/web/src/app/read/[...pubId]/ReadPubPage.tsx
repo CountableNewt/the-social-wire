@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import { EntryDetail } from "@/components/EntryDetail/EntryDetail";
@@ -27,47 +27,56 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
     filterRef.current = articleListFilter;
   });
 
+  const markOptions = useMemo(() => ({ publicationId: pubId }), [pubId]);
+
+  const markEntryReadForPub = useCallback(
+    (entryId: string) => markEntryRead(entryId, markOptions),
+    [markEntryRead, markOptions]
+  );
+
+  const markEntryUnreadForPub = useCallback(
+    (entryId: string) => markEntryUnread(entryId, markOptions),
+    [markEntryUnread, markOptions]
+  );
+
   const prevFilterRef = useRef(articleListFilter);
   useEffect(() => {
     const prev = prevFilterRef.current;
     if (prev === "unread" && articleListFilter === "all" && selectedEntryId) {
-      markEntryRead(selectedEntryId);
+      markEntryReadForPub(selectedEntryId);
     }
     prevFilterRef.current = articleListFilter;
-  }, [articleListFilter, selectedEntryId, markEntryRead]);
+  }, [articleListFilter, selectedEntryId, markEntryReadForPub]);
 
   useEffect(() => {
     return () => {
       if (filterRef.current === "unread" && selectedRef.current) {
-        markEntryRead(selectedRef.current);
+        markEntryReadForPub(selectedRef.current);
       }
     };
-  }, [pubId, markEntryRead]);
+  }, [pubId, markEntryReadForPub]);
 
   const handleSelectEntry = useCallback(
     (entryId: string) => {
       if (articleListFilter === "unread") {
-        // Mark the previous open article read before switching — never call
-        // markEntryRead inside setState's updater (that updates the parent
-        // provider during a child state update and triggers a React warning).
         if (selectedEntryId && selectedEntryId !== entryId) {
-          markEntryRead(selectedEntryId);
+          markEntryReadForPub(selectedEntryId);
         }
         setSelectedEntryId(entryId);
         return;
       }
       setSelectedEntryId(entryId);
-      markEntryRead(entryId);
+      markEntryReadForPub(entryId);
     },
-    [markEntryRead, articleListFilter, selectedEntryId]
+    [markEntryReadForPub, articleListFilter, selectedEntryId]
   );
 
   const handleBackToList = useCallback(() => {
     if (articleListFilter === "unread" && selectedEntryId) {
-      markEntryRead(selectedEntryId);
+      markEntryReadForPub(selectedEntryId);
     }
     setSelectedEntryId(null);
-  }, [articleListFilter, selectedEntryId, markEntryRead]);
+  }, [articleListFilter, selectedEntryId, markEntryReadForPub]);
 
   return (
     <div className="flex h-full min-h-0 max-h-full flex-1 flex-col overflow-hidden md:flex-row md:items-stretch">
@@ -95,8 +104,8 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
             isEntryRead={isEntryRead}
             readIndicatorsEnabled
             articleFilter={articleListFilter}
-            markEntryRead={markEntryRead}
-            markEntryUnread={markEntryUnread}
+            markEntryRead={markEntryReadForPub}
+            markEntryUnread={markEntryUnreadForPub}
           />
         </div>
       </aside>

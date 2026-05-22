@@ -59,25 +59,33 @@ describe("countUnreadCachedEntries", () => {
 });
 
 describe("distinctCachedEntryIdsForPublications", () => {
-  it("returns distinct entry IDs across publications", () => {
+  it("returns distinct entry IDs across publications and filters", () => {
     const pubDid = "did:plc:alice";
     const otherDid = "did:plc:bob";
     const e1 = makeEntry("at://did/a/site.standard.entry/1");
     const e2 = makeEntry("at://did/a/site.standard.entry/2");
     const eDup = makeEntry("at://did/a/site.standard.entry/1");
-    const store = new Map<string, unknown>();
-    store.set(JSON.stringify(ENTRIES_QUERY_KEY(pubDid)), {
+    const store = new Map<string, InfiniteData<EntriesPage>>();
+    store.set(JSON.stringify([...ENTRIES_QUERY_KEY(pubDid), "all"]), {
       pages: [{ entries: [e1, e2], cursor: undefined }],
       pageParams: [undefined],
-    } satisfies InfiniteData<EntriesPage>);
-    store.set(JSON.stringify(ENTRIES_QUERY_KEY(otherDid)), {
+    });
+    store.set(JSON.stringify([...ENTRIES_QUERY_KEY(otherDid), "unread"]), {
       pages: [{ entries: [eDup], cursor: undefined }],
       pageParams: [undefined],
-    } satisfies InfiniteData<EntriesPage>);
+    });
     const queryClient = {
-      getQueryData: <T>(key: readonly unknown[]) =>
-        store.get(JSON.stringify(key)) as T | undefined,
-    };
+      getQueriesData: <T,>({ queryKey }: { queryKey: readonly unknown[] }) => {
+        const prefix = JSON.stringify(queryKey).slice(0, -1);
+        const out: [unknown, T][] = [];
+        for (const [key, value] of store) {
+          if (key.startsWith(prefix)) {
+            out.push([JSON.parse(key), value as T]);
+          }
+        }
+        return out;
+      },
+    } as unknown as import("@tanstack/react-query").QueryClient;
     const ids = distinctCachedEntryIdsForPublications(queryClient, [
       { publicationId: pubDid },
       { publicationId: otherDid },
@@ -87,8 +95,8 @@ describe("distinctCachedEntryIdsForPublications", () => {
 
   it("returns empty when cache is missing", () => {
     const queryClient = {
-      getQueryData: () => undefined,
-    };
+      getQueriesData: () => [],
+    } as unknown as import("@tanstack/react-query").QueryClient;
     expect(
       distinctCachedEntryIdsForPublications(queryClient, [
         { publicationId: "did:plc:none" },

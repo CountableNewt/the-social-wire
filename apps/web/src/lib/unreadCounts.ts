@@ -52,22 +52,41 @@ export function sumUnreadForPublications(
   return sum;
 }
 
+/** Cached entry rows for a publication (any article-list filter variant). */
+export function getCachedEntriesForPublication(
+  queryClient: QueryClient,
+  publicationId: string
+): EntryListItem[] {
+  const normalized = normalizeAtRepoParam(publicationId);
+  const queries = queryClient.getQueriesData<InfiniteData<EntriesPage>>({
+    queryKey: ENTRIES_QUERY_KEY(normalized),
+  });
+  const seen = new Set<string>();
+  const out: EntryListItem[] = [];
+  for (const [, data] of queries) {
+    for (const entry of flattenCachedInfiniteEntries(data)) {
+      if (seen.has(entry.entryId)) continue;
+      seen.add(entry.entryId);
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
 /**
  * Distinct entry AT-URIs present in the TanStack infinite-query cache for the given publications.
  */
 export function distinctCachedEntryIdsForPublications(
-  queryClient: Pick<QueryClient, "getQueryData">,
+  queryClient: QueryClient,
   publications: Array<{ publicationId: string }>
 ): string[] {
   const seen = new Set<string>();
   for (const pub of publications) {
-    const normalized = normalizeAtRepoParam(pub.publicationId);
-    const data = queryClient.getQueryData<InfiniteData<EntriesPage>>(
-      ENTRIES_QUERY_KEY(normalized)
-    );
-    const entries = flattenCachedInfiniteEntries(data);
-    for (const e of entries) {
-      seen.add(e.entryId);
+    for (const entry of getCachedEntriesForPublication(
+      queryClient,
+      pub.publicationId
+    )) {
+      seen.add(entry.entryId);
     }
   }
   return [...seen];

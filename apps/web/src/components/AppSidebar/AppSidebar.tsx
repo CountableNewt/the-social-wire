@@ -40,7 +40,6 @@ import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
 import {
   SIDEBAR_SEC_FOLDERS,
   SIDEBAR_SEC_PUBLICATIONS,
-  type PublicationTab,
 } from "./appSidebarConstants";
 import { AppSidebarSkeleton } from "./AppSidebarSkeleton";
 import { CollapsibleSidebarSubSection } from "./CollapsibleSidebarSubSection";
@@ -58,13 +57,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const pathname = usePathname();
   const { session, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
-  const { selectedFolderUri, setSelectedFolderUri } = useReadRoute();
+  const { selectedFolderUri, setSelectedFolderUri, publicationTab, setPublicationTab } =
+    useReadRoute();
 
   const [expandedKeys, setExpandedKeys] = useState(
     () => new Set<string>([SIDEBAR_SEC_FOLDERS, SIDEBAR_SEC_PUBLICATIONS])
   );
-  const [publicationTab, setPublicationTab] =
-    useState<PublicationTab>("subscribed");
 
   const toggleExpanded = useCallback((key: string) => {
     setExpandedKeys((prev) => {
@@ -289,16 +287,14 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          {!sidebarListsLoading ? (
-            <SidebarGroup className="pt-0">
-              <SidebarMenu className="gap-1.5">
-                <PublicationTabs
-                  activeTab={publicationTab}
-                  onTabChange={setPublicationTab}
-                />
-              </SidebarMenu>
-            </SidebarGroup>
-          ) : null}
+          <SidebarGroup className="pt-0">
+            <SidebarMenu className="gap-1.5">
+              <PublicationTabs
+                activeTab={publicationTab}
+                onTabChange={setPublicationTab}
+              />
+            </SidebarMenu>
+          </SidebarGroup>
         </div>
         <div className="no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
           <SidebarGroup className="px-2 pb-2 pt-4">

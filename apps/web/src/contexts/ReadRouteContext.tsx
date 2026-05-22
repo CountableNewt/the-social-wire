@@ -9,6 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import { usePDSClient } from "@/hooks/usePDSClient";
 import {
   loadReadState,
@@ -17,16 +19,38 @@ import {
   type EntryReadStateV1,
 } from "@/lib/entryReadStateStorage";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
+import type { PublicationTab } from "@/components/AppSidebar/appSidebarConstants";
+import type { DiscoveredPublication } from "@/lib/atprotoClient";
+import {
+  loadSidebarPublicationTab,
+  saveSidebarPublicationTab,
+} from "@/lib/sidebarPublicationTabStorage";
+import {
+  applyBulkPublicationUnreadCountDeltas,
+  applyPublicationUnreadCountDelta,
+  bulkReadDeltasForPublications,
+  bulkUnreadDeltasForPublications,
+} from "@/lib/optimisticUnreadCounts";
+
+export type MarkEntryReadOptions = {
+  publicationId?: string;
+};
+
+export type MarkEntriesReadOptions = {
+  publications?: DiscoveredPublication[];
+};
 
 export type ReadRouteContextValue = {
   selectedFolderUri: string | null;
   setSelectedFolderUri: (uri: string | null) => void;
   articleListFilter: ArticleListFilter;
   setArticleListFilter: (filter: ArticleListFilter) => void;
-  markEntryRead: (entryId: string) => void;
-  markEntryUnread: (entryId: string) => void;
-  markEntriesRead: (entryIds: string[]) => void;
-  markEntriesUnread: (entryIds: string[]) => void;
+  publicationTab: PublicationTab;
+  setPublicationTab: (tab: PublicationTab) => void;
+  markEntryRead: (entryId: string, options?: MarkEntryReadOptions) => void;
+  markEntryUnread: (entryId: string, options?: MarkEntryReadOptions) => void;
+  markEntriesRead: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
+  markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   isEntryRead: (entryId: string) => boolean;
 };
 
@@ -37,7 +61,23 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
   const [readMap, setReadMap] = useState<EntryReadStateV1>({});
   const [articleListFilter, setArticleListFilter] =
     useState<ArticleListFilter>("all");
+  const [publicationTab, setPublicationTabState] = useState<PublicationTab>(
+    () => {
+      if (typeof window === "undefined") return "subscribed";
+      return loadSidebarPublicationTab(window.localStorage);
+    }
+  );
   const pdsClient = usePDSClient();
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+  const viewerDid = session?.did;
+
+  const setPublicationTab = useCallback((tab: PublicationTab) => {
+    setPublicationTabState(tab);
+    if (typeof window !== "undefined") {
+      saveSidebarPublicationTab(window.localStorage, tab);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -70,7 +110,7 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
   }, [pdsClient]);
 
   const markEntryRead = useCallback(
-    (entryId: string) => {
+    (entryId: string, options?: MarkEntryReadOptions) => {
       setReadMap((prev) => {
         if (prev[entryId]) return prev;
         const readAt = new Date().toISOString();
@@ -83,14 +123,26 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
             /* best-effort sync */
           });
         }
+        if (viewerDid && options?.publicationId) {
+          // Defer React Query writes so we do not re-render subscribers while
+          // React is still committing the readMap update.
+          queueMicrotask(() => {
+            applyPublicationUnreadCountDelta(
+              queryClient,
+              viewerDid,
+              options.publicationId!,
+              -1
+            );
+          });
+        }
         return next;
       });
     },
-    [pdsClient]
+    [pdsClient, queryClient, viewerDid]
   );
 
   const markEntryUnread = useCallback(
-    (entryId: string) => {
+    (entryId: string, options?: MarkEntryReadOptions) => {
       setReadMap((prev) => {
         if (!prev[entryId]) return prev;
         const next = { ...prev };
@@ -103,14 +155,24 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
             /* best-effort sync */
           });
         }
+        if (viewerDid && options?.publicationId) {
+          queueMicrotask(() => {
+            applyPublicationUnreadCountDelta(
+              queryClient,
+              viewerDid,
+              options.publicationId!,
+              1
+            );
+          });
+        }
         return next;
       });
     },
-    [pdsClient]
+    [pdsClient, queryClient, viewerDid]
   );
 
   const markEntriesRead = useCallback(
-    (entryIds: string[]) => {
+    (entryIds: string[], options?: MarkEntriesReadOptions) => {
       if (entryIds.length === 0) return;
       const unique = [...new Set(entryIds)];
       setReadMap((prev) => {
@@ -134,14 +196,28 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
             });
           }
         }
+        if (viewerDid && options?.publications?.length) {
+          const deltas = bulkReadDeltasForPublications(
+            queryClient,
+            options.publications,
+            (entryId) => !prev[entryId]
+          );
+          queueMicrotask(() => {
+            applyBulkPublicationUnreadCountDeltas(
+              queryClient,
+              viewerDid,
+              deltas
+            );
+          });
+        }
         return next;
       });
     },
-    [pdsClient]
+    [pdsClient, queryClient, viewerDid]
   );
 
   const markEntriesUnread = useCallback(
-    (entryIds: string[]) => {
+    (entryIds: string[], options?: MarkEntriesReadOptions) => {
       if (entryIds.length === 0) return;
       const unique = [...new Set(entryIds)];
       setReadMap((prev) => {
@@ -164,10 +240,24 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
             });
           }
         }
+        if (viewerDid && options?.publications?.length) {
+          const deltas = bulkUnreadDeltasForPublications(
+            queryClient,
+            options.publications,
+            (entryId) => Boolean(prev[entryId])
+          );
+          queueMicrotask(() => {
+            applyBulkPublicationUnreadCountDeltas(
+              queryClient,
+              viewerDid,
+              deltas
+            );
+          });
+        }
         return next;
       });
     },
-    [pdsClient]
+    [pdsClient, queryClient, viewerDid]
   );
 
   const isEntryRead = useCallback(
@@ -183,6 +273,8 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       setSelectedFolderUri,
       articleListFilter,
       setArticleListFilter,
+      publicationTab,
+      setPublicationTab,
       isEntryRead,
       markEntryRead,
       markEntryUnread,
@@ -192,11 +284,13 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
     [
       selectedFolderUri,
       articleListFilter,
+      publicationTab,
       isEntryRead,
       markEntryRead,
       markEntryUnread,
       markEntriesRead,
       markEntriesUnread,
+      setPublicationTab,
     ]
   );
 

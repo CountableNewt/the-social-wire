@@ -26,12 +26,12 @@ export function useCachedBulkReadActions(
   const bulkDisabled = cachedEntryIds.length === 0;
 
   const applyMarkAllRead = useCallback(() => {
-    markEntriesRead(cachedEntryIds);
-  }, [markEntriesRead, cachedEntryIds]);
+    markEntriesRead(cachedEntryIds, { publications });
+  }, [markEntriesRead, cachedEntryIds, publications]);
 
   const applyMarkAllUnread = useCallback(() => {
-    markEntriesUnread(cachedEntryIds);
-  }, [markEntriesUnread, cachedEntryIds]);
+    markEntriesUnread(cachedEntryIds, { publications });
+  }, [markEntriesUnread, cachedEntryIds, publications]);
 
   return {
     cachedEntryIds,
