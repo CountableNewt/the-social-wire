@@ -75,7 +75,7 @@ export default function RootLayout({
           <EnvironmentBanner appEnv={appEnv} />
           {children}
         </Providers>
-        <Analytics />
+        {appEnv === "prod" ? <Analytics /> : null}
       </body>
     </html>
   );

@@ -128,7 +128,27 @@ function isSameOriginImageUrl(url: string): boolean {
 export function isDirectImageLoadUrl(url: string): boolean {
   const normalized = normalizeImageCacheKey(url);
   if (!normalized) return false;
-  return !isSameOriginImageUrl(normalized);
+  return shouldUseDirectImageSrc(normalized);
+}
+
+/** Cross-origin images must use `<img src>`; only same-origin may use fetch + IndexedDB. */
+export function shouldUseDirectImageSrc(normalizedUrl: string): boolean {
+  if (typeof window === "undefined") {
+    try {
+      const parsed = new URL(normalizedUrl);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  return !isSameOriginImageUrl(normalizedUrl);
+}
+
+/** Returns a direct HTTPS `src` when blob caching would require CORS `fetch()`. */
+export function resolveDirectImageUrl(rawUrl: string): string | undefined {
+  const normalized = normalizeImageCacheKey(rawUrl);
+  if (!normalized || !shouldUseDirectImageSrc(normalized)) return undefined;
+  return normalized;
 }
 
 /**
@@ -143,7 +163,7 @@ export async function fetchCachedImageObjectUrl(
   if (!url) return undefined;
 
   // Cross-origin `<img src>` does not need CORS; `fetch()` does (e.g. cdn.bsky.app avatars).
-  if (!isSameOriginImageUrl(url)) {
+  if (shouldUseDirectImageSrc(url)) {
     return url;
   }
 

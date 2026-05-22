@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { fetchCachedImageObjectUrl } from "@/lib/imageBlobCache";
+import {
+  fetchCachedImageObjectUrl,
+  resolveDirectImageUrl,
+} from "@/lib/imageBlobCache";
 
 type CachedImageState = {
   key: string | null;
@@ -11,13 +14,18 @@ type CachedImageState = {
 };
 
 /**
- * Resolves a remote image URL to a blob object URL backed by IndexedDB cache.
+ * Resolves a remote image URL for display.
+ * Cross-origin URLs (e.g. cdn.bsky.app) use direct `<img src>`; same-origin uses IndexedDB blob cache.
  */
 export function useCachedImageUrl(src: string | null | undefined): {
   objectUrl: string | undefined;
   failed: boolean;
 } {
   const cacheKey = src?.trim() || null;
+  const directUrl = useMemo(
+    () => (cacheKey ? resolveDirectImageUrl(cacheKey) : undefined),
+    [cacheKey]
+  );
   const [state, setState] = useState<CachedImageState>({
     key: null,
     objectUrl: undefined,
@@ -25,7 +33,7 @@ export function useCachedImageUrl(src: string | null | undefined): {
   });
 
   useEffect(() => {
-    if (!cacheKey) return;
+    if (!cacheKey || directUrl) return;
 
     let cancelled = false;
     let activeObjectUrl: string | undefined;
@@ -57,7 +65,11 @@ export function useCachedImageUrl(src: string | null | undefined): {
       cancelled = true;
       if (activeObjectUrl?.startsWith("blob:")) URL.revokeObjectURL(activeObjectUrl);
     };
-  }, [cacheKey]);
+  }, [cacheKey, directUrl]);
+
+  if (directUrl) {
+    return { objectUrl: directUrl, failed: false };
+  }
 
   if (!cacheKey || state.key !== cacheKey) {
     return { objectUrl: undefined, failed: false };
