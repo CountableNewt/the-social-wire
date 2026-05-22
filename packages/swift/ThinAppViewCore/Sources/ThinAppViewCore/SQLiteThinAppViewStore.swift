@@ -181,73 +181,144 @@ public init(path dbPath: String, logger: Logger) throws {
     let nowIso = Self.isoString(from: Date())
     let pageLimit = max(1, min(limit, 100))
     let scoped = publicationAtUri != nil || !publicationScopeAtUris.isEmpty
-    let fetchLimit = scoped ? (pageLimit + 1) * 8 : pageLimit + 1
+    let batchSize = ThinAppViewQuerySupport.scanBatchSize(
+      pageLimit: pageLimit,
+      scoped: scoped
+    )
+    var dbCursor = cursor.flatMap { ThinAppViewCursor.decode($0) }
 
-    let rows: [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] =
-      try await db.read { db in
-        var sql = """
-          SELECT ci.uri, ci.render_json, ci.created_at, ci.publication_site
-          FROM content_items ci
-          LEFT JOIN read_marks rm
-            ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
-          WHERE ci.author_did = ?
-            AND ci.expires_at > ?
-          """
-
-        var args: [DatabaseValueConvertible?] = [viewerDid, authorDid, nowIso]
-
-        switch filter {
-        case .all:
-          break
-        case .unread:
-          sql += " AND rm.subject_uri IS NULL"
-        case .read:
-          sql += " AND rm.subject_uri IS NOT NULL"
-        }
-
-        if let decoded = cursor.flatMap({ ThinAppViewCursor.decode($0) }) {
-          sql += " AND (ci.created_at < ? OR (ci.created_at = ? AND ci.uri < ?))"
-          let createdIso = Self.isoString(from: decoded.createdAt)
-          args.append(contentsOf: [createdIso, createdIso, decoded.uri])
-        }
-
-        sql += " ORDER BY ci.created_at DESC, ci.uri DESC LIMIT ?"
-        args.append(fetchLimit)
-
-        let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
-        return fetched.map { row in
-          (
-            uri: row["uri"],
-            renderJSON: row["render_json"],
-            createdAt: Self.date(fromIso: row["created_at"]) ?? Date.distantPast,
-            publicationSite: row["publication_site"]
+    if !scoped {
+      let fetched = try await fetchContentBatch(
+        viewerDid: viewerDid,
+        authorDid: authorDid,
+        filter: filter,
+        cursor: dbCursor,
+        limit: batchSize,
+        nowIso: nowIso
+      )
+      return ThinAppViewQuerySupport.buildFilteredEntryListPage(
+        pageLimit: pageLimit,
+        matches: fetched.map {
+          EntryListScanRow(
+            uri: $0.uri,
+            renderJSON: $0.renderJSON,
+            createdAt: $0.createdAt,
+            publicationSite: $0.publicationSite
           )
-        }
-      }
-
-    let filtered = rows.filter { row in
-      ThinAppViewQuerySupport.publicationSiteMatches(
-        siteField: row.publicationSite,
-        publicationAtUri: publicationAtUri,
-        publicationScopeAtUris: publicationScopeAtUris,
-        publicationSiteUrls: publicationSiteUrls
+        },
+        lastScannedCreatedAt: fetched.last?.createdAt,
+        lastScannedUri: fetched.last?.uri,
+        dbHasMore: fetched.count == batchSize
       )
     }
 
-    let hasMore = filtered.count > pageLimit
-    let page = hasMore ? Array(filtered.prefix(pageLimit)) : filtered
-    let items = ThinAppViewQuerySupport.entryListItems(
-      from: page.map { ($0.uri, $0.renderJSON, $0.createdAt) }
-    )
+    var matches: [EntryListScanRow] = []
+    var lastScannedCreatedAt: Date?
+    var lastScannedUri: String?
+    var dbHasMore = false
 
-    let nextCursor: String?
-    if hasMore, let last = page.last {
-      nextCursor = ThinAppViewCursor.encode(createdAt: last.createdAt, uri: last.uri)
-    } else {
-      nextCursor = nil
+    scanLoop: while matches.count < pageLimit + 1 {
+      let fetched = try await fetchContentBatch(
+        viewerDid: viewerDid,
+        authorDid: authorDid,
+        filter: filter,
+        cursor: dbCursor,
+        limit: batchSize,
+        nowIso: nowIso
+      )
+      if fetched.isEmpty {
+        dbHasMore = false
+        break
+      }
+
+      dbHasMore = fetched.count == batchSize
+      for row in fetched {
+        lastScannedCreatedAt = row.createdAt
+        lastScannedUri = row.uri
+        guard
+          ThinAppViewQuerySupport.publicationSiteMatches(
+            siteField: row.publicationSite,
+            publicationAtUri: publicationAtUri,
+            publicationScopeAtUris: publicationScopeAtUris,
+            publicationSiteUrls: publicationSiteUrls
+          )
+        else { continue }
+
+        matches.append(
+          EntryListScanRow(
+            uri: row.uri,
+            renderJSON: row.renderJSON,
+            createdAt: row.createdAt,
+            publicationSite: row.publicationSite
+          )
+        )
+        if matches.count >= pageLimit + 1 {
+          break scanLoop
+        }
+      }
+
+      if !dbHasMore { break }
+      guard let last = fetched.last else { break }
+      dbCursor = (last.createdAt, last.uri)
     }
 
-    return AppViewEntryListResponse(entries: items, cursor: nextCursor)
+    return ThinAppViewQuerySupport.buildFilteredEntryListPage(
+      pageLimit: pageLimit,
+      matches: matches,
+      lastScannedCreatedAt: lastScannedCreatedAt,
+      lastScannedUri: lastScannedUri,
+      dbHasMore: dbHasMore
+    )
+  }
+
+  private func fetchContentBatch(
+    viewerDid: String,
+    authorDid: String,
+    filter: EntryListFilter,
+    cursor: (createdAt: Date, uri: String)?,
+    limit: Int,
+    nowIso: String
+  ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
+    try await db.read { db in
+      var sql = """
+        SELECT ci.uri, ci.render_json, ci.created_at, ci.publication_site
+        FROM content_items ci
+        LEFT JOIN read_marks rm
+          ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
+        WHERE ci.author_did = ?
+          AND ci.expires_at > ?
+        """
+
+      var args: [DatabaseValueConvertible?] = [viewerDid, authorDid, nowIso]
+
+      switch filter {
+      case .all:
+        break
+      case .unread:
+        sql += " AND rm.subject_uri IS NULL"
+      case .read:
+        sql += " AND rm.subject_uri IS NOT NULL"
+      }
+
+      if let decoded = cursor {
+        sql += " AND (ci.created_at < ? OR (ci.created_at = ? AND ci.uri < ?))"
+        let createdIso = Self.isoString(from: decoded.createdAt)
+        args.append(contentsOf: [createdIso, createdIso, decoded.uri])
+      }
+
+      sql += " ORDER BY ci.created_at DESC, ci.uri DESC LIMIT ?"
+      args.append(limit)
+
+      let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+      return fetched.map { row in
+        (
+          uri: row["uri"],
+          renderJSON: row["render_json"],
+          createdAt: Self.date(fromIso: row["created_at"]) ?? Date.distantPast,
+          publicationSite: row["publication_site"]
+        )
+      }
+    }
   }
 
   public func countUnreadEntries(

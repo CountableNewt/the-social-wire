@@ -115,6 +115,22 @@ function normalizeImageCacheKey(raw: string): string | null {
   return normalizeHttpUrlToHttps(trimmed);
 }
 
+/** IndexedDB blob caching uses `fetch()`, which requires CORS. Most CDNs omit ACAO. */
+function isSameOriginImageUrl(url: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URL(url).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+export function isDirectImageLoadUrl(url: string): boolean {
+  const normalized = normalizeImageCacheKey(url);
+  if (!normalized) return false;
+  return !isSameOriginImageUrl(normalized);
+}
+
 /**
  * Returns a blob object URL for `rawUrl`, using IndexedDB when available.
  * Caller must revoke the URL when the consumer unmounts.
@@ -149,8 +165,10 @@ export async function fetchCachedImageObjectUrl(
 export function prefetchCachedImages(urls: Iterable<string | null | undefined>): void {
   for (const raw of urls) {
     if (!raw?.trim()) continue;
+    const url = normalizeImageCacheKey(raw);
+    if (!url || !isSameOriginImageUrl(url)) continue;
     void fetchCachedImageObjectUrl(raw).then((objectUrl) => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl?.startsWith("blob:")) URL.revokeObjectURL(objectUrl);
     });
   }
 }

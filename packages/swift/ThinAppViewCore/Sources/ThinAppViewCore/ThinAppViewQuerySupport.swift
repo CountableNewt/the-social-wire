@@ -17,7 +17,52 @@ public enum ThinAppViewCursor {
   }
 }
 
+struct EntryListScanRow {
+  let uri: String
+  let renderJSON: String
+  let createdAt: Date
+  let publicationSite: String?
+}
+
 public enum ThinAppViewQuerySupport {
+  static func scanBatchSize(pageLimit: Int, scoped: Bool) -> Int {
+    scoped ? max(100, pageLimit + 1) : pageLimit + 1
+  }
+
+  /// Builds a filtered entry page after scanning one or more DB batches.
+  ///
+  /// Scoped feeds filter in memory; when a batch is full but yields fewer than `pageLimit`
+  /// matches, `dbHasMore` keeps pagination alive using the last scanned row cursor.
+  static func buildFilteredEntryListPage(
+    pageLimit: Int,
+    matches: [EntryListScanRow],
+    lastScannedCreatedAt: Date?,
+    lastScannedUri: String?,
+    dbHasMore: Bool
+  ) -> AppViewEntryListResponse {
+    let hasFullPage = matches.count > pageLimit
+    let page = hasFullPage ? Array(matches.prefix(pageLimit)) : matches
+    let items = entryListItems(
+      from: page.map { ($0.uri, $0.renderJSON, $0.createdAt) }
+    )
+
+    let nextCursor: String?
+    if hasFullPage, let last = page.last {
+      nextCursor = ThinAppViewCursor.encode(createdAt: last.createdAt, uri: last.uri)
+    } else if dbHasMore,
+              let lastScannedCreatedAt,
+              let lastScannedUri
+    {
+      nextCursor = ThinAppViewCursor.encode(
+        createdAt: lastScannedCreatedAt,
+        uri: lastScannedUri
+      )
+    } else {
+      nextCursor = nil
+    }
+
+    return AppViewEntryListResponse(entries: items, cursor: nextCursor)
+  }
   public static func parseISO8601Date(_ raw: String) -> Date? {
     let fractional = ISO8601DateFormatter()
     fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

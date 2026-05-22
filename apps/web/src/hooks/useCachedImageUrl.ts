@@ -33,7 +33,7 @@ export function useCachedImageUrl(src: string | null | undefined): {
     void fetchCachedImageObjectUrl(cacheKey)
       .then((url) => {
         if (cancelled) {
-          if (url) URL.revokeObjectURL(url);
+          if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
           return;
         }
         activeObjectUrl = url;
@@ -55,7 +55,7 @@ export function useCachedImageUrl(src: string | null | undefined): {
 
     return () => {
       cancelled = true;
-      if (activeObjectUrl) URL.revokeObjectURL(activeObjectUrl);
+      if (activeObjectUrl?.startsWith("blob:")) URL.revokeObjectURL(activeObjectUrl);
     };
   }, [cacheKey]);
 

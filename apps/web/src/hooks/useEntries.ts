@@ -14,6 +14,7 @@ import type { ArticleListFilter } from "@/lib/entryArticleFilter";
 import { prefetchCachedImages } from "@/lib/imageBlobCache";
 import {
   getEntryFromAppView,
+  enrollAuthorsInAppView,
   isThinAppViewEnabled,
   listEntriesFromAppView,
 } from "@/lib/thinAppViewClient";
@@ -87,6 +88,14 @@ export async function fetchEntriesInfinitePage(args: {
       : undefined;
 
   const appViewScope = requireAppViewScope(projection, normalizedKey);
+
+  if (!pageParam) {
+    try {
+      await enrollAuthorsInAppView(oauthSession, [appViewScope.authorDid]);
+    } catch {
+      /* best-effort backfill for recent posts missing from Jetstream index */
+    }
+  }
 
   return listEntriesFromAppView({
     publicationKey: normalizedKey,

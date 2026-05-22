@@ -12,7 +12,7 @@ interface CachedImageProps {
   onError?: () => void;
 }
 
-/** Remote image with IndexedDB-backed blob cache and `no-referrer`. */
+/** Remote image: same-origin IndexedDB blob cache; cross-origin direct `src` (no CORS fetch). */
 export function CachedImage({
   src,
   alt,

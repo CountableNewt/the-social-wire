@@ -113,11 +113,106 @@ public init(pool: PostgresClient, logger: Logger) {
     let pageLimit = max(1, min(limit, 100))
     let now = Date()
     let scoped = publicationAtUri != nil || !publicationScopeAtUris.isEmpty
-    let fetchLimit = scoped ? (pageLimit + 1) * 8 : pageLimit + 1
-    let decodedCursor = cursor.flatMap { ThinAppViewCursor.decode($0) }
+    let batchSize = ThinAppViewQuerySupport.scanBatchSize(
+      pageLimit: pageLimit,
+      scoped: scoped
+    )
+    var dbCursor = cursor.flatMap { ThinAppViewCursor.decode($0) }
 
+    if !scoped {
+      let fetched = try await fetchContentBatch(
+        viewerDid: viewerDid,
+        authorDid: authorDid,
+        filter: filter,
+        cursor: dbCursor,
+        limit: batchSize,
+        now: now
+      )
+      return ThinAppViewQuerySupport.buildFilteredEntryListPage(
+        pageLimit: pageLimit,
+        matches: fetched.map {
+          EntryListScanRow(
+            uri: $0.uri,
+            renderJSON: $0.renderJSON,
+            createdAt: $0.createdAt,
+            publicationSite: $0.publicationSite
+          )
+        },
+        lastScannedCreatedAt: fetched.last?.createdAt,
+        lastScannedUri: fetched.last?.uri,
+        dbHasMore: fetched.count == batchSize
+      )
+    }
+
+    var matches: [EntryListScanRow] = []
+    var lastScannedCreatedAt: Date?
+    var lastScannedUri: String?
+    var dbHasMore = false
+
+    scanLoop: while matches.count < pageLimit + 1 {
+      let fetched = try await fetchContentBatch(
+        viewerDid: viewerDid,
+        authorDid: authorDid,
+        filter: filter,
+        cursor: dbCursor,
+        limit: batchSize,
+        now: now
+      )
+      if fetched.isEmpty {
+        dbHasMore = false
+        break
+      }
+
+      dbHasMore = fetched.count == batchSize
+      for row in fetched {
+        lastScannedCreatedAt = row.createdAt
+        lastScannedUri = row.uri
+        guard
+          ThinAppViewQuerySupport.publicationSiteMatches(
+            siteField: row.publicationSite,
+            publicationAtUri: publicationAtUri,
+            publicationScopeAtUris: publicationScopeAtUris,
+            publicationSiteUrls: publicationSiteUrls
+          )
+        else { continue }
+
+        matches.append(
+          EntryListScanRow(
+            uri: row.uri,
+            renderJSON: row.renderJSON,
+            createdAt: row.createdAt,
+            publicationSite: row.publicationSite
+          )
+        )
+        if matches.count >= pageLimit + 1 {
+          break scanLoop
+        }
+      }
+
+      if !dbHasMore { break }
+      guard let last = fetched.last else { break }
+      dbCursor = (last.createdAt, last.uri)
+    }
+
+    return ThinAppViewQuerySupport.buildFilteredEntryListPage(
+      pageLimit: pageLimit,
+      matches: matches,
+      lastScannedCreatedAt: lastScannedCreatedAt,
+      lastScannedUri: lastScannedUri,
+      dbHasMore: dbHasMore
+    )
+  }
+
+  private func fetchContentBatch(
+    viewerDid: String,
+    authorDid: String,
+    filter: EntryListFilter,
+    cursor: (createdAt: Date, uri: String)?,
+    limit: Int,
+    now: Date
+  ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
     let rows: PostgresRowSequence
-    switch (filter, decodedCursor) {
+    switch (filter, cursor) {
     case (.all, nil):
       rows = try await pool.query(
         """
@@ -126,7 +221,7 @@ public init(pool: PostgresClient, logger: Logger) {
         LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -138,7 +233,7 @@ public init(pool: PostgresClient, logger: Logger) {
         LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now) AND rm.subject_uri IS NULL
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -150,7 +245,7 @@ public init(pool: PostgresClient, logger: Logger) {
         INNER JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -163,7 +258,7 @@ public init(pool: PostgresClient, logger: Logger) {
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -176,7 +271,7 @@ public init(pool: PostgresClient, logger: Logger) {
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now) AND rm.subject_uri IS NULL
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -189,7 +284,7 @@ public init(pool: PostgresClient, logger: Logger) {
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
-        LIMIT \(fetchLimit)
+        LIMIT \(limit)
         """,
         logger: logger
       )
@@ -202,30 +297,7 @@ public init(pool: PostgresClient, logger: Logger) {
       )
       fetched.append((uri, renderJSON, createdAt, publicationSite))
     }
-
-    let filtered = fetched.filter { row in
-      ThinAppViewQuerySupport.publicationSiteMatches(
-        siteField: row.publicationSite,
-        publicationAtUri: publicationAtUri,
-        publicationScopeAtUris: publicationScopeAtUris,
-        publicationSiteUrls: publicationSiteUrls
-      )
-    }
-
-    let hasMore = filtered.count > pageLimit
-    let page = hasMore ? Array(filtered.prefix(pageLimit)) : filtered
-    let items = ThinAppViewQuerySupport.entryListItems(
-      from: page.map { ($0.uri, $0.renderJSON, $0.createdAt) }
-    )
-
-    let nextCursor: String?
-    if hasMore, let last = page.last {
-      nextCursor = ThinAppViewCursor.encode(createdAt: last.createdAt, uri: last.uri)
-    } else {
-      nextCursor = nil
-    }
-
-    return AppViewEntryListResponse(entries: items, cursor: nextCursor)
+    return fetched
   }
 
   public func countUnreadEntries(

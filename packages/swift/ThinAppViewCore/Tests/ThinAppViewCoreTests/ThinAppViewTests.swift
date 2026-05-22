@@ -171,4 +171,72 @@ struct SQLiteThinAppViewStoreTests {
     #expect(item?.title == "One")
     #expect(try await store.hasReadMark(viewerDid: "did:plc:viewer", subjectUri: entryId) == false)
   }
+
+  @Test("scoped listing scans past unrelated publication rows")
+  func scopedScanFindsPublicationMatches() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let now = Date()
+    let targetPublication = "at://did:plc:author/site.standard.publication/main"
+    let otherPublication = "at://did:plc:author/site.standard.publication/other"
+
+    for index in 0..<130 {
+      let createdAt = now.addingTimeInterval(TimeInterval(-index))
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: "at://did:plc:author/site.standard.document/noise-\(index)",
+          cid: "bafynoise\(index)",
+          authorDid: "did:plc:author",
+          collection: "site.standard.document",
+          createdAt: createdAt,
+          indexedAt: now,
+          publicationSite: otherPublication,
+          render: ContentRenderFields(
+            title: "Noise \(index)",
+            publishedAt: ISO8601DateFormatter().string(from: createdAt)
+          ),
+          expiresAt: now.addingTimeInterval(3600)
+        )
+      )
+    }
+
+    for index in 0..<12 {
+      let createdAt = now.addingTimeInterval(TimeInterval(-200 - index))
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: "at://did:plc:author/site.standard.document/match-\(index)",
+          cid: "bafymatch\(index)",
+          authorDid: "did:plc:author",
+          collection: "site.standard.document",
+          createdAt: createdAt,
+          indexedAt: now,
+          publicationSite: targetPublication,
+          render: ContentRenderFields(
+            title: "Match \(index)",
+            publishedAt: ISO8601DateFormatter().string(from: createdAt)
+          ),
+          expiresAt: now.addingTimeInterval(3600)
+        )
+      )
+    }
+
+    let page = try await store.listEntries(
+      viewerDid: "did:plc:viewer",
+      authorDid: "did:plc:author",
+      publicationAtUri: targetPublication,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+      filter: .all,
+      cursor: nil,
+      limit: 50
+    )
+
+    #expect(page.entries.count == 12)
+    #expect(page.entries.allSatisfy { $0.title.hasPrefix("Match") })
+  }
 }

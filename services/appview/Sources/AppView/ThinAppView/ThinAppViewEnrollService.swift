@@ -125,7 +125,7 @@ actor ThinAppViewEnrollService {
       }
 
       cursor = json["cursor"] as? String
-      if count >= 200 { break }
+      if count >= 500 { break }
     } while cursor != nil
 
     return count
