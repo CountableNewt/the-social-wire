@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 
-import { ENTRIES_QUERY_KEY } from "@/hooks/useEntries";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/hooks/usePublicationSidebarData";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 import { applyPublicationUnreadCountDelta } from "@/lib/optimisticUnreadCounts";

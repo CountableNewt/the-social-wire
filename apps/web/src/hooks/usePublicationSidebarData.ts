@@ -264,11 +264,7 @@ export function usePublicationSidebarData() {
       }
     }
     return map;
-  }, [
-    projectionState?.unreadCountsByPublicationId,
-    priorityUnreadQuery.data,
-    folderUnreadQuery.data,
-  ]);
+  }, [projectionState, priorityUnreadQuery.data, folderUnreadQuery.data]);
 
   const refresh = useMutation({
     mutationFn: async () => {
