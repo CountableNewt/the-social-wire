@@ -13,6 +13,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect Changed Paths
@@ -269,6 +272,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        id: checkout
+        continue-on-error: true
+
+      - uses: actions/checkout@v6
+        if: steps.checkout.outcome == 'failure'
 
       - uses: supabase/setup-cli@v2
         with:
@@ -295,6 +303,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        id: checkout
+        continue-on-error: true
+
+      - uses: actions/checkout@v6
+        if: steps.checkout.outcome == 'failure'
 
       - uses: supabase/setup-cli@v2
         with:
