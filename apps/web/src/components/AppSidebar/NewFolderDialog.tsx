@@ -3,7 +3,13 @@
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SIDEBAR_GLASS_ROW_ACTION } from "@/components/ui/sidebar";
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateFolderFormFields } from "./NewFolder/CreateFolderFormFields";
@@ -21,7 +27,7 @@ export function NewFolderDialog() {
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next);
-    if (!next) setFormKey((k) => k + 1);
+    if (next) setFormKey((k) => k + 1);
   }, []);
 
   return (
@@ -37,7 +43,15 @@ export function NewFolderDialog() {
         <Plus className="h-4 w-4" />
         New Folder
       </DialogTrigger>
-      <CreateFolderFormFields key={formKey} onOpenChange={handleOpenChange} />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Folder</DialogTitle>
+        </DialogHeader>
+        <CreateFolderFormFields
+          key={formKey}
+          onCloseRequest={() => handleOpenChange(false)}
+        />
+      </DialogContent>
     </Dialog>
   );
 }

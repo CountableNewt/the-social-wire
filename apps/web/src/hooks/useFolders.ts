@@ -2,12 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FolderRecord, rkeyFromURI } from "@/lib/pdsClient";
-import {
-  createFolderOnGateway,
-  deleteFolderOnGateway,
-  updateFolderOnGateway,
-} from "@/lib/publicationProjectionClient";
 import { useAuth } from "./useAuth";
+import { usePDSClient } from "./usePDSClient";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "./usePublicationSidebarData";
 
 export const FOLDERS_QUERY_KEY = ["folders"] as const;
@@ -59,11 +55,12 @@ export function useFolders() {
 }
 
 /**
- * Folder mutations go through the gateway (canonical PDS write-through).
- * Folder reads come from the sidebar projection query.
+ * Folder mutations write directly to the viewer PDS (OAuth DPoP). Reads come from
+ * the sidebar projection query.
  */
 export function useCreateFolder() {
-  const { session, getOAuthSession } = useAuth();
+  const client = usePDSClient();
+  const { session } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: {
@@ -71,13 +68,15 @@ export function useCreateFolder() {
       icon?: string;
       iconImage?: string;
     }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      return createFolderOnGateway(oauth, {
-        name: params.name,
+      if (!client) throw new Error("Sign in to create folders on your PDS.");
+      const created = await client.createFolder(params.name, {
         icon: params.icon,
         iconImage: params.iconImage,
       });
+      return {
+        uri: created.uri,
+        rkey: rkeyFromURI(created.uri),
+      };
     },
     onSuccess: () => {
       if (session?.did) {
@@ -90,22 +89,17 @@ export function useCreateFolder() {
 }
 
 export function useUpdateFolder() {
-  const { session, getOAuthSession } = useAuth();
+  const client = usePDSClient();
+  const { session } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: {
       uri: string;
       updates: Partial<Pick<FolderRecord, "name" | "sortOrder" | "icon" | "iconImage">>;
     }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
+      if (!client) throw new Error("Sign in to update folders on your PDS.");
       const rkey = rkeyFromURI(params.uri);
-      await updateFolderOnGateway(oauth, rkey, {
-        name: params.updates.name,
-        sortOrder: params.updates.sortOrder,
-        icon: params.updates.icon,
-        iconImage: params.updates.iconImage,
-      });
+      await client.updateFolder(rkey, params.updates);
     },
     onSuccess: () => {
       if (session?.did) {
@@ -118,14 +112,14 @@ export function useUpdateFolder() {
 }
 
 export function useDeleteFolder() {
-  const { session, getOAuthSession } = useAuth();
+  const client = usePDSClient();
+  const { session } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (uri: string) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
+      if (!client) throw new Error("Sign in to delete folders on your PDS.");
       const rkey = rkeyFromURI(uri);
-      await deleteFolderOnGateway(oauth, rkey);
+      await client.deleteFolder(rkey);
     },
     onSuccess: () => {
       if (session?.did) {
