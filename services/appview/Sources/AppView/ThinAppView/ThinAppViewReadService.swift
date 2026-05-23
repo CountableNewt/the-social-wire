@@ -45,10 +45,13 @@ actor ThinAppViewReadService {
     maxEntries: Int,
     pageLimit: Int = ThinAppViewEntryPagination.defaultPageLimit
   ) async throws -> AppViewEntryListResponse {
-    try await ThinAppViewEntryPagination.aggregate(
-      maxEntries: maxEntries
-    ) { cursor in
-      try await self.listEntries(
+    let cappedMax = max(1, min(maxEntries, ThinAppViewEntryPagination.maxAggregateEntries))
+    var merged: [AppViewEntryListItem] = []
+    var cursor: String?
+    var nextCursor: String?
+
+    while merged.count < cappedMax {
+      let page = try await listEntries(
         auth: auth,
         authorDid: authorDid,
         publicationAtUri: publicationAtUri,
@@ -58,7 +61,30 @@ actor ThinAppViewReadService {
         cursor: cursor,
         limit: pageLimit
       )
+      if page.entries.isEmpty {
+        nextCursor = nil
+        break
+      }
+
+      merged = ThinAppViewEntryPagination.mergeEntries(existing: merged, newPage: page.entries)
+
+      if merged.count >= cappedMax {
+        nextCursor = page.cursor
+        break
+      }
+
+      guard let pageCursor = page.cursor, !pageCursor.isEmpty else {
+        nextCursor = nil
+        break
+      }
+      cursor = pageCursor
     }
+
+    if merged.count > cappedMax {
+      merged = Array(merged.prefix(cappedMax))
+    }
+
+    return AppViewEntryListResponse(entries: merged, cursor: nextCursor)
   }
 
   func upsertReadMark(auth: AuthContext, subjectUri: String, readAt: Date?) async throws {
