@@ -40,7 +40,13 @@ public enum ThinAppViewEntryPagination {
       merged = mergeEntries(existing: merged, newPage: page.entries)
 
       if merged.count >= cappedMax {
-        nextCursor = page.cursor
+        let hadOverflow = merged.count > cappedMax
+        merged = Array(merged.prefix(cappedMax))
+        if hadOverflow || page.cursor != nil, let last = merged.last {
+          nextCursor = ThinAppViewCursor.encode(createdAt: last.publishedAt, uri: last.entryId)
+        } else {
+          nextCursor = nil
+        }
         break
       }
 
@@ -49,10 +55,6 @@ public enum ThinAppViewEntryPagination {
         break
       }
       cursor = pageCursor
-    }
-
-    if merged.count > cappedMax {
-      merged = Array(merged.prefix(cappedMax))
     }
 
     return AppViewEntryListResponse(entries: merged, cursor: nextCursor)

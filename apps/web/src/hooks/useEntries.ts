@@ -166,21 +166,21 @@ export function useEntries(
     getNextPageParam: entriesNextPageParam,
     enabled: !!normalizedKey && !!session && !!appViewScope,
     staleTime: ENTRIES_QUERY_STALE_MS,
-    refetchOnMount: "always",
+    refetchOnMount: true,
     gcTime: 1000 * 60 * 60 * 24,
   });
 
   useEffect(() => {
     const pages = query.data?.pages;
     if (!pages?.length) return;
-    prefetchCachedImages(
-      pages.flatMap((page) =>
-        page.entries.flatMap((entry) => [
-          entry.thumbnailUrl,
-          entry.thumbnailFallbackUrl,
-        ])
-      )
-    );
+    const urls = new Set<string>();
+    for (const page of pages) {
+      for (const entry of page.entries) {
+        const thumb = entry.thumbnailUrl?.trim();
+        if (thumb) urls.add(thumb);
+      }
+    }
+    prefetchCachedImages(urls);
   }, [query.data]);
 
   return { ...query, scopePending };

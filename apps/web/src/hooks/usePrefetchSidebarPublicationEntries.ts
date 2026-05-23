@@ -8,8 +8,8 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   ENTRIES_QUERY_KEY,
   ENTRIES_QUERY_STALE_MS,
+  entriesNextPageParam,
   fetchEntriesInfinitePage,
-  type EntriesPage,
 } from "@/hooks/useEntries";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
@@ -63,7 +63,7 @@ async function prefetchPublicationFirstPage(args: {
         maxEntries: PREFETCH_MAX_ENTRIES,
       }),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last: EntriesPage) => last.cursor,
+    getNextPageParam: entriesNextPageParam,
     staleTime: ENTRIES_QUERY_STALE_MS,
   });
 }

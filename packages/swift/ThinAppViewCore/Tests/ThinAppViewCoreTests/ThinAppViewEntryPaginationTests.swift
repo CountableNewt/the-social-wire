@@ -45,7 +45,7 @@ struct ThinAppViewEntryPaginationTests {
 
     #expect(calls == 2)
     #expect(response.entries.map(\.entryId) == ["1", "2", "3"])
-    #expect(response.cursor == "page-3")
+    #expect(response.cursor?.hasSuffix("|3") == true)
   }
 
   @Test("aggregate clears cursor when timeline is exhausted")

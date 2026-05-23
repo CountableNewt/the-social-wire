@@ -15,6 +15,8 @@ type CachedImageRow = {
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+const inFlightImageFetches = new Map<string, Promise<string | undefined>>();
+
 function openImageCacheDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB unavailable"));
@@ -167,23 +169,35 @@ export async function fetchCachedImageObjectUrl(
     return url;
   }
 
-  const cached = await readCachedBlob(url);
-  if (cached) {
-    return URL.createObjectURL(cached);
+  const inFlight = inFlightImageFetches.get(url);
+  if (inFlight) return inFlight;
+
+  const fetchPromise = (async (): Promise<string | undefined> => {
+    const cached = await readCachedBlob(url);
+    if (cached) {
+      return URL.createObjectURL(cached);
+    }
+
+    const res = await fetch(url, {
+      signal,
+      referrerPolicy: "no-referrer",
+      cache: "force-cache",
+    });
+    if (!res.ok) return undefined;
+
+    const blob = await res.blob();
+    if (blob.size === 0) return undefined;
+
+    void writeCachedBlob(url, blob);
+    return URL.createObjectURL(blob);
+  })();
+
+  inFlightImageFetches.set(url, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    inFlightImageFetches.delete(url);
   }
-
-  const res = await fetch(url, {
-    signal,
-    referrerPolicy: "no-referrer",
-    cache: "force-cache",
-  });
-  if (!res.ok) return undefined;
-
-  const blob = await res.blob();
-  if (blob.size === 0) return undefined;
-
-  void writeCachedBlob(url, blob);
-  return URL.createObjectURL(blob);
 }
 
 /** Warm the image cache without blocking UI (icons/thumbs after sidebar/feed load). */
