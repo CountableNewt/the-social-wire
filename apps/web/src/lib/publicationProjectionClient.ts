@@ -315,7 +315,7 @@ export function unreadCountsMapFromProjection(
   for (const row of projection.allPublicationRows) {
     const embedded = row.unreadCount;
     const fromRecord = projection.unreadCountsByPublicationId?.[row.publicationId];
-    applyCount(row.publicationId, fromRecord ?? embedded);
+    applyCount(row.publicationId, embedded ?? fromRecord);
   }
 
   if (projection.unreadCountsByPublicationId) {
