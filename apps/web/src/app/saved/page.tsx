@@ -101,8 +101,10 @@ export default function SavedPage() {
       </p>
     ) : isLoading ? (
       <p>Loading…</p>
+    ) : data.length === 0 ? (
+      <p>Nothing saved</p>
     ) : (
-      <p>Select a saved link from the list</p>
+      <p>Select an article</p>
     );
 
   const listPane = (() => {
@@ -160,8 +162,8 @@ export default function SavedPage() {
 
     if (data.length === 0) {
       return (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
-          Nothing queued yet — use Save on an article toolbar to add this page&apos;s HTTPS URL.
+        <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-center">
+          <p className="text-sm text-muted-foreground">Nothing saved</p>
         </div>
       );
     }

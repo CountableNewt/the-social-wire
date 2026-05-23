@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { usePDSClient } from "./usePDSClient";
 import { useAuth } from "./useAuth";
+import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "./usePublicationSidebarData";
 import {
   discoverPublications,
   discoveredPublicationFromAtUri,
@@ -36,6 +37,11 @@ import {
   enrollAuthorsInAppView,
   isThinAppViewEnabled,
 } from "@/lib/thinAppViewClient";
+import {
+  applyPublicationFolderMoveToProjection,
+  reconcilePublicationPrefAfterWrite,
+} from "@/lib/optimisticPublicationFolderMove";
+import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 
 export type { DiscoveredPublication };
 
@@ -282,7 +288,8 @@ export function useRefreshDiscovery() {
 // ── Publication prefs mutations ───────────────────────────────────────────────
 
 export function useSetPublicationFolder() {
-  const { session, getOAuthSession } = useAuth();
+  const client = usePDSClient();
+  const { session } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -294,23 +301,62 @@ export function useSetPublicationFolder() {
       folderId: string | null;
       existingRkey?: string;
     }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      const { upsertPublicationPrefsOnGateway } = await import(
-        "@/lib/publicationProjectionClient"
-      );
-      return upsertPublicationPrefsOnGateway(oauth, {
-        publicationId,
-        folderId,
-        existingRkey,
-      });
-    },
-    onSuccess: () => {
-      if (session?.did) {
-        qc.invalidateQueries({
-          queryKey: ["publicationSidebarProjection", session.did],
-        });
+      if (!client) {
+        throw new Error("Sign in to move publications between folders on your PDS.");
       }
+      const result = await client.upsertPublicationPrefs(
+        publicationId,
+        { folderId },
+        existingRkey
+      );
+      return {
+        uri: result.uri,
+        rkey: rkeyFromURI(result.uri),
+        publicationId,
+      };
+    },
+    onMutate: async ({ publicationId, folderId }) => {
+      const did = session?.did;
+      if (!did) return undefined;
+
+      const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+      await qc.cancelQueries({ queryKey });
+
+      const previousProjection =
+        qc.getQueryData<PublicationSidebarProjection>(queryKey);
+      if (!previousProjection) return undefined;
+
+      const nextProjection = applyPublicationFolderMoveToProjection(
+        previousProjection,
+        { publicationId, folderId }
+      );
+      if (nextProjection) {
+        qc.setQueryData(queryKey, nextProjection);
+      }
+
+      return { previousProjection };
+    },
+    onError: (_error, _params, context) => {
+      const did = session?.did;
+      if (!did || !context?.previousProjection) return;
+      qc.setQueryData(
+        PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+        context.previousProjection
+      );
+    },
+    onSuccess: (written) => {
+      const did = session?.did;
+      if (!did) return;
+
+      const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+      qc.setQueryData<PublicationSidebarProjection>(queryKey, (current) => {
+        if (!current) return current;
+        return reconcilePublicationPrefAfterWrite(
+          current,
+          written.publicationId,
+          written
+        );
+      });
     },
   });
 }

@@ -59,7 +59,7 @@ export default function RootLayout({
         <script
           id="dark-mode"
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');}catch(e){}})();`,
+            __html: `(function(){try{var root=document.documentElement;var media=window.matchMedia("(prefers-color-scheme: dark)");function apply(){var dark=media.matches;root.classList.toggle("dark",dark);root.style.colorScheme=dark?"dark":"light";}apply();if(typeof media.addEventListener==="function"){media.addEventListener("change",apply);}else if(typeof media.addListener==="function"){media.addListener(apply);}}catch(e){}})();`,
           }}
         />
       </head>
