@@ -1,4 +1,4 @@
-import CryptoKit
+import Crypto
 import Foundation
 
 /// RSS / Skyreader identity helpers aligned with web `rssFeedCore.ts`.
