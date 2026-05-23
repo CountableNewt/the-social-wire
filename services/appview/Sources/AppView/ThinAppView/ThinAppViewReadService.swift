@@ -45,8 +45,12 @@ actor ThinAppViewReadService {
     maxEntries: Int,
     pageLimit: Int = ThinAppViewEntryPagination.defaultPageLimit
   ) async throws -> AppViewEntryListResponse {
-    try await ThinAppViewEntryPagination.aggregate(maxEntries: maxEntries) { cursor in
-      try await listEntries(
+    let cappedMax = max(1, min(maxEntries, ThinAppViewEntryPagination.maxAggregateEntries))
+    var merged: [AppViewEntryListItem] = []
+    var cursor: String?
+
+    while true {
+      let page = try await listEntries(
         auth: auth,
         authorDid: authorDid,
         publicationAtUri: publicationAtUri,
@@ -56,6 +60,16 @@ actor ThinAppViewReadService {
         cursor: cursor,
         limit: pageLimit
       )
+      let stepResult = ThinAppViewEntryPagination.step(
+        merged: merged,
+        page: page,
+        cappedMax: cappedMax
+      )
+      merged = stepResult.merged
+      if stepResult.completed {
+        return AppViewEntryListResponse(entries: merged, cursor: stepResult.responseCursor)
+      }
+      cursor = stepResult.nextFetchCursor
     }
   }
 

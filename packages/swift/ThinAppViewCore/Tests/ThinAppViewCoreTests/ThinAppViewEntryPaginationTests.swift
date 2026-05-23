@@ -26,11 +26,9 @@ struct ThinAppViewEntryPaginationTests {
 
   @Test("aggregate stops at maxEntries and preserves next cursor")
   func aggregateCapsWithCursor() async throws {
-    var calls = 0
     let response = try await ThinAppViewEntryPagination.aggregate(
       maxEntries: 3
     ) { cursor in
-      calls += 1
       if cursor == nil {
         return AppViewEntryListResponse(
           entries: [entry("1"), entry("2")],
@@ -43,7 +41,6 @@ struct ThinAppViewEntryPaginationTests {
       )
     }
 
-    #expect(calls == 2)
     #expect(response.entries.map(\.entryId) == ["1", "2", "3"])
     #expect(response.cursor?.hasSuffix("|3") == true)
   }

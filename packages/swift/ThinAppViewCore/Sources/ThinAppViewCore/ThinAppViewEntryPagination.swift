@@ -19,44 +19,94 @@ public enum ThinAppViewEntryPagination {
     return merged
   }
 
+  public struct AggregateStepResult: Sendable {
+    public let merged: [AppViewEntryListItem]
+    public let responseCursor: String?
+    public let completed: Bool
+    public let nextFetchCursor: String?
+
+    public init(
+      merged: [AppViewEntryListItem],
+      responseCursor: String?,
+      completed: Bool,
+      nextFetchCursor: String?
+    ) {
+      self.merged = merged
+      self.responseCursor = responseCursor
+      self.completed = completed
+      self.nextFetchCursor = nextFetchCursor
+    }
+  }
+
+  /// Incorporates one fetched page into a running aggregate (actor-safe; no escaping closure).
+  public static func step(
+    merged: [AppViewEntryListItem],
+    page: AppViewEntryListResponse,
+    cappedMax: Int
+  ) -> AggregateStepResult {
+    if page.entries.isEmpty {
+      return AggregateStepResult(
+        merged: merged,
+        responseCursor: nil,
+        completed: true,
+        nextFetchCursor: nil
+      )
+    }
+
+    var merged = mergeEntries(existing: merged, newPage: page.entries)
+
+    if merged.count >= cappedMax {
+      let hadOverflow = merged.count > cappedMax
+      merged = Array(merged.prefix(cappedMax))
+      let responseCursor: String?
+      if hadOverflow || page.cursor != nil, let last = merged.last {
+        responseCursor = ThinAppViewCursor.encode(createdAt: last.publishedAt, uri: last.entryId)
+      } else {
+        responseCursor = nil
+      }
+      return AggregateStepResult(
+        merged: merged,
+        responseCursor: responseCursor,
+        completed: true,
+        nextFetchCursor: nil
+      )
+    }
+
+    guard let pageCursor = page.cursor, !pageCursor.isEmpty else {
+      return AggregateStepResult(
+        merged: merged,
+        responseCursor: nil,
+        completed: true,
+        nextFetchCursor: nil
+      )
+    }
+
+    return AggregateStepResult(
+      merged: merged,
+      responseCursor: nil,
+      completed: false,
+      nextFetchCursor: pageCursor
+    )
+  }
+
   /// Walks AppView entry pages until `maxEntries` is reached or the timeline is exhausted.
   public static func aggregate(
     maxEntries: Int,
-    fetchPage: (String?) async throws -> AppViewEntryListResponse
+    fetchPage: @Sendable (String?) async throws -> AppViewEntryListResponse
   ) async throws -> AppViewEntryListResponse {
     let cappedMax = max(1, min(maxEntries, maxAggregateEntries))
 
     var merged: [AppViewEntryListItem] = []
     var cursor: String?
-    var nextCursor: String?
 
-    while merged.count < cappedMax {
+    while true {
       let page = try await fetchPage(cursor)
-      if page.entries.isEmpty {
-        nextCursor = nil
-        break
+      let stepResult = step(merged: merged, page: page, cappedMax: cappedMax)
+      merged = stepResult.merged
+      if stepResult.completed {
+        return AppViewEntryListResponse(entries: merged, cursor: stepResult.responseCursor)
       }
-
-      merged = mergeEntries(existing: merged, newPage: page.entries)
-
-      if merged.count >= cappedMax {
-        let hadOverflow = merged.count > cappedMax
-        merged = Array(merged.prefix(cappedMax))
-        if hadOverflow || page.cursor != nil, let last = merged.last {
-          nextCursor = ThinAppViewCursor.encode(createdAt: last.publishedAt, uri: last.entryId)
-        } else {
-          nextCursor = nil
-        }
-        break
-      }
-
-      guard let pageCursor = page.cursor, !pageCursor.isEmpty else {
-        nextCursor = nil
-        break
-      }
-      cursor = pageCursor
+      cursor = stepResult.nextFetchCursor
     }
-
-    return AppViewEntryListResponse(entries: merged, cursor: nextCursor)
   }
 }
