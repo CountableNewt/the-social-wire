@@ -9,7 +9,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SidebarSubMenuSkeletonRows } from "./SidebarSubMenuSkeletonRows";
 import { cn } from "@/lib/utils";
 import { sumUnreadForPublications } from "@/lib/unreadCounts";
 import {
@@ -120,14 +120,7 @@ export function FolderBranch({
       {expanded ? (
         <SidebarMenuSub id={subId} aria-label={folder.name} className="mt-1.5">
           {publicationsLoading && publications.length === 0 ? (
-            <>
-              <SidebarMenuSubItem>
-                <Skeleton className="mx-2 h-7 w-[calc(100%-1rem)]" />
-              </SidebarMenuSubItem>
-              <SidebarMenuSubItem>
-                <Skeleton className="mx-2 h-7 w-[calc(100%-1rem)]" />
-              </SidebarMenuSubItem>
-            </>
+            <SidebarSubMenuSkeletonRows count={2} />
           ) : publications.length === 0 ? (
             <SidebarMenuSubItem>
               <span className="block min-w-0 break-words px-2 py-0.5 text-xs text-muted-foreground">

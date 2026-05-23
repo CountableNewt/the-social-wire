@@ -41,10 +41,10 @@ import {
   SIDEBAR_SEC_FOLDERS,
   SIDEBAR_SEC_PUBLICATIONS,
 } from "./appSidebarConstants";
-import { AppSidebarSkeleton } from "./AppSidebarSkeleton";
 import { CollapsibleSidebarSubSection } from "./CollapsibleSidebarSubSection";
 import { PublicationMenuSubEntries } from "./PublicationMenuSubEntries";
 import { PublicationTabs } from "./PublicationTabs";
+import { SidebarSubMenuSkeletonRows } from "./SidebarSubMenuSkeletonRows";
 import { UnreadSidebarBadge } from "./UnreadSidebarBadge";
 
 interface AppSidebarProps {
@@ -92,7 +92,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     folderMap,
     unfolderedPubs,
     followingTabPublications,
-    sidebarListsLoading,
+    sidebarFetching,
     refresh,
     viewerDid,
     unreadCountsByPublicationId,
@@ -250,6 +250,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     setSelectedFolderUri,
   ]);
 
+  const subscribedPublicationsLoading =
+    sidebarFetching && unfolderedPubs.length === 0;
+  const followingPublicationsLoading =
+    sidebarFetching && followingTabPublications.length === 0;
+  const foldersListLoading = sidebarFetching && folders.length === 0;
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
@@ -305,9 +311,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         <div className="no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
           <SidebarGroup className="px-2 pb-2 pt-4">
             <SidebarMenu className="gap-4">
-              {sidebarListsLoading ? (
-                <AppSidebarSkeleton count={5} />
-              ) : publicationTab === "subscribed" ? (
+              {publicationTab === "subscribed" ? (
                 <>
                   <SidebarMenuItem>
                     <SidebarReadBulkMenuWrap
@@ -347,28 +351,32 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                         aria-label="Folders"
                         className="mt-1.5"
                       >
-                        {folders.map((f) => {
-                          const rkey = rkeyFromURI(f.uri);
-                          return (
-                            <FolderBranch
-                              key={f.uri}
-                              expandKey={f.uri}
-                              folder={f.value}
-                              isActive={selectedFolderUri === f.uri}
-                              expanded={effectiveExpandedKeys.has(f.uri)}
-                              onToggleExpanded={() => toggleExpanded(f.uri)}
-                              publications={folderMap.get(rkey) ?? []}
-                              emptyLabel="No publications in this folder."
-                              selectedPubId={selectedPubId}
-                              onSelectPub={onSelectPub}
-                              folders={folders}
-                              prefsMap={prefsMap}
-                              sidebarTab="subscribed"
-                              publicationUnreadCounts={publicationUnreadCounts}
-                              publicationsLoading={folderPublicationsLoading}
-                            />
-                          );
-                        })}
+                        {foldersListLoading ? (
+                          <SidebarSubMenuSkeletonRows count={2} />
+                        ) : (
+                          folders.map((f) => {
+                            const rkey = rkeyFromURI(f.uri);
+                            return (
+                              <FolderBranch
+                                key={f.uri}
+                                expandKey={f.uri}
+                                folder={f.value}
+                                isActive={selectedFolderUri === f.uri}
+                                expanded={effectiveExpandedKeys.has(f.uri)}
+                                onToggleExpanded={() => toggleExpanded(f.uri)}
+                                publications={folderMap.get(rkey) ?? []}
+                                emptyLabel="No publications in this folder."
+                                selectedPubId={selectedPubId}
+                                onSelectPub={onSelectPub}
+                                folders={folders}
+                                prefsMap={prefsMap}
+                                sidebarTab="subscribed"
+                                publicationUnreadCounts={publicationUnreadCounts}
+                                publicationsLoading={folderPublicationsLoading}
+                              />
+                            );
+                          })
+                        )}
                         <SidebarMenuItem>
                           <NewFolderDialog />
                         </SidebarMenuItem>
@@ -398,10 +406,13 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                       folders={folders}
                       prefsMap={prefsMap}
                       sidebarTab="subscribed"
+                      listLoading={subscribedPublicationsLoading}
                     />
-                    <SidebarMenuSubItem className="p-0">
-                      <AddPublicationDialog />
-                    </SidebarMenuSubItem>
+                    {!subscribedPublicationsLoading ? (
+                      <SidebarMenuSubItem className="p-0">
+                        <AddPublicationDialog />
+                      </SidebarMenuSubItem>
+                    ) : null}
                   </CollapsibleSidebarSubSection>
                 </>
               ) : (
@@ -429,10 +440,13 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                       folders={folders}
                       prefsMap={prefsMap}
                       sidebarTab="following"
+                      listLoading={followingPublicationsLoading}
                     />
-                    <SidebarMenuSubItem className="p-0">
-                      <AddPublicationDialog />
-                    </SidebarMenuSubItem>
+                    {!followingPublicationsLoading ? (
+                      <SidebarMenuSubItem className="p-0">
+                        <AddPublicationDialog />
+                      </SidebarMenuSubItem>
+                    ) : null}
                   </CollapsibleSidebarSubSection>
                 </>
               )}

@@ -6,6 +6,7 @@ import {
   PublicationSubItem,
   type PublicationSidebarTab,
 } from "./PublicationSubItem";
+import { SidebarSubMenuSkeletonRows } from "./SidebarSubMenuSkeletonRows";
 
 export function PublicationMenuSubEntries({
   publications,
@@ -15,6 +16,7 @@ export function PublicationMenuSubEntries({
   folders,
   prefsMap,
   sidebarTab,
+  listLoading = false,
 }: {
   publications: DiscoveredPublication[];
   publicationUnreadCounts: Map<string, number>;
@@ -23,7 +25,12 @@ export function PublicationMenuSubEntries({
   folders: RepoRecord<FolderRecord>[];
   prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
   sidebarTab: PublicationSidebarTab;
+  listLoading?: boolean;
 }) {
+  if (listLoading && publications.length === 0) {
+    return <SidebarSubMenuSkeletonRows count={3} />;
+  }
+
   if (publications.length === 0) {
     return null;
   }
