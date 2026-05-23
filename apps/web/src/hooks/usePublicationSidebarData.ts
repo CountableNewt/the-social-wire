@@ -142,15 +142,21 @@ export function usePublicationSidebarData() {
       )
     : undefined;
 
-  const [mergedProjection, setMergedProjection] = useState<
+  const [streamProjection, setStreamProjection] = useState<
     PublicationSidebarProjection | undefined
-  >(cachedProjection);
+  >(undefined);
+  const [streamOwnerDid, setStreamOwnerDid] = useState(did);
 
-  useEffect(() => {
-    if (cachedProjection) {
-      setMergedProjection(cachedProjection);
-    }
-  }, [cachedProjection]);
+  if (did !== streamOwnerDid) {
+    setStreamOwnerDid(did);
+    setStreamProjection(undefined);
+    setStreamSelectedPublicationId(null);
+    setSidebarFetching(false);
+    setFolderPublicationsLoading(false);
+    setProjectionError(null);
+  }
+
+  const mergedProjection = streamProjection ?? cachedProjection;
 
   const runBootstrapStream = useCallback(
     async (controller: AbortController) => {
@@ -158,6 +164,7 @@ export function usePublicationSidebarData() {
       if (!oauth || !did) return;
 
       const generation = ++streamGenerationRef.current;
+      pendingAutoSelectPublicationIdRef.current = null;
       setSidebarFetching(true);
       setProjectionError(null);
       setFolderPublicationsLoading(true);
@@ -199,9 +206,14 @@ export function usePublicationSidebarData() {
                 }
               }
 
-              setMergedProjection((current) => {
+              setStreamProjection((currentStream) => {
+                const baseline =
+                  currentStream ??
+                  qc.getQueryData<PublicationSidebarProjection>(
+                    PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
+                  );
                 const applied = applyBootstrapStreamEvent({
-                  projection: current,
+                  projection: baseline,
                   event,
                 });
                 if (applied.streamError) {
@@ -214,7 +226,7 @@ export function usePublicationSidebarData() {
                   );
                   return applied.projection;
                 }
-                return current;
+                return currentStream;
               });
             },
             onError: (error) => {
@@ -243,7 +255,9 @@ export function usePublicationSidebarData() {
   useEffect(() => {
     if (!session) return;
     const controller = new AbortController();
-    void runBootstrapStream(controller);
+    queueMicrotask(() => {
+      void runBootstrapStream(controller);
+    });
     return () => {
       controller.abort();
       streamGenerationRef.current += 1;
@@ -274,7 +288,7 @@ export function usePublicationSidebarData() {
       if (!oauth) throw new Error("OAuth session required");
       const projection = await refreshPublicationSidebar(oauth);
       qc.setQueryData(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), projection);
-      setMergedProjection(projection);
+      setStreamProjection(undefined);
       const controller = new AbortController();
       await runBootstrapStream(controller);
     },
