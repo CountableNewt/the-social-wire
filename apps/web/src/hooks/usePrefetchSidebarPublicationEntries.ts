@@ -14,9 +14,6 @@ import {
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 
-/** Max entries to warm in background sidebar prefetch (server-side aggregation). */
-const PREFETCH_MAX_ENTRIES = 120;
-
 /** Max parallel first-page prefetches per batch (avoids flooding the network). */
 const PREFETCH_CONCURRENCY = 2;
 
@@ -60,7 +57,6 @@ async function prefetchPublicationFirstPage(args: {
         viewerDid,
         articleFilter: PREFETCH_ARTICLE_FILTER,
         queryClient,
-        maxEntries: PREFETCH_MAX_ENTRIES,
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: entriesNextPageParam,
@@ -69,7 +65,7 @@ async function prefetchPublicationFirstPage(args: {
 }
 
 /**
- * Prefetches the first page of entries for visible sidebar publications so opening a
+ * Prefetches the first page (50 entries) for visible sidebar publications so opening a
  * feed can reuse cached data. Runs in the background with limited concurrency; the
  * active selection is prefetched immediately when it changes.
  */
