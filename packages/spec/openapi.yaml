@@ -693,6 +693,38 @@ paths:
 
   # ── Thin AppView (GDPR-safe Level-1 read index) ───────────────────────────
 
+  /v1/appview/bootstrap-stream:
+    get:
+      operationId: getAppViewBootstrapStream
+      summary: Progressive NDJSON bootstrap for initial reader load
+      description: |
+        **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
+
+        Streams newline-delimited JSON events as sidebar projection, unread counts,
+        first-unread publication selection, first feed page, and folder rows complete.
+        Gateway forwards the AppView body without buffering when proxied.
+
+        Event kinds (one JSON object per line): `sidebarPriority`, `unreadCounts`,
+        `selectedPublication`, `entriesPage`, `sidebarFolders`, `warning`, `error`, `done`.
+      tags: [AppView]
+      responses:
+        "200":
+          description: NDJSON event stream.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited `BootstrapStreamEvent` JSON objects.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-cache`.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+
   /v1/appview/entries:
     get:
       operationId: listAppViewEntries

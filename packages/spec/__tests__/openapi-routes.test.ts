@@ -74,6 +74,7 @@ describe("OpenAPI route drift", () => {
       "/v1/appview/entries": ['"/v1/appview/entries"'],
       "/v1/appview/entry": ['"/v1/appview/entry"'],
       "/v1/appview/unread-counts": ['"/v1/appview/unread-counts"'],
+      "/v1/appview/bootstrap-stream": ['"/v1/appview/bootstrap-stream"'],
       "/v1/appview/read-marks": ['"/v1/appview/read-marks"'],
       "/v1/appview/enroll": ['"/v1/appview/enroll"'],
       "/v1/appview/privacy/purge": ['"/v1/appview/privacy/purge"'],

@@ -1,10 +1,15 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useFolders } from "@/hooks/useFolders";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
+import { consumeBootstrapStream } from "@/lib/bootstrapStreamClient";
+import {
+  applyBootstrapStreamEvent,
+  writeStreamedEntriesPage,
+} from "@/lib/bootstrapStreamState";
 import { prefetchCachedImages } from "@/lib/imageBlobCache";
 import {
   COLLECTION_PUB_PREFS,
@@ -12,9 +17,6 @@ import {
   type RepoRecord,
 } from "@/lib/pdsClient";
 import {
-  fetchPublicationSidebar,
-  maybeEnrollProjectionAuthors,
-  mergeSidebarProjections,
   refreshPublicationSidebar,
   sidebarRowToDiscoveredPublication,
   unreadCountsMapFromProjection,
@@ -22,7 +24,6 @@ import {
   type PublicationSidebarProjection,
   type SidebarPublicationRow,
 } from "@/lib/publicationProjectionClient";
-import { fetchAppViewUnreadCounts } from "@/lib/thinAppViewClient";
 
 export const PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY = (did: string) =>
   ["publicationSidebarProjection", did] as const;
@@ -121,70 +122,133 @@ function projectionToSidebarState(projection: PublicationSidebarProjection) {
   };
 }
 
-function publicationIdsFromProjection(
-  projection: PublicationSidebarProjection | undefined
-): string[] {
-  if (!projection) return [];
-  return projection.allPublicationRows.map((row) => row.publicationId);
-}
-
-/** Gateway-only sidebar projection for subscribed/following lists and `/me/publications`. */
+/** Gateway bootstrap stream for subscribed/following lists and `/me/publications`. */
 export function usePublicationSidebarData() {
   const { session, getOAuthSession } = useAuth();
   const qc = useQueryClient();
   const did = session?.did ?? "";
+  const [streamSelectedPublicationId, setStreamSelectedPublicationId] = useState<
+    string | null
+  >(null);
+  const [sidebarFetching, setSidebarFetching] = useState(false);
+  const [folderPublicationsLoading, setFolderPublicationsLoading] = useState(false);
+  const [projectionError, setProjectionError] = useState<Error | null>(null);
+  const streamGenerationRef = useRef(0);
+  const pendingAutoSelectPublicationIdRef = useRef<string | null>(null);
 
-  const priorityQuery = useQuery({
-    queryKey: [...PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), "priority"] as const,
-    queryFn: async ({ signal }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      const projection = await fetchPublicationSidebar(oauth, {
-        phase: "priority",
-        signal,
-      });
-      maybeEnrollProjectionAuthors(oauth, projection.enrollAuthorDids);
-      return projection;
-    },
-    enabled: !!session,
-    staleTime: 6 * 60_000,
-    gcTime: 1000 * 60 * 60 * 24 * 7,
-    retry: 1,
-    refetchOnWindowFocus: false,
-  });
+  const cachedProjection = did
+    ? qc.getQueryData<PublicationSidebarProjection>(
+        PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
+      )
+    : undefined;
 
-  const foldersQuery = useQuery({
-    queryKey: [
-      ...PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
-      "folderPublications",
-    ] as const,
-    queryFn: async ({ signal }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      return fetchPublicationSidebar(oauth, {
-        phase: "folderPublications",
-        signal,
-      });
-    },
-    enabled: !!session && priorityQuery.isSuccess,
-    staleTime: 6 * 60_000,
-    gcTime: 1000 * 60 * 60 * 24 * 7,
-    retry: 1,
-    refetchOnWindowFocus: false,
-  });
-
-  const mergedProjection = useMemo(() => {
-    if (!priorityQuery.data) return undefined;
-    return mergeSidebarProjections(priorityQuery.data, foldersQuery.data);
-  }, [priorityQuery.data, foldersQuery.data]);
+  const [mergedProjection, setMergedProjection] = useState<
+    PublicationSidebarProjection | undefined
+  >(cachedProjection);
 
   useEffect(() => {
-    if (!mergedProjection || !did) return;
-    qc.setQueryData(
-      PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
-      mergedProjection
-    );
-  }, [mergedProjection, did, qc]);
+    if (cachedProjection) {
+      setMergedProjection(cachedProjection);
+    }
+  }, [cachedProjection]);
+
+  const runBootstrapStream = useCallback(
+    async (controller: AbortController) => {
+      const oauth = getOAuthSession();
+      if (!oauth || !did) return;
+
+      const generation = ++streamGenerationRef.current;
+      setSidebarFetching(true);
+      setProjectionError(null);
+      setFolderPublicationsLoading(true);
+
+      try {
+        await consumeBootstrapStream({
+          oauthSession: oauth,
+          signal: controller.signal,
+          handlers: {
+            onEvent: (event) => {
+              if (generation !== streamGenerationRef.current) return;
+
+              if (event.kind === "sidebarPriority") {
+                setFolderPublicationsLoading(true);
+              }
+              if (event.kind === "sidebarFolders") {
+                setFolderPublicationsLoading(false);
+              }
+              if (event.kind === "selectedPublication") {
+                pendingAutoSelectPublicationIdRef.current =
+                  event.payload.publicationId;
+              }
+              if (event.kind === "entriesPage") {
+                writeStreamedEntriesPage(qc, event.payload);
+                if (
+                  pendingAutoSelectPublicationIdRef.current ===
+                  event.payload.publicationId
+                ) {
+                  setStreamSelectedPublicationId(event.payload.publicationId);
+                  pendingAutoSelectPublicationIdRef.current = null;
+                }
+              }
+              if (event.kind === "done") {
+                if (pendingAutoSelectPublicationIdRef.current) {
+                  setStreamSelectedPublicationId(
+                    pendingAutoSelectPublicationIdRef.current
+                  );
+                  pendingAutoSelectPublicationIdRef.current = null;
+                }
+              }
+
+              setMergedProjection((current) => {
+                const applied = applyBootstrapStreamEvent({
+                  projection: current,
+                  event,
+                });
+                if (applied.streamError) {
+                  setProjectionError(new Error(applied.streamError));
+                }
+                if (applied.projection) {
+                  qc.setQueryData(
+                    PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+                    applied.projection
+                  );
+                  return applied.projection;
+                }
+                return current;
+              });
+            },
+            onError: (error) => {
+              if (generation !== streamGenerationRef.current) return;
+              setProjectionError(error);
+            },
+          },
+        });
+      } catch (error) {
+        if (generation !== streamGenerationRef.current) return;
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setProjectionError(
+            error instanceof Error ? error : new Error(String(error))
+          );
+        }
+      } finally {
+        if (generation === streamGenerationRef.current) {
+          setSidebarFetching(false);
+          setFolderPublicationsLoading(false);
+        }
+      }
+    },
+    [did, getOAuthSession, qc]
+  );
+
+  useEffect(() => {
+    if (!session) return;
+    const controller = new AbortController();
+    void runBootstrapStream(controller);
+    return () => {
+      controller.abort();
+      streamGenerationRef.current += 1;
+    };
+  }, [session, runBootstrapStream]);
 
   useEffect(() => {
     if (!mergedProjection) return;
@@ -196,126 +260,49 @@ export function usePublicationSidebarData() {
     );
   }, [mergedProjection]);
 
-  const hasCachedProjection = priorityQuery.data != null;
-  const sidebarFetching =
-    (priorityQuery.isFetching && !priorityQuery.isPending) ||
-    foldersQuery.isFetching;
+  const hasCachedProjection = mergedProjection != null;
+  const sidebarListsLoading = !hasCachedProjection && sidebarFetching;
 
   const projectionState = useMemo(() => {
     if (!mergedProjection) return null;
     return projectionToSidebarState(mergedProjection);
   }, [mergedProjection]);
 
-  const priorityPublicationIds = useMemo(
-    () => publicationIdsFromProjection(priorityQuery.data),
-    [priorityQuery.data]
-  );
-
-  const folderPublicationIds = useMemo(() => {
-    if (!foldersQuery.data) return [];
-    return publicationIdsFromProjection(foldersQuery.data);
-  }, [foldersQuery.data]);
-
-  const priorityUnreadQuery = useQuery({
-    queryKey: [
-      "appviewUnreadCounts",
-      did,
-      "priority",
-      priorityPublicationIds.join("\x1e"),
-    ] as const,
-    queryFn: async ({ signal }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      return fetchAppViewUnreadCounts(oauth, priorityPublicationIds, signal);
-    },
-    enabled: !!session && priorityPublicationIds.length > 0,
-    staleTime: 60_000,
-    retry: 1,
-  });
-
-  const folderUnreadQuery = useQuery({
-    queryKey: [
-      "appviewUnreadCounts",
-      did,
-      "folders",
-      folderPublicationIds.join("\x1e"),
-    ] as const,
-    queryFn: async ({ signal }) => {
-      const oauth = getOAuthSession();
-      if (!oauth) throw new Error("OAuth session required");
-      return fetchAppViewUnreadCounts(oauth, folderPublicationIds, signal);
-    },
-    enabled: !!session && folderPublicationIds.length > 0,
-    staleTime: 60_000,
-    retry: 1,
-  });
-
-  const unreadCountsByPublicationId = useMemo(() => {
-    const map = new Map<string, number>();
-    if (projectionState?.unreadCountsByPublicationId.size) {
-      for (const [id, count] of projectionState.unreadCountsByPublicationId) {
-        if (count > 0) map.set(id, count);
-      }
-    }
-    for (const source of [priorityUnreadQuery.data, folderUnreadQuery.data]) {
-      if (!source) continue;
-      for (const [publicationId, count] of Object.entries(source)) {
-        if (count > 0) map.set(publicationId, count);
-      }
-    }
-    return map;
-  }, [projectionState, priorityUnreadQuery.data, folderUnreadQuery.data]);
-
   const refresh = useMutation({
     mutationFn: async () => {
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       const projection = await refreshPublicationSidebar(oauth);
-      qc.setQueryData(
-        [...PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), "priority"],
-        projection
-      );
-      qc.setQueryData(
-        [...PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), "folderPublications"],
-        undefined
-      );
-      maybeEnrollProjectionAuthors(oauth, projection.enrollAuthorDids);
-      qc.invalidateQueries({ queryKey: ["appviewUnreadCounts", did] });
-      void qc.fetchQuery({
-        queryKey: [
-          ...PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
-          "folderPublications",
-        ],
-        queryFn: () =>
-          fetchPublicationSidebar(oauth, { phase: "folderPublications" }),
-      });
+      qc.setQueryData(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), projection);
+      setMergedProjection(projection);
+      const controller = new AbortController();
+      await runBootstrapStream(controller);
     },
   });
 
   return {
     folders: projectionState?.folders ?? [],
-    foldersLoading: priorityQuery.isPending && !hasCachedProjection,
+    foldersLoading: sidebarListsLoading,
     prefsMap: projectionState?.prefsMap ?? new Map(),
     allPublicationRows: projectionState?.allPublicationRows ?? [],
     folderMap: projectionState?.folderMap ?? new Map(),
     myPublications: projectionState?.myPublications ?? [],
     unfolderedPubs: projectionState?.unfolderedPubs ?? [],
     followingTabPublications: projectionState?.followingTabPublications ?? [],
-    pubsLoading: priorityQuery.isPending && !hasCachedProjection,
-    subscriptionsBlockLoading: priorityQuery.isPending && !hasCachedProjection,
-    sidebarListsLoading: priorityQuery.isPending && !hasCachedProjection,
-    folderPublicationsLoading:
-      priorityQuery.isSuccess &&
-      (foldersQuery.isPending || foldersQuery.isFetching),
+    pubsLoading: sidebarListsLoading,
+    subscriptionsBlockLoading: sidebarListsLoading,
+    sidebarListsLoading,
+    folderPublicationsLoading,
     sidebarFetching,
     refresh,
     viewerDid: session?.did,
     publicationSidebarProjection: mergedProjection,
     sidebarRowsById: projectionState?.sidebarRowsById,
-    unreadCountsByPublicationId,
-    unreadCountsLoading:
-      priorityUnreadQuery.isPending || folderUnreadQuery.isPending,
-    projectionError: priorityQuery.error ?? foldersQuery.error,
+    unreadCountsByPublicationId:
+      projectionState?.unreadCountsByPublicationId ?? new Map(),
+    unreadCountsLoading: false,
+    projectionError,
+    streamSelectedPublicationId,
   };
 }
 

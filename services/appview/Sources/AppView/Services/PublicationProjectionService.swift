@@ -192,11 +192,56 @@ actor PublicationProjectionService {
     sidebarRowCacheByViewer[viewerDid] = merged
   }
 
+  struct BootstrapPrioritySidebarResult: Sendable {
+    let response: PublicationSidebarResponse
+    let context: SidebarDiscoveryContext
+  }
+
+  func bootstrapPrioritySidebar(auth: AuthContext) async throws -> BootstrapPrioritySidebarResult {
+    let context = try await discoverContext(auth: auth)
+    cacheDiscovery(context, viewerDid: auth.did)
+    let response = try await buildSidebarResponse(
+      context: context,
+      auth: auth,
+      phase: .priority,
+      refreshedAt: Date(),
+      includeUnreadCounts: true
+    )
+    return BootstrapPrioritySidebarResult(response: response, context: context)
+  }
+
+  func bootstrapFolderSidebar(
+    auth: AuthContext,
+    context: SidebarDiscoveryContext
+  ) async throws -> AppViewBootstrapSidebarFoldersPayload {
+    let response = try await buildSidebarResponse(
+      context: context,
+      auth: auth,
+      phase: .folderPublications,
+      refreshedAt: Date(),
+      includeUnreadCounts: true
+    )
+    return AppViewBootstrapSidebarFoldersPayload(
+      folderSections: response.folderSections,
+      allPublicationRows: response.allPublicationRows
+    )
+  }
+
+  func unreadCountsMap(for rows: [SidebarPublicationRow]) -> [String: Int] {
+    var counts: [String: Int] = [:]
+    for row in rows {
+      guard let unreadCount = row.unreadCount, unreadCount > 0 else { continue }
+      counts[row.publicationId] = unreadCount
+    }
+    return counts
+  }
+
   private func buildSidebarResponse(
     context: SidebarDiscoveryContext,
     auth: AuthContext,
     phase: SidebarBuildPhase,
-    refreshedAt: Date
+    refreshedAt: Date,
+    includeUnreadCounts: Bool = false
   ) async throws -> PublicationSidebarResponse {
     let priorityRows = priorityDiscoveredRows(from: context)
     let folderRows = folderDiscoveredRows(from: context)
@@ -215,7 +260,7 @@ actor PublicationProjectionService {
       rows: rowsToBuild,
       auth: auth,
       viewerDid: context.viewerDid,
-      includeUnreadCounts: false
+      includeUnreadCounts: includeUnreadCounts
     )
     mergeSidebarRows(viewerDid: context.viewerDid, rows: sidebarRowById)
 
@@ -252,6 +297,9 @@ actor PublicationProjectionService {
         sidebarRowById: rowCache,
         includePublications: false
       )
+      let totalUnread = (myRows + unfolderedRows + followingRows + folderSections.flatMap(\.publications))
+        .compactMap(\.unreadCount)
+        .reduce(0, +)
       return PublicationSidebarResponse(
         viewerDid: context.viewerDid,
         folders: context.folders,
@@ -262,7 +310,7 @@ actor PublicationProjectionService {
         subscribedUnfoldered: unfolderedRows,
         followingTabPublications: followingRows,
         enrollAuthorDids: context.enrollAuthorDids,
-        totalUnreadCount: 0,
+        totalUnreadCount: totalUnread,
         refreshedAt: refreshedAt
       )
     case .full:

@@ -629,9 +629,10 @@ export class PDSClient {
   async upsertPreferences(
     updates: Partial<
       Pick<PreferencesRecord, "readLaterService" | "readLaterConnections">
-    >
+    >,
+    existing: RepoRecord<PreferencesRecord> | null | undefined = undefined
   ): Promise<{ uri: string; cid: string }> {
-    const current = await this.getPreferences();
+    const current = existing === undefined ? await this.getPreferences() : existing;
     const prev = current?.value ?? null;
     const now = new Date().toISOString();
     const record: PreferencesRecord = {
@@ -645,12 +646,19 @@ export class PDSClient {
       ...updates,
     };
 
-    const updated = await this.agent.api.com.atproto.repo.putRecord({
-      repo: this.did,
-      collection: COLLECTION_PREFERENCES,
-      rkey: PREFERENCES_RKEY,
-      record: record as unknown as Record<string, unknown>,
-    });
+    const updated = current
+      ? await this.agent.api.com.atproto.repo.putRecord({
+          repo: this.did,
+          collection: COLLECTION_PREFERENCES,
+          rkey: PREFERENCES_RKEY,
+          record: record as unknown as Record<string, unknown>,
+        })
+      : await this.agent.api.com.atproto.repo.createRecord({
+          repo: this.did,
+          collection: COLLECTION_PREFERENCES,
+          rkey: PREFERENCES_RKEY,
+          record: record as unknown as Record<string, unknown>,
+        });
 
     return { uri: updated.data.uri, cid: updated.data.cid };
   }

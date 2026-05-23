@@ -346,6 +346,57 @@ final class SocialWireGatewayClient {
         }
     }
 
+    func consumeBootstrapStream(
+        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) -> Void
+    ) async throws {
+        guard let url = URL(string: "/v1/appview/bootstrap-stream", relativeTo: baseURL)?.absoluteURL else {
+            throw SocialWireError.invalidURL
+        }
+
+        let session = try await auth.validSession()
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+        try await authorize(&request, session: session)
+
+        let (bytes, response) = try await urlSession.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SocialWireError.badResponse("Missing gateway response.")
+        }
+        await auth.dpop.updateNonce(from: http)
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw SocialWireError.badResponse("Bootstrap stream failed (\(http.statusCode)).")
+        }
+
+        var buffer = Data()
+        for try await byte in bytes {
+            buffer.append(byte)
+            while let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                let lineData = buffer[..<newlineIndex]
+                buffer.removeSubrange(..<(newlineIndex + 1))
+                let line = String(decoding: lineData, as: UTF8.self)
+                try Self.consumeBootstrapLine(line, onEvent: onEvent)
+            }
+        }
+        if !buffer.isEmpty {
+            let line = String(decoding: buffer, as: UTF8.self)
+            try Self.consumeBootstrapLine(line, onEvent: onEvent)
+        }
+    }
+
+    private static func consumeBootstrapLine(
+        _ rawLine: String,
+        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) -> Void
+    ) throws {
+        let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty else { return }
+        let event = try BootstrapStreamNDJSON.decoder.decode(
+            BootstrapStreamEventDTO.self,
+            from: Data(line.utf8)
+        )
+        onEvent(event)
+    }
+
     // MARK: - Private
 
     private func authorizedGET(

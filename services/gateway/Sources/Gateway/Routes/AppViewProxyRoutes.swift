@@ -47,6 +47,14 @@ struct AppViewProxyRoutes {
     group.get("/v1/appview/unread-counts") { request, context async throws -> Response in
       try await forward(request: request, context: context, path: "/v1/appview/unread-counts", method: "GET")
     }
+    group.get("/v1/appview/bootstrap-stream") { request, context async throws -> Response in
+      try await forwardStreaming(
+        request: request,
+        context: context,
+        path: "/v1/appview/bootstrap-stream",
+        method: "GET"
+      )
+    }
     group.post("/v1/appview/read-marks") { request, context async throws -> Response in
       try await forward(request: request, context: context, path: "/v1/appview/read-marks", method: "POST")
     }
@@ -115,6 +123,55 @@ struct AppViewProxyRoutes {
     let body = try await reply.body.collect(upTo: 8 * 1024 * 1024)
     let status = HTTPResponse.Status.from(code: Int(reply.status.code)) ?? .badGateway
     return Response(status: status, headers: headers, body: .init(byteBuffer: body))
+  }
+
+  private func forwardStreaming(
+    request: Request,
+    context: GatewayRequestContext,
+    path: String,
+    method: String
+  ) async throws -> Response {
+    guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
+    let signedPath = GatewayInternalTrust.canonicalSignedPath(path)
+    let pathWithQuery = GatewayInternalTrust.canonicalPathWithQuery(
+      path: path,
+      query: request.uri.query
+    )
+    let url = "\(normalizeBase(baseURL))\(pathWithQuery)"
+    var fwd = HTTPClientRequest(url: url)
+    fwd.method = .GET
+    fwd.headers.add(name: "Accept", value: "application/x-ndjson")
+    fwd.headers.add(name: "Authorization", value: auth.authorizationForwardingValue)
+    if let dpop = auth.dpopProof { fwd.headers.add(name: "DPoP", value: dpop) }
+    Self.applyForwardedHeaders(from: request, to: &fwd)
+
+    if let internalSecret {
+      let signed = try GatewayInternalTrust.signedHeaders(
+        secret: internalSecret,
+        did: auth.did,
+        method: method,
+        pathWithQuery: signedPath
+      )
+      for header in signed {
+        fwd.headers.add(name: header.name, value: header.value)
+      }
+    }
+
+    let reply = try await httpClient.execute(fwd, timeout: .seconds(60))
+    var headers = HTTPFields()
+    headers[.contentType] = "application/x-ndjson"
+    headers[.cacheControl] = "no-cache"
+    let status = HTTPResponse.Status.from(code: Int(reply.status.code)) ?? .badGateway
+    return Response(
+      status: status,
+      headers: headers,
+      body: ResponseBody { writer in
+        for try await buffer in reply.body {
+          try await writer.write(buffer)
+        }
+        try await writer.finish(nil)
+      }
+    )
   }
 
   private func normalizeBase(_ raw: String) -> String {

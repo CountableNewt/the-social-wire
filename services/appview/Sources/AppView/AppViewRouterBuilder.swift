@@ -68,6 +68,14 @@ enum AppViewRouterBuilder {
       repo: repo
     ).register(on: protected)
 
+    let bootstrapStream = BootstrapStreamService(
+      projectionService: projection,
+      readService: readService,
+      enrollService: enrollService,
+      logger: logger
+    )
+    BootstrapStreamRoutes(bootstrapStreamService: bootstrapStream).register(on: protected)
+
     return router
   }
 }

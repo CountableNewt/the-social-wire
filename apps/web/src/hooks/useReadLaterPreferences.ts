@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "./useAuth";
 import { usePDSClient } from "./usePDSClient";
+import type { PreferencesRecord, RepoRecord } from "@/lib/pdsClient";
+import { fetchSyncPreferences } from "@/lib/syncPreferencesClient";
 import {
   findReadLaterService,
   READ_LATER_SERVICES,
@@ -23,14 +26,15 @@ function readLocalConfiguredService(): ReadLaterServiceId {
 }
 
 export function useAccountPreferences() {
-  const client = usePDSClient();
+  const { session, getOAuthSession } = useAuth();
   return useQuery({
     queryKey: ACCOUNT_PREFERENCES_QUERY_KEY,
     queryFn: async () => {
-      if (!client) return null;
-      return client.getPreferences();
+      const oauth = getOAuthSession();
+      if (!oauth || !session) return null;
+      return fetchSyncPreferences(oauth, session.did);
     },
-    enabled: !!client,
+    enabled: !!session,
     staleTime: 30_000,
   });
 }
@@ -84,9 +88,17 @@ export function useSetReadLaterServicePreference() {
       if (!client) {
         throw new Error("No PDS client — not signed in");
       }
-      return client.upsertPreferences({ readLaterService: serviceId });
+      const existing = qc.getQueryData<RepoRecord<PreferencesRecord> | null>(
+        ACCOUNT_PREFERENCES_QUERY_KEY
+      );
+      return client.upsertPreferences({ readLaterService: serviceId }, existing);
     },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ACCOUNT_PREFERENCES_QUERY_KEY }),
+    onError: (_error, _serviceId, context) => {
+      if (context?.previous) {
+        qc.setQueryData(ACCOUNT_PREFERENCES_QUERY_KEY, context.previous);
+      }
+    },
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,8 @@ import { FolderBranch } from "./FolderBranch";
 import { NewFolderDialog } from "./NewFolderDialog";
 import { AddPublicationDialog } from "./AddPublicationDialog";
 import { useAuth } from "@/hooks/useAuth";
-import { usePrefetchSidebarPublicationEntries } from "@/hooks/usePrefetchSidebarPublicationEntries";
 import { usePublicationSidebarData } from "@/hooks/usePublicationSidebarData";
+import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 import { useSidebarUnreadCounts } from "@/hooks/useSidebarUnreadCounts";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
 import { useReadSidebarScopeOptional } from "@/contexts/ReadSidebarScopeContext";
@@ -97,7 +97,18 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     viewerDid,
     unreadCountsByPublicationId,
     folderPublicationsLoading,
+    streamSelectedPublicationId,
   } = usePublicationSidebarData();
+  const autoSelectRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (pathname !== "/read") return;
+    if (!streamSelectedPublicationId) return;
+    const normalized = normalizeAtRepoParam(streamSelectedPublicationId);
+    if (autoSelectRef.current === normalized) return;
+    autoSelectRef.current = normalized;
+    router.replace(`/read/${encodeURIComponent(normalized)}`);
+  }, [pathname, router, streamSelectedPublicationId]);
   const { data: profile, isLoading: profileLoading } = useViewerProfile();
 
   const publicationsForUnread = useMemo(() => {
@@ -123,12 +134,6 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     }
     return list;
   }, [publicationTab, folders, folderMap, unfolderedPubs, followingTabPublications]);
-
-  usePrefetchSidebarPublicationEntries(
-    publicationsForUnread,
-    !sidebarListsLoading && !!session,
-    selectedPubId
-  );
 
   const publicationUnreadCounts = useSidebarUnreadCounts(
     publicationsForUnread,

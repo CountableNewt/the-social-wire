@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Detect changed paths
+    name: Detect Changed Paths
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
@@ -111,7 +111,7 @@ jobs:
           NEXT_PUBLIC_ATPROTO_CLIENT_ID: test-client
 
   test-gateway:
-    name: Swift Gateway (Package)
+    name: Swift Gateway (Swift Package)
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.gateway == 'true'
     runs-on: ubuntu-latest
@@ -144,7 +144,7 @@ jobs:
         run: swift test
 
   test-appview:
-    name: Swift AppView (Package)
+    name: Swift AppView (Swift Package)
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.appview == 'true'
     runs-on: ubuntu-latest
@@ -167,7 +167,7 @@ jobs:
         run: swift test
 
   test-appview-worker:
-    name: Swift AppView Worker (Package)
+    name: Swift AppView Worker (Swift Package)
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.appview-worker == 'true'
     runs-on: ubuntu-latest
@@ -190,7 +190,7 @@ jobs:
         run: swift test
 
   test-lexicons:
-    name: Lexicons (Package)
+    name: Lexicons (Swift Package)
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.lexicons == 'true'
     runs-on: ubuntu-latest
@@ -212,7 +212,7 @@ jobs:
         run: bun test
 
   test-spec:
-    name: OpenAPI spec (Package)
+    name: OpenAPI Spec (Package)
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.spec == 'true'
     runs-on: ubuntu-latest
@@ -234,7 +234,7 @@ jobs:
         run: bun test
 
   supabase-validate:
-    name: Supabase — validate migrations
+    name: Supabase — Validate Migrations
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.supabase == 'true'
     runs-on: ubuntu-latest
@@ -257,7 +257,7 @@ jobs:
         run: supabase stop --no-backup --yes || true
 
   supabase-push-dev:
-    name: Supabase — push migrations (dev)
+    name: Supabase — Push Migrations (Development)
     needs: [changes, supabase-validate]
     if: |
       needs.changes.result == 'success' &&
@@ -283,7 +283,7 @@ jobs:
         run: bash scripts/supabase-ci-push.sh dev
 
   supabase-push-prod:
-    name: Supabase — push migrations (prod)
+    name: Supabase — Push Migrations (Production)
     needs: [changes, supabase-validate]
     if: |
       needs.changes.result == 'success' &&
@@ -309,7 +309,7 @@ jobs:
         run: bash scripts/supabase-ci-push.sh prod
 
   ci:
-    name: CI — required
+    name: CI — Required
     needs:
       - changes
       - build-web
@@ -322,7 +322,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Verify path-filtered checks
+      - name: Verify Path-Filtered Checks
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           WEB_FLAG: ${{ needs.changes.outputs.web }}
@@ -406,7 +406,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy gateway to Fly.io
+      - name: Deploy Gateway to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_ORG: ${{ secrets.FLY_ORG }}
@@ -447,7 +447,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy appview to Fly.io
+      - name: Deploy AppView to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_ORG: ${{ secrets.FLY_ORG }}
@@ -485,7 +485,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@v1
 
-      - name: Deploy appview-worker to Fly.io
+      - name: Deploy AppView Worker to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_ORG: ${{ secrets.FLY_ORG }}

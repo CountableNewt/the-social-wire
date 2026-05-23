@@ -9,6 +9,7 @@ import NIOCore
 
 /// Short-TTL wrappers around `com.atproto.repo.getRecord` for lexical preferences plus generic keyed records.
 actor PreferenceSyncService {
+  private struct PreferenceRecordNotFound: Error {}
   private let httpClient: HTTPClient
   private let cache: any CacheStore
   private let plcURL: String
@@ -105,13 +106,18 @@ actor PreferenceSyncService {
       throw HTTPError(.badGateway, message: "Could not derive PDS for \(auth.did)")
     }
 
-    let livePayload = try await fetchRecord(
-      repo: auth.did,
-      pdsHost: pds,
-      collection: Self.preferencesCollection,
-      rkey: Self.preferencesRKey,
-      auth: auth
-    )
+    let livePayload: LiveSnapshot
+    do {
+      livePayload = try await fetchRecord(
+        repo: auth.did,
+        pdsHost: pds,
+        collection: Self.preferencesCollection,
+        rkey: Self.preferencesRKey,
+        auth: auth
+      )
+    } catch is PreferenceRecordNotFound {
+      return try finalizeMissingPreferences(ifNoneMatch: ifNoneMatch)
+    }
 
     try await cache.storePdsRepoRecordPayload(
       ownerDid: auth.did,
@@ -133,6 +139,33 @@ actor PreferenceSyncService {
       cachedAt: Date()
     )
     return try finalizePreferences(snapshot: snapshot, ifNoneMatch: ifNoneMatch)
+  }
+
+  private func finalizeMissingPreferences(ifNoneMatch: String?) throws -> Response {
+    if let clientSignal = ifNoneMatch?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !clientSignal.isEmpty
+    {
+      // No stored revision yet — cannot satisfy a conditional GET.
+    }
+
+    let bundle: [String: Any] = [
+      "etag": NSNull(),
+      "cid": NSNull(),
+      "revision": NSNull(),
+      "cachedAt": ISO8601DateFormatter().string(from: Date()),
+      "record": NSNull(),
+    ]
+
+    guard JSONSerialization.isValidJSONObject(bundle) else {
+      throw HTTPError(.badGateway, message: "`preferences` missing-record bundle serialization fault")
+    }
+
+    let outgoing = try JSONSerialization.data(withJSONObject: bundle, options: [.sortedKeys])
+    return Response(
+      status: .ok,
+      headers: [.contentType: "application/json; charset=utf-8"],
+      body: .init(byteBuffer: ByteBuffer(bytes: outgoing))
+    )
   }
 
   private struct LiveSnapshot {
@@ -213,8 +246,8 @@ actor PreferenceSyncService {
     let reply = try await httpClient.execute(outbound, timeout: .seconds(25))
 
     guard reply.status == .ok else {
-      if reply.status.code == 404 {
-        throw HTTPError(.notFound, message: "Record unavailable")
+      if reply.status.code == 404 || reply.status.code == 400 {
+        throw PreferenceRecordNotFound()
       }
       throw HTTPError(.badGateway, message: "`getRecord` handshake failed \(reply.status.code)")
     }
@@ -234,7 +267,7 @@ actor PreferenceSyncService {
     }
 
     guard obj["error"] == nil, obj["value"] != nil else {
-      throw HTTPError(.badGateway, message: "`getRecord` shape fault")
+      throw PreferenceRecordNotFound()
     }
 
     let lexicalCIDCaptured = obj["cid"] as? String

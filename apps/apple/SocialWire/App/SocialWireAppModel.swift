@@ -50,6 +50,9 @@ final class SocialWireAppModel {
     /// Read-later picker save in-flight (mirror web mutation pending state).
     var isUpdatingReadLaterPreference = false
 
+    /// Pending streamed feed page until sidebar rows are ready.
+    private var pendingStreamedEntriesPage: BootstrapEntriesPagePayloadDTO?
+    private var pendingStreamSelectedPublicationId: String?
     private var gatewaySubscribedUnfoldered: [DiscoveredPublication] = []
     private var gatewayMyPublications: [DiscoveredPublication] = []
     private var gatewayFollowingTab: [DiscoveredPublication] = []
@@ -389,53 +392,107 @@ final class SocialWireAppModel {
         defer { isLoading = false }
 
         do {
-            try await refreshPublicationSidebarFromGateway(viewerDID: viewerDID)
+            try await refreshPublicationSidebarFromBootstrapStream(viewerDID: viewerDID)
             await refreshGatewayPreferencesSnapshot()
-            Task(priority: .utility) { await self.prefetchSidebarPublications() }
         } catch {
             errorMessage = "Could not load publications from the server. \(error.localizedDescription)"
         }
     }
 
-    private func refreshPublicationSidebarFromGateway(viewerDID: String) async throws {
-        let priority = try await gateway.fetchPublicationSidebar(phase: .priority)
-        applyGatewaySidebarProjection(priority)
+    private func refreshPublicationSidebarFromBootstrapStream(viewerDID: String) async throws {
+        pendingStreamedEntriesPage = nil
+        pendingStreamSelectedPublicationId = nil
 
         async let readTask = pds.listEntryReadStates()
         async let savedTask = pds.listMergedLatrSaves()
         async let profileTask = publicationsService.fetchActorProfile(actor: viewerDID)
-        async let folderProjectionTask = gateway.fetchPublicationSidebar(phase: .folderPublications)
 
-        let priorityUnreadTask = Task(priority: .utility) {
-            await self.refreshSidebarUnreadCounts(
-                publicationIds: priority.allPublicationRows.map(\.publicationId)
-            )
-        }
-
-        if useAppViewEntryTimelines, !priority.enrollAuthorDids.isEmpty {
-            Task(priority: .utility) {
-                do {
-                    _ = try await self.gateway.enrollAuthors(dids: priority.enrollAuthorDids)
-                } catch {
-                    self.markAppViewUnavailableIfNeeded(error)
-                }
+        try await gateway.consumeBootstrapStream { [weak self] event in
+            Task { @MainActor in
+                self?.applyBootstrapStreamEvent(event)
             }
         }
 
         readAtByEntryId = try await readTask
         savedLinks = try await savedTask
         viewerProfile = try? await profileTask
+        await applyPendingStreamedBootstrapSelectionIfNeeded()
+    }
 
-        if let folderProjection = try? await folderProjectionTask {
-            mergeFolderPublications(from: folderProjection)
-            Task(priority: .utility) {
-                await self.refreshSidebarUnreadCounts(
-                    publicationIds: folderProjection.allPublicationRows.map(\.publicationId)
-                )
+    private func applyBootstrapStreamEvent(_ event: BootstrapStreamEventDTO) {
+        switch event.kind {
+        case .sidebarPriority:
+            guard let projection = event.sidebarPriority else { return }
+            applyGatewaySidebarProjection(projection)
+        case .unreadCounts:
+            guard let counts = event.unreadCounts?.counts else { return }
+            for (publicationId, count) in counts where count > 0 {
+                unreadCountsByPublicationId[publicationId] = count
             }
+        case .selectedPublication:
+            pendingStreamSelectedPublicationId = event.selectedPublication?.publicationId
+            Task { await applyPendingStreamedBootstrapSelectionIfNeeded() }
+        case .entriesPage:
+            pendingStreamedEntriesPage = event.entriesPage
+            Task { await applyPendingStreamedBootstrapSelectionIfNeeded() }
+        case .sidebarFolders:
+            guard let payload = event.sidebarFolders else { return }
+            mergeFolderPublications(from: PublicationSidebarResponseDTO(
+                viewerDid: viewerDID ?? "",
+                folders: nil,
+                publicationPrefs: nil,
+                folderSections: payload.folderSections,
+                allPublicationRows: payload.allPublicationRows,
+                myPublications: [],
+                subscribedUnfoldered: [],
+                followingTabPublications: [],
+                enrollAuthorDids: [],
+                refreshedAt: DateFormatters.string(from: Date()),
+                unreadCountsByPublicationId: nil
+            ))
+        case .warning, .error, .done:
+            break
+        }
+    }
+
+    private func applyPendingStreamedBootstrapSelectionIfNeeded() async {
+        guard selectedPublication == nil else { return }
+        guard let publicationId = pendingStreamSelectedPublicationId else { return }
+        guard let publication = publicationMatchingId(publicationId) else { return }
+
+        if let page = pendingStreamedEntriesPage, page.publicationId == publicationId {
+            applyStreamedPublicationSelection(publication: publication, entries: page.entries, cursor: page.cursor)
+            pendingStreamedEntriesPage = nil
+            pendingStreamSelectedPublicationId = nil
+            return
         }
 
-        await priorityUnreadTask.value
+        await selectPublication(publication)
+    }
+
+    private func publicationMatchingId(_ publicationId: String) -> DiscoveredPublication? {
+        for publication in gatewayAllPublicationRows + subscribedPublications + followingTabPublications {
+            if publication.publicationId == publicationId {
+                return publication
+            }
+        }
+        return nil
+    }
+
+    private func applyStreamedPublicationSelection(
+        publication: DiscoveredPublication,
+        entries: [EntryListItem],
+        cursor: String?
+    ) {
+        prepareForPublicationSelection()
+        selectedPublication = publication
+        selectedSidebar = .publication(publication.publicationId)
+        self.entries = entries
+        entriesNextCursor = cursor
+        persistPublicationEntries(publication.publicationId, entries: entries)
+        Task {
+            await prefetchThumbnailImages(for: entries)
+        }
     }
 
     private func mergeFolderPublications(from projection: PublicationSidebarResponseDTO) {
