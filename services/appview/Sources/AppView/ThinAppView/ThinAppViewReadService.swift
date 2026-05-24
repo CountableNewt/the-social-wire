@@ -232,17 +232,19 @@ actor ThinAppViewReadService {
     publicationIds: [String],
     projectionService: PublicationProjectionService
   ) async throws -> AppViewUnreadCountsByPublicationResponse {
-    let cachedRows = await projectionService.sidebarRows(
-      for: auth.did,
-      publicationIds: publicationIds
-    )
-    let rowsById = Dictionary(uniqueKeysWithValues: cachedRows.map { ($0.publicationId, $0) })
+    var rowsById: [String: SidebarPublicationRow] = [:]
+    for publicationId in publicationIds {
+      if let row = await projectionService.sidebarRow(for: auth.did, publicationId: publicationId) {
+        rowsById[publicationId] = row
+      }
+    }
+    let resolvedRows = rowsById
 
     var counts: [String: Int] = [:]
     await withTaskGroup(of: (String, Int)?.self) { group in
       for publicationId in publicationIds {
         group.addTask {
-          guard let row = rowsById[publicationId] else { return nil }
+          guard let row = resolvedRows[publicationId] else { return nil }
           let unreadCount = try? await self.store.countUnreadEntries(
             viewerDid: auth.did,
             authorDid: row.appViewScope.authorDid,
@@ -261,12 +263,14 @@ actor ThinAppViewReadService {
       }
     }
 
-    if counts.count < publicationIds.filter({ rowsById[$0] != nil }).count {
-      let missingIds = publicationIds.filter { rowsById[$0] == nil }
+    if counts.count < publicationIds.filter({ resolvedRows[$0] != nil }).count {
+      let missingIds = publicationIds.filter { resolvedRows[$0] == nil }
       if !missingIds.isEmpty {
         let sidebar = try await projectionService.sidebar(auth: auth, phase: .full)
         for publicationId in missingIds {
-          guard let row = sidebar.allPublicationRows.first(where: { $0.publicationId == publicationId }) else {
+          guard let row = sidebar.allPublicationRows.first(where: {
+            PublicationProjectionLogic.publicationIdsMatch($0.publicationId, publicationId)
+          }) else {
             continue
           }
           let unreadCount = try await store.countUnreadEntries(

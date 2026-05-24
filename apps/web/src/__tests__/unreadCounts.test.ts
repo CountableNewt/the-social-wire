@@ -7,6 +7,7 @@ import type { EntryListItem } from "@/lib/atprotoClient";
 import {
   countUnreadCachedEntries,
   distinctCachedEntryIdsForPublications,
+  effectivePublicationUnreadCount,
   flattenCachedInfiniteEntries,
   sumUnreadForPublications,
 } from "@/lib/unreadCounts";
@@ -102,6 +103,62 @@ describe("distinctCachedEntryIdsForPublications", () => {
         { publicationId: "did:plc:none" },
       ])
     ).toEqual([]);
+  });
+});
+
+describe("effectivePublicationUnreadCount", () => {
+  function mockQueryClientWithEntries(
+    publicationId: string,
+    entries: EntryListItem[]
+  ) {
+    const store = new Map<string, InfiniteData<EntriesPage>>();
+    for (const filter of ["all", "unread"]) {
+      store.set(JSON.stringify([...ENTRIES_QUERY_KEY(publicationId), filter]), {
+        pages: [{ entries, cursor: undefined }],
+        pageParams: [undefined],
+      });
+    }
+    return {
+      getQueriesData: <T,>({ queryKey }: { queryKey: readonly unknown[] }) => {
+        const prefix = JSON.stringify(queryKey).slice(0, -1);
+        const out: [unknown, T][] = [];
+        for (const [key, value] of store) {
+          if (key.startsWith(prefix)) {
+            out.push([JSON.parse(key), value as T]);
+          }
+        }
+        return out;
+      },
+    } as unknown as import("@tanstack/react-query").QueryClient;
+  }
+
+  it("lowers server count when cached entries are locally read", () => {
+    const publicationId =
+      "at://did:plc:author/site.standard.publication/main";
+    const readId = "at://did:plc:author/site.standard.document/read";
+    const unreadId = "at://did:plc:author/site.standard.document/unread";
+    const queryClient = mockQueryClientWithEntries(publicationId, [
+      makeEntry(readId),
+      makeEntry(unreadId),
+    ]);
+    const isRead = (id: string) => id === readId;
+
+    expect(
+      effectivePublicationUnreadCount(5, queryClient, publicationId, isRead)
+    ).toBe(4);
+  });
+
+  it("raises count when cache shows unread but server reports zero", () => {
+    const publicationId =
+      "at://did:plc:author/site.standard.publication/main";
+    const unreadId = "at://did:plc:author/site.standard.document/unread";
+    const queryClient = mockQueryClientWithEntries(publicationId, [
+      makeEntry(unreadId),
+    ]);
+
+    expect(
+      effectivePublicationUnreadCount(0, queryClient, publicationId, () => false)
+    ).toBe(1);
   });
 });
 

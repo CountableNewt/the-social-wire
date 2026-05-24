@@ -39,15 +39,60 @@ export function countUnreadCachedEntries(
 }
 
 /**
+ * Counts distinct entries already marked read in the local read map.
+ */
+export function countCachedReadEntries(
+  entries: EntryListItem[],
+  isEntryRead: (entryId: string) => boolean
+): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const entry of entries) {
+    if (seen.has(entry.entryId)) continue;
+    seen.add(entry.entryId);
+    if (isEntryRead(entry.entryId)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Merges AppView unread baseline with local read state for cached feed rows.
+ */
+export function effectivePublicationUnreadCount(
+  serverCount: number,
+  queryClient: QueryClient,
+  publicationId: string,
+  isEntryRead: (entryId: string) => boolean
+): number {
+  const cached = getCachedEntriesForPublication(queryClient, publicationId);
+  if (cached.length === 0) return serverCount;
+
+  const cachedUnread = countUnreadCachedEntries(cached, isEntryRead);
+  const cachedRead = countCachedReadEntries(cached, isEntryRead);
+  return Math.max(cachedUnread, serverCount - cachedRead);
+}
+
+/**
  * Sums per-publication unread totals for a list of publications (e.g. one folder).
  */
+export function lookupUnreadCountInMap(
+  publicationUnreadCounts: Map<string, number>,
+  publicationId: string
+): number {
+  const target = normalizeAtRepoParam(publicationId);
+  for (const [key, count] of publicationUnreadCounts) {
+    if (normalizeAtRepoParam(key) === target) return count;
+  }
+  return publicationUnreadCounts.get(publicationId) ?? 0;
+}
+
 export function sumUnreadForPublications(
   publications: Array<{ publicationId: string }>,
   publicationUnreadCounts: Map<string, number>
 ): number {
   let sum = 0;
   for (const pub of publications) {
-    sum += publicationUnreadCounts.get(pub.publicationId) ?? 0;
+    sum += lookupUnreadCountInMap(publicationUnreadCounts, pub.publicationId);
   }
   return sum;
 }

@@ -18,8 +18,80 @@ struct ProjectionDiscoveredRow: Sendable, Equatable {
 // MARK: - Subscription matching (mirror web `publicationSubscriptionMatch.ts`)
 
 enum PublicationProjectionLogic {
+  private static let atUriPathPattern = #"^at://([^/]+)/([^/]+)/([^/]+)$"#
+
   static func normalizeAtRepoParam(_ raw: String) -> String {
-    raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if s.hasPrefix("@") {
+      s = String(s.dropFirst())
+    }
+    for _ in 0 ..< 3 {
+      if s.hasPrefix("did:") {
+        return s
+      }
+      if let decodedAtUri = decodeAtUriAuthorityAndCollection(s), decodedAtUri != s {
+        s = decodedAtUri
+        continue
+      }
+      guard let decoded = urlDecodedOnce(s), decoded != s else {
+        return s
+      }
+      s = decoded
+    }
+    return s
+  }
+
+  static func publicationIdLookupKeys(for raw: String) -> [String] {
+    var keys = Set<String>()
+    keys.insert(raw)
+    let normalized = normalizeAtRepoParam(raw)
+    keys.insert(normalized)
+    addPublicationSubscriptionLookupKeys(into: &keys, value: normalized)
+    if let canonical = RenderFieldExtractor.canonicalPublicationAtUriKey(normalized) {
+      keys.insert(canonical)
+      addPublicationSubscriptionLookupKeys(into: &keys, value: canonical)
+    }
+    return Array(keys)
+  }
+
+  private static func urlDecodedOnce(_ value: String) -> String? {
+    guard let decoded = value.removingPercentEncoding, decoded != value else { return nil }
+    return decoded
+  }
+
+  private static func decodeUriEncodingLayers(_ segment: String) -> String {
+    var s = segment
+    for _ in 0 ..< 3 {
+      guard s.contains("%"), let decoded = s.removingPercentEncoding, decoded != s else { break }
+      s = decoded
+    }
+    return s
+  }
+
+  private static func decodeAtUriAuthorityAndCollection(_ uri: String) -> String? {
+    guard let regex = try? NSRegularExpression(pattern: atUriPathPattern) else { return nil }
+    let range = NSRange(uri.startIndex..., in: uri)
+    guard
+      let match = regex.firstMatch(in: uri, range: range),
+      match.numberOfRanges == 4,
+      let authRange = Range(match.range(at: 1), in: uri),
+      let collRange = Range(match.range(at: 2), in: uri),
+      let rkeyRange = Range(match.range(at: 3), in: uri)
+    else { return nil }
+
+    let auth = String(uri[authRange])
+    let coll = String(uri[collRange])
+    let rkey = String(uri[rkeyRange])
+    let decodedAuth = decodeUriEncodingLayers(auth)
+    let decodedColl = decodeUriEncodingLayers(coll)
+    guard decodedAuth != auth || decodedColl != coll else { return nil }
+    return "at://\(decodedAuth)/\(decodedColl)/\(rkey)"
+  }
+
+  static func publicationIdsMatch(_ lhs: String, _ rhs: String) -> Bool {
+    let left = Set(publicationIdLookupKeys(for: lhs).map { normalizeAtRepoParam($0) })
+    let right = Set(publicationIdLookupKeys(for: rhs).map { normalizeAtRepoParam($0) })
+    return !left.isDisjoint(with: right)
   }
 
   static func addPublicationSubscriptionLookupKeys(into keys: inout Set<String>, value: String?) {

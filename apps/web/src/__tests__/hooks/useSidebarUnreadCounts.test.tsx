@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
 import { useSidebarUnreadCounts } from "@/hooks/useSidebarUnreadCounts";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 
@@ -12,13 +14,22 @@ const pub: DiscoveredPublication = {
   discoveredAt: "2026-01-01T00:00:00.000Z",
 };
 
+function renderWithClient<T>(callback: () => T) {
+  const queryClient = new QueryClient();
+  return renderHook(callback, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+  });
+}
+
 describe("useSidebarUnreadCounts", () => {
   it("maps API unread counts by publication id", () => {
     const unreadCountsByPublicationId = new Map([
       ["did:plc:alice", 3],
     ]);
 
-    const { result } = renderHook(() =>
+    const { result } = renderWithClient(() =>
       useSidebarUnreadCounts([pub], unreadCountsByPublicationId)
     );
 
@@ -26,7 +37,7 @@ describe("useSidebarUnreadCounts", () => {
   });
 
   it("returns zero when no API counts are present", () => {
-    const { result } = renderHook(() =>
+    const { result } = renderWithClient(() =>
       useSidebarUnreadCounts([pub], undefined)
     );
 

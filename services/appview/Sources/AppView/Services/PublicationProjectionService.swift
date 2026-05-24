@@ -82,9 +82,17 @@ actor PublicationProjectionService {
     }
   }
 
+  func sidebarRow(for viewerDid: String, publicationId: String) -> SidebarPublicationRow? {
+    guard let cache = sidebarRowCacheByViewer[viewerDid] else { return nil }
+    if let hit = cache[publicationId] { return hit }
+    for key in PublicationProjectionLogic.publicationIdLookupKeys(for: publicationId) {
+      if let hit = cache[key] { return hit }
+    }
+    return nil
+  }
+
   func sidebarRows(for viewerDid: String, publicationIds: [String]) -> [SidebarPublicationRow] {
-    guard let cache = sidebarRowCacheByViewer[viewerDid] else { return [] }
-    return publicationIds.compactMap { cache[$0] }
+    publicationIds.compactMap { sidebarRow(for: viewerDid, publicationId: $0) }
   }
 
   // MARK: - Discovery
@@ -203,8 +211,10 @@ actor PublicationProjectionService {
     rows: [String: SidebarPublicationRow]
   ) {
     var merged = sidebarRowCacheByViewer[viewerDid] ?? [:]
-    for (publicationId, row) in rows {
-      merged[publicationId] = row
+    for row in rows.values {
+      for key in PublicationProjectionLogic.publicationIdLookupKeys(for: row.publicationId) {
+        merged[key] = row
+      }
     }
     sidebarRowCacheByViewer[viewerDid] = merged
   }

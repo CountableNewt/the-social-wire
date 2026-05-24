@@ -68,6 +68,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     sidebarExpandedKeys,
     toggleSidebarExpandedKey,
     syncSidebarFolderExpandKeys,
+    isEntryRead,
   } = useReadRoute();
 
   async function handleLogout() {
@@ -146,7 +147,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
 
   const publicationUnreadCounts = useSidebarUnreadCounts(
     publicationsForUnread,
-    unreadCountsByPublicationId
+    unreadCountsByPublicationId,
+    { isEntryRead }
   );
 
   const setPublicationsInReadShell =
