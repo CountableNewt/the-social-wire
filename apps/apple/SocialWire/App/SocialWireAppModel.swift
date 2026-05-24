@@ -206,9 +206,16 @@ final class SocialWireAppModel {
         case .entry(let entryId):
             return readAtByEntryId[entryId] != nil
         case .allLists, .list, .publication:
-            let entryIds = cachedEntryIds(for: scope)
-            return entryIds.isEmpty || entryIds.allSatisfy { readAtByEntryId[$0] != nil }
+            return !bulkScopeHasUnread(scope)
         }
+    }
+
+    private func bulkScopeHasUnread(_ scope: ReaderMarkReadScope) -> Bool {
+        let publications = publicationsAffected(by: scope)
+        if publications.contains(where: { (unreadCountsByPublicationId[$0.publicationId] ?? 0) > 0 }) {
+            return true
+        }
+        return cachedEntryIds(for: scope).contains { readAtByEntryId[$0] == nil }
     }
 
     func markRead(for scope: ReaderMarkReadScope) async {
@@ -219,11 +226,14 @@ final class SocialWireAppModel {
             await markReadIfNeeded(entryId: entryId)
         case .allLists, .list, .publication:
             guard useAppViewEntryTimelines else { return }
-            let entryIds = cachedEntryIds(for: scope).filter { readAtByEntryId[$0] == nil }
-            guard !entryIds.isEmpty else { return }
+            let scopes = gatewayMarkAllReadScopes(for: scope)
+            guard !scopes.isEmpty else { return }
 
+            let entryIds = cachedEntryIds(for: scope).filter { readAtByEntryId[$0] == nil }
             let readAt = Date()
             let savedUnreadCounts = unreadCountsByPublicationId
+            let savedReadAtByEntryId = readAtByEntryId
+
             clearUnreadCounts(for: publicationsAffected(by: scope))
             for entryId in entryIds {
                 readAtByEntryId[entryId] = readAt
@@ -231,16 +241,13 @@ final class SocialWireAppModel {
             unreadDeferredEntryId = nil
 
             do {
-                let scopes = gatewayMarkAllReadScopes(for: scope)
-                guard !scopes.isEmpty else { return }
                 for gatewayScope in scopes {
                     _ = try await gateway.markAllRead(scope: gatewayScope)
                 }
+                await syncCrossClientReadState()
             } catch {
                 unreadCountsByPublicationId = savedUnreadCounts
-                for entryId in entryIds {
-                    readAtByEntryId.removeValue(forKey: entryId)
-                }
+                readAtByEntryId = savedReadAtByEntryId
                 markAppViewUnavailableIfNeeded(error)
                 errorMessage = error.localizedDescription
             }
@@ -1218,6 +1225,7 @@ final class SocialWireAppModel {
         do {
             let readAt = Date()
             try await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
+            await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
             readAtByEntryId[entryId] = readAt
         } catch {
             markAppViewUnavailableIfNeeded(error)
@@ -1233,14 +1241,52 @@ final class SocialWireAppModel {
             if markingRead {
                 let readAt = Date()
                 try await gateway.upsertReadMark(subjectUri: item.entryId, readAt: readAt)
+                await syncEntryReadStateToPDS(subjectURI: item.entryId, readAt: readAt)
                 readAtByEntryId[item.entryId] = readAt
             } else {
                 try await gateway.deleteReadMark(subjectUri: item.entryId)
+                await syncEntryReadStateRemovalToPDS(subjectURI: item.entryId)
                 readAtByEntryId.removeValue(forKey: item.entryId)
             }
         } catch {
             markAppViewUnavailableIfNeeded(error)
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Reload PDS read markers and AppView unread baselines after another client may have changed them.
+    func syncCrossClientReadState() async {
+        guard isSignedIn else { return }
+
+        do {
+            let remote = try await pds.listEntryReadStates()
+            for (entryId, readAt) in remote {
+                if let existing = readAtByEntryId[entryId] {
+                    readAtByEntryId[entryId] = min(existing, readAt)
+                } else {
+                    readAtByEntryId[entryId] = readAt
+                }
+            }
+        } catch {
+            /* keep in-memory read map */
+        }
+
+        await refreshSidebarUnreadCounts()
+    }
+
+    private func syncEntryReadStateToPDS(subjectURI: String, readAt: Date) async {
+        do {
+            try await pds.markRead(subjectURI: subjectURI, readAt: readAt)
+        } catch {
+            /* best-effort cross-client sync */
+        }
+    }
+
+    private func syncEntryReadStateRemovalToPDS(subjectURI: String) async {
+        do {
+            try await pds.markUnread(subjectURI: subjectURI)
+        } catch {
+            /* record may already be absent */
         }
     }
 

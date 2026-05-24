@@ -12,6 +12,7 @@ import {
 } from "@/lib/bootstrapStreamPerf";
 import {
   applyBootstrapStreamEvent,
+  applyUnreadCountsEvent,
   writeStreamedEntriesPage,
 } from "@/lib/bootstrapStreamState";
 import { prefetchCachedImages } from "@/lib/imageBlobCache";
@@ -28,6 +29,7 @@ import {
   type PublicationSidebarProjection,
   type SidebarPublicationRow,
 } from "@/lib/publicationProjectionClient";
+import { fetchAppViewUnreadCounts } from "@/lib/thinAppViewClient";
 
 export const PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY = (did: string) =>
   ["publicationSidebarProjection", did] as const;
@@ -388,6 +390,31 @@ export function usePublicationSidebarData() {
     },
   });
 
+  const refreshUnreadCountsFromAppView = useCallback(async () => {
+    const oauth = getOAuthSession();
+    if (!oauth || !did) return;
+
+    const projection = qc.getQueryData<PublicationSidebarProjection>(
+      PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
+    );
+    if (!projection) return;
+
+    const publicationIds = [
+      ...new Set(projection.allPublicationRows.map((row) => row.publicationId)),
+    ];
+    if (publicationIds.length === 0) return;
+
+    try {
+      const counts = await fetchAppViewUnreadCounts(oauth, publicationIds);
+      qc.setQueryData<PublicationSidebarProjection>(
+        PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+        (current) => (current ? applyUnreadCountsEvent(current, counts) : current)
+      );
+    } catch {
+      /* best-effort cross-client sync */
+    }
+  }, [did, getOAuthSession, qc]);
+
   return {
     folders,
     foldersLoading: foldersListLoading,
@@ -407,6 +434,7 @@ export function usePublicationSidebarData() {
     hasSidebarSnapshot,
     sidebarFetching,
     refresh,
+    refreshUnreadCountsFromAppView,
     viewerDid: session?.did,
     publicationSidebarProjection: mergedProjection,
     sidebarRowsById: projectionState?.sidebarRowsById,

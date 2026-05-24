@@ -63,6 +63,7 @@ export type ReadRouteContextValue = {
   markEntriesRead: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   isEntryRead: (entryId: string) => boolean;
+  syncReadStateFromPDS: () => Promise<void>;
 };
 
 const ReadRouteContext = createContext<ReadRouteContextValue | null>(null);
@@ -340,6 +341,22 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
     [readMap]
   );
 
+  const syncReadStateFromPDS = useCallback(async () => {
+    if (!pdsClient) return;
+    try {
+      const remote = await pdsClient.listEntryReadStateMap();
+      setReadMap((local) => {
+        const merged = mergeReadStateMaps(local, remote);
+        if (typeof window !== "undefined") {
+          saveReadState(window.localStorage, merged);
+        }
+        return merged;
+      });
+    } catch {
+      /* network / OAuth scope / PDS — keep local cache */
+    }
+  }, [pdsClient]);
+
   const value = useMemo(
     (): ReadRouteContextValue => ({
       selectedFolderUri,
@@ -356,6 +373,7 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       markEntryUnread,
       markEntriesRead,
       markEntriesUnread,
+      syncReadStateFromPDS,
     }),
     [
       selectedFolderUri,
@@ -369,6 +387,7 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       markEntryUnread,
       markEntriesRead,
       markEntriesUnread,
+      syncReadStateFromPDS,
       setPublicationTab,
     ]
   );

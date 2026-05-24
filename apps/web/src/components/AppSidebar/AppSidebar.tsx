@@ -28,6 +28,7 @@ import { AddPublicationDialog } from "./AddPublicationDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { usePublicationSidebarData } from "@/hooks/usePublicationSidebarData";
 import { usePrefetchSidebarPublicationEntries } from "@/hooks/usePrefetchSidebarPublicationEntries";
+import { useCrossClientReadSync } from "@/hooks/useCrossClientReadSync";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 import { useSidebarUnreadCounts } from "@/hooks/useSidebarUnreadCounts";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
@@ -98,6 +99,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     streamSelectedPublicationId,
     hasSidebarSnapshot,
   } = usePublicationSidebarData();
+
+  useCrossClientReadSync();
 
   usePrefetchSidebarPublicationEntries(
     allPublicationRows,

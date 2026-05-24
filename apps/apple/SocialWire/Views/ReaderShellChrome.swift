@@ -84,8 +84,8 @@ struct ReaderShellOverlayModifier: ViewModifier {
         switch markReadScope {
         case .allLists:
             return """
-                This marks every cached article across Subscribed and Following as read. \
-                Entries that have not been loaded yet stay unchanged until you open them.
+                This marks every unread article across Subscribed and Following as read on your account. \
+                Large publication backlogs may require more than one pass.
                 """
         case .list(let source):
             switch source {
@@ -93,19 +93,19 @@ struct ReaderShellOverlayModifier: ViewModifier {
                 return "Read Later uses saved links, not feed read state. Open a publication feed to mark articles as read."
             case .subscribed:
                 return """
-                    This marks every cached article in Subscribed (folders and publications) as read. \
-                    Entries that have not been loaded yet stay unchanged until you open them.
+                    This marks every unread article in Subscribed (folders and publications) as read on your account. \
+                    Large publication backlogs may require more than one pass.
                     """
             case .following:
                 return """
-                    This marks every cached article from publications you follow as read. \
-                    Entries that have not been loaded yet stay unchanged until you open them.
+                    This marks every unread article from publications you follow as read on your account. \
+                    Large publication backlogs may require more than one pass.
                     """
             }
         case .publication:
             return """
-                This marks every cached article in this publication as read. \
-                Entries that have not been loaded yet stay unchanged until you open them.
+                This marks every unread article in this publication as read on your account. \
+                Large backlogs may require more than one pass.
                 """
         case .entry:
             return "This marks the open article as read."
@@ -150,11 +150,7 @@ struct ReaderShellOverlayModifier: ViewModifier {
             .overlay(alignment: .bottom) {
                 floatingFilterBar
             }
-            .confirmationDialog(
-                markReadDialogTitle,
-                isPresented: $showMarkReadConfirm,
-                titleVisibility: .visible
-            ) {
+            .alert(markReadDialogTitle, isPresented: $showMarkReadConfirm) {
                 Button(markReadConfirmTitle) {
                     Task {
                         await appModel.markRead(for: markReadScope)
