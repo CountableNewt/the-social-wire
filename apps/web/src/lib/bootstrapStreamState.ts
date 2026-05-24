@@ -22,15 +22,32 @@ export function applySidebarPriorityEvent(
 
 export function applyUnreadCountsEvent(
   projection: PublicationSidebarProjection,
-  counts: Record<string, number>
+  counts: Record<string, number>,
+  options?: { replacePublicationIds?: readonly string[] }
 ): PublicationSidebarProjection {
   const unreadCountsByPublicationId = {
     ...(projection.unreadCountsByPublicationId ?? {}),
     ...counts,
   };
+
+  if (options?.replacePublicationIds?.length) {
+    for (const publicationId of options.replacePublicationIds) {
+      const fresh = counts[publicationId] ?? 0;
+      if (fresh <= 0) {
+        delete unreadCountsByPublicationId[publicationId];
+      } else {
+        unreadCountsByPublicationId[publicationId] = fresh;
+      }
+    }
+  }
+
   const applyRow = (
     row: PublicationSidebarProjection["allPublicationRows"][number]
   ) => {
+    if (options?.replacePublicationIds?.includes(row.publicationId)) {
+      const count = counts[row.publicationId] ?? 0;
+      return { ...row, unreadCount: count > 0 ? count : 0 };
+    }
     const count = counts[row.publicationId];
     if (count == null) return row;
     return { ...row, unreadCount: count };

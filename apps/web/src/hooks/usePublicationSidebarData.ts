@@ -408,7 +408,12 @@ export function usePublicationSidebarData() {
       const counts = await fetchAppViewUnreadCounts(oauth, publicationIds);
       qc.setQueryData<PublicationSidebarProjection>(
         PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
-        (current) => (current ? applyUnreadCountsEvent(current, counts) : current)
+        (current) =>
+          current
+            ? applyUnreadCountsEvent(current, counts, {
+                replacePublicationIds: publicationIds,
+              })
+            : current
       );
     } catch {
       /* best-effort cross-client sync */

@@ -63,6 +63,15 @@ describe("bootstrapStreamState", () => {
     expect(projection.unreadCountsByPublicationId?.["pub-a"]).toBe(4);
   });
 
+  it("clears stale counts when refreshing with sparse zero response", () => {
+    const stale = applyUnreadCountsEvent(baseProjection(), { "pub-a": 4 });
+    const refreshed = applyUnreadCountsEvent(stale, {}, {
+      replacePublicationIds: ["pub-a"],
+    });
+    expect(refreshed.subscribedUnfoldered[0]?.unreadCount).toBe(0);
+    expect(refreshed.unreadCountsByPublicationId?.["pub-a"]).toBeUndefined();
+  });
+
   it("replaces projection on sidebarPriority", () => {
     const next = applySidebarPriorityEvent(undefined, baseProjection());
     expect(next.subscribedUnfoldered).toHaveLength(1);

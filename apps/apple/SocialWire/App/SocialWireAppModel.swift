@@ -328,23 +328,36 @@ final class SocialWireAppModel {
         displayUnreadCount(publicationId: publication.publicationId)
     }
 
-    /// AppView baseline adjusted for cached entries marked read locally (PDS / in-session).
-    private func displayUnreadCount(publicationId: String) -> Int {
-        guard let coordinator = readerCacheCoordinator,
-              let cached = try? coordinator.publicationEntries(publicationId),
-              !cached.isEmpty
-        else {
-            return unreadCountsByPublicationId[publicationId] ?? 0
-        }
+  /// AppView baseline adjusted optimistically when entries are marked read/unread locally.
+  private func displayUnreadCount(publicationId: String) -> Int {
+    unreadCountsByPublicationId[publicationId] ?? 0
+  }
 
-        let localUnread = cached.filter { readAtByEntryId[$0.entryId] == nil }.count
-        guard let baseline = unreadCountsByPublicationId[publicationId] else {
-            return localUnread
-        }
-
-        let readInCache = cached.count - localUnread
-        return max(localUnread, baseline - readInCache)
+  private func adjustUnreadCount(publicationId: String, delta: Int) {
+    guard delta != 0 else { return }
+    let current = unreadCountsByPublicationId[publicationId] ?? 0
+    let next = max(0, current + delta)
+    if next > 0 {
+      unreadCountsByPublicationId[publicationId] = next
+    } else {
+      unreadCountsByPublicationId.removeValue(forKey: publicationId)
     }
+  }
+
+  private func publicationId(for entryId: String) -> String? {
+    if let selectedPublication,
+       entries.contains(where: { $0.entryId == entryId })
+    {
+      return selectedPublication.publicationId
+    }
+    if let publication = gatewayAllPublicationRows.first(where: { publication in
+      (try? readerCacheCoordinator?.publicationEntries(publication.publicationId))?
+        .contains(where: { $0.entryId == entryId }) == true
+    }) {
+      return publication.publicationId
+    }
+    return selectedPublication?.publicationId
+  }
 
     private func applyStreamUnreadCounts(_ counts: [String: Int]) {
         let publicationIds = Set(
@@ -1227,6 +1240,9 @@ final class SocialWireAppModel {
             try await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
             await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
             readAtByEntryId[entryId] = readAt
+            if let publicationId = publicationId(for: entryId) {
+                adjustUnreadCount(publicationId: publicationId, delta: -1)
+            }
         } catch {
             markAppViewUnavailableIfNeeded(error)
             errorMessage = error.localizedDescription
@@ -1243,10 +1259,16 @@ final class SocialWireAppModel {
                 try await gateway.upsertReadMark(subjectUri: item.entryId, readAt: readAt)
                 await syncEntryReadStateToPDS(subjectURI: item.entryId, readAt: readAt)
                 readAtByEntryId[item.entryId] = readAt
+                if let publicationId = publicationId(for: item.entryId) {
+                    adjustUnreadCount(publicationId: publicationId, delta: -1)
+                }
             } else {
                 try await gateway.deleteReadMark(subjectUri: item.entryId)
                 await syncEntryReadStateRemovalToPDS(subjectURI: item.entryId)
                 readAtByEntryId.removeValue(forKey: item.entryId)
+                if let publicationId = publicationId(for: item.entryId) {
+                    adjustUnreadCount(publicationId: publicationId, delta: 1)
+                }
             }
         } catch {
             markAppViewUnavailableIfNeeded(error)

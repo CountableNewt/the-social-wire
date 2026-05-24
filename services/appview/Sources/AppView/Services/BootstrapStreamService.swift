@@ -55,12 +55,10 @@ struct BootstrapStreamService {
         + priority.response.myPublications
         + priority.response.subscribedUnfoldered
         + priority.response.followingTabPublications
-      var unreadCounts = await projectionService.unreadCountsMap(for: unreadRows)
-      if unreadCounts.isEmpty,
-         let cachedCounts = try await projectionCache?.cachedUnreadCounts(viewerDid: auth.did)
-      {
-        unreadCounts = cachedCounts
-      }
+      let unreadCounts = await projectionService.freshUnreadCountsMap(
+        for: unreadRows,
+        viewerDid: auth.did
+      )
       try await writeEvent(.unreadCounts(unreadCounts), writer: &writer)
       BootstrapStreamTimings.logPhase(
         logger,
@@ -192,17 +190,14 @@ struct BootstrapStreamService {
   ) async throws {
     try await writeEvent(.sidebarPriority(snapshot.priority), writer: &writer)
 
-    var unreadCounts = await projectionService.unreadCountsMap(
-      for: snapshot.priority.allPublicationRows
-        + snapshot.priority.myPublications
-        + snapshot.priority.subscribedUnfoldered
-        + snapshot.priority.followingTabPublications
+    let unreadRows = snapshot.priority.allPublicationRows
+      + snapshot.priority.myPublications
+      + snapshot.priority.subscribedUnfoldered
+      + snapshot.priority.followingTabPublications
+    let unreadCounts = await projectionService.freshUnreadCountsMap(
+      for: unreadRows,
+      viewerDid: auth.did
     )
-    if unreadCounts.isEmpty,
-       let cachedCounts = try await projectionCache?.cachedUnreadCounts(viewerDid: auth.did)
-    {
-      unreadCounts = cachedCounts
-    }
     try await writeEvent(.unreadCounts(unreadCounts), writer: &writer)
 
     if let folders = snapshot.folderPayload {

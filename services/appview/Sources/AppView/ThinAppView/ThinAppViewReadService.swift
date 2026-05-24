@@ -207,19 +207,6 @@ actor ThinAppViewReadService {
     publicationIds: [String],
     projectionService: PublicationProjectionService
   ) async throws -> AppViewUnreadCountsByPublicationResponse {
-    if let projectionCache,
-       let cached = try await projectionCache.cachedUnreadCounts(viewerDid: auth.did)
-    {
-      let filtered = publicationIds.reduce(into: [String: Int]()) { partial, publicationId in
-        if let count = cached[publicationId], count > 0 {
-          partial[publicationId] = count
-        }
-      }
-      if filtered.count == publicationIds.filter({ cached[$0] != nil }).count {
-        return AppViewUnreadCountsByPublicationResponse(counts: filtered)
-      }
-    }
-
     let cachedRows = await projectionService.sidebarRows(
       for: auth.did,
       publicationIds: publicationIds

@@ -35,6 +35,7 @@ actor PublicationProjectionService {
   }
 
   func invalidateViewerCaches(viewerDid: String) async {
+    sidebarRowCacheByViewer.removeValue(forKey: viewerDid)
     guard let projectionCache else { return }
     try? await projectionCache.invalidateSidebarProjection(viewerDid: viewerDid)
     try? await projectionCache.invalidateUnreadCounts(viewerDid: viewerDid, publicationId: nil)
@@ -248,6 +249,32 @@ actor PublicationProjectionService {
     for row in rows {
       guard let unreadCount = row.unreadCount, unreadCount > 0 else { continue }
       counts[row.publicationId] = unreadCount
+    }
+    return counts
+  }
+
+  /// Live unread totals from the AppView index (ignores embedded sidebar row counts).
+  func freshUnreadCountsMap(for rows: [SidebarPublicationRow], viewerDid: String) async -> [String: Int] {
+    var counts: [String: Int] = [:]
+    await withTaskGroup(of: (String, Int)?.self) { group in
+      for row in rows {
+        group.addTask {
+          let unreadCount = try? await self.thinStore.countUnreadEntries(
+            viewerDid: viewerDid,
+            authorDid: row.appViewScope.authorDid,
+            publicationAtUri: row.appViewScope.publicationAtUri,
+            publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+            publicationSiteUrls: row.appViewScope.publicationSiteUrls
+          )
+          guard let unreadCount, unreadCount > 0 else { return nil }
+          return (row.publicationId, unreadCount)
+        }
+      }
+      for await result in group {
+        if let (publicationId, count) = result {
+          counts[publicationId] = count
+        }
+      }
     }
     return counts
   }
@@ -517,7 +544,9 @@ actor PublicationProjectionService {
       guard let scope = scopeCache[row.publicationId] else {
         throw HTTPError(.internalServerError)
       }
-      let unreadCount: Int? = includeUnreadCounts ? unreadByPublicationId[row.publicationId] : nil
+      let unreadCount: Int? = includeUnreadCounts
+        ? (unreadByPublicationId[row.publicationId] ?? 0)
+        : nil
       out[row.publicationId] = SidebarPublicationRow(
         publicationId: row.publicationId,
         subscriptionPublicationId: row.subscriptionPublicationId,

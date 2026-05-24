@@ -58,6 +58,7 @@ struct ThinAppViewRoutes {
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: AppViewReadMarkRequest.self, context: context)
       try await readService.upsertReadMark(auth: auth, subjectUri: body.subjectUri, readAt: body.readAt)
+      await projectionService.invalidateViewerCaches(viewerDid: auth.did)
       return .ok
     }
 
@@ -65,6 +66,7 @@ struct ThinAppViewRoutes {
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: AppViewReadMarkDeleteRequest.self, context: context)
       try await readService.deleteReadMark(auth: auth, subjectUri: body.subjectUri)
+      await projectionService.invalidateViewerCaches(viewerDid: auth.did)
       return .ok
     }
 
