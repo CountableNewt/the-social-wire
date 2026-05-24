@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import SocialWire
 
@@ -61,5 +62,59 @@ struct SocialWireUtilityTests {
         let wrapped = HTMLRenderer.wrappedHTML("<p>Hello</p>")
         #expect(wrapped.contains("Content-Security-Policy"))
         #expect(wrapped.contains("<p>Hello</p>"))
+    }
+
+    @Test("sidebar expanded keys persist per viewer did")
+    func sidebarExpandedKeysPersistPerViewerDid() {
+        let defaults = UserDefaults.standard
+        let storageKey = SidebarExpandedKeysStorage.storageKey
+        let prior = defaults.string(forKey: storageKey)
+        defer {
+            if let prior {
+                defaults.set(prior, forKey: storageKey)
+            } else {
+                defaults.removeObject(forKey: storageKey)
+            }
+        }
+
+        defaults.removeObject(forKey: storageKey)
+        let did = "did:plc:sidebar-expand-test"
+        var snapshot = SidebarExpandedSnapshot.default()
+        snapshot.expandedFolderRkeys.insert("folder-a")
+        SidebarExpandedKeysStorage.save(viewerDid: did, snapshot: snapshot)
+
+        let loaded = SidebarExpandedKeysStorage.load(viewerDid: did)
+        #expect(loaded.foldersSectionExpanded)
+        #expect(loaded.publicationsSectionExpanded)
+        #expect(loaded.expandedFolderRkeys == ["folder-a"])
+    }
+
+    @Test("sidebar expanded keys migrate optimistic folder rkeys")
+    func sidebarExpandedKeysMigrateOptimisticFolderRkeys() {
+        let defaults = UserDefaults.standard
+        let storageKey = SidebarExpandedKeysStorage.storageKey
+        let prior = defaults.string(forKey: storageKey)
+        defer {
+            if let prior {
+                defaults.set(prior, forKey: storageKey)
+            } else {
+                defaults.removeObject(forKey: storageKey)
+            }
+        }
+
+        defaults.removeObject(forKey: storageKey)
+        let did = "did:plc:sidebar-expand-migrate"
+        var snapshot = SidebarExpandedSnapshot.default()
+        snapshot.expandedFolderRkeys.insert("optimistic-folder-old")
+        SidebarExpandedKeysStorage.save(viewerDid: did, snapshot: snapshot)
+
+        SidebarExpandedKeysStorage.migrateFolderExpandKey(
+            viewerDid: did,
+            oldRkey: "optimistic-folder-old",
+            newRkey: "real-folder-rkey"
+        )
+
+        let loaded = SidebarExpandedKeysStorage.load(viewerDid: did)
+        #expect(loaded.expandedFolderRkeys == ["real-folder-rkey"])
     }
 }

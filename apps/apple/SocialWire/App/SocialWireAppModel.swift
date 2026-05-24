@@ -28,6 +28,9 @@ final class SocialWireAppModel {
     var selectedSidebar: SidebarSelection?
     var publicationSidebarTab: PublicationSidebarTab = .subscribed
     var readerListSource: ReaderListSource = .subscribed
+    var sidebarFoldersSectionExpanded = true
+    var sidebarPublicationsSectionExpanded = true
+    var sidebarExpandedFolderRkeys: Set<String> = []
     var viewerProfile: ActorProfileResponse?
     var readerFilter: ReaderFilter = .all
     var isLoading = false
@@ -68,6 +71,8 @@ final class SocialWireAppModel {
     private var cachedPriorityProjection: PublicationSidebarResponseDTO?
     private var cachedFolderSections: [PublicationFolderSectionDTO]?
     private var cachedFolderRows: [SidebarPublicationRowDTO]?
+    private var sidebarExpandedKeysViewerDid: String?
+    private var isLoadingSidebarExpandedKeys = false
 
     private struct SidebarLayoutRollback {
         let folders: [RepoRecord<FolderRecord>]
@@ -92,6 +97,7 @@ final class SocialWireAppModel {
         readerCacheCoordinator = ReaderCacheCoordinator(modelContext: modelContext)
         if let viewerDid = viewerDID {
             restoreCachedSidebarSnapshot(viewerDid: viewerDid)
+            loadSidebarExpandedKeys(for: viewerDid)
             restoreLastSelectedPublicationEntriesIfCached()
         }
     }
@@ -422,6 +428,65 @@ final class SocialWireAppModel {
         cachedPriorityProjection = nil
         cachedFolderSections = nil
         cachedFolderRows = nil
+        sidebarExpandedKeysViewerDid = nil
+        sidebarFoldersSectionExpanded = true
+        sidebarPublicationsSectionExpanded = true
+        sidebarExpandedFolderRkeys = []
+    }
+
+    func toggleSidebarFolderExpanded(rkey: String) {
+        if sidebarExpandedFolderRkeys.contains(rkey) {
+            sidebarExpandedFolderRkeys.remove(rkey)
+        } else {
+            sidebarExpandedFolderRkeys.insert(rkey)
+        }
+        persistSidebarExpandedKeysIfLoaded()
+    }
+
+    func noteSidebarExpandedPresentationChanged() {
+        persistSidebarExpandedKeysIfLoaded()
+    }
+
+    private func loadSidebarExpandedKeys(for viewerDid: String) {
+        isLoadingSidebarExpandedKeys = true
+        defer { isLoadingSidebarExpandedKeys = false }
+
+        sidebarExpandedKeysViewerDid = viewerDid
+        let snapshot = SidebarExpandedKeysStorage.load(viewerDid: viewerDid)
+        sidebarFoldersSectionExpanded = snapshot.foldersSectionExpanded
+        sidebarPublicationsSectionExpanded = snapshot.publicationsSectionExpanded
+        sidebarExpandedFolderRkeys = snapshot.expandedFolderRkeys
+    }
+
+    private func persistSidebarExpandedKeysIfLoaded() {
+        guard !isLoadingSidebarExpandedKeys else { return }
+        guard let viewerDID, sidebarExpandedKeysViewerDid == viewerDID else { return }
+
+        SidebarExpandedKeysStorage.save(
+            viewerDid: viewerDID,
+            snapshot: SidebarExpandedSnapshot(
+                foldersSectionExpanded: sidebarFoldersSectionExpanded,
+                publicationsSectionExpanded: sidebarPublicationsSectionExpanded,
+                expandedFolderRkeys: sidebarExpandedFolderRkeys
+            )
+        )
+    }
+
+    private func migrateSidebarFolderExpandKey(oldRkey: String, newRkey: String) {
+        guard oldRkey != newRkey else { return }
+
+        if sidebarExpandedFolderRkeys.contains(oldRkey) {
+            sidebarExpandedFolderRkeys.remove(oldRkey)
+            sidebarExpandedFolderRkeys.insert(newRkey)
+        }
+
+        if let viewerDID {
+            SidebarExpandedKeysStorage.migrateFolderExpandKey(
+                viewerDid: viewerDID,
+                oldRkey: oldRkey,
+                newRkey: newRkey
+            )
+        }
     }
 
     func sumUnread(for publications: [DiscoveredPublication]) -> Int {
@@ -471,6 +536,7 @@ final class SocialWireAppModel {
 
     func refreshAll() async {
         guard let viewerDID else { return }
+        loadSidebarExpandedKeys(for: viewerDID)
         isLoading = true
         sidebarFetching = true
         folderPublicationsLoading = !hasSidebarSnapshot
@@ -1211,6 +1277,10 @@ final class SocialWireAppModel {
                 optimisticRkey: optimisticRkey,
                 created: created,
                 name: trimmed
+            )
+            migrateSidebarFolderExpandKey(
+                oldRkey: optimisticRkey,
+                newRkey: created.rkey
             )
             persistSidebarSnapshot(viewerDid: viewerDID)
         } catch {

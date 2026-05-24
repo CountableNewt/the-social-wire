@@ -4,10 +4,11 @@ import SwiftUI
 struct FollowingPublicationSidebarTree: View {
     @Environment(SocialWireAppModel.self) private var appModel
     var onPublicationTap: ((DiscoveredPublication) -> Void)? = nil
-    @State private var publicationsExpanded = true
 
     var body: some View {
-        Section(isExpanded: $publicationsExpanded) {
+        @Bindable var model = appModel
+
+        Section(isExpanded: $model.sidebarPublicationsSectionExpanded) {
             if appModel.followingTabPublications.isEmpty,
                appModel.sidebarFetching,
                !appModel.hasSidebarSnapshot
@@ -25,6 +26,9 @@ struct FollowingPublicationSidebarTree: View {
                 title: "Publications",
                 unreadCount: appModel.sumUnread(for: appModel.followingTabPublications)
             )
+        }
+        .onChange(of: model.sidebarPublicationsSectionExpanded) { _, _ in
+            appModel.noteSidebarExpandedPresentationChanged()
         }
     }
 

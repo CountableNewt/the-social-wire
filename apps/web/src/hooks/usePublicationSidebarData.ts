@@ -191,17 +191,17 @@ export function usePublicationSidebarData() {
       if (!oauth || !did) return;
 
       resetBootstrapPerf();
-      if (cachedProjection) {
-        markBootstrapPerf("cachedSidebarPaint");
-      }
-
-      const generation = ++streamGenerationRef.current;
-      pendingAutoSelectPublicationIdRef.current = null;
       const hadSidebarSnapshot = Boolean(
         qc.getQueryData<PublicationSidebarProjection>(
           PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
         )
       );
+      if (hadSidebarSnapshot) {
+        markBootstrapPerf("cachedSidebarPaint");
+      }
+
+      const generation = ++streamGenerationRef.current;
+      pendingAutoSelectPublicationIdRef.current = null;
 
       setSidebarFetching(true);
       setProjectionError(null);

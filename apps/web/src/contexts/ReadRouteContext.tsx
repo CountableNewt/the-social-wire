@@ -81,10 +81,22 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
   const [sidebarExpandedKeys, setSidebarExpandedKeys] = useState(
     defaultSidebarExpandedKeys
   );
+  const [sidebarExpandedKeysDid, setSidebarExpandedKeysDid] = useState<
+    string | undefined
+  >(undefined);
   const pdsClient = usePDSClient();
   const queryClient = useQueryClient();
   const { session } = useAuth();
   const viewerDid = session?.did;
+
+  if (
+    typeof window !== "undefined" &&
+    viewerDid &&
+    viewerDid !== sidebarExpandedKeysDid
+  ) {
+    setSidebarExpandedKeysDid(viewerDid);
+    setSidebarExpandedKeys(loadSidebarExpandedKeys(window.localStorage, viewerDid));
+  }
 
   const setPublicationTab = useCallback((tab: PublicationTab) => {
     setPublicationTabState(tab);
@@ -94,14 +106,15 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !viewerDid) return;
-    setSidebarExpandedKeys(loadSidebarExpandedKeys(window.localStorage, viewerDid));
-  }, [viewerDid]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !viewerDid) return;
+    if (
+      typeof window === "undefined" ||
+      !viewerDid ||
+      viewerDid !== sidebarExpandedKeysDid
+    ) {
+      return;
+    }
     saveSidebarExpandedKeys(window.localStorage, viewerDid, sidebarExpandedKeys);
-  }, [viewerDid, sidebarExpandedKeys]);
+  }, [viewerDid, sidebarExpandedKeysDid, sidebarExpandedKeys]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !viewerDid) return;

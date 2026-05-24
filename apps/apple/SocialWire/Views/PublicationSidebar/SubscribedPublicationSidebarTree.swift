@@ -6,12 +6,11 @@ struct SubscribedPublicationSidebarTree: View {
     @Binding var showingNewFolder: Bool
     @Binding var showingAddPublication: Bool
     var onPublicationTap: ((DiscoveredPublication) -> Void)? = nil
-    @State private var foldersExpanded = true
-    @State private var publicationsExpanded = true
-    @State private var expandedFolderRkeys: Set<String> = []
 
     var body: some View {
-        Section(isExpanded: $foldersExpanded) {
+        @Bindable var model = appModel
+
+        Section(isExpanded: $model.sidebarFoldersSectionExpanded) {
             if appModel.folders.isEmpty, appModel.sidebarFetching, !appModel.hasSidebarSnapshot {
                 ForEach(0 ..< 3, id: \.self) { _ in
                     SidebarSkeletonRow()
@@ -30,8 +29,11 @@ struct SubscribedPublicationSidebarTree: View {
         } header: {
             SidebarSectionLabel(title: "Folders", unreadCount: foldersSectionUnread)
         }
+        .onChange(of: model.sidebarFoldersSectionExpanded) { _, _ in
+            appModel.noteSidebarExpandedPresentationChanged()
+        }
 
-        Section(isExpanded: $publicationsExpanded) {
+        Section(isExpanded: $model.sidebarPublicationsSectionExpanded) {
             if appModel.subscribedUnfolderedPublications.isEmpty,
                appModel.sidebarFetching,
                !appModel.hasSidebarSnapshot
@@ -56,20 +58,19 @@ struct SubscribedPublicationSidebarTree: View {
                 unreadCount: appModel.sumUnread(for: appModel.subscribedUnfolderedPublications)
             )
         }
+        .onChange(of: model.sidebarPublicationsSectionExpanded) { _, _ in
+            appModel.noteSidebarExpandedPresentationChanged()
+        }
     }
 
     @ViewBuilder
     private func folderSection(_ folder: RepoRecord<FolderRecord>) -> some View {
         let folderRkey = rkey(from: folder.uri)
         let pubs = appModel.publications(in: folder)
-        let isExpanded = expandedFolderRkeys.contains(folderRkey)
+        let isExpanded = appModel.sidebarExpandedFolderRkeys.contains(folderRkey)
 
         Button {
-            if isExpanded {
-                expandedFolderRkeys.remove(folderRkey)
-            } else {
-                expandedFolderRkeys.insert(folderRkey)
-            }
+            appModel.toggleSidebarFolderExpanded(rkey: folderRkey)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
