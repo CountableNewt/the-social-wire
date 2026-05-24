@@ -185,6 +185,11 @@ actor ThinAppViewReadService {
     }
     let render = try await store.fetchContentRender(uri: entryId)
     let isRead = try await store.hasReadMark(viewerDid: auth.did, subjectUri: entryId)
+    let originalUrl = RssFeedIdentity.originalArticleURL(
+      forEntryId: entryId,
+      render: render,
+      summary: item.summary
+    )
     return AppViewEntryDetailResponse(
       entryId: item.entryId,
       title: item.title,
@@ -192,7 +197,8 @@ actor ThinAppViewReadService {
       publishedAt: item.publishedAt,
       thumbnailUrl: item.thumbnailUrl,
       isRead: isRead,
-      contentHtml: render?.contentHtml ?? render?.summary ?? item.summary
+      contentHtml: render?.contentHtml ?? render?.summary ?? item.summary,
+      originalUrl: originalUrl
     )
   }
 

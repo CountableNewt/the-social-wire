@@ -160,6 +160,24 @@ struct RssFeedIdentityTests {
     )
     #expect(RssFeedIdentity.stableItemKey(from: item) == "post:www.theverge.com:936829")
   }
+
+  @Test("original article URL resolves RSS render articleUrl")
+  func originalArticleURLFromRender() {
+    let feed = "https://www.theverge.com/rss/index.xml"
+    let entryId = RssFeedIdentity.rssEntryId(
+      normalizedFeedUrl: feed,
+      stableItemKey: "post:www.theverge.com:936829"
+    )
+    let render = ContentRenderFields(
+      title: "Post",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+      articleUrl: "https://www.theverge.com/entertainment/936829/slug"
+    )
+    #expect(
+      RssFeedIdentity.originalArticleURL(forEntryId: entryId, render: render, summary: nil)
+        == "https://www.theverge.com/entertainment/936829/slug"
+    )
+  }
 }
 
 @Suite("RssFeedParser")

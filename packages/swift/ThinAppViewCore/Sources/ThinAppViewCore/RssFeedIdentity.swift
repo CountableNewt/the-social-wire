@@ -197,6 +197,26 @@ public enum RssFeedIdentity {
     canonicalLink(forEntryId: item.entryId, renderJSON: nil, summary: item.summary)
   }
 
+  /// Browser-openable permalink for an indexed entry (RSS article link, render `articleUrl`, etc.).
+  public static func originalArticleURL(
+    forEntryId entryId: String,
+    render: ContentRenderFields?,
+    summary: String?
+  ) -> String? {
+    if let render,
+       let articleUrl = render.articleUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !articleUrl.isEmpty,
+       let canonical = canonicalArticleUrl(articleUrl)
+    {
+      return canonical
+    }
+    let renderJSON: String? = render.flatMap { fields in
+      guard let data = try? JSONEncoder().encode(fields) else { return nil }
+      return String(data: data, encoding: .utf8)
+    }
+    return canonicalLink(forEntryId: entryId, renderJSON: renderJSON, summary: summary)
+  }
+
   /// Prefers link-stable RSS entry ids over legacy guid-stable rows.
   public static func isPreferredRssEntryURI(_ candidate: String, over incumbent: String) -> Bool {
     let candidateScore = stableKeyPreferenceScore(for: candidate)

@@ -9,6 +9,7 @@ import {
   removeOptimisticFolderFromProjection,
   replaceOptimisticFolderInProjection,
 } from "@/lib/optimisticSidebarFolder";
+import { migrateStoredSidebarFolderExpandKey } from "@/lib/sidebarExpandedKeysStorage";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 import { useAuth } from "./useAuth";
 import { usePDSClient } from "./usePDSClient";
@@ -154,6 +155,14 @@ export function useCreateFolder() {
           params
         )
       );
+      if (typeof window !== "undefined") {
+        migrateStoredSidebarFolderExpandKey(
+          window.localStorage,
+          did,
+          context.optimisticRkey,
+          created.rkey
+        );
+      }
     },
   });
 }

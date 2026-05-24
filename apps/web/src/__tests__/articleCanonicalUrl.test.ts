@@ -30,6 +30,10 @@ describe("articleCanonicalUrl", () => {
     expect(url).toBe("https://publisher.example/story");
   });
 
+  it("returns null when no external URL is available", () => {
+    expect(canonicalArticleHttpsUrl(makeEntry({}))).toBeNull();
+  });
+
   it("returns null for non-http URLs", () => {
     expect(
       canonicalArticleHttpsUrl(makeEntry({ originalUrl: "at://did/record" }))

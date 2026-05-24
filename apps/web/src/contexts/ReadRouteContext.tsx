@@ -26,6 +26,14 @@ import {
   saveSidebarPublicationTab,
 } from "@/lib/sidebarPublicationTabStorage";
 import {
+  defaultSidebarExpandedKeys,
+  folderExpandKey,
+  loadSidebarExpandedKeys,
+  migrateLegacyFolderUriExpandKeys,
+  saveSidebarExpandedKeys,
+  SIDEBAR_FOLDER_EXPAND_MIGRATE_EVENT,
+} from "@/lib/sidebarExpandedKeysStorage";
+import {
   applyBulkPublicationUnreadCountDeltas,
   applyPublicationUnreadCountDelta,
   bulkUnreadDeltasForPublications,
@@ -47,6 +55,9 @@ export type ReadRouteContextValue = {
   setArticleListFilter: (filter: ArticleListFilter) => void;
   publicationTab: PublicationTab;
   setPublicationTab: (tab: PublicationTab) => void;
+  sidebarExpandedKeys: Set<string>;
+  toggleSidebarExpandedKey: (key: string) => void;
+  syncSidebarFolderExpandKeys: (folderUris: string[]) => void;
   markEntryRead: (entryId: string, options?: MarkEntryReadOptions) => void;
   markEntryUnread: (entryId: string, options?: MarkEntryReadOptions) => void;
   markEntriesRead: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
@@ -67,6 +78,9 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       return loadSidebarPublicationTab(window.localStorage);
     }
   );
+  const [sidebarExpandedKeys, setSidebarExpandedKeys] = useState(
+    defaultSidebarExpandedKeys
+  );
   const pdsClient = usePDSClient();
   const queryClient = useQueryClient();
   const { session } = useAuth();
@@ -77,6 +91,54 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") {
       saveSidebarPublicationTab(window.localStorage, tab);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !viewerDid) return;
+    setSidebarExpandedKeys(loadSidebarExpandedKeys(window.localStorage, viewerDid));
+  }, [viewerDid]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !viewerDid) return;
+    saveSidebarExpandedKeys(window.localStorage, viewerDid, sidebarExpandedKeys);
+  }, [viewerDid, sidebarExpandedKeys]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !viewerDid) return;
+
+    const onMigrate = (event: Event) => {
+      const detail = (event as CustomEvent<{ did: string; oldRkey: string; newRkey: string }>)
+        .detail;
+      if (!detail || detail.did !== viewerDid) return;
+      setSidebarExpandedKeys((prev) => {
+        const oldKey = folderExpandKey(detail.oldRkey);
+        if (!prev.has(oldKey)) return prev;
+        const next = new Set(prev);
+        next.delete(oldKey);
+        next.add(folderExpandKey(detail.newRkey));
+        return next;
+      });
+    };
+
+    window.addEventListener(SIDEBAR_FOLDER_EXPAND_MIGRATE_EVENT, onMigrate);
+    return () => {
+      window.removeEventListener(SIDEBAR_FOLDER_EXPAND_MIGRATE_EVENT, onMigrate);
+    };
+  }, [viewerDid]);
+
+  const toggleSidebarExpandedKey = useCallback((key: string) => {
+    setSidebarExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const syncSidebarFolderExpandKeys = useCallback((folderUris: string[]) => {
+    setSidebarExpandedKeys((prev) =>
+      migrateLegacyFolderUriExpandKeys(prev, folderUris)
+    );
   }, []);
 
   useEffect(() => {
@@ -273,6 +335,9 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       setArticleListFilter,
       publicationTab,
       setPublicationTab,
+      sidebarExpandedKeys,
+      toggleSidebarExpandedKey,
+      syncSidebarFolderExpandKeys,
       isEntryRead,
       markEntryRead,
       markEntryUnread,
@@ -283,6 +348,9 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
       selectedFolderUri,
       articleListFilter,
       publicationTab,
+      sidebarExpandedKeys,
+      toggleSidebarExpandedKey,
+      syncSidebarFolderExpandKeys,
       isEntryRead,
       markEntryRead,
       markEntryUnread,

@@ -3,6 +3,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
 import type { PublicationAppViewScope } from "@/lib/publicationProjectionClient";
+import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 
 export function isThinAppViewEnabled(): boolean {
@@ -118,12 +119,17 @@ export async function getEntryFromAppView(
     publishedAt: string;
     thumbnailUrl?: string;
     contentHtml?: string;
+    originalUrl?: string;
   };
+  const originalUrl = json.originalUrl?.trim();
   return {
     entryId: json.entryId,
     title: json.title,
     publishedAt: json.publishedAt,
     contentHtml: json.contentHtml ?? json.summary ?? "",
+    ...(originalUrl
+      ? { originalUrl: normalizeHttpUrlToHttps(originalUrl) }
+      : {}),
   };
 }
 

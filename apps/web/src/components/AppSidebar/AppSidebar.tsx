@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ import {
   SIDEBAR_SEC_FOLDERS,
   SIDEBAR_SEC_PUBLICATIONS,
 } from "./appSidebarConstants";
+import { folderExpandKey } from "@/lib/sidebarExpandedKeysStorage";
 import { CollapsibleSidebarSubSection } from "./CollapsibleSidebarSubSection";
 import { PublicationMenuSubEntries } from "./PublicationMenuSubEntries";
 import { PublicationTabs } from "./PublicationTabs";
@@ -58,21 +59,15 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   const pathname = usePathname();
   const { session, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
-  const { selectedFolderUri, setSelectedFolderUri, publicationTab, setPublicationTab } =
-    useReadRoute();
-
-  const [expandedKeys, setExpandedKeys] = useState(
-    () => new Set<string>([SIDEBAR_SEC_FOLDERS, SIDEBAR_SEC_PUBLICATIONS])
-  );
-
-  const toggleExpanded = useCallback((key: string) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const {
+    selectedFolderUri,
+    setSelectedFolderUri,
+    publicationTab,
+    setPublicationTab,
+    sidebarExpandedKeys,
+    toggleSidebarExpandedKey,
+    syncSidebarFolderExpandKeys,
+  } = useReadRoute();
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -218,23 +213,24 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
 
     const folderId = pref?.value.folderId;
     if (folderId) {
-      const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-      if (folder) {
-        next.add(folder.uri);
-        next.add(SIDEBAR_SEC_FOLDERS);
-      }
+      next.add(folderExpandKey(folderId));
+      next.add(SIDEBAR_SEC_FOLDERS);
     } else if (!viewerDid || !viewerOwnsDiscoveredPublication(pub, viewerDid)) {
       next.add(SIDEBAR_SEC_PUBLICATIONS);
     }
 
     return next;
-  }, [selectedPubId, allPublicationRows, prefsMap, folders, viewerDid]);
+  }, [selectedPubId, allPublicationRows, prefsMap, viewerDid]);
 
   const effectiveExpandedKeys = useMemo(() => {
-    const merged = new Set(expandedKeys);
+    const merged = new Set(sidebarExpandedKeys);
     for (const k of selectionExpandedKeys) merged.add(k);
     return merged;
-  }, [expandedKeys, selectionExpandedKeys]);
+  }, [sidebarExpandedKeys, selectionExpandedKeys]);
+
+  useEffect(() => {
+    syncSidebarFolderExpandKeys(folders.map((f) => f.uri));
+  }, [folders, syncSidebarFolderExpandKeys]);
 
   useEffect(() => {
     if (!selectedPubId) return;
@@ -331,7 +327,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     >
                       <SidebarMenuButton
                         type="button"
-                        onClick={() => toggleExpanded(SIDEBAR_SEC_FOLDERS)}
+                        onClick={() => toggleSidebarExpandedKey(SIDEBAR_SEC_FOLDERS)}
                         aria-expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_FOLDERS)}
                         className={cn(
                           "gap-2",
@@ -361,15 +357,18 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                         ) : (
                           folders.map((f) => {
                             const rkey = rkeyFromURI(f.uri);
+                            const expandKey = folderExpandKey(rkey);
                             return (
                               <FolderBranch
                                 key={f.uri}
-                                expandKey={f.uri}
+                                expandKey={expandKey}
                                 folderUri={f.uri}
                                 folder={f.value}
                                 isActive={selectedFolderUri === f.uri}
-                                expanded={effectiveExpandedKeys.has(f.uri)}
-                                onToggleExpanded={() => toggleExpanded(f.uri)}
+                                expanded={effectiveExpandedKeys.has(expandKey)}
+                                onToggleExpanded={() =>
+                                  toggleSidebarExpandedKey(expandKey)
+                                }
                                 publications={folderMap.get(rkey) ?? []}
                                 emptyLabel="No publications in this folder."
                                 selectedPubId={selectedPubId}
@@ -393,7 +392,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     title="Publications"
                     unreadCount={publicationsSectionUnread}
                     expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
-                    onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
+                    onToggle={() => toggleSidebarExpandedKey(SIDEBAR_SEC_PUBLICATIONS)}
                     subAriaLabel="Subscribed Publications"
                     readBulkPublications={unfolderedPubs}
                     readBulkMarkAllReadConfirmation={
@@ -427,7 +426,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     title="Publications"
                     unreadCount={publicationsSectionUnread}
                     expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
-                    onToggle={() => toggleExpanded(SIDEBAR_SEC_PUBLICATIONS)}
+                    onToggle={() => toggleSidebarExpandedKey(SIDEBAR_SEC_PUBLICATIONS)}
                     subAriaLabel="Publications From Followed Accounts"
                     readBulkPublications={followingTabPublications}
                     readBulkMarkAllReadConfirmation={
