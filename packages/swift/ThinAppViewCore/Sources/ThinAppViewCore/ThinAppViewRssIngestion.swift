@@ -37,19 +37,21 @@ public struct ThinAppViewRssIngestion: Sendable {
     let capped = Array(feed.items.prefix(config.maxRssItemsPerFeed))
     let now = Date()
     var indexed = 0
-    var canonicalToURI: [String: String] = [:]
+    var identityToURI: [String: String] = [:]
 
     for item in capped {
       let stableKey = RssFeedIdentity.stableItemKey(from: item)
       let uri = RssFeedIdentity.rssEntryId(normalizedFeedUrl: normalizedFeedUrl, stableItemKey: stableKey)
-      if let link = item.link?.trimmingCharacters(in: .whitespacesAndNewlines),
-         !link.isEmpty,
-         let canonical = RssFeedIdentity.canonicalArticleUrl(link)
-      {
-        if let existingURI = canonicalToURI[canonical], existingURI != uri {
+      let identityKeys = RssFeedIdentity.dedupeIdentityKeys(
+        forEntryId: uri,
+        renderJSON: nil,
+        summary: listSummary(from: item)
+      )
+      for key in identityKeys {
+        if let existingURI = identityToURI[key], existingURI != uri {
           try? await store.deleteContentItem(uri: existingURI)
         }
-        canonicalToURI[canonical] = uri
+        identityToURI[key] = uri
       }
       let createdAt = RenderFieldExtractor.createdAtDate(
         from: [:],
@@ -165,27 +167,34 @@ public struct ThinAppViewRssIngestion: Sendable {
     )
     guard rows.count > 1 else { return }
 
-    var canonicalToURI: [String: String] = [:]
+    var identityToURI: [String: String] = [:]
     var toDelete: Set<String> = []
 
     for row in rows {
-      guard
-        let canonical = RssFeedIdentity.canonicalLink(
-          forEntryId: row.uri,
-          renderJSON: row.renderJSON,
-          summary: nil
-        )
-      else { continue }
+      let identityKeys = RssFeedIdentity.dedupeIdentityKeys(
+        forEntryId: row.uri,
+        renderJSON: row.renderJSON,
+        summary: nil
+      )
+      guard !identityKeys.isEmpty else { continue }
 
-      if let existingURI = canonicalToURI[canonical] {
+      var matchedURI: String?
+      for key in identityKeys {
+        if let existingURI = identityToURI[key] {
+          matchedURI = existingURI
+          break
+        }
+      }
+
+      if let existingURI = matchedURI {
         if RssFeedIdentity.isPreferredRssEntryURI(row.uri, over: existingURI) {
           toDelete.insert(existingURI)
-          canonicalToURI[canonical] = row.uri
+          for key in identityKeys { identityToURI[key] = row.uri }
         } else {
           toDelete.insert(row.uri)
         }
       } else {
-        canonicalToURI[canonical] = row.uri
+        for key in identityKeys { identityToURI[key] = row.uri }
       }
     }
 
@@ -194,14 +203,14 @@ public struct ThinAppViewRssIngestion: Sendable {
     }
 
     let keptTitlePublished = Set(
-      canonicalToURI.values.compactMap { uri in
+      identityToURI.values.compactMap { uri in
         rows.first(where: { $0.uri == uri }).flatMap(titlePublishedKey(from:))
       }
     )
     guard !keptTitlePublished.isEmpty else { return }
 
     for row in rows {
-      guard !toDelete.contains(row.uri), !canonicalToURI.values.contains(row.uri) else { continue }
+      guard !toDelete.contains(row.uri), !identityToURI.values.contains(row.uri) else { continue }
       guard let key = titlePublishedKey(from: row), keptTitlePublished.contains(key) else { continue }
       try await store.deleteContentItem(uri: row.uri)
     }

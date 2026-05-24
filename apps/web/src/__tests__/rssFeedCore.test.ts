@@ -84,4 +84,33 @@ describe("rssFeedCore", () => {
     const dec = rssEntryIdDecode(eid);
     expect(dec).toEqual({ feedUrl: feed, itemKey: key });
   });
+
+  it("dedupes Verge Atom id rows against path-based link rows", () => {
+    const feed = "https://www.theverge.com/rss/index.xml";
+    const linkEntry = {
+      entryId: rssEntryIdFromParts(
+        feed,
+        "link:https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds"
+      ),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      publishedAt: "2026-05-23T18:41:11-04:00",
+    };
+    const guidEntry = {
+      entryId: rssEntryIdFromParts(
+        feed,
+        "guid:https://www.theverge.com/?p=936829"
+      ),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      publishedAt: "2026-05-23T18:41:11-04:00",
+    };
+    expect(dedupeEntryListItems([linkEntry, guidEntry])).toHaveLength(1);
+  });
+
+  it("uses post identity stable keys for Verge Atom items", () => {
+    const key = stableItemKeyFromRssItem({
+      guid: "https://www.theverge.com/?p=936829",
+      link: "https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds",
+    });
+    expect(key).toBe("post:www.theverge.com:936829");
+  });
 });

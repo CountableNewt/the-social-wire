@@ -119,6 +119,47 @@ struct RssFeedIdentityTests {
     #expect(!RssFeedIdentity.isFetchableFeedUrl("https://127.0.0.1/feed.xml"))
     #expect(RssFeedIdentity.isFetchableFeedUrl("https://example.com/rss"))
   }
+
+  @Test("dedupes Verge Atom id rows against path-based link rows")
+  func dedupeVergeAtomPostIdentity() {
+    let feed = "https://www.theverge.com/rss/index.xml"
+    let linkKey = "link:https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds"
+    let guidKey = "guid:https://www.theverge.com/?p=936829"
+    let linkEntry = AppViewEntryListItem(
+      entryId: RssFeedIdentity.rssEntryId(normalizedFeedUrl: feed, stableItemKey: linkKey),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      summary: nil,
+      publishedAt: Date(timeIntervalSince1970: 1),
+      thumbnailUrl: "https://platform.theverge.com/thumb.png",
+      thumbnailFallbackUrl: nil
+    )
+    let guidEntry = AppViewEntryListItem(
+      entryId: RssFeedIdentity.rssEntryId(normalizedFeedUrl: feed, stableItemKey: guidKey),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      summary: "Snippet",
+      publishedAt: Date(timeIntervalSince1970: 1),
+      thumbnailUrl: nil,
+      thumbnailFallbackUrl: nil
+    )
+
+    let deduped = RssFeedIdentity.dedupeEntryListItems([linkEntry, guidEntry])
+    #expect(deduped.count == 1)
+    #expect(deduped[0].entryId == linkEntry.entryId)
+  }
+
+  @Test("stable item key prefers Verge post identity")
+  func stableItemKeyVergePost() {
+    let item = ParsedRssItem(
+      guid: "https://www.theverge.com/?p=936829",
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      link: "https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds",
+      summary: nil,
+      contentHTML: nil,
+      publishedAtISO: "2026-05-23T18:41:11-04:00",
+      thumbnailUrl: nil
+    )
+    #expect(RssFeedIdentity.stableItemKey(from: item) == "post:www.theverge.com:936829")
+  }
 }
 
 @Suite("RssFeedParser")

@@ -118,6 +118,9 @@ export function stableItemKeyFromRssItem(item: {
   }
 
   const link = item.link?.trim();
+  const postKey = postIdentityStableKey(link) ?? postIdentityStableKey(g);
+  if (postKey) return postKey;
+
   if (link) {
     try {
       return `link:${normalizeHttpUrlToHttps(link)}`;
@@ -138,6 +141,67 @@ export function stableItemKeyFromRssItem(item: {
   const title = item.title?.trim() ?? "";
   const d = item.isoDate?.trim() ?? "";
   return `fallback:${title}\n${d}`;
+}
+
+function postIdentityStableKey(raw: string | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    const host = url.hostname.toLowerCase();
+    const postId = url.searchParams.get("p");
+    if (postId && /^\d+$/.test(postId)) {
+      return `post:${host}:${postId}`;
+    }
+    for (const segment of url.pathname.split("/")) {
+      if (segment.length >= 5 && /^\d+$/.test(segment)) {
+        return `post:${host}:${segment}`;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function dedupeIdentityKeys(item: {
+  entryId: string;
+  summary?: string | null;
+  articleUrl?: string | null;
+}): Set<string> {
+  const keys = new Set<string>();
+  const link = canonicalLinkForEntryListItem({
+    entryId: item.entryId,
+    title: "",
+    publishedAt: "",
+    summary: item.summary,
+    articleUrl: item.articleUrl,
+  });
+  if (link) keys.add(`url:${link}`);
+
+  const decoded = rssEntryIdDecode(item.entryId);
+  if (decoded?.itemKey.startsWith("post:")) {
+    keys.add(decoded.itemKey);
+  }
+  if (decoded) {
+    const raw =
+      decoded.itemKey.startsWith("link:") || decoded.itemKey.startsWith("guid:")
+        ? decoded.itemKey.slice(decoded.itemKey.indexOf(":") + 1)
+        : null;
+    const postKey = raw ? postIdentityStableKey(raw) : null;
+    if (postKey) keys.add(postKey);
+  }
+  const articleUrl = item.articleUrl?.trim();
+  if (articleUrl) {
+    const postKey = postIdentityStableKey(articleUrl);
+    if (postKey) keys.add(postKey);
+  }
+  const summary = item.summary?.trim();
+  if (summary && /^https?:\/\//i.test(summary)) {
+    const postKey = postIdentityStableKey(summary);
+    if (postKey) keys.add(postKey);
+  }
+  return keys;
 }
 
 /** Normalizes article URLs for dedupe (HTTPS, no query/fragment). */
@@ -187,7 +251,7 @@ export function dedupeEntryListItems<
   },
 >(items: T[]): T[] {
   const seenEntryIds = new Set<string>();
-  const seenCanonicalLinks = new Set<string>();
+  const seenIdentityKeys = new Set<string>();
   const seenTitlePublished = new Set<string>();
   const deduped: T[] = [];
 
@@ -195,10 +259,11 @@ export function dedupeEntryListItems<
     if (seenEntryIds.has(item.entryId)) continue;
     seenEntryIds.add(item.entryId);
 
-    const link = canonicalLinkForEntryListItem(item);
-    if (link) {
-      if (seenCanonicalLinks.has(link)) continue;
-      seenCanonicalLinks.add(link);
+    const identityKeys = dedupeIdentityKeys(item);
+    const overlaps = [...identityKeys].some((key) => seenIdentityKeys.has(key));
+    if (identityKeys.size > 0) {
+      if (overlaps) continue;
+      for (const key of identityKeys) seenIdentityKeys.add(key);
     } else {
       const titleKey = `${item.title.trim().toLowerCase()}|${item.publishedAt}`;
       if (seenTitlePublished.has(titleKey)) continue;

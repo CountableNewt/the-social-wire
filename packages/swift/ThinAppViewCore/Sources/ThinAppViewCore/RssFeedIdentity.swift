@@ -52,6 +52,11 @@ public enum RssFeedIdentity {
 
   /// Prefer normalized article links over opaque GUIDs so re-polls do not mint duplicate rows.
   public static func stableItemKey(from item: ParsedRssItem) -> String {
+    if let postKey = postIdentityStableKey(from: item.link)
+      ?? postIdentityStableKey(from: item.guid)
+    {
+      return postKey
+    }
     if let linkKey = stableLinkKey(from: item.link) {
       return linkKey
     }
@@ -61,6 +66,61 @@ public enum RssFeedIdentity {
     let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
     let date = item.publishedAtISO.trimmingCharacters(in: .whitespacesAndNewlines)
     return "fallback:\(title)\n\(date)"
+  }
+
+  /// Identity keys used to collapse legacy Atom `?p=` rows with path-based link rows.
+  public static func dedupeIdentityKeys(
+    forEntryId entryId: String,
+    renderJSON: String?,
+    summary: String?
+  ) -> Set<String> {
+    var keys = Set<String>()
+    if let canonical = canonicalLink(forEntryId: entryId, renderJSON: renderJSON, summary: summary) {
+      keys.insert("url:\(canonical)")
+    }
+    if entryId.hasPrefix(RssFeedLexicons.entryPrefix),
+       let decoded = decodeEntryId(entryId)
+    {
+      if decoded.stableItemKey.hasPrefix("post:") {
+        keys.insert(decoded.stableItemKey)
+      }
+      if let raw = rawURL(fromStableItemKey: decoded.stableItemKey),
+         let postKey = postIdentityStableKey(from: raw)
+      {
+        keys.insert(postKey)
+      }
+    }
+    if let renderJSON,
+       let data = renderJSON.data(using: .utf8),
+       let render = try? JSONDecoder().decode(ContentRenderFields.self, from: data),
+       let articleUrl = render.articleUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !articleUrl.isEmpty
+    {
+      if let canonical = canonicalArticleUrl(articleUrl) {
+        keys.insert("url:\(canonical)")
+      }
+      if let postKey = postIdentityStableKey(from: articleUrl) {
+        keys.insert(postKey)
+      }
+    }
+    if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+       summary.lowercased().hasPrefix("http")
+    {
+      if let postKey = postIdentityStableKey(from: summary) {
+        keys.insert(postKey)
+      }
+    }
+    return keys
+  }
+
+  public static func registersAsDuplicateIdentity(
+    keys: Set<String>,
+    seen: inout Set<String>
+  ) -> Bool {
+    guard !keys.isEmpty else { return false }
+    if keys.contains(where: { seen.contains($0) }) { return true }
+    seen.formUnion(keys)
+    return false
   }
 
   public static func decodeEntryId(_ entryId: String) -> (feedUrl: String, stableItemKey: String)? {
@@ -87,6 +147,9 @@ public enum RssFeedIdentity {
   }
 
   public static func canonicalLinkFromStableItemKey(_ stableItemKey: String) -> String? {
+    if stableItemKey.hasPrefix("post:") {
+      return nil
+    }
     if stableItemKey.hasPrefix("link:") {
       let raw = String(stableItemKey.dropFirst("link:".count))
       return canonicalArticleUrl(raw)
@@ -136,18 +199,15 @@ public enum RssFeedIdentity {
 
   /// Prefers link-stable RSS entry ids over legacy guid-stable rows.
   public static func isPreferredRssEntryURI(_ candidate: String, over incumbent: String) -> Bool {
-    let candidateUsesLink =
-      decodeEntryId(candidate).map { $0.stableItemKey.hasPrefix("link:") } ?? false
-    let incumbentUsesLink =
-      decodeEntryId(incumbent).map { $0.stableItemKey.hasPrefix("link:") } ?? false
-    if candidateUsesLink, !incumbentUsesLink { return true }
-    if incumbentUsesLink, !candidateUsesLink { return false }
+    let candidateScore = stableKeyPreferenceScore(for: candidate)
+    let incumbentScore = stableKeyPreferenceScore(for: incumbent)
+    if candidateScore != incumbentScore { return candidateScore > incumbentScore }
     return false
   }
 
   public static func dedupeEntryListItems(_ items: [AppViewEntryListItem]) -> [AppViewEntryListItem] {
     var seenEntryIds = Set<String>()
-    var seenCanonicalLinks = Set<String>()
+    var seenIdentityKeys = Set<String>()
     var seenTitlePublished = Set<String>()
     var deduped: [AppViewEntryListItem] = []
     deduped.reserveCapacity(items.count)
@@ -155,17 +215,21 @@ public enum RssFeedIdentity {
     for item in items {
       guard seenEntryIds.insert(item.entryId).inserted else { continue }
 
-      if let link = canonicalLinkForEntryListItem(item) {
-        if !seenCanonicalLinks.insert(link).inserted {
-          if let existingIdx = deduped.firstIndex(where: { canonicalLinkForEntryListItem($0) == link }),
-             (deduped[existingIdx].thumbnailUrl ?? "").isEmpty,
-             !(item.thumbnailUrl ?? "").isEmpty
-          {
-            deduped[existingIdx] = item
-          }
-          continue
+      let identityKeys = dedupeIdentityKeys(forEntryId: item.entryId, renderJSON: nil, summary: item.summary)
+      if registersAsDuplicateIdentity(keys: identityKeys, seen: &seenIdentityKeys) {
+        if let existingIdx = deduped.firstIndex(where: {
+          !dedupeIdentityKeys(forEntryId: $0.entryId, renderJSON: nil, summary: $0.summary)
+            .isDisjoint(with: identityKeys)
+        }),
+           (deduped[existingIdx].thumbnailUrl ?? "").isEmpty,
+           !(item.thumbnailUrl ?? "").isEmpty
+        {
+          deduped[existingIdx] = item
         }
-      } else {
+        continue
+      }
+
+      if identityKeys.isEmpty {
         let titleKey =
           "\(item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())|\(Int(item.publishedAt.timeIntervalSince1970))"
         guard seenTitlePublished.insert(titleKey).inserted else { continue }
@@ -174,6 +238,46 @@ public enum RssFeedIdentity {
       deduped.append(item)
     }
     return deduped
+  }
+
+  private static func stableKeyPreferenceScore(for entryId: String) -> Int {
+    guard let decoded = decodeEntryId(entryId) else { return 0 }
+    if decoded.stableItemKey.hasPrefix("link:") || decoded.stableItemKey.hasPrefix("post:") { return 2 }
+    if decoded.stableItemKey.hasPrefix("guid:") { return 1 }
+    return 0
+  }
+
+  private static func rawURL(fromStableItemKey stableItemKey: String) -> String? {
+    if stableItemKey.hasPrefix("link:") {
+      return String(stableItemKey.dropFirst("link:".count))
+    }
+    if stableItemKey.hasPrefix("guid:") {
+      return String(stableItemKey.dropFirst("guid:".count))
+    }
+    return nil
+  }
+
+  /// WordPress / Atom ids like `https://www.theverge.com/?p=936829` ↔ path `/936829/`.
+  private static func postIdentityStableKey(from raw: String?) -> String? {
+    guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+    guard let components = URLComponents(string: raw),
+          let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+          !host.isEmpty
+    else { return nil }
+
+    if let postId = components.queryItems?.first(where: { $0.name == "p" })?.value,
+       !postId.isEmpty,
+       postId.allSatisfy(\.isNumber)
+    {
+      return "post:\(host):\(postId)"
+    }
+
+    for segment in components.path.split(separator: "/") {
+      let part = String(segment)
+      guard part.count >= 5, part.allSatisfy(\.isNumber) else { continue }
+      return "post:\(host):\(part)"
+    }
+    return nil
   }
 
   private static func stableLinkKey(from raw: String?) -> String? {

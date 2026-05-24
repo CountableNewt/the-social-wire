@@ -65,7 +65,7 @@ public enum ThinAppViewQuerySupport {
 
   static func dedupeScanRows(_ rows: [EntryListScanRow]) -> [EntryListScanRow] {
     var seenEntryIds = Set<String>()
-    var seenCanonicalLinks = Set<String>()
+    var seenIdentityKeys = Set<String>()
     var seenTitlePublished = Set<String>()
     var deduped: [EntryListScanRow] = []
     deduped.reserveCapacity(rows.count)
@@ -77,23 +77,25 @@ public enum ThinAppViewQuerySupport {
     for row in rows {
       guard seenEntryIds.insert(row.uri).inserted else { continue }
 
-      if let link = RssFeedIdentity.canonicalLink(
+      let identityKeys = RssFeedIdentity.dedupeIdentityKeys(
         forEntryId: row.uri,
         renderJSON: row.renderJSON,
         summary: nil
-      ) {
-        if !seenCanonicalLinks.insert(link).inserted {
-          if let existingIdx = deduped.firstIndex(where: {
-            RssFeedIdentity.canonicalLink(forEntryId: $0.uri, renderJSON: $0.renderJSON, summary: nil) == link
-          }),
-             !renderHasThumbnail(deduped[existingIdx].renderJSON),
-             renderHasThumbnail(row.renderJSON)
-          {
-            deduped[existingIdx] = row
-          }
-          continue
+      )
+      if RssFeedIdentity.registersAsDuplicateIdentity(keys: identityKeys, seen: &seenIdentityKeys) {
+        if let existingIdx = deduped.firstIndex(where: {
+          !RssFeedIdentity.dedupeIdentityKeys(forEntryId: $0.uri, renderJSON: $0.renderJSON, summary: nil)
+            .isDisjoint(with: identityKeys)
+        }),
+           !renderHasThumbnail(deduped[existingIdx].renderJSON),
+           renderHasThumbnail(row.renderJSON)
+        {
+          deduped[existingIdx] = row
         }
-      } else {
+        continue
+      }
+
+      if identityKeys.isEmpty {
         guard
           let data = row.renderJSON.data(using: .utf8),
           let render = try? decoder.decode(ContentRenderFields.self, from: data)
