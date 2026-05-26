@@ -268,6 +268,13 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
                 />
               )}
               <div className="min-w-0 flex-1">
+                <div
+                  className="mb-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <SavedLinkPublicationChip row={row} />
+                </div>
                 <p className="line-clamp-2 text-sm font-medium leading-snug">
                   {rowTitle(row)}
                 </p>
@@ -342,6 +349,10 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
                   <ChevronLeft className="size-5" />
                 </Button>
                 <div className="min-w-0 flex-1">
+                  <SavedLinkPublicationChip
+                    row={selectedRow}
+                    className="mb-1.5 md:hidden"
+                  />
                   <p className="truncate text-sm font-medium leading-snug">{embedTitle}</p>
                   <p className="truncate text-[11px] text-muted-foreground">
                     {rowSubtitle(selectedRow)}
@@ -411,7 +422,6 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2">
-              <SavedLinkPublicationChip row={selectedRow} className="mb-2 shrink-0 self-start" />
               {selectedIframeSrc ? (
                 <EntryArticleEmbed
                   url={selectedIframeSrc}
