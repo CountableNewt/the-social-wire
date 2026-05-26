@@ -142,98 +142,86 @@ export function EntryRow({
   const showThumb = Boolean(activeThumbSrc) && !thumbsExhausted;
 
   const rowButton = (
-    <div className="group/entry-row relative flex w-full items-stretch">
+    <div className="group/entry-row relative flex w-full">
       <button
         type="button"
         onClick={() => onSelect(entry.entryId)}
         className={cn(
-          "min-w-0 flex-1 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50",
+          "flex w-full flex-col border-b text-left transition-colors hover:bg-muted/50",
           isSelected && "bg-muted",
           readIndicatorsEnabled && isRead && "opacity-80"
         )}
       >
-        <span className="flex items-start gap-3">
+        <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden bg-muted/40">
+          {showThumb && activeThumbSrc ? (
+            <CachedImage
+              src={activeThumbSrc}
+              alt=""
+              width={640}
+              height={360}
+              loading="lazy"
+              className="absolute inset-0 size-full object-cover"
+              onError={() => {
+                setAttemptIdx((i) =>
+                  i + 1 < thumbAttempts.length ? i + 1 : thumbAttempts.length
+                );
+              }}
+            />
+          ) : thumbsExhausted ? (
+            <span className="absolute inset-0 bg-muted/30" aria-hidden />
+          ) : null}
           {showUnreadChrome ? (
             <span
-              className="mt-2 size-1.5 shrink-0 rounded-full bg-primary"
+              className="absolute left-2 top-2 size-2 rounded-full bg-primary ring-2 ring-background"
               aria-hidden
             />
-          ) : (
-            <span className="mt-2 size-1.5 shrink-0 rounded-full" aria-hidden />
-          )}
-          <span
+          ) : null}
+        </div>
+        <div className="relative min-w-0 px-4 py-3 pr-10">
+          <div className="absolute right-1 top-2 z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-8 opacity-100 md:opacity-0 md:group-hover/entry-row:opacity-100"
+                    aria-label="Article Actions"
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                }
+              >
+                <MoreHorizontal className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[11rem]">
+                <EntryRowActions
+                  entry={entry}
+                  isRead={isRead}
+                  readIndicatorsEnabled={readIndicatorsEnabled}
+                  onMarkEntryRead={onMarkEntryRead}
+                  onMarkEntryUnread={onMarkEntryUnread}
+                  variant="dropdown"
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <p
             className={cn(
-              "relative mt-0.5 h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border/50 bg-muted/35",
-              showThumb ? "bg-muted" : thumbsExhausted ? "opacity-60" : null
+              "line-clamp-2 text-sm leading-snug",
+              showUnreadChrome ? "font-semibold" : "font-medium"
             )}
           >
-            {activeThumbSrc ? (
-              <CachedImage
-                src={activeThumbSrc}
-                alt=""
-                width={48}
-                height={48}
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
-                onError={() => {
-                  setAttemptIdx((i) =>
-                    i + 1 < thumbAttempts.length ? i + 1 : thumbAttempts.length
-                  );
-                }}
-              />
-            ) : thumbsExhausted ? (
-              <span
-                className="block h-full w-full bg-muted/30"
-                aria-hidden
-              />
-            ) : null}
-          </span>
-          <span className="min-w-0 flex-1 pr-8">
-            <p
-              className={cn(
-                "min-w-0 break-words text-pretty text-sm leading-snug",
-                showUnreadChrome ? "font-semibold" : "font-medium"
-              )}
-            >
-              {displayTitle}
+            {displayTitle}
+          </p>
+          {displaySummary ? (
+            <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">
+              {displaySummary}
             </p>
-            {displaySummary && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
-                {displaySummary}
-              </p>
-            )}
-            <p className="mt-1 text-xs text-muted-foreground">{formattedDate}</p>
-          </span>
-        </span>
+          ) : null}
+          <p className="mt-1 text-[11px] text-muted-foreground">{formattedDate}</p>
+        </div>
       </button>
-      <div className="absolute right-2 top-1/2 z-10 -translate-y-1/2">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-8 opacity-100 md:opacity-0 md:group-hover/entry-row:opacity-100"
-                aria-label="Article Actions"
-                onClick={(event) => event.stopPropagation()}
-              />
-            }
-          >
-            <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[11rem]">
-            <EntryRowActions
-              entry={entry}
-              isRead={isRead}
-              readIndicatorsEnabled={readIndicatorsEnabled}
-              onMarkEntryRead={onMarkEntryRead}
-              onMarkEntryUnread={onMarkEntryUnread}
-              variant="dropdown"
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
     </div>
   );
 

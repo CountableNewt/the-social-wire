@@ -133,7 +133,7 @@ export function EntryListVirtualPane({
   const virtualizer = useVirtualizer({
     count: virtualCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 112,
+    estimateSize: () => 248,
     overscan: 5,
   });
 

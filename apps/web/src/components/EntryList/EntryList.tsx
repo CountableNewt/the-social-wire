@@ -109,7 +109,7 @@ export function EntryList({
     return (
       <div className="space-y-2 p-4">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-md" />
+          <Skeleton key={i} className="h-36 w-full rounded-md" />
         ))}
       </div>
     );
@@ -147,7 +147,7 @@ export function EntryList({
     return (
       <div className="space-y-2 p-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-md" />
+          <Skeleton key={i} className="h-36 w-full rounded-md" />
         ))}
       </div>
     );
