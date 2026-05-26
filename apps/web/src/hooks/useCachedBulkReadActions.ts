@@ -33,7 +33,10 @@ export function useCachedBulkReadActions(
   const bulkDisabled = cachedEntryIds.length === 0;
 
   const applyMarkAllRead = useCallback(() => {
-    markEntriesRead(cachedEntryIds, { publications });
+    markEntriesRead(cachedEntryIds, {
+      publications,
+      syncToPds: false,
+    });
     const oauth = getOAuthSession();
     const scopes =
       options?.gatewayScopes ??

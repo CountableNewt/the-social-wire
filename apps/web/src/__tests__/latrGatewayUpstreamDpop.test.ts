@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { pdsXrpcMethodForGatewayRequest } from "@/lib/latrGatewayUpstreamDpop";
+import {
+  pdsXrpcMethodForGatewayRequest,
+  pdsXrpcMethodForSocialWireGatewayRequest,
+} from "@/lib/latrGatewayUpstreamDpop";
 
 describe("pdsXrpcMethodForGatewayRequest", () => {
   it("maps POST /v1/latr/saves to createRecord", () => {
@@ -26,6 +29,20 @@ describe("pdsXrpcMethodForGatewayRequest", () => {
       pdsXrpcMethodForGatewayRequest("DELETE", "/v1/latr/saves/ABC123")
     ).toEqual({
       xrpcMethod: "com.atproto.repo.deleteRecord",
+      httpMethod: "POST",
+    });
+  });
+});
+
+describe("pdsXrpcMethodForSocialWireGatewayRequest", () => {
+  it("maps POST mark-all-read to putRecord", () => {
+    expect(
+      pdsXrpcMethodForSocialWireGatewayRequest(
+        "POST",
+        "/v1/appview/mark-all-read"
+      )
+    ).toEqual({
+      xrpcMethod: "com.atproto.repo.putRecord",
       httpMethod: "POST",
     });
   });

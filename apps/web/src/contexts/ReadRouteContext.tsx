@@ -46,6 +46,8 @@ export type MarkEntryReadOptions = {
 
 export type MarkEntriesReadOptions = {
   publications?: DiscoveredPublication[];
+  /** When false, skip per-entry PDS writes (e.g. bulk mark-all-read uses AppView gateway). */
+  syncToPds?: boolean;
 };
 
 export type ReadRouteContextValue = {
@@ -267,7 +269,7 @@ export function ReadRouteProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") {
           saveReadState(window.localStorage, next);
         }
-        if (pdsClient) {
+        if (pdsClient && options?.syncToPds !== false) {
           for (const id of toSync) {
             void pdsClient.putEntryReadState(id, readAt).catch(() => {
               /* best-effort sync */

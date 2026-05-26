@@ -19,41 +19,65 @@ export {
 
 export { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 
-export async function latrGatewayFetch(
+function shouldRetryLatrGatewayDpopNonce(res: Response): boolean {
+  if (res.status !== 401 && res.status !== 400) return false;
+  return Boolean(res.headers.get("DPoP-Nonce")?.trim());
+}
+
+async function buildLatrGatewayRequestHeaders(
   oauthSession: OAuthSession,
-  path: string,
-  init?: RequestInit
-): Promise<Response> {
-  const gatewayPath = path.startsWith("/") ? path : `/${path}`;
-  const url = `${latrGatewayBaseUrl()}${gatewayPath}`;
-  const method = init?.method ?? "GET";
+  method: string,
+  gatewayPath: string
+): Promise<Record<string, string>> {
   const clientId = process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_ID?.trim();
   const apiKey = process.env.NEXT_PUBLIC_LATR_GATEWAY_API_KEY?.trim();
-  const clientHeaders: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
   if (clientId && apiKey) {
-    clientHeaders[LATR_CLIENT_ID_HEADER] = clientId;
-    clientHeaders[LATR_API_KEY_HEADER] = apiKey;
+    headers[LATR_CLIENT_ID_HEADER] = clientId;
+    headers[LATR_API_KEY_HEADER] = apiKey;
   }
 
   const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
-  const upstreamHeaders: Record<string, string> = {};
   if (upstream) {
-    upstreamHeaders[LATR_UPSTREAM_DPOP_HEADER] = await createUpstreamDpopProof(
+    headers[LATR_UPSTREAM_DPOP_HEADER] = await createUpstreamDpopProof(
       oauthSession,
       upstream.xrpcMethod,
       upstream.httpMethod
     );
   }
+  return headers;
+}
 
-  return oauthSession.fetchHandler(url, {
+export async function latrGatewayFetch(
+  oauthSession: OAuthSession,
+  path: string,
+  init?: RequestInit,
+  attempt = 0
+): Promise<Response> {
+  const gatewayPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${latrGatewayBaseUrl()}${gatewayPath}`;
+  const method = init?.method ?? "GET";
+  const baseHeaders = await buildLatrGatewayRequestHeaders(
+    oauthSession,
+    method,
+    gatewayPath
+  );
+
+  const res = await oauthSession.fetchHandler(url, {
     ...init,
     headers: {
-      Accept: "application/json",
-      ...clientHeaders,
-      ...upstreamHeaders,
+      ...baseHeaders,
       ...(init?.headers ?? {}),
     },
   });
+
+  if (attempt === 0 && shouldRetryLatrGatewayDpopNonce(res)) {
+    return latrGatewayFetch(oauthSession, path, init, attempt + 1);
+  }
+
+  return res;
 }
 
 async function readGatewayError(res: Response): Promise<string> {
