@@ -10,8 +10,8 @@ let package = Package(
     .library(name: "GatewayCore", targets: ["GatewayCore"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/Stygian-Tech/atproto-auth-kit.git", branch: "main"),
-    .package(url: "https://github.com/Stygian-Tech/gateway-trust-kit.git", branch: "main"),
+    .package(url: "https://github.com/Stygian-Tech/atproto-auth-kit.git", revision: "5ad645d14203b19e6d6077b2fb05cec12519d208"),
+    .package(url: "https://github.com/Stygian-Tech/gateway-trust-kit.git", revision: "b1508e6bc5f5224aa440304f15365a4a2fdc7596"),
     .package(path: "../ThinAppViewCore"),
     .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.6.0"),
     .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),

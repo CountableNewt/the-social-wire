@@ -1,5 +1,5 @@
 {
-  "originHash" : "20c35f38c786325b52350b70aaa7327e0c44cbcfefc1f7fb985827d29ac38423",
+  "originHash" : "8fa19da6fa356badf3f48d4bee1f254cad1b398a68e52f36b726b7b6aa2fe418",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/atproto-auth-kit.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "76b391eb41775d4ccc5d5195f066694cb3cddf76"
+        "revision" : "5ad645d14203b19e6d6077b2fb05cec12519d208"
       }
     },
     {
@@ -33,7 +32,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/gateway-trust-kit.git",
       "state" : {
-        "branch" : "main",
         "revision" : "b1508e6bc5f5224aa440304f15365a4a2fdc7596"
       }
     },

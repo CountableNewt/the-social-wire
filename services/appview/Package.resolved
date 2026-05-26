@@ -11,6 +11,31 @@
       }
     },
     {
+      "identity" : "atproto-auth-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Stygian-Tech/atproto-auth-kit.git",
+      "state" : {
+        "revision" : "5ad645d14203b19e6d6077b2fb05cec12519d208"
+      }
+    },
+    {
+      "identity" : "atproto-primitive-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Stygian-Tech/atproto-primitive-kit.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "1105fb3c008a1048c40b9d1b71cc2cc8e51319b0"
+      }
+    },
+    {
+      "identity" : "gateway-trust-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Stygian-Tech/gateway-trust-kit.git",
+      "state" : {
+        "revision" : "b1508e6bc5f5224aa440304f15365a4a2fdc7596"
+      }
+    },
+    {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/groue/GRDB.swift.git",
