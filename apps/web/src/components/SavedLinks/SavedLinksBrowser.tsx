@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
+import { SavedLinkPublicationChip } from "@/components/SavedLinks/SavedLinkPublicationChip";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -410,6 +411,7 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2">
+              <SavedLinkPublicationChip row={selectedRow} className="mb-2 shrink-0 self-start" />
               {selectedIframeSrc ? (
                 <EntryArticleEmbed
                   url={selectedIframeSrc}
