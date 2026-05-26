@@ -33,49 +33,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dorny/paths-filter@v4
+      - name: Detect changed paths
         id: filter
-        with:
-          filters: |
-            web:
-              - 'apps/web/**'
-              - 'packages/**'
-              - 'package.json'
-              - 'bun.lock'
-              - 'turbo.json'
-              - '.github/workflows/ci.yml'
-            gateway:
-              - 'services/gateway/**'
-              - 'packages/swift/GatewayCore/**'
-              - 'packages/swift/ThinAppViewCore/**'
-              - 'scripts/fly-deploy-gateway.sh'
-              - '.github/workflows/ci.yml'
-            appview:
-              - 'services/appview/**'
-              - 'packages/swift/GatewayCore/**'
-              - 'packages/swift/ThinAppViewCore/**'
-              - 'supabase/**'
-              - 'scripts/fly-deploy-appview.sh'
-              - '.github/workflows/ci.yml'
-            appview-worker:
-              - 'services/appview-worker/**'
-              - 'packages/swift/ThinAppViewCore/**'
-              - 'supabase/**'
-              - 'scripts/fly-deploy-appview-worker.sh'
-              - '.github/workflows/ci.yml'
-            supabase:
-              - 'supabase/**'
-              - 'scripts/supabase-ci-push.sh'
-              - '.github/workflows/ci.yml'
-            lexicons:
-              - 'packages/lexicons/**'
-              - '.github/workflows/ci.yml'
-            spec:
-              - 'packages/spec/**'
-              - 'services/gateway/Sources/Gateway/**'
-              - 'services/appview/Sources/AppView/**'
-              - 'packages/swift/GatewayCore/**'
-              - '.github/workflows/ci.yml'
+        run: bash scripts/ci-detect-changes.sh
 
   build-web:
     name: Build & Test Web
