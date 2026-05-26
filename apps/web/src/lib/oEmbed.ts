@@ -127,3 +127,38 @@ export function oEmbedRequestUrl(endpoint: string, pageUrl: string): string {
   u.searchParams.set("format", "json");
   return u.href;
 }
+
+const VIDEO_EMBED_HOST_SUFFIXES = [
+  "youtube.com",
+  "youtube-nocookie.com",
+  "vimeo.com",
+  "tiktok.com",
+  "twitch.tv",
+  "dailymotion.com",
+  "loom.com",
+];
+
+export function extractIframeSrcFromEmbedHtml(html: string): string | null {
+  const m = html.match(/<iframe\b[^>]*\bsrc=(["'])([^"']+)\1/i);
+  return m?.[2]?.trim() ?? null;
+}
+
+export function isVideoEmbedIframeSrc(src: string): boolean {
+  try {
+    const host = new URL(src).hostname.replace(/^www\./i, "").toLowerCase();
+    return VIDEO_EMBED_HOST_SUFFIXES.some(
+      (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Layout hint for provider HTML — article iframes should fill the reader pane. */
+export function oEmbedHtmlLayout(html: string): "video" | "article" {
+  const src = extractIframeSrcFromEmbedHtml(html);
+  if (src && isVideoEmbedIframeSrc(src)) {
+    return "video";
+  }
+  return "article";
+}

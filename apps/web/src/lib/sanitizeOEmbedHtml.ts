@@ -66,7 +66,12 @@ export function sanitizeOEmbedHtml(dirty: string): string {
       return;
     }
     node.setAttribute("src", normalizeHttpUrlToHttps(src));
-    node.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
+    node.removeAttribute("width");
+    node.removeAttribute("height");
+    node.setAttribute(
+      "sandbox",
+      "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+    );
     node.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     node.setAttribute("loading", "lazy");
   });

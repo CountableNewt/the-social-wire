@@ -3,6 +3,8 @@ import { describe, expect, it } from "bun:test";
 import {
   extractOEmbedEndpointFromHtml,
   isUsableOEmbedResponse,
+  isVideoEmbedIframeSrc,
+  oEmbedHtmlLayout,
   oEmbedRequestUrl,
   parseOEmbedJson,
   wordPressOEmbedEndpoint,
@@ -70,5 +72,18 @@ describe("oEmbed helpers", () => {
         url: "https://cdn.example/photo.jpg",
       })
     ).toBe(true);
+  });
+
+  it("detects video provider iframes", () => {
+    expect(
+      isVideoEmbedIframeSrc("https://www.youtube.com/embed/abc123")
+    ).toBe(true);
+    expect(isVideoEmbedIframeSrc("https://adventures.example/a/post")).toBe(false);
+  });
+
+  it("uses article layout for non-video rich embeds", () => {
+    const html =
+      '<blockquote>Preview</blockquote><iframe src="https://adventures.example/a/post" width="600" height="400"></iframe>';
+    expect(oEmbedHtmlLayout(html)).toBe("article");
   });
 });
