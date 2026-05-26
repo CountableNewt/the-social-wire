@@ -18,6 +18,7 @@ import {
   COLLECTION_ENTRY_READ_STATE,
   COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
   mergeExternalsAndItemsToHttpsRows,
+  filterMergedLatrSavesByState,
   entryReadStateRkeyFromSubjectUri,
   type LatrSavedExternalRecord,
   type LatrSavedItemRecord,
@@ -163,6 +164,73 @@ describe("mergeExternalsAndItemsToHttpsRows", () => {
     expect(mergeExternalsAndItemsToHttpsRows(externals, items)[0].state).toBe(
       "archived"
     );
+  });
+
+  it("merges external metadata with item preview fallbacks", () => {
+    const externals = [
+      {
+        uri: extUri,
+        cid: "cid1",
+        value: {
+          ...external,
+          site: "example.com",
+          author: "Jane",
+          image: "https://example.com/thumb.jpg",
+        },
+      },
+    ];
+    const items = [
+      {
+        uri: `at://${did}/${COLLECTION_LATR_SAVED_ITEM}/item1`,
+        cid: "cx",
+        value: {
+          $type: COLLECTION_LATR_SAVED_ITEM,
+          subjectUri: extUri,
+          savedAt: "2026-06-01T12:00:00.000Z",
+          previewExcerpt: "Preview excerpt",
+        } satisfies LatrSavedItemRecord,
+      },
+    ];
+
+    const row = mergeExternalsAndItemsToHttpsRows(externals, items)[0];
+    expect(row.kind).toBe("external");
+    if (row.kind !== "external") throw new Error("Expected external row");
+    expect(row.site).toBe("example.com");
+    expect(row.author).toBe("Jane");
+    expect(row.image).toBe("https://example.com/thumb.jpg");
+    expect(row.excerpt).toBe("Preview excerpt");
+  });
+});
+
+describe("filterMergedLatrSavesByState", () => {
+  const did = "did:plc:testuser";
+  const extUri = `at://${did}/${COLLECTION_LATR_SAVED_EXTERNAL}/EXTKEYXYZ`;
+
+  function row(state?: "unread" | "archived") {
+    return {
+      kind: "external" as const,
+      normalizedUrl: "https://example.com/foo",
+      url: "https://example.com/foo",
+      savedAt: "2026-06-01T12:00:00.000Z",
+      externalRkey: "EXTKEYXYZ",
+      itemRkey: "item1",
+      externalUri: extUri,
+      itemUri: `at://${did}/${COLLECTION_LATR_SAVED_ITEM}/item1`,
+      subjectUri: extUri,
+      ...(state ? { state } : {}),
+    };
+  }
+
+  it("returns active rows when state is missing or unread", () => {
+    const rows = [row(), row("unread"), row("archived")];
+    expect(filterMergedLatrSavesByState(rows, "active")).toHaveLength(2);
+  });
+
+  it("returns only archived rows for archived filter", () => {
+    const rows = [row(), row("archived")];
+    expect(filterMergedLatrSavesByState(rows, "archived")).toEqual([
+      row("archived"),
+    ]);
   });
 });
 

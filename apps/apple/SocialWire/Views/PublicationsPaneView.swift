@@ -12,7 +12,7 @@ struct PublicationsPaneView: View {
 
         Group {
             switch appModel.readerListSource {
-            case .readLater:
+            case .readLater, .archive:
                 SavedLinksListContent(
                     onSelectSave: {
                         navigateToPane(.reader)
@@ -42,6 +42,10 @@ struct SavedLinksListContent: View {
     @Environment(SocialWireAppModel.self) private var appModel
     var onSelectSave: (() -> Void)?
 
+    private var isArchivedView: Bool {
+        appModel.readerListSource == .archive
+    }
+
     private var savedListUnavailableDescription: Text {
         let chosen = ReadLaterServiceCatalog.label(for: appModel.effectiveReadLaterServiceId)
         return Text("""
@@ -56,23 +60,48 @@ struct SavedLinksListContent: View {
         Group {
             if appModel.readLaterLatrConfigured {
                 List(selection: $model.selectedSavedLink) {
-                    if appModel.savedLinks.isEmpty {
+                    if appModel.currentSavedLinks.isEmpty {
                         ContentUnavailableView(
-                            "Nothing Queued Yet",
-                            systemImage: "archivebox",
-                            description: Text("Save an HTTPS article from the toolbar to queue it here as a LATR Link item.")
+                            isArchivedView ? "Nothing Archived Yet" : "Nothing Queued Yet",
+                            systemImage: isArchivedView ? "archivebox" : "bookmark",
+                            description: Text(
+                                isArchivedView
+                                    ? "Archived read-later links will appear here."
+                                    : "Save an article from the toolbar or article list to queue it here."
+                            )
                         )
                         .readerClearListRow()
                     } else {
-                        ForEach(appModel.savedLinks) { save in
+                        ForEach(appModel.currentSavedLinks) { save in
                             SavedLinkRow(save: save)
                                 .tag(save)
                                 .readerClearListRow()
-                                .swipeActions {
-                                    Button("Archive") {
-                                        Task { await appModel.archive(save) }
+                                .contextMenu {
+                                    if isArchivedView {
+                                        Button("Unarchive") {
+                                            Task { await appModel.unarchive(save) }
+                                        }
+                                    } else {
+                                        Button("Archive") {
+                                            Task { await appModel.archive(save) }
+                                        }
                                     }
-                                    .tint(.orange)
+                                    Button("Delete", role: .destructive) {
+                                        Task { await appModel.delete(save) }
+                                    }
+                                }
+                                .swipeActions {
+                                    if isArchivedView {
+                                        Button("Unarchive") {
+                                            Task { await appModel.unarchive(save) }
+                                        }
+                                        .tint(.blue)
+                                    } else {
+                                        Button("Archive") {
+                                            Task { await appModel.archive(save) }
+                                        }
+                                        .tint(.orange)
+                                    }
                                     Button("Delete", role: .destructive) {
                                         Task { await appModel.delete(save) }
                                     }

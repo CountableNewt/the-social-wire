@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { EntrySocialToolbar } from "@/components/EntryDetail/EntrySocialToolbar";
 import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEntry } from "@/hooks/useEntries";
+import {
+  resolveEntryArticlePresentation,
+  type EntryArticlePresentation,
+} from "@/lib/entryArticlePresentation";
 import { recordKindFromEntryId } from "@/lib/recordKindDebug";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { sanitizeHTMLWithLinks } from "@/lib/sanitize";
@@ -18,17 +22,34 @@ interface EntryDetailProps {
 
 export function EntryDetail({ entryId }: EntryDetailProps) {
   const { data: entry, isLoading, error } = useEntry(entryId);
+  const [presentation, setPresentation] = useState<EntryArticlePresentation | null>(
+    null
+  );
+  const presentationEntryIdRef = useRef<string | null>(null);
 
   const safeHTML = useMemo(
     () => sanitizeHTMLWithLinks(entry?.contentHtml ?? ""),
     [entry?.contentHtml]
   );
 
-  /**
-   * Prefer sanitized record HTML over live iframe when present — avoids broken embeds (e.g. fed
-   * bridge query params) and mixed-origin iframe 404s; tradeoff: no live-site chrome in-page.
-   */
-  const preferRecordBodyOverEmbed = Boolean(entry) && safeHTML.trim().length > 0;
+  useEffect(() => {
+    if (presentationEntryIdRef.current === entryId) return;
+    presentationEntryIdRef.current = entryId;
+    setPresentation(null);
+  }, [entryId]);
+
+  useEffect(() => {
+    if (!entry || presentation !== null) return;
+    setPresentation(
+      resolveEntryArticlePresentation({
+        contentHtml: safeHTML,
+        embedUrl: entry.embedUrl,
+        originalUrl: entry.originalUrl,
+      })
+    );
+  }, [entry, presentation, safeHTML]);
+
+  const showEmbed = presentation === "embed" && Boolean(entry?.embedUrl);
 
   const canonicalArticleHref =
     entry?.embedUrl ?? entry?.originalUrl
@@ -57,8 +78,6 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
       </div>
     );
   }
-
-  const showEmbed = Boolean(entry.embedUrl) && !preferRecordBodyOverEmbed;
 
   return (
     <article

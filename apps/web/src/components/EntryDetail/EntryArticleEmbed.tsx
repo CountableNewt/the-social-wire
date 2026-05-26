@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getCachedEmbedProbeFrameable,
+  setCachedEmbedProbeFrameable,
+} from "@/lib/embedProbeCache";
 import { sanitizeEmbedUrlForIframe } from "@/lib/publicResourceUrl";
 import { cn } from "@/lib/utils";
 
@@ -53,20 +57,25 @@ function IframeLoadFailedMessage({ href }: { href: string }) {
 
 /** iframe embed of the canonical article URL with sandbox defaults and loading UI. */
 export function EntryArticleEmbed(props: EntryArticleEmbedProps) {
-  return <EntryArticleEmbedInner key={props.url} {...props} />;
+  const iframeSrc = useMemo(
+    () => sanitizeEmbedUrlForIframe(props.url),
+    [props.url]
+  );
+  return <EntryArticleEmbedInner key={iframeSrc} {...props} iframeSrc={iframeSrc} />;
 }
 
 function EntryArticleEmbedInner({
-  url,
   title,
   className,
-}: EntryArticleEmbedProps) {
+  iframeSrc,
+}: Omit<EntryArticleEmbedProps, "url"> & { iframeSrc: string }) {
+  const cachedFrameable = getCachedEmbedProbeFrameable(iframeSrc);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   /** `null` = probe in progress; `true` = headers say framing is blocked. */
-  const [probeBlocksEmbed, setProbeBlocksEmbed] = useState<boolean | null>(null);
-
-  const iframeSrc = useMemo(() => sanitizeEmbedUrlForIframe(url), [url]);
+  const [probeBlocksEmbed, setProbeBlocksEmbed] = useState<boolean | null>(() =>
+    cachedFrameable === undefined ? null : !cachedFrameable
+  );
 
   const handleLoad = useCallback(() => {
     setLoaded(true);
@@ -81,6 +90,12 @@ function EntryArticleEmbedInner({
   const probeGeneration = useRef(0);
 
   useEffect(() => {
+    const cached = getCachedEmbedProbeFrameable(iframeSrc);
+    if (cached !== undefined) {
+      setProbeBlocksEmbed(!cached);
+      return;
+    }
+
     const gen = ++probeGeneration.current;
     const ac = new AbortController();
     const t = setTimeout(async () => {
@@ -91,14 +106,18 @@ function EntryArticleEmbedInner({
         );
         if (gen !== probeGeneration.current) return;
         if (!r.ok) {
+          setCachedEmbedProbeFrameable(iframeSrc, true);
           setProbeBlocksEmbed(false);
           return;
         }
         const body = (await r.json()) as { frameable?: boolean };
         if (gen !== probeGeneration.current) return;
-        setProbeBlocksEmbed(body.frameable === false);
+        const frameable = body.frameable !== false;
+        setCachedEmbedProbeFrameable(iframeSrc, frameable);
+        setProbeBlocksEmbed(!frameable);
       } catch {
         if (gen !== probeGeneration.current || ac.signal.aborted) return;
+        setCachedEmbedProbeFrameable(iframeSrc, true);
         setProbeBlocksEmbed(false);
       }
     }, EMBED_PROBE_DEBOUNCE_MS);
@@ -110,7 +129,9 @@ function EntryArticleEmbedInner({
 
   const showIframe = probeBlocksEmbed === false && !failed;
   const showBusyOverlay =
-    probeBlocksEmbed === null || (showIframe && !loaded && !failed);
+    !loaded &&
+    !failed &&
+    (probeBlocksEmbed === null || showIframe);
 
   return (
     <div
@@ -119,11 +140,11 @@ function EntryArticleEmbedInner({
         className
       )}
     >
-      {showBusyOverlay && (
+      {showBusyOverlay ? (
         <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-background">
           <Skeleton className="min-h-0 h-full w-full rounded-none" />
         </div>
-      )}
+      ) : null}
       {probeBlocksEmbed === true ? (
         <BlockedEmbedMessage href={iframeSrc} />
       ) : failed ? (

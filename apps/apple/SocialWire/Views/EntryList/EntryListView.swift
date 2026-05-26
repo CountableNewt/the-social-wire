@@ -27,6 +27,25 @@ struct EntryListView: View {
                                     }
                                 }
                             }
+                            .contextMenu {
+                                Button {
+                                    Task {
+                                        await appModel.saveEntry(
+                                            entryId: entry.entryId,
+                                            url: nil,
+                                            title: entry.title,
+                                            excerpt: entry.summary
+                                        )
+                                    }
+                                } label: {
+                                    Label("Save", systemImage: "bookmark")
+                                }
+                                .disabled(!appModel.readLaterLatrConfigured)
+
+                                Button(appModel.readAtByEntryId[entry.entryId] == nil ? "Mark As Read" : "Mark As Unread") {
+                                    Task { await appModel.toggleRead(entry) }
+                                }
+                            }
                             .onAppear {
                                 guard entry.entryId == appModel.filteredEntries.last?.entryId,
                                       let publication = appModel.selectedPublication

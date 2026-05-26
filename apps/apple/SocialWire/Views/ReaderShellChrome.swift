@@ -91,6 +91,8 @@ struct ReaderShellOverlayModifier: ViewModifier {
             switch source {
             case .readLater:
                 return "Read Later uses saved links, not feed read state. Open a publication feed to mark articles as read."
+            case .archive:
+                return "Archive uses saved links, not feed read state. Open a publication feed to mark articles as read."
             case .subscribed:
                 return """
                     This marks every unread article in Subscribed (folders and publications) as read on your account. \

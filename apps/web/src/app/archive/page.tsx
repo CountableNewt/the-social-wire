@@ -2,6 +2,6 @@
 
 import { SavedLinksBrowser } from "@/components/SavedLinks/SavedLinksBrowser";
 
-export default function SavedPage() {
-  return <SavedLinksBrowser mode="active" />;
+export default function ArchivePage() {
+  return <SavedLinksBrowser mode="archived" />;
 }

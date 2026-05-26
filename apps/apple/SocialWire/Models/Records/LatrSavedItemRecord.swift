@@ -8,6 +8,12 @@ struct LatrSavedItemRecord: Codable, Equatable, Sendable {
     var tags: [String]?
     var note: String?
     var lastOpenedAt: String?
+    var linkedWebUrl: String?
+    var previewTitle: String?
+    var previewExcerpt: String?
+    var previewSite: String?
+    var previewImage: String?
+    var previewAuthor: String?
 
     enum CodingKeys: String, CodingKey {
         case type = "$type"
@@ -17,5 +23,11 @@ struct LatrSavedItemRecord: Codable, Equatable, Sendable {
         case tags
         case note
         case lastOpenedAt
+        case linkedWebUrl
+        case previewTitle
+        case previewExcerpt
+        case previewSite
+        case previewImage
+        case previewAuthor
     }
 }

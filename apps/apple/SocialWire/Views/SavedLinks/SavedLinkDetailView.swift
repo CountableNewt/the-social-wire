@@ -5,6 +5,10 @@ struct SavedLinkDetailView: View {
 
     let save: MergedLatrSave
 
+    private var isArchivedView: Bool {
+        appModel.readerListSource == .archive || save.state == "archived"
+    }
+
     var body: some View {
         Group {
             if let url = save.url {
@@ -17,6 +21,29 @@ struct SavedLinkDetailView: View {
 
                         Link(destination: url) {
                             Label("Open", systemImage: "safari")
+                        }
+                        .buttonStyle(.bordered)
+
+                        if isArchivedView {
+                            Button {
+                                Task { await appModel.unarchive(save) }
+                            } label: {
+                                Label("Unarchive", systemImage: "arrow.uturn.backward")
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button {
+                                Task { await appModel.archive(save) }
+                            } label: {
+                                Label("Archive", systemImage: "archivebox")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        Button(role: .destructive) {
+                            Task { await appModel.delete(save) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                         .buttonStyle(.bordered)
 

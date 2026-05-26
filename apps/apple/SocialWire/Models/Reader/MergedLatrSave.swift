@@ -21,7 +21,49 @@ enum MergedLatrSave: Identifiable, Codable, Equatable, Hashable, Sendable {
     var url: URL? {
         switch self {
         case .external(let save): URL(string: save.url)
-        case .native(let save): save.url.flatMap(URL.init(string:))
+        case .native(let save): save.url.flatMap(URL.init(string:)) ?? save.linkedWebUrl.flatMap(URL.init(string:))
+        }
+    }
+
+    var itemRkey: String {
+        switch self {
+        case .external(let save): save.itemRkey
+        case .native(let save): save.itemRkey
+        }
+    }
+
+    var excerpt: String? {
+        switch self {
+        case .external(let save): save.excerpt
+        case .native(let save): save.excerpt
+        }
+    }
+
+    var image: String? {
+        switch self {
+        case .external(let save): save.image
+        case .native(let save): save.image
+        }
+    }
+
+    var site: String? {
+        switch self {
+        case .external(let save): save.site
+        case .native(let save): save.site
+        }
+    }
+
+    var author: String? {
+        switch self {
+        case .external(let save): save.author
+        case .native(let save): save.author
+        }
+    }
+
+    var publishedAt: String? {
+        switch self {
+        case .external(let save): save.publishedAt
+        case .native(let save): save.publishedAt
         }
     }
 
@@ -29,6 +71,13 @@ enum MergedLatrSave: Identifiable, Codable, Equatable, Hashable, Sendable {
         switch self {
         case .external(let save): save.savedAt
         case .native(let save): save.savedAt
+        }
+    }
+
+    var state: String? {
+        switch self {
+        case .external(let save): save.state
+        case .native(let save): save.state
         }
     }
 }

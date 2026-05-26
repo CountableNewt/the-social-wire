@@ -210,5 +210,8 @@ export function useEntry(entryId: string | null) {
     },
     enabled: !!normalizedId && !!session,
     staleTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }

@@ -121,10 +121,13 @@ final class PDSRecordService {
         try await xrpc.putRecord(collection: Self.preferences, rkey: Self.preferencesRKey, record: record)
     }
 
-    func listMergedLatrSaves() async throws -> [MergedLatrSave] {
+    func listMergedLatrSaves(state: LatrSaveListState = .active) async throws -> [MergedLatrSave] {
         let externals: ListRecordsResponse<LatrSavedExternalRecord> = try await xrpc.listRecords(repo: "", collection: Self.latrSavedExternal, authorized: true)
         let items: ListRecordsResponse<LatrSavedItemRecord> = try await xrpc.listRecords(repo: "", collection: Self.latrSavedItem, authorized: true)
-        return Self.merge(externals: externals.records, items: items.records)
+        return Self.filterMergedLatrSavesByState(
+            Self.merge(externals: externals.records, items: items.records),
+            state: state
+        )
     }
 
     func saveURLToLatr(_ url: URL, title: String?) async throws {
@@ -169,24 +172,71 @@ final class PDSRecordService {
         try await xrpc.currentDID()
     }
 
+    nonisolated static func filterMergedLatrSavesByState(_ rows: [MergedLatrSave], state: LatrSaveListState) -> [MergedLatrSave] {
+        rows.filter { row in
+            let itemState = row.state ?? "unread"
+            switch state {
+            case .all:
+                return true
+            case .archived:
+                return itemState == "archived"
+            case .active:
+                return itemState != "archived"
+            }
+        }
+    }
+
+    nonisolated static func mergeLatrSaveMetadata(
+        external: LatrSavedExternalRecord?,
+        item: LatrSavedItemRecord
+    ) -> LatrSaveMetadata {
+        func trimmed(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        return LatrSaveMetadata(
+            title: trimmed(external?.title) ?? trimmed(item.previewTitle),
+            excerpt: trimmed(external?.excerpt) ?? trimmed(item.previewExcerpt),
+            image: trimmed(external?.image) ?? trimmed(item.previewImage),
+            site: trimmed(external?.site) ?? trimmed(item.previewSite),
+            author: trimmed(external?.author) ?? trimmed(item.previewAuthor),
+            publishedAt: trimmed(external?.publishedAt),
+            language: trimmed(external?.language),
+            linkedWebUrl: trimmed(item.linkedWebUrl)
+        )
+    }
+
     nonisolated static func merge(externals: [RepoRecord<LatrSavedExternalRecord>], items: [RepoRecord<LatrSavedItemRecord>]) -> [MergedLatrSave] {
         let externalByRkey = Dictionary(uniqueKeysWithValues: externals.map { (rkey(from: $0.uri), $0) })
         let marker = "/\(Self.latrSavedExternal)/"
         var rows: [MergedLatrSave] = []
 
-        for item in items where item.value.state != "archived" {
+        for item in items {
             guard let markerRange = item.value.subjectUri.range(of: marker) else {
+                let metadata = mergeLatrSaveMetadata(external: nil, item: item.value)
                 rows.append(.native(MergedLatrNativeSave(
                     savedAt: item.value.savedAt,
                     itemRkey: rkey(from: item.uri),
                     itemUri: item.uri,
                     subjectUri: item.value.subjectUri,
-                    state: item.value.state
+                    state: item.value.state,
+                    title: metadata.title,
+                    excerpt: metadata.excerpt,
+                    url: metadata.linkedWebUrl,
+                    image: metadata.image,
+                    site: metadata.site,
+                    author: metadata.author,
+                    publishedAt: metadata.publishedAt,
+                    language: metadata.language,
+                    linkedWebUrl: metadata.linkedWebUrl
                 )))
                 continue
             }
             let externalRkey = String(item.value.subjectUri[markerRange.upperBound...])
             guard let external = externalByRkey[externalRkey] else { continue }
+            let metadata = mergeLatrSaveMetadata(external: external.value, item: item.value)
             rows.append(.external(MergedLatrExternalSave(
                 normalizedUrl: external.value.normalizedUrl,
                 url: external.value.url,
@@ -197,9 +247,14 @@ final class PDSRecordService {
                 itemUri: item.uri,
                 subjectUri: item.value.subjectUri,
                 state: item.value.state,
-                title: external.value.title,
-                excerpt: external.value.excerpt,
-                image: external.value.image
+                title: metadata.title,
+                excerpt: metadata.excerpt,
+                image: metadata.image,
+                site: metadata.site,
+                author: metadata.author,
+                publishedAt: metadata.publishedAt,
+                language: metadata.language,
+                linkedWebUrl: metadata.linkedWebUrl
             )))
         }
 

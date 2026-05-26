@@ -8,8 +8,8 @@ struct ReaderSidebarColumn: View {
 
     var body: some View {
         Group {
-            if appModel.readerListSource == .readLater {
-                readLaterSidebarList
+            if appModel.readerListSource == .readLater || appModel.readerListSource == .archive {
+                savedLinksSidebarList
             } else {
                 publicationSidebarList
             }
@@ -41,18 +41,18 @@ struct ReaderSidebarColumn: View {
         }
     }
 
-    private var readLaterSidebarList: some View {
+    private var savedLinksSidebarList: some View {
         List {
             listsSection
             Section {
                 if appModel.readLaterLatrConfigured {
-                    if appModel.savedLinks.isEmpty {
-                        Text("Nothing queued yet.")
+                    if appModel.currentSavedLinks.isEmpty {
+                        Text(appModel.readerListSource == .archive ? "Nothing archived yet." : "Nothing queued yet.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .readerClearListRow()
                     } else {
-                        ForEach(appModel.savedLinks) { save in
+                        ForEach(appModel.currentSavedLinks) { save in
                             Button {
                                 appModel.selectedSavedLink = save
                             } label: {
@@ -60,6 +60,20 @@ struct ReaderSidebarColumn: View {
                             }
                             .buttonStyle(.plain)
                             .readerClearListRow()
+                            .contextMenu {
+                                if appModel.readerListSource == .archive {
+                                    Button("Unarchive") {
+                                        Task { await appModel.unarchive(save) }
+                                    }
+                                } else {
+                                    Button("Archive") {
+                                        Task { await appModel.archive(save) }
+                                    }
+                                }
+                                Button("Delete", role: .destructive) {
+                                    Task { await appModel.delete(save) }
+                                }
+                            }
                         }
                     }
                 } else {
@@ -69,7 +83,7 @@ struct ReaderSidebarColumn: View {
                         .readerClearListRow()
                 }
             } header: {
-                Text("Read Later")
+                Text(appModel.readerListSource == .archive ? "Archive" : "Read Later")
             }
         }
     }

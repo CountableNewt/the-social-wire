@@ -12,6 +12,7 @@ final class SocialWireAppModel {
     let publicationsService: PublicationService
     private let rss = RSSService()
     private let gateway: SocialWireGatewayClient
+    private let latrGateway: LatrGatewayClient
     private var readerCacheCoordinator: ReaderCacheCoordinator?
 
     private static let preferencesSyncCacheKey = "v1/sync/preferences"
@@ -20,6 +21,7 @@ final class SocialWireAppModel {
     var folders: [RepoRecord<FolderRecord>] = []
     var publicationPrefs: [String: RepoRecord<PublicationPrefsRecord>] = [:]
     var savedLinks: [MergedLatrSave] = []
+    var archivedSavedLinks: [MergedLatrSave] = []
     var readAtByEntryId: [String: Date] = [:]
     var entries: [EntryListItem] = []
     var selectedPublication: DiscoveredPublication?
@@ -88,6 +90,7 @@ final class SocialWireAppModel {
         pds = PDSRecordService(xrpc: xrpc)
         publicationsService = PublicationService(xrpc: xrpc)
         gateway = SocialWireGatewayClient(auth: authService)
+        latrGateway = LatrGatewayClient(auth: authService)
         applyReaderListSource(ReaderListSourceStorage.load(), persist: false)
     }
 
@@ -152,7 +155,9 @@ final class SocialWireAppModel {
 
     func publicationsForBulkRead(list: ReaderListSource) -> [DiscoveredPublication] {
         switch list {
-        case .readLater:
+        case .readLater, .archive:
+            return []
+        case .archive:
             return []
         case .subscribed:
             var seen = Set<String>()
@@ -434,6 +439,7 @@ final class SocialWireAppModel {
         gatewayFolderMap = [:]
         appViewRoutesAvailable = true
         savedLinks = []
+        archivedSavedLinks = []
         entries = []
         selectedEntry = nil
         selectedPublication = nil
@@ -535,7 +541,7 @@ final class SocialWireAppModel {
         }
 
         switch source {
-        case .readLater:
+        case .readLater, .archive:
             selectedSidebar = .saved
             selectedPublication = nil
             selectedSavedLink = nil
@@ -589,7 +595,8 @@ final class SocialWireAppModel {
         let streamStarted = Date()
 
         async let readTask = pds.listEntryReadStates()
-        async let savedTask = pds.listMergedLatrSaves()
+        async let savedTask = pds.listMergedLatrSaves(state: .active)
+        async let archivedTask = pds.listMergedLatrSaves(state: .archived)
         async let profileTask = publicationsService.fetchActorProfile(actor: viewerDID)
 
         try await gateway.consumeBootstrapStream { [weak self] event in
@@ -600,6 +607,7 @@ final class SocialWireAppModel {
 
         readAtByEntryId = try await readTask
         savedLinks = try await savedTask
+        archivedSavedLinks = try await archivedTask
         viewerProfile = try? await profileTask
         await refreshSidebarUnreadCounts()
         await applyPendingStreamedBootstrapSelectionIfNeeded()
@@ -1517,31 +1525,73 @@ final class SocialWireAppModel {
         }
     }
 
-    func saveCurrentEntry() async {
-        guard readLaterLatrConfigured, let selectedEntry, let url = selectedEntry.canonicalURL else { return }
+    var currentSavedLinks: [MergedLatrSave] {
+        readerListSource == .archive ? archivedSavedLinks : savedLinks
+    }
+
+    func refreshSavedLinks() async {
         do {
-            try await pds.saveURLToLatr(url, title: selectedEntry.title)
-            savedLinks = try await pds.listMergedLatrSaves()
+            savedLinks = try await pds.listMergedLatrSaves(state: .active)
+            archivedSavedLinks = try await pds.listMergedLatrSaves(state: .archived)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveCurrentEntry() async {
+        guard readLaterLatrConfigured, let selectedEntry else { return }
+        await saveEntry(
+            entryId: selectedEntry.entryId,
+            url: selectedEntry.canonicalURL,
+            title: selectedEntry.title
+        )
+    }
+
+    func saveEntry(entryId: String, url: URL?, title: String?, excerpt: String? = nil) async {
+        guard readLaterLatrConfigured else { return }
+        do {
+            if let url {
+                try await latrGateway.saveURL(url, title: title, excerpt: excerpt)
+            } else {
+                try await latrGateway.saveNativeSubject(subjectURI: entryId, linkedWebURL: nil)
+            }
+            await refreshSavedLinks()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func archive(_ save: MergedLatrSave) async {
-        guard case .external(let external) = save else { return }
         do {
-            try await pds.archiveLatrExternal(normalizedURL: external.normalizedUrl)
-            savedLinks = try await pds.listMergedLatrSaves()
+            try await latrGateway.archiveSave(itemRkey: save.itemRkey)
+            await refreshSavedLinks()
+            if selectedSavedLink?.id == save.id {
+                selectedSavedLink = nil
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func unarchive(_ save: MergedLatrSave) async {
+        do {
+            try await latrGateway.unarchiveSave(itemRkey: save.itemRkey)
+            await refreshSavedLinks()
+            if selectedSavedLink?.id == save.id {
+                selectedSavedLink = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func delete(_ save: MergedLatrSave) async {
-        guard case .external(let external) = save else { return }
         do {
-            try await pds.deleteLatrExternal(normalizedURL: external.normalizedUrl)
-            savedLinks = try await pds.listMergedLatrSaves()
+            try await latrGateway.deleteSave(itemRkey: save.itemRkey)
+            await refreshSavedLinks()
+            if selectedSavedLink?.id == save.id {
+                selectedSavedLink = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1601,7 +1651,7 @@ final class SocialWireAppModel {
             [.subscribed]
         case .list(.following):
             [.following]
-        case .list(.readLater):
+        case .list(.readLater), .list(.archive):
             []
         case .publication(let publicationId):
             [.publication(publicationId: publicationId)]

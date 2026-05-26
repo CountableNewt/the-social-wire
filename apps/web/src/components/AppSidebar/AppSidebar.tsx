@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronRight, LogOut, RefreshCw, Bookmark } from "lucide-react";
+import { ChevronRight, LogOut, RefreshCw, Bookmark, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -301,6 +301,17 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                 >
                   <Bookmark />
                   <span>Saved</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  tooltip="Archived Read Later Links"
+                  isActive={pathname.startsWith("/archive")}
+                  onClick={() => router.push("/archive")}
+                >
+                  <Archive />
+                  <span>Archive</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

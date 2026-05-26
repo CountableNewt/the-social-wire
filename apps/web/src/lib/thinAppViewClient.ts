@@ -122,13 +122,16 @@ export async function getEntryFromAppView(
     originalUrl?: string;
   };
   const originalUrl = json.originalUrl?.trim();
+  const normalizedOriginal = originalUrl
+    ? normalizeHttpUrlToHttps(originalUrl)
+    : undefined;
   return {
     entryId: json.entryId,
     title: json.title,
     publishedAt: json.publishedAt,
     contentHtml: json.contentHtml ?? json.summary ?? "",
-    ...(originalUrl
-      ? { originalUrl: normalizeHttpUrlToHttps(originalUrl) }
+    ...(normalizedOriginal
+      ? { originalUrl: normalizedOriginal, embedUrl: normalizedOriginal }
       : {}),
   };
 }

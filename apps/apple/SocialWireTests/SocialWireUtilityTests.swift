@@ -43,34 +43,71 @@ struct SocialWireUtilityTests {
         #expect(normalized == "https://example.com/post?x=2")
     }
 
-    @Test("L@tr merge drops archived and pairs external rows")
-    func latrMergeDropsArchivedAndPairsExternalRows() {
-        let external = RepoRecord(
-            uri: "at://did:plc:me/com.latr.saved.external/ext",
+    @Test("L@tr merge pairs external rows and filter splits active vs archived")
+    func latrMergePairsExternalRowsAndFilterSplitsActiveVsArchived() {
+        let activeExternal = RepoRecord(
+            uri: "at://did:plc:me/com.latr.saved.external/ext-active",
             cid: nil,
             value: LatrSavedExternalRecord(
                 type: PDSRecordService.latrSavedExternal,
-                url: "https://example.com",
-                normalizedUrl: "https://example.com",
+                url: "https://example.com/active",
+                normalizedUrl: "https://example.com/active",
                 fingerprint: "abc",
                 createdAt: "2026-05-16T00:00:00.000Z",
-                title: "Example"
+                title: "Active Example",
+                site: "example.com",
+                image: "https://example.com/thumb.jpg"
             )
         )
-        let item = RepoRecord(
-            uri: "at://did:plc:me/com.latr.saved.item/item",
+        let archivedExternal = RepoRecord(
+            uri: "at://did:plc:me/com.latr.saved.external/ext-archived",
+            cid: nil,
+            value: LatrSavedExternalRecord(
+                type: PDSRecordService.latrSavedExternal,
+                url: "https://example.com/archived",
+                normalizedUrl: "https://example.com/archived",
+                fingerprint: "def",
+                createdAt: "2026-05-16T00:00:00.000Z",
+                title: "Archived Example"
+            )
+        )
+        let activeItem = RepoRecord(
+            uri: "at://did:plc:me/com.latr.saved.item/item-active",
             cid: nil,
             value: LatrSavedItemRecord(
                 type: PDSRecordService.latrSavedItem,
-                subjectUri: "at://did:plc:me/com.latr.saved.external/ext",
+                subjectUri: "at://did:plc:me/com.latr.saved.external/ext-active",
                 savedAt: "2026-05-16T01:00:00.000Z",
                 state: "unread"
             )
         )
+        let archivedItem = RepoRecord(
+            uri: "at://did:plc:me/com.latr.saved.item/item-archived",
+            cid: nil,
+            value: LatrSavedItemRecord(
+                type: PDSRecordService.latrSavedItem,
+                subjectUri: "at://did:plc:me/com.latr.saved.external/ext-archived",
+                savedAt: "2026-05-16T02:00:00.000Z",
+                state: "archived",
+                previewExcerpt: "Preview excerpt"
+            )
+        )
 
-        let rows = PDSRecordService.merge(externals: [external], items: [item])
-        #expect(rows.count == 1)
-        #expect(rows.first?.title == "Example")
+        let merged = PDSRecordService.merge(
+            externals: [activeExternal, archivedExternal],
+            items: [activeItem, archivedItem]
+        )
+        #expect(merged.count == 2)
+
+        let activeOnly = PDSRecordService.filterMergedLatrSavesByState(merged, state: .active)
+        #expect(activeOnly.count == 1)
+        #expect(activeOnly.first?.title == "Active Example")
+        #expect(activeOnly.first?.image == "https://example.com/thumb.jpg")
+
+        let archivedOnly = PDSRecordService.filterMergedLatrSavesByState(merged, state: .archived)
+        #expect(archivedOnly.count == 1)
+        #expect(archivedOnly.first?.title == "Archived Example")
+        #expect(archivedOnly.first?.excerpt == "Preview excerpt")
     }
 
     @Test("HTML wrapper contains CSP")

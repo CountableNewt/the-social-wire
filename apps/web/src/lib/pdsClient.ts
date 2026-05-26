@@ -146,6 +146,26 @@ export interface LatrSavedItemRecord {
   tags?: string[];
   note?: string;
   lastOpenedAt?: string;
+  linkedWebUrl?: string;
+  previewTitle?: string;
+  previewExcerpt?: string;
+  previewSite?: string;
+  previewImage?: string;
+  previewAuthor?: string;
+}
+
+/** Which saved-link rows to include when listing merged PDS saves. */
+export type LatrSaveListState = "active" | "archived" | "all";
+
+export interface LatrSaveMetadata {
+  title?: string;
+  excerpt?: string;
+  image?: string;
+  site?: string;
+  author?: string;
+  publishedAt?: string;
+  language?: string;
+  linkedWebUrl?: string;
 }
 
 /** PDS `com.thesocialwire.entryReadState` record shape. */
@@ -172,6 +192,11 @@ export type MergedLatrSave =
       title?: string;
       excerpt?: string;
       image?: string;
+      site?: string;
+      author?: string;
+      publishedAt?: string;
+      language?: string;
+      linkedWebUrl?: string;
     }
   | {
       kind: "native";
@@ -184,6 +209,11 @@ export type MergedLatrSave =
       excerpt?: string;
       url?: string;
       image?: string;
+      site?: string;
+      author?: string;
+      publishedAt?: string;
+      language?: string;
+      linkedWebUrl?: string;
     };
 
 export interface MergedLatrHttpsSave {
@@ -201,6 +231,40 @@ export interface MergedLatrHttpsSave {
   title?: string;
   excerpt?: string;
   image?: string;
+  site?: string;
+  author?: string;
+  publishedAt?: string;
+  language?: string;
+  linkedWebUrl?: string;
+}
+
+function mergeLatrSaveMetadata(
+  external: LatrSavedExternalRecord | undefined,
+  item: LatrSavedItemRecord
+): LatrSaveMetadata {
+  return {
+    title: external?.title?.trim() || item.previewTitle?.trim() || undefined,
+    excerpt: external?.excerpt?.trim() || item.previewExcerpt?.trim() || undefined,
+    image: external?.image?.trim() || item.previewImage?.trim() || undefined,
+    site: external?.site?.trim() || item.previewSite?.trim() || undefined,
+    author: external?.author?.trim() || item.previewAuthor?.trim() || undefined,
+    publishedAt: external?.publishedAt?.trim() || undefined,
+    language: external?.language?.trim() || undefined,
+    linkedWebUrl: item.linkedWebUrl?.trim() || undefined,
+  };
+}
+
+/** Filter merged rows by queue state (`unread` and missing state count as active). */
+export function filterMergedLatrSavesByState(
+  rows: MergedLatrSave[],
+  state: LatrSaveListState
+): MergedLatrSave[] {
+  return rows.filter((row) => {
+    const itemState = row.state ?? "unread";
+    if (state === "all") return true;
+    if (state === "archived") return itemState === "archived";
+    return itemState !== "archived";
+  });
 }
 
 export interface RepoRecord<T> {
@@ -228,6 +292,7 @@ export function mergeExternalsAndItemsToHttpsRows(
     const { subjectUri, savedAt } = itemRec.value;
     const m = subjectUri.indexOf(LATR_EXTERNAL_SUBJECT_MARKER);
     if (m < 0) {
+      const metadata = mergeLatrSaveMetadata(undefined, itemRec.value);
       rows.push({
         kind: "native",
         savedAt,
@@ -235,6 +300,7 @@ export function mergeExternalsAndItemsToHttpsRows(
         itemUri: itemRec.uri,
         subjectUri,
         ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
+        ...metadata,
       });
       continue;
     }
@@ -254,9 +320,7 @@ export function mergeExternalsAndItemsToHttpsRows(
       itemUri: itemRec.uri,
       subjectUri,
       ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
-      title: ext.value.title,
-      excerpt: ext.value.excerpt,
-      image: ext.value.image,
+      ...mergeLatrSaveMetadata(ext.value, itemRec.value),
     });
   }
 
@@ -879,7 +943,54 @@ export class PDSClient {
     const externalUri =
       `at://${this.did}/${COLLECTION_LATR_SAVED_EXTERNAL}/${externalRkey}`;
     const itemRkey = await latrItemRkeyFromSubjectUri(externalUri);
+    await this.setLatrSaveItemState(itemRkey, "archived");
+  }
 
+  /** Delete a saved item by deterministic item rkey (external or native). */
+  async deleteLatrSaveItem(itemRkey: string): Promise<void> {
+    let prevItem: LatrSavedItemRecord | null = null;
+    try {
+      const currentItem = await this.agent.api.com.atproto.repo.getRecord({
+        repo: this.did,
+        collection: COLLECTION_LATR_SAVED_ITEM,
+        rkey: itemRkey,
+      });
+      prevItem = currentItem.data.value as unknown as LatrSavedItemRecord;
+    } catch {
+      prevItem = null;
+    }
+
+    try {
+      await this.agent.api.com.atproto.repo.deleteRecord({
+        repo: this.did,
+        collection: COLLECTION_LATR_SAVED_ITEM,
+        rkey: itemRkey,
+      });
+    } catch {
+      /* best-effort: record may already be absent */
+    }
+
+    if (!prevItem) return;
+
+    const m = prevItem.subjectUri.indexOf(LATR_EXTERNAL_SUBJECT_MARKER);
+    if (m < 0) return;
+
+    const externalRkey = prevItem.subjectUri.slice(m + LATR_EXTERNAL_SUBJECT_MARKER.length);
+    try {
+      await this.agent.api.com.atproto.repo.deleteRecord({
+        repo: this.did,
+        collection: COLLECTION_LATR_SAVED_EXTERNAL,
+        rkey: externalRkey,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  async setLatrSaveItemState(
+    itemRkey: string,
+    state: "archived" | "unread"
+  ): Promise<void> {
     const currentItem = await this.agent.api.com.atproto.repo.getRecord({
       repo: this.did,
       collection: COLLECTION_LATR_SAVED_ITEM,
@@ -891,12 +1002,16 @@ export class PDSClient {
       $type: COLLECTION_LATR_SAVED_ITEM,
       subjectUri: prevItem.subjectUri,
       savedAt: prevItem.savedAt,
-      state: "archived",
+      state,
       ...(prevItem.tags ? { tags: prevItem.tags } : {}),
       ...(prevItem.note ? { note: prevItem.note } : {}),
-      ...(prevItem.lastOpenedAt
-        ? { lastOpenedAt: prevItem.lastOpenedAt }
-        : {}),
+      ...(prevItem.lastOpenedAt ? { lastOpenedAt: prevItem.lastOpenedAt } : {}),
+      ...(prevItem.linkedWebUrl ? { linkedWebUrl: prevItem.linkedWebUrl } : {}),
+      ...(prevItem.previewTitle ? { previewTitle: prevItem.previewTitle } : {}),
+      ...(prevItem.previewExcerpt ? { previewExcerpt: prevItem.previewExcerpt } : {}),
+      ...(prevItem.previewSite ? { previewSite: prevItem.previewSite } : {}),
+      ...(prevItem.previewImage ? { previewImage: prevItem.previewImage } : {}),
+      ...(prevItem.previewAuthor ? { previewAuthor: prevItem.previewAuthor } : {}),
     };
 
     await this.agent.api.com.atproto.repo.putRecord({
@@ -992,12 +1107,16 @@ export class PDSClient {
   }
 
   /** Joins wrappers with queue rows for read-later browsing. */
-  async listMergedLatrSaves(signal?: AbortSignal): Promise<MergedLatrSave[]> {
+  async listMergedLatrSaves(
+    options: { state?: LatrSaveListState; signal?: AbortSignal } = {}
+  ): Promise<MergedLatrSave[]> {
+    const { state = "active", signal } = options;
     const externals = await this.listLatrSavedExternals(signal);
     const items = await this.listLatrSavedItems(signal);
     signal?.throwIfAborted();
-    const rows = mergeExternalsAndItemsToHttpsRows(externals, items).filter(
-      (row) => row.state !== "archived"
+    const rows = filterMergedLatrSavesByState(
+      mergeExternalsAndItemsToHttpsRows(externals, items),
+      state
     );
     return Promise.all(
       rows.map(async (row): Promise<MergedLatrSave> => {

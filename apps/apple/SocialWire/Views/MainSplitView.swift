@@ -129,7 +129,7 @@ struct MainSplitView: View {
     @ViewBuilder
     private var articlesColumn: some View {
         switch appModel.readerListSource {
-        case .readLater:
+        case .readLater, .archive:
             readLaterArticlesPlaceholder
         case .subscribed, .following:
             if appModel.selectedSidebar == .myPublications {
@@ -221,7 +221,7 @@ struct MainSplitView: View {
 
     private func handleSidebarSelection(_ selection: SidebarSelection?) async {
         guard let selection else {
-            if appModel.readerListSource != .readLater {
+            if appModel.readerListSource != .readLater && appModel.readerListSource != .archive {
                 appModel.selectedEntry = nil
                 // Compact publications pane: keep the active publication when clearing list
                 // selection so re-tapping the same row can navigate back to Articles.
@@ -238,7 +238,7 @@ struct MainSplitView: View {
                 await appModel.selectPublication(publication)
             }
         case .saved:
-            if appModel.readerListSource != .readLater {
+            if appModel.readerListSource != .readLater && appModel.readerListSource != .archive {
                 appModel.selectReaderListSource(.readLater)
             }
         case .myPublications:

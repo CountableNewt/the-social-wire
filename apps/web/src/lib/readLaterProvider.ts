@@ -13,9 +13,14 @@ export type ReadLaterProviderId = "latr-gateway" | "pds-direct";
 export interface ReadLaterProvider {
   readonly id: ReadLaterProviderId;
   saveHttpsUrl(url: string, options?: { title?: string; excerpt?: string }): Promise<void>;
-  deleteHttpsUrl(normalizedUrl: string): Promise<void>;
-  archiveHttpsUrl(normalizedUrl: string): Promise<void>;
   saveNativeSubject(subjectUri: string, linkedWebUrl?: string): Promise<void>;
+  deleteSaveItem(itemRkey: string): Promise<void>;
+  archiveSaveItem(itemRkey: string): Promise<void>;
+  unarchiveSaveItem(itemRkey: string): Promise<void>;
+  /** @deprecated Prefer deleteSaveItem(itemRkey). */
+  deleteHttpsUrl(normalizedUrl: string): Promise<void>;
+  /** @deprecated Prefer archiveSaveItem(itemRkey). */
+  archiveHttpsUrl(normalizedUrl: string): Promise<void>;
 }
 
 function readLaterProviderId(): ReadLaterProviderId {
@@ -60,8 +65,7 @@ class LatrGatewayReadLaterProvider implements ReadLaterProvider {
     });
   }
 
-  async deleteHttpsUrl(normalizedUrl: string): Promise<void> {
-    const itemRkey = await this.httpsItemRkey(normalizedUrl);
+  async deleteSaveItem(itemRkey: string): Promise<void> {
     await latrGatewayJson(
       this.oauthSession,
       `/v1/latr/saves/${encodeURIComponent(itemRkey)}`,
@@ -69,15 +73,33 @@ class LatrGatewayReadLaterProvider implements ReadLaterProvider {
     );
   }
 
+  async archiveSaveItem(itemRkey: string): Promise<void> {
+    await this.patchSaveState(itemRkey, "archived");
+  }
+
+  async unarchiveSaveItem(itemRkey: string): Promise<void> {
+    await this.patchSaveState(itemRkey, "unread");
+  }
+
+  async deleteHttpsUrl(normalizedUrl: string): Promise<void> {
+    await this.deleteSaveItem(await this.httpsItemRkey(normalizedUrl));
+  }
+
   async archiveHttpsUrl(normalizedUrl: string): Promise<void> {
-    const itemRkey = await this.httpsItemRkey(normalizedUrl);
+    await this.archiveSaveItem(await this.httpsItemRkey(normalizedUrl));
+  }
+
+  private async patchSaveState(
+    itemRkey: string,
+    state: "archived" | "unread"
+  ): Promise<void> {
     await latrGatewayJson(
       this.oauthSession,
       `/v1/latr/saves/${encodeURIComponent(itemRkey)}/state`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: "archived" }),
+        body: JSON.stringify({ state }),
       }
     );
   }
@@ -107,6 +129,18 @@ class PdsDirectReadLaterProvider implements ReadLaterProvider {
     throw new Error(
       "Native subject saves require the latr-gateway read-later provider"
     );
+  }
+
+  async deleteSaveItem(itemRkey: string): Promise<void> {
+    await this.pdsClient.deleteLatrSaveItem(itemRkey);
+  }
+
+  async archiveSaveItem(itemRkey: string): Promise<void> {
+    await this.pdsClient.setLatrSaveItemState(itemRkey, "archived");
+  }
+
+  async unarchiveSaveItem(itemRkey: string): Promise<void> {
+    await this.pdsClient.setLatrSaveItemState(itemRkey, "unread");
   }
 
   async deleteHttpsUrl(normalizedUrl: string): Promise<void> {

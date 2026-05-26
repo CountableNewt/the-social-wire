@@ -60,6 +60,9 @@
 		51842B3FB4BDE2C1DB3FAB51 /* SocialWireUtilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3130A8F5508FDC17BA1F4D7 /* SocialWireUtilityTests.swift */; };
 		53FF3FE8775D5043D24554AC /* ListRecordsResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF4D40C6BA967F7144E45746 /* ListRecordsResponse.swift */; };
 		5A35897686F2833D76E3D8B1 /* SocialWireGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 835D5CB0CFC3B8DB540D19C9 /* SocialWireGatewayClient.swift */; };
+		A2B3C4D5E6F708192A3B4C5D /* LatrGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F708192A3B4C /* LatrGatewayClient.swift */; };
+		C4D5E6F708192A3B4C5D6E7F /* LatrGatewayEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F708192A3B4C5D6E /* LatrGatewayEnvironment.swift */; };
+		E6F708192A3B4C5D6E7F8091 /* LatrSaveMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E6F708192A3B4C5D6E7F80 /* LatrSaveMetadata.swift */; };
 		5CDEFA80A3917714A9A5F43C /* OAuthProtectedResourceMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03036A01ECBADF34A0A886B /* OAuthProtectedResourceMetadata.swift */; };
 		5DA938B9777EE08CFF54B566 /* PublicationSidebarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29512604F4C25F90D78E2966 /* PublicationSidebarRow.swift */; };
 		60C2C91F06F52341912E4254 /* SocialWireApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4626D04E2FAAC53CB3BD8D47 /* SocialWireApp.swift */; };
@@ -201,6 +204,9 @@
 		790BCE8F4536EBE0EA5513D0 /* PublicationsPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationsPaneView.swift; sourceTree = "<group>"; };
 		82FE3413B195733008B7B609 /* ReaderShellChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderShellChrome.swift; sourceTree = "<group>"; };
 		835D5CB0CFC3B8DB540D19C9 /* SocialWireGatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWireGatewayClient.swift; sourceTree = "<group>"; };
+		F1A2B3C4D5E6F708192A3B4C /* LatrGatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatrGatewayClient.swift; sourceTree = "<group>"; };
+		B3C4D5E6F708192A3B4C5D6E /* LatrGatewayEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatrGatewayEnvironment.swift; sourceTree = "<group>"; };
+		D5E6F708192A3B4C5D6E7F80 /* LatrSaveMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatrSaveMetadata.swift; sourceTree = "<group>"; };
 		87F127E4133A26571C697B26 /* ReaderListSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderListSource.swift; sourceTree = "<group>"; };
 		88DEBC5128D7E7F3B1064030 /* ListsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListsView.swift; sourceTree = "<group>"; };
 		89262FB6830F790C3D83607F /* BootstrapStreamModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapStreamModels.swift; sourceTree = "<group>"; };
@@ -374,6 +380,7 @@
 				76358957913612959BCE6655 /* MergedLatrExternalSave.swift */,
 				59088B1FA440C8C2D58EBB16 /* MergedLatrNativeSave.swift */,
 				D917173A3647380576D97E11 /* MergedLatrSave.swift */,
+				D5E6F708192A3B4C5D6E7F80 /* LatrSaveMetadata.swift */,
 				5D5EB7226B293B6262156B2D /* ReaderFilter.swift */,
 				87F127E4133A26571C697B26 /* ReaderListSource.swift */,
 				594F6F1C17E5D22E406CCAF7 /* ReaderListSourceStorage.swift */,
@@ -408,6 +415,7 @@
 				3E8FA5738EB4CFF385DEB7F9 /* PublicationProjectionMapping.swift */,
 				B92D88BE59ED70DC1FCDE5B4 /* PublicationProjectionModels.swift */,
 				835D5CB0CFC3B8DB540D19C9 /* SocialWireGatewayClient.swift */,
+				F1A2B3C4D5E6F708192A3B4C /* LatrGatewayClient.swift */,
 				98674D592CE3FA9EB8D7BE21 /* SyncPreferencesEnvelope.swift */,
 			);
 			path = Gateway;
@@ -475,6 +483,7 @@
 				5D1DB2A454CA28B62C81B096 /* PublicationSubscriptionMatch.swift */,
 				4CFA973035118DF77F5775B6 /* PublicURLNormalizer.swift */,
 				4A33363B1ACC14FD99E6192A /* SocialWireAPIEnvironment.swift */,
+				B3C4D5E6F708192A3B4C5D6E /* LatrGatewayEnvironment.swift */,
 				99F3CD876AA54B5D29C6553E /* ThumbnailImageURLAttempts.swift */,
 			);
 			path = Utilities;
@@ -767,6 +776,9 @@
 				B2CF6B09EED045A6254FCD05 /* SocialWireAppModel.swift in Sources */,
 				BC384FB4E16957ADB079AA31 /* SocialWireError.swift in Sources */,
 				5A35897686F2833D76E3D8B1 /* SocialWireGatewayClient.swift in Sources */,
+				A2B3C4D5E6F708192A3B4C5D /* LatrGatewayClient.swift in Sources */,
+				C4D5E6F708192A3B4C5D6E7F /* LatrGatewayEnvironment.swift in Sources */,
+				E6F708192A3B4C5D6E7F8091 /* LatrSaveMetadata.swift in Sources */,
 				2FFD51EA2E5CAE4202F34C85 /* StrongRef.swift in Sources */,
 				6542A7592E7F497E13017FAD /* SubscribedPublicationSidebarTree.swift in Sources */,
 				0CA6C2A1C65DB67D9E4D27EF /* SyncPreferencesEnvelope.swift in Sources */,
