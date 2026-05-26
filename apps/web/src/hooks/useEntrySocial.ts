@@ -8,6 +8,7 @@ import {
   type EntryDetail,
 } from "@/lib/atprotoClient";
 import { canonicalArticleHttpsUrl } from "@/lib/articleCanonicalUrl";
+import { isOriginalEntryContentUri } from "@/lib/savedLinkSocialTarget";
 
 export const bskyPostViewerKey = (uri: string | undefined) =>
   ["bsky-post-viewer", uri ?? ""] as const;
@@ -92,8 +93,26 @@ export function useEntrySocial(entry: EntryDetail | null) {
             uri: shareUrl,
             title: title.slice(0, 300),
             description: "",
-            ...(entry?.entryId ? { associatedRecord: entry.entryId } : {}),
+            ...(entry?.entryId && isOriginalEntryContentUri(entry.entryId)
+              ? { associatedRecord: entry.entryId }
+              : {}),
           },
+        },
+      });
+    },
+    onSuccess: invalidateViewer,
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const oauth = getOAuthSession();
+      if (!oauth || !uri || !cid) throw new Error("Missing post or session");
+      const agent = createOAuthAgent(oauth);
+      await agent.post({
+        text,
+        reply: {
+          root: { uri, cid },
+          parent: { uri, cid },
         },
       });
     },
@@ -105,6 +124,7 @@ export function useEntrySocial(entry: EntryDetail | null) {
     toggleLikeMutation,
     toggleRepostMutation,
     quoteMutation,
+    replyMutation,
     hasLinkedPost: !!(uri && cid),
   };
 }

@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { SavedLinkPublicationChip } from "@/components/SavedLinks/SavedLinkPublicationChip";
+import { SavedLinkSocialToolbar } from "@/components/SavedLinks/SavedLinkSocialToolbar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -336,89 +337,92 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
       >
         {selectedRow ? (
           <>
-            <div className="bg-background sticky top-0 z-10 flex min-h-[44px] shrink-0 flex-wrap items-center gap-2 border-b px-1 py-1 md:static md:z-0 md:flex-nowrap md:px-4 md:py-2">
-              <div className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1 md:min-h-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-11 shrink-0 rounded-lg md:hidden"
-                  aria-label={backLabel}
-                  onClick={() => setSelectedRowId(null)}
-                >
-                  <ChevronLeft className="size-5" />
-                </Button>
-                <div className="min-w-0 flex-1">
-                  <SavedLinkPublicationChip
-                    row={selectedRow}
-                    className="mb-1.5 md:hidden"
-                  />
-                  <p className="truncate text-sm font-medium leading-snug">{embedTitle}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {rowSubtitle(selectedRow)}
-                  </p>
-                  <DevRecordKindBadge
-                    info={recordKindFromLatrSave(selectedRow)}
-                    className="mt-1"
-                  />
+            <div className="bg-background sticky top-0 z-10 shrink-0 border-b px-1 py-1 md:static md:z-0 md:px-4 md:py-2">
+              <div className="flex min-h-[44px] flex-wrap items-center gap-2 md:min-h-0 md:flex-nowrap">
+                <div className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1 md:min-h-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-11 shrink-0 rounded-lg md:hidden"
+                    aria-label={backLabel}
+                    onClick={() => setSelectedRowId(null)}
+                  >
+                    <ChevronLeft className="size-5" />
+                  </Button>
+                  <div className="min-w-0 flex-1">
+                    <SavedLinkPublicationChip
+                      row={selectedRow}
+                      className="mb-1.5 md:hidden"
+                    />
+                    <p className="truncate text-sm font-medium leading-snug">{embedTitle}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {rowSubtitle(selectedRow)}
+                    </p>
+                    <DevRecordKindBadge
+                      info={recordKindFromLatrSave(selectedRow)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                <div className="flex w-full shrink-0 items-center justify-end gap-2 px-2 pb-2 md:w-auto md:px-0 md:pb-0">
+                  {selectedUrl ? (
+                    <a
+                      href={selectedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={buttonVariants({
+                        variant: "outline",
+                        size: "sm",
+                        className: "gap-1.5",
+                      })}
+                    >
+                      <ExternalLink className="size-3.5" />
+                      Open
+                    </a>
+                  ) : null}
+                  {isArchivedView ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={unarchiveMut.isPending}
+                      onClick={() => handleUnarchive(selectedRow)}
+                      title="Unarchive Read Later Item"
+                    >
+                      <ArchiveRestore className="size-3.5" />
+                      Unarchive
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={archiveMut.isPending}
+                      onClick={() => handleArchive(selectedRow)}
+                      title="Archive Read Later Item"
+                    >
+                      <Archive className="size-3.5" />
+                      Archive
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={deleteMut.isPending}
+                    onClick={() => handleDelete(selectedRow)}
+                    title="Remove from Read Later"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
                 </div>
               </div>
-              <div className="flex w-full shrink-0 items-center justify-end gap-2 px-2 pb-2 md:w-auto md:px-0 md:pb-0">
-                {selectedUrl ? (
-                  <a
-                    href={selectedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={buttonVariants({
-                      variant: "outline",
-                      size: "sm",
-                      className: "gap-1.5",
-                    })}
-                  >
-                    <ExternalLink className="size-3.5" />
-                    Open
-                  </a>
-                ) : null}
-                {isArchivedView ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={unarchiveMut.isPending}
-                    onClick={() => handleUnarchive(selectedRow)}
-                    title="Unarchive Read Later Item"
-                  >
-                    <ArchiveRestore className="size-3.5" />
-                    Unarchive
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={archiveMut.isPending}
-                    onClick={() => handleArchive(selectedRow)}
-                    title="Archive Read Later Item"
-                  >
-                    <Archive className="size-3.5" />
-                    Archive
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={deleteMut.isPending}
-                  onClick={() => handleDelete(selectedRow)}
-                  title="Remove from Read Later"
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </Button>
-              </div>
+              <SavedLinkSocialToolbar row={selectedRow} className="mt-1 px-2 md:px-0" />
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2">
