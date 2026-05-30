@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
 import {
+  bannerMessage,
   environmentBannerHeight,
   getAppEnv,
   isDevDebugUiEnabled,
@@ -52,12 +53,17 @@ describe("normalizeAppEnv", () => {
 });
 
 describe("environment banner", () => {
-  it("shows dev and local banners only", () => {
+  it("shows dev, local, and test banners only", () => {
     expect(shouldShowEnvironmentBanner("dev")).toBe(true);
     expect(shouldShowEnvironmentBanner("local")).toBe(true);
+    expect(shouldShowEnvironmentBanner("test")).toBe(true);
     expect(shouldShowEnvironmentBanner("prod")).toBe(false);
     expect(environmentBannerHeight("prod")).toBe("0px");
-    expect(environmentBannerHeight("dev")).toBe("32px");
+    expect(environmentBannerHeight("dev")).toBe("2.625rem");
+  });
+
+  it("includes test in banner copy", () => {
+    expect(bannerMessage("test")).toContain("Testing Server");
   });
 
   it("enables debug UI on dev and local only", () => {

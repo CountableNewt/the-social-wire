@@ -26,7 +26,7 @@ enum LatrGatewayEnvironment {
         return url
     }
 
-    /// Base64 official client credential (`social-wire` in gateway env). Optional in local dev.
+    /// Base64 official client credential (`the-social-wire-web` in latr-gateway env). Optional in local dev.
     static var officialClientCredential: String? {
         let raw = ProcessInfo.processInfo.environment["LATR_GATEWAY_CLIENT_CREDENTIAL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
