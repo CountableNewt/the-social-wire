@@ -9,8 +9,11 @@ import {
 } from "@/lib/latrGatewayClient";
 import { LATR_GATEWAY_PROXY_PREFIX } from "@/lib/latrGatewayProxyPath";
 
+const ORIG_FETCH = globalThis.fetch;
+
 afterEach(() => {
   resetLatrGatewayAuthRejectedForTests();
+  globalThis.fetch = ORIG_FETCH;
 });
 
 describe("latrGatewayFetch", () => {
@@ -24,7 +27,7 @@ describe("latrGatewayFetch", () => {
       expect(headers.get(LATR_OFFICIAL_CLIENT_HEADER)).toBeNull();
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
-    globalThis.fetch = fetchMock as typeof fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const oauthSession = {
       getTokenSet: async () => ({
@@ -73,7 +76,7 @@ describe("latrGatewayFetch", () => {
         headers: { "DPoP-Nonce": `pds-nonce-${nonceCounter}` },
       });
     });
-    globalThis.fetch = fetchMock as typeof fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const oauthSession = {
       getTokenSet: async () => ({
@@ -81,7 +84,7 @@ describe("latrGatewayFetch", () => {
         token_type: "DPoP",
       }),
       getTokenInfo: async () => ({ aud: "https://jellybaby.us-east.host.bsky.network" }),
-      fetchHandler: fetchMock,
+      fetchHandler: fetchMock as unknown as typeof fetch,
       server: {
         dpopNonces: {
           get: async () => undefined,
