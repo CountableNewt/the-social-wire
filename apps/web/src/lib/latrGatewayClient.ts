@@ -7,6 +7,13 @@ import {
 } from "latr-packages/gateway-client";
 
 import {
+  hasLatrGatewayClientCredentials,
+  isLatrGatewayAuthRejected,
+  isLatrGatewayInvalidClientCredentialResponse,
+  latrGatewayCredentialsHelpText,
+  markLatrGatewayAuthRejected,
+} from "@/lib/latrGatewayCredentials";
+import {
   createSaveUpstreamDpopProofPool,
   createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
@@ -82,6 +89,16 @@ export async function latrGatewayFetch(
   init?: RequestInit,
   attempt = 0
 ): Promise<Response> {
+  if (!hasLatrGatewayClientCredentials()) {
+    return new Response(
+      JSON.stringify({
+        error: "missing_client_credential",
+        message: latrGatewayCredentialsHelpText(),
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${latrGatewayBaseUrl()}${gatewayPath}`;
   const method = init?.method ?? "GET";
@@ -103,12 +120,31 @@ export async function latrGatewayFetch(
     return latrGatewayFetch(oauthSession, path, init, attempt + 1);
   }
 
+  await noteInvalidClientCredential(res);
   return res;
+}
+
+async function noteInvalidClientCredential(res: Response): Promise<void> {
+  if (isLatrGatewayAuthRejected()) return;
+  try {
+    const body = (await res.clone().json()) as { message?: string; error?: string };
+    if (isLatrGatewayInvalidClientCredentialResponse(res.status, body)) {
+      markLatrGatewayAuthRejected();
+    }
+  } catch {
+    /* ignore parse failures */
+  }
 }
 
 async function readGatewayError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { message?: string; error?: string };
+    if (isLatrGatewayInvalidClientCredentialResponse(res.status, body)) {
+      return latrGatewayCredentialsHelpText();
+    }
+    if (body.error === "missing_client_credential") {
+      return latrGatewayCredentialsHelpText();
+    }
     return body.message ?? body.error ?? `Gateway error (${res.status})`;
   } catch {
     return `Gateway error (${res.status})`;

@@ -1,5 +1,9 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
+import {
+  hasLatrGatewayClientCredentials,
+  isLatrGatewayAuthRejected,
+} from "@/lib/latrGatewayCredentials";
 import { latrGatewayJson } from "@/lib/latrGatewayClient";
 import type { LatrSaveMetadata, MergedLatrSave } from "@/lib/pdsClient";
 
@@ -74,12 +78,22 @@ export async function fetchLatrOgPreview(
   oauthSession: OAuthSession,
   url: string
 ): Promise<LatrSaveMetadata | null> {
+  if (
+    !latrGatewayMutationsEnabled() ||
+    !hasLatrGatewayClientCredentials() ||
+    isLatrGatewayAuthRejected()
+  ) {
+    return null;
+  }
+
   const params = new URLSearchParams({ url: url.trim() });
   try {
-    const data = await latrGatewayJson<Record<string, unknown>>(
-      oauthSession,
-      `/v1/latr/og-preview?${params}`,
-      { method: "GET" }
+    const data = await withOgPreviewSlot(() =>
+      latrGatewayJson<Record<string, unknown>>(
+        oauthSession,
+        `/v1/latr/og-preview?${params}`,
+        { method: "GET" }
+      )
     );
     return parseOgPreviewResponse(data);
   } catch {
@@ -106,12 +120,37 @@ export function mergeLatrSaveBackfillMetadata(
 
 const reconciledItemRkeys = new Set<string>();
 
+const OG_PREVIEW_MAX_CONCURRENT = 2;
+let ogPreviewInFlight = 0;
+const ogPreviewWaiters: Array<() => void> = [];
+
+async function withOgPreviewSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (ogPreviewInFlight >= OG_PREVIEW_MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => {
+      ogPreviewWaiters.push(resolve);
+    });
+  }
+  ogPreviewInFlight += 1;
+  try {
+    return await fn();
+  } finally {
+    ogPreviewInFlight -= 1;
+    ogPreviewWaiters.shift()?.();
+  }
+}
+
 /** Idempotent gateway save that re-enriches sparse legacy rows on the viewer PDS. */
 export async function reconcileSparseLatrSaveOnGateway(
   oauthSession: OAuthSession,
   row: MergedLatrSave
 ): Promise<void> {
-  if (!latrGatewayMutationsEnabled()) return;
+  if (
+    !latrGatewayMutationsEnabled() ||
+    !hasLatrGatewayClientCredentials() ||
+    isLatrGatewayAuthRejected()
+  ) {
+    return;
+  }
   if (reconciledItemRkeys.has(row.itemRkey)) return;
   reconciledItemRkeys.add(row.itemRkey);
 
@@ -164,7 +203,7 @@ export async function enrichSparseLatrSaveRow(
   }
 
   if (options.reconcileToPds && isLatrSaveMetadataSparse(enriched)) {
-    void reconcileSparseLatrSaveOnGateway(oauthSession, row);
+    void reconcileSparseLatrSaveOnGateway(oauthSession, enriched);
   }
 
   return enriched;

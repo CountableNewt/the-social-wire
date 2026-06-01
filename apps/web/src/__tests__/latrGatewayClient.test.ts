@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
+import { resetLatrGatewayAuthRejectedForTests } from "@/lib/latrGatewayCredentials";
 import {
   LATR_API_KEY_HEADER,
   LATR_CLIENT_ID_HEADER,
@@ -12,6 +13,7 @@ const originalClientId = process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_ID;
 const originalApiKey = process.env.NEXT_PUBLIC_LATR_GATEWAY_API_KEY;
 
 afterEach(() => {
+  resetLatrGatewayAuthRejectedForTests();
   if (originalCredential === undefined) {
     delete process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_CREDENTIAL;
   } else {
@@ -30,6 +32,26 @@ afterEach(() => {
 });
 
 describe("latrGatewayFetch", () => {
+  it("returns 403 without calling fetch when credentials are missing", async () => {
+    delete process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_CREDENTIAL;
+    delete process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_ID;
+    delete process.env.NEXT_PUBLIC_LATR_GATEWAY_API_KEY;
+
+    const fetchHandler = mock(async () => {
+      throw new Error("fetch should not run");
+    });
+    const oauthSession = { fetchHandler } as never;
+
+    const res = await latrGatewayFetch(
+      oauthSession,
+      "/v1/latr/og-preview?url=https://example.com",
+      { method: "GET" }
+    );
+
+    expect(res.status).toBe(403);
+    expect(fetchHandler).toHaveBeenCalledTimes(0);
+  });
+
   it("sends official client credential header when configured", async () => {
     process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_CREDENTIAL = "dGVzdC1zb2NpYWwtd2lyZQ==";
 
@@ -70,6 +92,7 @@ describe("latrGatewayFetch", () => {
   });
 
   it("retries once when the gateway returns a DPoP nonce challenge", async () => {
+    process.env.NEXT_PUBLIC_LATR_GATEWAY_CLIENT_CREDENTIAL = "dGVzdC1zb2NpYWwtd2lyZQ==";
     let gatewayCalls = 0;
     let nonceCounter = 0;
 

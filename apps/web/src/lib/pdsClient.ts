@@ -1130,7 +1130,7 @@ export class PDSClient {
           if (preview) enriched = { ...enriched, ...preview };
         }
         return enrichSparseLatrSaveRow(this.oauthSession, enriched, {
-          reconcileToPds: true,
+          reconcileToPds: false,
         });
       })
     );
