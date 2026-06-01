@@ -70,14 +70,26 @@ describe("latrGatewayFetch", () => {
   });
 
   it("retries once when the gateway returns a DPoP nonce challenge", async () => {
-    const fetchHandler = mock(async () => {
-      if (fetchHandler.mock.calls.length === 1) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "DPoP-Nonce": "fresh-nonce" },
-        });
+    let gatewayCalls = 0;
+    let nonceCounter = 0;
+
+    const fetchHandler = mock(async (url: string) => {
+      if (url.includes("/v1/latr/saves")) {
+        gatewayCalls += 1;
+        if (gatewayCalls === 1) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
+            headers: { "DPoP-Nonce": "fresh-nonce" },
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
       }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+
+      nonceCounter += 1;
+      return new Response(JSON.stringify({ error: "Use DPoP nonce" }), {
+        status: 400,
+        headers: { "DPoP-Nonce": `pds-nonce-${nonceCounter}` },
+      });
     });
 
     const oauthSession = {
@@ -85,6 +97,10 @@ describe("latrGatewayFetch", () => {
       getTokenInfo: async () => ({ aud: "https://jellybaby.us-east.host.bsky.network" }),
       getTokenSet: async () => ({ access_token: "access-token" }),
       server: {
+        dpopNonces: {
+          get: async () => undefined,
+          set: async () => {},
+        },
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
           algorithms: ["ES256"],
@@ -101,6 +117,7 @@ describe("latrGatewayFetch", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(fetchHandler).toHaveBeenCalledTimes(2);
+    expect(gatewayCalls).toBe(2);
+    expect(nonceCounter).toBe(6);
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "latr-packages/gateway-client";
 
 import {
+  createSaveUpstreamDpopProofPool,
   createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
 } from "@/lib/latrGatewayUpstreamDpop";
@@ -28,6 +29,25 @@ function shouldRetryLatrGatewayDpopNonce(res: Response): boolean {
   return Boolean(res.headers.get("DPoP-Nonce")?.trim());
 }
 
+async function buildUpstreamDpopHeader(
+  oauthSession: OAuthSession,
+  method: string,
+  gatewayPath: string
+): Promise<string | undefined> {
+  if (method === "POST" && gatewayPath === "/v1/latr/saves") {
+    return createSaveUpstreamDpopProofPool(oauthSession);
+  }
+
+  const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
+  if (!upstream) return undefined;
+
+  return createUpstreamDpopProof(
+    oauthSession,
+    upstream.xrpcMethod,
+    upstream.httpMethod
+  );
+}
+
 async function buildLatrGatewayRequestHeaders(
   oauthSession: OAuthSession,
   method: string,
@@ -45,13 +65,13 @@ async function buildLatrGatewayRequestHeaders(
     headers[LATR_OFFICIAL_CLIENT_HEADER] = clientCredential;
   }
 
-  const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
-  if (upstream) {
-    headers[LATR_UPSTREAM_DPOP_HEADER] = await createUpstreamDpopProof(
-      oauthSession,
-      upstream.xrpcMethod,
-      upstream.httpMethod
-    );
+  const upstreamProof = await buildUpstreamDpopHeader(
+    oauthSession,
+    method,
+    gatewayPath
+  );
+  if (upstreamProof) {
+    headers[LATR_UPSTREAM_DPOP_HEADER] = upstreamProof;
   }
   return headers;
 }

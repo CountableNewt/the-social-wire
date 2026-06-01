@@ -10,6 +10,9 @@
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
+import {
+  enrichSparseLatrSaveRow,
+} from "@/lib/latrSaveMetadataBackfill";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import {
   isThinAppViewEnabled,
@@ -1121,10 +1124,14 @@ export class PDSClient {
     );
     return Promise.all(
       rows.map(async (row): Promise<MergedLatrSave> => {
-        if (row.kind !== "native") return row;
-        const preview = await this.resolveNativePreview(row.subjectUri);
-        if (!preview) return row;
-        return { ...row, ...preview };
+        let enriched = row;
+        if (row.kind === "native") {
+          const preview = await this.resolveNativePreview(row.subjectUri);
+          if (preview) enriched = { ...enriched, ...preview };
+        }
+        return enrichSparseLatrSaveRow(this.oauthSession, enriched, {
+          reconcileToPds: true,
+        });
       })
     );
   }
