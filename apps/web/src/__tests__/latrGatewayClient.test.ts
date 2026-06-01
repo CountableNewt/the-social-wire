@@ -107,7 +107,8 @@ describe("latrGatewayFetch", () => {
 
     expect(res.status).toBe(200);
     expect(proxyCalls).toBe(2);
-    expect(nonceCounter).toBe(6);
+    // POST /v1/latr/saves mints 4 upstream proofs (2× createRecord, 2× putRecord) per attempt.
+    expect(nonceCounter).toBe(8);
 
     const saveCall = fetchMock.mock.calls.find(([url]) =>
       String(url).includes("/v1/latr/saves")
