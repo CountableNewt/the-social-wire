@@ -1,7 +1,4 @@
-import {
-  LATR_API_KEY_HEADER,
-  LATR_CLIENT_ID_HEADER,
-} from "latr-packages/gateway-client";
+import { LATR_CLIENT_ID_HEADER } from "latr-packages/gateway-client";
 
 import { getAppEnv } from "@/lib/appEnv";
 import { THE_SOCIAL_WIRE_WEB_CLIENT_ID } from "@/lib/latrGatewayOfficialCredential";

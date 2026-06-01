@@ -58,7 +58,7 @@ describe("latrGatewayFetch", () => {
     let proxyCalls = 0;
     let nonceCounter = 0;
 
-    const fetchMock = mock(async (url: string, init?: RequestInit) => {
+    const fetchMock = mock(async (url: string) => {
       if (url.includes("/v1/latr/saves")) {
         proxyCalls += 1;
         if (proxyCalls === 1) {

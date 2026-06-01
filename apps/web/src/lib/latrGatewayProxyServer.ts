@@ -5,7 +5,6 @@ import { normalizeLatrGatewayOfficialCredential } from "@/lib/latrGatewayOfficia
 import {
   DEFAULT_DEV_LATR_GATEWAY_URL,
   DEFAULT_PROD_LATR_GATEWAY_URL,
-  DEFAULT_TEST_LATR_GATEWAY_URL,
   latrGatewayBaseUrlForHostname,
   LOCAL_LATR_GATEWAY_URL,
 } from "@/lib/latrGatewayUrl";

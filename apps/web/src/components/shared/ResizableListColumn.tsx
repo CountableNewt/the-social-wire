@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useId,
   useState,
   type ReactNode,
@@ -31,11 +30,15 @@ function readStoredWidth(storageKey: string): number {
 }
 
 function useResizableListColumnWidth(storageKey: string) {
-  const [widthPx, setWidthPxState] = useState(DEFAULT_WIDTH_PX);
+  const [widthPx, setWidthPxState] = useState(() =>
+    readStoredWidth(storageKey)
+  );
+  const [prevStorageKey, setPrevStorageKey] = useState(storageKey);
 
-  useEffect(() => {
+  if (prevStorageKey !== storageKey) {
+    setPrevStorageKey(storageKey);
     setWidthPxState(readStoredWidth(storageKey));
-  }, [storageKey]);
+  }
 
   const setWidthPx = useCallback(
     (value: number) => {
