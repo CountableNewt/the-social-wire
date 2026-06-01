@@ -46,6 +46,7 @@ public struct AppViewBootstrapEntryListItem: Codable, Sendable, Equatable {
   public let publishedAt: Date
   public let thumbnailUrl: String?
   public let thumbnailFallbackUrl: String?
+  public let originalUrl: String?
 
   public init(
     entryId: String,
@@ -53,7 +54,8 @@ public struct AppViewBootstrapEntryListItem: Codable, Sendable, Equatable {
     summary: String? = nil,
     publishedAt: Date,
     thumbnailUrl: String? = nil,
-    thumbnailFallbackUrl: String? = nil
+    thumbnailFallbackUrl: String? = nil,
+    originalUrl: String? = nil
   ) {
     self.entryId = entryId
     self.title = title
@@ -61,6 +63,7 @@ public struct AppViewBootstrapEntryListItem: Codable, Sendable, Equatable {
     self.publishedAt = publishedAt
     self.thumbnailUrl = thumbnailUrl
     self.thumbnailFallbackUrl = thumbnailFallbackUrl
+    self.originalUrl = originalUrl
   }
 }
 

@@ -32,7 +32,7 @@ struct EntryListView: View {
                                     Task {
                                         await appModel.saveEntry(
                                             entryId: entry.entryId,
-                                            url: nil,
+                                            url: entry.originalUrl.flatMap { URL(string: $0) },
                                             title: entry.title,
                                             excerpt: entry.summary
                                         )

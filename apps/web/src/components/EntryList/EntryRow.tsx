@@ -73,6 +73,7 @@ function EntryRowActions({
         onClick={() => {
           saveLaterMut.mutate({
             entryId: entry.entryId,
+            url: entry.originalUrl,
             title: entry.title,
             excerpt: entry.summary,
           });

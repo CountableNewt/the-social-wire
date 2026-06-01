@@ -96,6 +96,8 @@ export interface EntryListItem {
    * where blob `getBlob` URLs are never exposed to the browser.
    */
   thumbnailFallbackUrl?: string;
+  /** Canonical article HTTPS URL when the Thin AppView index knows one. */
+  originalUrl?: string;
 }
 
 export interface EntryDetail {

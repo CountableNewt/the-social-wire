@@ -58,11 +58,12 @@ struct SocialWireGatewayClientTests {
     @Test("AppViewEntryListResponse decodes entries")
     func appViewEntryListResponseDecodesEntries() throws {
         let data = Data("""
-        {"entries":[{"entryId":"at://did/site.standard.document/a","title":"A","publishedAt":"2026-01-01T00:00:00.000Z"}],"cursor":null}
+        {"entries":[{"entryId":"at://did/site.standard.document/a","title":"A","publishedAt":"2026-01-01T00:00:00.000Z","originalUrl":"https://example.com/a"}],"cursor":null}
         """.utf8)
         let decoded = try JSONDecoder().decode(AppViewEntryListResponse.self, from: data)
         #expect(decoded.entries.count == 1)
         #expect(decoded.entries[0].title == "A")
+        #expect(decoded.entries[0].originalUrl == "https://example.com/a")
     }
 
     @Test("AppViewEntryDetailResponse decodes entry")

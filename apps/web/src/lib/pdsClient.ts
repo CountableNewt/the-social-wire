@@ -1127,7 +1127,15 @@ export class PDSClient {
         let enriched = row;
         if (row.kind === "native") {
           const preview = await this.resolveNativePreview(row.subjectUri);
-          if (preview) enriched = { ...enriched, ...preview };
+          if (preview) {
+            enriched = {
+              ...enriched,
+              ...preview,
+              title: enriched.title?.trim() || preview.title,
+              excerpt: enriched.excerpt?.trim() || preview.excerpt,
+              image: enriched.image?.trim() || preview.image,
+            };
+          }
         }
         return enrichSparseLatrSaveRow(this.oauthSession, enriched, {
           reconcileToPds: false,

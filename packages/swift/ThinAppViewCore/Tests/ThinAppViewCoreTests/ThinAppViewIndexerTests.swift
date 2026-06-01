@@ -224,5 +224,18 @@ struct ThinAppViewQuerySupportTests {
     #expect(items.count == 1)
     #expect(items[0].title == "Hello")
     #expect(items[0].entryId.contains("/x"))
+    #expect(items[0].originalUrl == nil)
+  }
+
+  @Test("entryListItems includes originalUrl from render articleUrl")
+  func entryListItemsOriginalUrl() {
+    let iso = ISO8601DateFormatter().string(from: Date())
+    let renderJSON =
+      #"{"title":"Story","publishedAt":"\#(iso)","articleUrl":"https://example.com/posts/story"}"#
+    let items = ThinAppViewQuerySupport.entryListItems(
+      from: [(uri: "at://did:plc:a/site.standard.document/x", renderJSON: renderJSON, createdAt: Date())]
+    )
+    #expect(items.count == 1)
+    #expect(items[0].originalUrl == "https://example.com/posts/story")
   }
 }

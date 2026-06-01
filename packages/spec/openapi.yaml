@@ -80,6 +80,12 @@ components:
         publishedAt:
           type: string
           format: date-time
+        originalUrl:
+          type: string
+          format: uri
+          description: |
+            Canonical article HTTPS URL when known (RSS link, render `articleUrl`, etc.).
+            Omitted for entries without a resolvable web permalink.
         isRead:
           type: boolean
           default: false

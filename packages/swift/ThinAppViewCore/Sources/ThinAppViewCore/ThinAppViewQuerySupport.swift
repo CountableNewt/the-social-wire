@@ -147,13 +147,20 @@ public enum ThinAppViewQuerySupport {
         ?? isoBasic.date(from: render.publishedAt)
         ?? row.createdAt
 
+      let originalUrl = RssFeedIdentity.originalArticleURL(
+        forEntryId: row.uri,
+        render: render,
+        summary: render.summary
+      )
+
       return AppViewEntryListItem(
         entryId: row.uri,
         title: HtmlTextDecoder.decodePlainText(render.title),
         summary: render.summary.map(HtmlTextDecoder.decodePlainText),
         publishedAt: publishedAt,
         thumbnailUrl: render.thumbnailUrl,
-        thumbnailFallbackUrl: nil
+        thumbnailFallbackUrl: nil,
+        originalUrl: originalUrl
       )
     }
   }

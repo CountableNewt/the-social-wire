@@ -450,7 +450,8 @@ struct BootstrapStreamService {
       summary: item.summary,
       publishedAt: item.publishedAt,
       thumbnailUrl: item.thumbnailUrl,
-      thumbnailFallbackUrl: item.thumbnailFallbackUrl
+      thumbnailFallbackUrl: item.thumbnailFallbackUrl,
+      originalUrl: item.originalUrl
     )
   }
 

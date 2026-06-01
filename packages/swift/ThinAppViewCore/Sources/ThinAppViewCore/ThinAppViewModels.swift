@@ -80,6 +80,8 @@ public struct AppViewEntryListItem: Codable, Sendable {
   public let publishedAt: Date
   public let thumbnailUrl: String?
   public let thumbnailFallbackUrl: String?
+  /// Canonical article HTTPS URL when indexed (RSS link, render `articleUrl`, etc.).
+  public let originalUrl: String?
 
   public init(
     entryId: String,
@@ -87,7 +89,8 @@ public struct AppViewEntryListItem: Codable, Sendable {
     summary: String? = nil,
     publishedAt: Date,
     thumbnailUrl: String? = nil,
-    thumbnailFallbackUrl: String? = nil
+    thumbnailFallbackUrl: String? = nil,
+    originalUrl: String? = nil
   ) {
     self.entryId = entryId
     self.title = title
@@ -95,6 +98,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
     self.publishedAt = publishedAt
     self.thumbnailUrl = thumbnailUrl
     self.thumbnailFallbackUrl = thumbnailFallbackUrl
+    self.originalUrl = originalUrl
   }
 }
 

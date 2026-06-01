@@ -7,6 +7,7 @@ struct EntryListItem: Identifiable, Codable, Equatable, Sendable {
     var publishedAt: String
     var thumbnailUrl: String?
     var thumbnailFallbackUrl: String?
+    var originalUrl: String?
 
     var id: String { entryId }
 }

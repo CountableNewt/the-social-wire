@@ -78,19 +78,27 @@ export async function listEntriesFromAppView(args: {
       publishedAt: string;
       thumbnailUrl?: string;
       thumbnailFallbackUrl?: string;
+      originalUrl?: string;
     }>;
     cursor?: string;
   };
 
   return {
-    entries: (json.entries ?? []).map((row) => ({
-      entryId: row.entryId,
-      title: row.title,
-      summary: row.summary,
-      publishedAt: row.publishedAt,
-      thumbnailUrl: row.thumbnailUrl,
-      thumbnailFallbackUrl: row.thumbnailFallbackUrl,
-    })),
+    entries: (json.entries ?? []).map((row) => {
+      const originalUrl = row.originalUrl?.trim();
+      const normalizedOriginal = originalUrl
+        ? normalizeHttpUrlToHttps(originalUrl)
+        : undefined;
+      return {
+        entryId: row.entryId,
+        title: row.title,
+        summary: row.summary,
+        publishedAt: row.publishedAt,
+        thumbnailUrl: row.thumbnailUrl,
+        thumbnailFallbackUrl: row.thumbnailFallbackUrl,
+        ...(normalizedOriginal ? { originalUrl: normalizedOriginal } : {}),
+      };
+    }),
     cursor: json.cursor,
   };
 }

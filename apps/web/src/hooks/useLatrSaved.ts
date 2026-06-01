@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { resolveNativeSavedSubjectPreview } from "@/lib/atprotoClient";
 import type { LatrSaveListState, MergedLatrSave } from "@/lib/pdsClient";
 import { normalizeLatrHttpsUrl } from "@/lib/latrSavedUrls";
 import { createReadLaterProvider } from "@/lib/readLaterProvider";
@@ -136,6 +137,7 @@ export function useArchiveHttpsReadLaterMutation() {
 
 export function useSaveReadLaterEntryMutation() {
   const provider = useReadLaterProvider();
+  const { getOAuthSession } = useAuth();
   const qc = useQueryClient();
 
   return useMutation({
@@ -146,13 +148,28 @@ export function useSaveReadLaterEntryMutation() {
       excerpt?: string;
     }) => {
       if (!provider) throw new Error("No read-later provider — not signed in");
-      if (params.url?.trim()) {
-        return provider.saveHttpsUrl(params.url, {
-          title: params.title,
-          excerpt: params.excerpt,
-        });
+
+      const saveOptions = {
+        title: params.title,
+        excerpt: params.excerpt,
+      };
+
+      const explicitUrl = params.url?.trim();
+      if (explicitUrl) {
+        return provider.saveHttpsUrl(explicitUrl, saveOptions);
       }
-      return provider.saveNativeSubject(params.entryId, params.url);
+
+      const oauthSession = getOAuthSession();
+      const preview = oauthSession
+        ? await resolveNativeSavedSubjectPreview(params.entryId, oauthSession)
+        : null;
+      const linkedWebUrl = preview?.url?.trim();
+
+      if (linkedWebUrl) {
+        return provider.saveHttpsUrl(linkedWebUrl, saveOptions);
+      }
+
+      return provider.saveNativeSubject(params.entryId);
     },
     onSuccess: () => invalidateLatrSaveQueries(qc),
   });
