@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   findReadLaterService,
+  isLatrPdsReadLaterService,
+  LATR_PDS_READ_LATER_SERVICE_IDS,
   READ_LATER_SERVICES,
   READ_LATER_SERVICE_STORAGE_KEY,
 } from "@/lib/readLaterServices";
@@ -23,10 +25,20 @@ describe("readLaterServices", () => {
     expect(findReadLaterService("readwise-reader").label).toBe(
       "Readwise Reader"
     );
+    expect(findReadLaterService("latrkit").label).toBe("LatrKit");
   });
 
-  it("READ_LATER_SERVICES marks latr-link as connected", () => {
-    const latr = READ_LATER_SERVICES.find((s) => s.id === "latr-link");
-    expect(latr?.connected).toBe(true);
+  it("READ_LATER_SERVICES marks latr PDS providers as connected", () => {
+    for (const id of LATR_PDS_READ_LATER_SERVICE_IDS) {
+      const service = READ_LATER_SERVICES.find((s) => s.id === id);
+      expect(service?.connected).toBe(true);
+    }
+  });
+
+  it("isLatrPdsReadLaterService recognizes latr-link and latrkit", () => {
+    expect(isLatrPdsReadLaterService("latr-link")).toBe(true);
+    expect(isLatrPdsReadLaterService("latrkit")).toBe(true);
+    expect(isLatrPdsReadLaterService("instapaper")).toBe(false);
+    expect(isLatrPdsReadLaterService(null)).toBe(false);
   });
 });

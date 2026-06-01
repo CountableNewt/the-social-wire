@@ -100,6 +100,7 @@ export interface SkyreaderFeedSubscriptionRecord {
 
 export type ReadLaterServicePreference =
   | "latr-link"
+  | "latrkit"
   | "instapaper"
   | "omnivore"
   | "readwise-reader"
@@ -115,7 +116,7 @@ export interface PreferencesRecord {
   readLaterService?: ReadLaterServicePreference;
   readLaterConnections?: Partial<
     Record<
-      Exclude<ReadLaterServicePreference, "latr-link">,
+      Exclude<ReadLaterServicePreference, "latr-link" | "latrkit">,
       ReadLaterConnectionPreference
     >
   >;

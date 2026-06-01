@@ -7,6 +7,13 @@ export const READ_LATER_SERVICES = [
     loginUrl: null,
   },
   {
+    id: "latrkit",
+    label: "LatrKit",
+    connected: true,
+    loginLabel: null,
+    loginUrl: null,
+  },
+  {
     id: "instapaper",
     label: "Instapaper",
     connected: false,
@@ -40,6 +47,18 @@ export type ReadLaterServiceId = (typeof READ_LATER_SERVICES)[number]["id"];
 
 export const READ_LATER_SERVICE_STORAGE_KEY =
   "social-wire.saved.read-later-service";
+
+/** Read-later providers backed by `com.latr.saved.*` on the viewer PDS + latr-gateway mutations. */
+export const LATR_PDS_READ_LATER_SERVICE_IDS = [
+  "latr-link",
+  "latrkit",
+] as const satisfies ReadLaterServiceId[];
+
+export function isLatrPdsReadLaterService(
+  serviceId: string | null | undefined
+): serviceId is (typeof LATR_PDS_READ_LATER_SERVICE_IDS)[number] {
+  return LATR_PDS_READ_LATER_SERVICE_IDS.some((id) => id === serviceId);
+}
 
 export function findReadLaterService(serviceId: string | null | undefined) {
   return (

@@ -14,6 +14,13 @@ import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { SavedLinkPublicationChip } from "@/components/SavedLinks/SavedLinkPublicationChip";
 import { SavedLinkSocialToolbar } from "@/components/SavedLinks/SavedLinkSocialToolbar";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -23,7 +30,7 @@ import {
   useUnarchiveLatrSaveMutation,
 } from "@/hooks/useLatrSaved";
 import { useConfiguredReadLaterService } from "@/hooks/useReadLaterPreferences";
-import { READ_LATER_SERVICES } from "@/lib/readLaterServices";
+import { READ_LATER_SERVICES, isLatrPdsReadLaterService } from "@/lib/readLaterServices";
 import type { LatrSaveListState, MergedLatrSave } from "@/lib/pdsClient";
 import { recordKindFromLatrSave } from "@/lib/recordKindDebug";
 import {
@@ -93,6 +100,60 @@ function rowSubtitle(row: MergedLatrSave): string {
   return parts.join(" · ");
 }
 
+function SavedLinkRowActions({
+  row,
+  isArchivedView,
+  archivePending,
+  unarchivePending,
+  deletePending,
+  onArchive,
+  onUnarchive,
+  onDelete,
+}: {
+  row: MergedLatrSave;
+  isArchivedView: boolean;
+  archivePending: boolean;
+  unarchivePending: boolean;
+  deletePending: boolean;
+  onArchive: (row: MergedLatrSave) => void;
+  onUnarchive: (row: MergedLatrSave) => void;
+  onDelete: (row: MergedLatrSave) => void;
+}) {
+  return (
+    <>
+      {isArchivedView ? (
+        <ContextMenuItem
+          className="gap-2"
+          disabled={unarchivePending}
+          onClick={() => onUnarchive(row)}
+        >
+          <ArchiveRestore className="size-4" />
+          Unarchive
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuItem
+          className="gap-2"
+          disabled={archivePending}
+          onClick={() => onArchive(row)}
+        >
+          <Archive className="size-4" />
+          Archive
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        variant="destructive"
+        className="gap-2"
+        disabled={deletePending}
+        onClick={() => onDelete(row)}
+      >
+        <Trash2 className="size-4" />
+        Delete
+      </ContextMenuItem>
+    </>
+  );
+}
+
 interface SavedLinksBrowserProps {
   mode: SavedLinksBrowserMode;
 }
@@ -108,7 +169,7 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
     service: configuredService,
     serviceId,
   } = useConfiguredReadLaterService();
-  const configuredServiceIsLatr = serviceId === "latr-link";
+  const configuredServiceIsLatr = isLatrPdsReadLaterService(serviceId);
   const configuredServiceLabel =
     READ_LATER_SERVICES.find((s) => s.id === serviceId)?.label ??
     configuredService.label;
@@ -209,7 +270,7 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
           List view for this read-later provider is not available yet. Open a saved link from{" "}
-          {configuredServiceLabel} elsewhere, or switch to LATR Link in settings.
+          {configuredServiceLabel} elsewhere, or switch to L@tr.link or LatrKit in settings.
         </div>
       );
     }
@@ -246,15 +307,14 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pt-2">
         {data.map((row) => {
           const id = rowId(row);
-          return (
-            <div key={id} className={articleListCardWrapperClassName}>
-              <button
-                type="button"
-                onClick={() => setSelectedRowId(id)}
-                className={articleListCardButtonClassName({
-                  isSelected: resolvedSelectedRowId === id,
-                })}
-              >
+          const card = (
+            <button
+              type="button"
+              onClick={() => setSelectedRowId(id)}
+              className={articleListCardButtonClassName({
+                isSelected: resolvedSelectedRowId === id,
+              })}
+            >
               <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden bg-muted/40">
                 {row.image ? (
                   <>
@@ -293,6 +353,27 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
                 />
               </div>
             </button>
+          );
+
+          return (
+            <div key={id} className={articleListCardWrapperClassName}>
+              <ContextMenu>
+                <ContextMenuTrigger className="flex w-full min-w-0 outline-none">
+                  {card}
+                </ContextMenuTrigger>
+                <ContextMenuContent className="min-w-[11rem]">
+                  <SavedLinkRowActions
+                    row={row}
+                    isArchivedView={isArchivedView}
+                    archivePending={archiveMut.isPending}
+                    unarchivePending={unarchiveMut.isPending}
+                    deletePending={deleteMut.isPending}
+                    onArchive={handleArchive}
+                    onUnarchive={handleUnarchive}
+                    onDelete={handleDelete}
+                  />
+                </ContextMenuContent>
+              </ContextMenu>
             </div>
           );
         })}

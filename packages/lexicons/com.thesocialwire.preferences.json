@@ -14,6 +14,7 @@
             "type": "string",
             "knownValues": [
               "latr-link",
+              "latrkit",
               "instapaper",
               "omnivore",
               "readwise-reader",

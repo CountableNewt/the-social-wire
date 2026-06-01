@@ -26,6 +26,7 @@ import {
   useSaveHttpsReadLaterMutation,
 } from "@/hooks/useLatrSaved";
 import { useConfiguredReadLaterService } from "@/hooks/useReadLaterPreferences";
+import { isLatrPdsReadLaterService } from "@/lib/readLaterServices";
 import type { EntryDetail } from "@/lib/atprotoClient";
 import { canonicalArticleHttpsUrl } from "@/lib/articleCanonicalUrl";
 import { cn } from "@/lib/utils";
@@ -60,7 +61,7 @@ export function ArticleSocialToolbar({
   const saveLaterMut = useSaveHttpsReadLaterMutation();
   const { serviceId: configuredReadLaterId } =
     useConfiguredReadLaterService();
-  const latrReadLaterWritesEnabled = configuredReadLaterId === "latr-link";
+  const latrReadLaterWritesEnabled = isLatrPdsReadLaterService(configuredReadLaterId);
 
   const [repostOpen, setRepostOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);

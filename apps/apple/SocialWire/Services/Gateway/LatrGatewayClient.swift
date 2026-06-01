@@ -157,7 +157,11 @@ final class LatrGatewayClient {
             forHTTPHeaderField: "DPoP"
         )
 
-        if let credential = LatrGatewayEnvironment.officialClientCredential {
+        if let clientId = LatrGatewayEnvironment.developerClientId,
+           let apiKey = LatrGatewayEnvironment.developerApiKey {
+            request.setValue(clientId, forHTTPHeaderField: LatrGatewayEnvironment.clientIdHeaderName)
+            request.setValue(apiKey, forHTTPHeaderField: LatrGatewayEnvironment.apiKeyHeaderName)
+        } else if let credential = LatrGatewayEnvironment.officialClientCredential {
             request.setValue(credential, forHTTPHeaderField: LatrGatewayEnvironment.officialClientHeaderName)
         }
 

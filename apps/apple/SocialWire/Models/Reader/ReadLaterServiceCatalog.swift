@@ -16,10 +16,23 @@ enum ReadLaterServiceCatalog {
         let loginURL: URL?
     }
 
+    static let latrPdsServiceIds: Set<String> = ["latr-link", "latrkit"]
+
+    static func isLatrPdsReadLaterService(_ id: String) -> Bool {
+        latrPdsServiceIds.contains(id)
+    }
+
     static let options: [Option] = [
         Option(
             id: "latr-link",
             label: "L@tr.link",
+            connectedViaPDS: true,
+            loginLabel: nil,
+            loginURL: nil
+        ),
+        Option(
+            id: "latrkit",
+            label: "LatrKit",
             connectedViaPDS: true,
             loginLabel: nil,
             loginURL: nil

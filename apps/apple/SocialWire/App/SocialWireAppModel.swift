@@ -326,7 +326,7 @@ final class SocialWireAppModel {
     }
 
     var readLaterLatrConfigured: Bool {
-        effectiveReadLaterServiceId == ReadLaterServiceCatalog.defaultServiceId
+        ReadLaterServiceCatalog.isLatrPdsReadLaterService(effectiveReadLaterServiceId)
     }
 
     func unreadCachedBadge(for publication: DiscoveredPublication) -> Int {

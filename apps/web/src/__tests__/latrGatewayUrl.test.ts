@@ -1,16 +1,91 @@
 import { describe, expect, it } from "bun:test";
-import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
+import {
+  DEFAULT_DEV_LATR_GATEWAY_URL,
+  DEFAULT_PROD_LATR_GATEWAY_URL,
+  DEFAULT_TEST_LATR_GATEWAY_URL,
+  latrGatewayBaseUrl,
+  LOCAL_LATR_GATEWAY_URL,
+} from "@/lib/latrGatewayUrl";
 
 describe("latrGatewayBaseUrl", () => {
+  function withEnv(
+    vars: Record<string, string | undefined>,
+    fn: () => void
+  ): void {
+    const prev: Record<string, string | undefined> = {};
+    for (const key of Object.keys(vars)) {
+      prev[key] = process.env[key];
+      const value = vars[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    try {
+      fn();
+    } finally {
+      for (const [key, value] of Object.entries(prev)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
   it("defaults to local gateway in local env", () => {
-    const prev = process.env.NEXT_PUBLIC_LATR_GATEWAY_URL;
-    const prevEnv = process.env.NEXT_PUBLIC_APP_ENV;
-    delete process.env.NEXT_PUBLIC_LATR_GATEWAY_URL;
-    process.env.NEXT_PUBLIC_APP_ENV = "local";
-    expect(latrGatewayBaseUrl()).toBe("http://127.0.0.1:8080");
-    if (prev !== undefined) process.env.NEXT_PUBLIC_LATR_GATEWAY_URL = prev;
-    else delete process.env.NEXT_PUBLIC_LATR_GATEWAY_URL;
-    if (prevEnv !== undefined) process.env.NEXT_PUBLIC_APP_ENV = prevEnv;
-    else delete process.env.NEXT_PUBLIC_APP_ENV;
+    withEnv(
+      {
+        NEXT_PUBLIC_LATR_GATEWAY_URL: undefined,
+        NEXT_PUBLIC_APP_ENV: "local",
+      },
+      () => {
+        expect(latrGatewayBaseUrl()).toBe(LOCAL_LATR_GATEWAY_URL);
+      }
+    );
+  });
+
+  it("defaults to api.testing.latr.link for test env", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_LATR_GATEWAY_URL: undefined,
+        NEXT_PUBLIC_APP_ENV: "test",
+      },
+      () => {
+        expect(latrGatewayBaseUrl()).toBe(DEFAULT_TEST_LATR_GATEWAY_URL);
+      }
+    );
+  });
+
+  it("defaults to api.testing.latr.link for dev env", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_LATR_GATEWAY_URL: undefined,
+        NEXT_PUBLIC_APP_ENV: "dev",
+      },
+      () => {
+        expect(latrGatewayBaseUrl()).toBe(DEFAULT_DEV_LATR_GATEWAY_URL);
+      }
+    );
+  });
+
+  it("defaults to api.latr.link for prod env", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_LATR_GATEWAY_URL: undefined,
+        NEXT_PUBLIC_APP_ENV: "prod",
+      },
+      () => {
+        expect(latrGatewayBaseUrl()).toBe(DEFAULT_PROD_LATR_GATEWAY_URL);
+      }
+    );
+  });
+
+  it("prefers explicit NEXT_PUBLIC_LATR_GATEWAY_URL", () => {
+    withEnv(
+      {
+        NEXT_PUBLIC_LATR_GATEWAY_URL: "https://custom.example/",
+        NEXT_PUBLIC_APP_ENV: "prod",
+      },
+      () => {
+        expect(latrGatewayBaseUrl()).toBe("https://custom.example");
+      }
+    );
   });
 });
