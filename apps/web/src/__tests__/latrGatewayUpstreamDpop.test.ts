@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   pdsXrpcMethodForGatewayRequest,
   pdsXrpcMethodForSocialWireGatewayRequest,
+  refreshPdsDpopNonceForGateway,
 } from "@/lib/latrGatewayUpstreamDpop";
 
 describe("pdsXrpcMethodForGatewayRequest", () => {
@@ -52,5 +53,37 @@ describe("pdsXrpcMethodForSocialWireGatewayRequest", () => {
       xrpcMethod: "com.atproto.repo.putRecord",
       httpMethod: "POST",
     });
+  });
+});
+
+describe("refreshPdsDpopNonceForGateway", () => {
+  it("reuses cached nonce when listRecords succeeds without DPoP-Nonce header", async () => {
+    const calls: string[] = [];
+    const oauthSession = {
+      did: "did:plc:test",
+      getTokenInfo: async () => ({
+        aud: "https://jellybaby.us-east.host.bsky.network",
+      }),
+      fetchHandler: async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? "GET"} ${url}`);
+        return new Response(null, { status: 200 });
+      },
+      server: {
+        dpopNonces: {
+          get: async () => "cached-after-list",
+          set: async () => {},
+        },
+      },
+    };
+
+    const nonce = await refreshPdsDpopNonceForGateway(
+      oauthSession as never,
+      "com.atproto.repo.listRecords",
+      "GET"
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("com.atproto.repo.listRecords");
+    expect(nonce).toBe("cached-after-list");
   });
 });

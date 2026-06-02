@@ -1209,21 +1209,26 @@ export class PDSClient {
   ): Promise<MergedLatrSave[]> {
     const { state = "active", signal } = options;
 
-    const rows = latrReadLaterUsesGateway()
-      ? mergedLatrSavesFromGatewayItems(
+    let rows: MergedLatrSave[];
+    if (latrReadLaterUsesGateway()) {
+      try {
+        rows = mergedLatrSavesFromGatewayItems(
           await listLatrSavedItemsViaGateway(this.oauthSession, { signal })
-        )
-      : filterMergedLatrSavesByState(
-          mergeExternalsAndItemsToHttpsRows(
-            await this.listLatrSavedExternals(signal),
-            await this.listLatrSavedItems(signal)
-          ),
-          state
         );
+      } catch {
+        rows = mergeExternalsAndItemsToHttpsRows(
+          await this.listLatrSavedExternals(signal),
+          await this.listLatrSavedItems(signal)
+        );
+      }
+    } else {
+      rows = mergeExternalsAndItemsToHttpsRows(
+        await this.listLatrSavedExternals(signal),
+        await this.listLatrSavedItems(signal)
+      );
+    }
 
-    const filtered = latrReadLaterUsesGateway()
-      ? filterMergedLatrSavesByState(rows, state)
-      : rows;
+    const filtered = filterMergedLatrSavesByState(rows, state);
 
     signal?.throwIfAborted();
     return Promise.all(

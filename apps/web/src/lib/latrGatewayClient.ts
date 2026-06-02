@@ -12,8 +12,8 @@ import {
 } from "@/lib/latrGatewayCredentials";
 import { latrGatewayErrorMessage } from "@/lib/latrGatewayErrors";
 import {
-  createSaveUpstreamDpopProofPool,
-  createUpstreamDpopProof,
+  createGatewaySaveUpstreamDpopProofPool,
+  createGatewayUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
 } from "@/lib/latrGatewayUpstreamDpop";
 import { latrGatewayProxyPath } from "@/lib/latrGatewayProxyPath";
@@ -45,13 +45,13 @@ async function buildUpstreamDpopHeader(
   gatewayPath: string
 ): Promise<string | undefined> {
   if (method === "POST" && gatewayPath === "/v1/latr/saves") {
-    return createSaveUpstreamDpopProofPool(oauthSession);
+    return createGatewaySaveUpstreamDpopProofPool(oauthSession);
   }
 
   const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
   if (!upstream) return undefined;
 
-  return createUpstreamDpopProof(
+  return createGatewayUpstreamDpopProof(
     oauthSession,
     upstream.xrpcMethod,
     upstream.httpMethod
@@ -96,7 +96,8 @@ export async function latrGatewayFetch(
   oauthSession: OAuthSession,
   path: string,
   init?: RequestInit,
-  attempt = 0
+  attempt = 0,
+  gatewayDpopNonce?: string
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
   const gatewayUrl = `${latrGatewayBaseUrl()}${gatewayPath}`;
@@ -106,7 +107,8 @@ export async function latrGatewayFetch(
     oauthSession,
     method,
     gatewayPathOnly(gatewayPath),
-    gatewayUrl
+    gatewayUrl,
+    gatewayDpopNonce ? { dpopNonce: gatewayDpopNonce } : {}
   );
 
   const res = await fetch(proxyUrl, {
@@ -120,7 +122,16 @@ export async function latrGatewayFetch(
   await captureGatewayDpopNonceFromResponse(oauthSession, gatewayUrl, res);
 
   if (attempt === 0 && shouldRetryLatrGatewayDpopNonce(res)) {
-    return latrGatewayFetch(oauthSession, path, init, attempt + 1);
+    const retryNonce =
+      res.headers.get("DPoP-Nonce")?.trim() ??
+      res.headers.get("dpop-nonce")?.trim();
+    return latrGatewayFetch(
+      oauthSession,
+      path,
+      init,
+      attempt + 1,
+      retryNonce
+    );
   }
 
   await noteInvalidClientCredential(res);
