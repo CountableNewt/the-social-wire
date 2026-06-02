@@ -34,23 +34,39 @@ class LatrGatewayReadLaterProvider implements ReadLaterProvider {
 
   constructor(
     private readonly oauthSession: OAuthSession,
+    private readonly pdsClient: PDSClient,
     private readonly viewerDid: string
   ) {}
+
+  private async withPdsFallback<T>(
+    gatewayCall: () => Promise<T>,
+    pdsFallback: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await gatewayCall();
+    } catch {
+      return pdsFallback();
+    }
+  }
 
   async saveHttpsUrl(
     url: string,
     options?: { title?: string; excerpt?: string }
   ): Promise<void> {
-    await latrGatewayJson(this.oauthSession, "/v1/latr/saves", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind: "url",
-        url,
-        ...(options?.title?.trim() ? { title: options.title.trim() } : {}),
-        ...(options?.excerpt?.trim() ? { excerpt: options.excerpt.trim() } : {}),
-      }),
-    });
+    await this.withPdsFallback(
+      () =>
+        latrGatewayJson(this.oauthSession, "/v1/latr/saves", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "url",
+            url,
+            ...(options?.title?.trim() ? { title: options.title.trim() } : {}),
+            ...(options?.excerpt?.trim() ? { excerpt: options.excerpt.trim() } : {}),
+          }),
+        }),
+      () => this.pdsClient.saveHttpsReadLater(url, options).then(() => undefined)
+    );
   }
 
   async saveNativeSubject(subjectUri: string, linkedWebUrl?: string): Promise<void> {
@@ -66,19 +82,29 @@ class LatrGatewayReadLaterProvider implements ReadLaterProvider {
   }
 
   async deleteSaveItem(itemRkey: string): Promise<void> {
-    await latrGatewayJson(
-      this.oauthSession,
-      `/v1/latr/saves/${encodeURIComponent(itemRkey)}`,
-      { method: "DELETE" }
+    await this.withPdsFallback(
+      () =>
+        latrGatewayJson(
+          this.oauthSession,
+          `/v1/latr/saves/${encodeURIComponent(itemRkey)}`,
+          { method: "DELETE" }
+        ),
+      () => this.pdsClient.deleteLatrSaveItem(itemRkey)
     );
   }
 
   async archiveSaveItem(itemRkey: string): Promise<void> {
-    await this.patchSaveState(itemRkey, "archived");
+    await this.withPdsFallback(
+      () => this.patchSaveState(itemRkey, "archived"),
+      () => this.pdsClient.setLatrSaveItemState(itemRkey, "archived")
+    );
   }
 
   async unarchiveSaveItem(itemRkey: string): Promise<void> {
-    await this.patchSaveState(itemRkey, "unread");
+    await this.withPdsFallback(
+      () => this.patchSaveState(itemRkey, "unread"),
+      () => this.pdsClient.setLatrSaveItemState(itemRkey, "unread")
+    );
   }
 
   async deleteHttpsUrl(normalizedUrl: string): Promise<void> {
@@ -162,5 +188,5 @@ export function createReadLaterProvider(
   if (readLaterProviderId() === "pds-direct") {
     return new PdsDirectReadLaterProvider(pdsClient);
   }
-  return new LatrGatewayReadLaterProvider(oauthSession, viewerDid);
+  return new LatrGatewayReadLaterProvider(oauthSession, pdsClient, viewerDid);
 }

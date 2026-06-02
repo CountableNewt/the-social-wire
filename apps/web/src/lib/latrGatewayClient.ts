@@ -12,10 +12,10 @@ import {
 } from "@/lib/latrGatewayCredentials";
 import { latrGatewayErrorMessage } from "@/lib/latrGatewayErrors";
 import {
-  createGatewaySaveUpstreamDpopProofPool,
-  createGatewayUpstreamDpopProof,
+  createSaveUpstreamDpopProofPool,
+  createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
-} from "@/lib/latrGatewayUpstreamDpop";
+} from "latr-packages/gateway-client";
 import { latrGatewayProxyPath } from "@/lib/latrGatewayProxyPath";
 import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 import {
@@ -45,13 +45,13 @@ async function buildUpstreamDpopHeader(
   gatewayPath: string
 ): Promise<string | undefined> {
   if (method === "POST" && gatewayPath === "/v1/latr/saves") {
-    return createGatewaySaveUpstreamDpopProofPool(oauthSession);
+    return createSaveUpstreamDpopProofPool(oauthSession);
   }
 
   const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
   if (!upstream) return undefined;
 
-  return createGatewayUpstreamDpopProof(
+  return createUpstreamDpopProof(
     oauthSession,
     upstream.xrpcMethod,
     upstream.httpMethod
