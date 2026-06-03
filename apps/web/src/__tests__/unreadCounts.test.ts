@@ -160,6 +160,40 @@ describe("effectivePublicationUnreadCount", () => {
       effectivePublicationUnreadCount(0, queryClient, publicationId, () => false)
     ).toBe(1);
   });
+
+  it("does not raise above server baseline when capRaiseToServerCount is set", () => {
+    const publicationId = "rss:https://example.com/feed.xml";
+    const queryClient = mockQueryClientWithEntries(
+      publicationId,
+      Array.from({ length: 20 }, (_, i) =>
+        makeEntry(`rssentry:https://example.com/post-${i}`)
+      )
+    );
+
+    expect(
+      effectivePublicationUnreadCount(3, queryClient, publicationId, () => false, {
+        capRaiseToServerCount: true,
+      })
+    ).toBe(3);
+  });
+
+  it("still lowers server count when capRaiseToServerCount is set", () => {
+    const publicationId =
+      "at://did:plc:author/site.standard.publication/main";
+    const readId = "at://did:plc:author/site.standard.document/read";
+    const unreadId = "at://did:plc:author/site.standard.document/unread";
+    const queryClient = mockQueryClientWithEntries(publicationId, [
+      makeEntry(readId),
+      makeEntry(unreadId),
+    ]);
+    const isRead = (id: string) => id === readId;
+
+    expect(
+      effectivePublicationUnreadCount(5, queryClient, publicationId, isRead, {
+        capRaiseToServerCount: true,
+      })
+    ).toBe(4);
+  });
 });
 
 describe("sumUnreadForPublications", () => {

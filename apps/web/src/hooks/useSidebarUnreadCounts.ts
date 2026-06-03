@@ -36,7 +36,8 @@ export function useSidebarUnreadCounts(
               serverCount,
               queryClient,
               pub.publicationId,
-              isEntryRead
+              isEntryRead,
+              { capRaiseToServerCount: true }
             )
           : serverCount
       );

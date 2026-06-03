@@ -55,6 +55,14 @@ export function countCachedReadEntries(
   return count;
 }
 
+export type EffectivePublicationUnreadCountOptions = {
+  /**
+   * When true, a non-zero AppView baseline is never exceeded by partial first-page
+   * cache (sidebar prefetch). Local read marks can still lower the badge.
+   */
+  capRaiseToServerCount?: boolean;
+};
+
 /**
  * Merges AppView unread baseline with local read state for cached feed rows.
  */
@@ -62,14 +70,19 @@ export function effectivePublicationUnreadCount(
   serverCount: number,
   queryClient: QueryClient,
   publicationId: string,
-  isEntryRead: (entryId: string) => boolean
+  isEntryRead: (entryId: string) => boolean,
+  options?: EffectivePublicationUnreadCountOptions
 ): number {
   const cached = getCachedEntriesForPublication(queryClient, publicationId);
   if (cached.length === 0) return serverCount;
 
   const cachedUnread = countUnreadCachedEntries(cached, isEntryRead);
   const cachedRead = countCachedReadEntries(cached, isEntryRead);
-  return Math.max(cachedUnread, serverCount - cachedRead);
+  const reconciled = Math.max(cachedUnread, serverCount - cachedRead);
+  if (options?.capRaiseToServerCount && serverCount > 0) {
+    return Math.min(reconciled, serverCount);
+  }
+  return reconciled;
 }
 
 /**

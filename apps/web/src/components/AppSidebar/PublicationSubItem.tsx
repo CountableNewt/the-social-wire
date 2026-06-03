@@ -205,8 +205,7 @@ export function PublicationSubItem({
             render={<button type="button" />}
             onClick={() => onSelect(publication.publicationId)}
             className={cn(
-              "min-w-0 flex-1 gap-2",
-              unreadCount > 0 && "relative pr-8",
+              "relative min-w-0 flex-1 gap-2 pr-8",
               devRecordKindVisible &&
                 "h-auto min-h-9 items-start overflow-visible py-1.5"
             )}
@@ -216,14 +215,18 @@ export function PublicationSubItem({
               <span className="w-full truncate">{publication.title}</span>
               <DevRecordKindBadge info={recordKind} />
             </div>
-            {unreadCount > 0 ? (
-              <SidebarMenuBadge
-                className="top-1/2 -translate-y-1/2"
-                aria-label={`${unreadCount} unread`}
-              >
-                {unreadCount}
-              </SidebarMenuBadge>
-            ) : null}
+            <SidebarMenuBadge
+              className={cn(
+                "top-1/2 -translate-y-1/2",
+                unreadCount <= 0 && "pointer-events-none opacity-0"
+              )}
+              aria-hidden={unreadCount <= 0}
+              aria-label={
+                unreadCount > 0 ? `${unreadCount} unread` : undefined
+              }
+            >
+              {unreadCount > 0 ? unreadCount : 0}
+            </SidebarMenuBadge>
           </SidebarMenuSubButton>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-[11rem]">

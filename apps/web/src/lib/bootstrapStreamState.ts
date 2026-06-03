@@ -76,7 +76,7 @@ export function applySidebarFoldersEvent(
     allPublicationRows: PublicationSidebarProjection["allPublicationRows"];
   }
 ): PublicationSidebarProjection {
-  const merged = mergeSidebarProjections(projection, {
+  return mergeSidebarProjections(projection, {
     ...projection,
     folderSections: payload.folderSections,
     allPublicationRows: payload.allPublicationRows,
@@ -88,17 +88,6 @@ export function applySidebarFoldersEvent(
     enrollAuthorDids: [],
     refreshedAt: projection.refreshedAt,
   });
-
-  const counts: Record<string, number> = {};
-  for (const row of sidebarPublicationRows(merged)) {
-    if (row.unreadCount != null && row.unreadCount > 0) {
-      counts[row.publicationId] = row.unreadCount;
-    }
-  }
-
-  return Object.keys(counts).length > 0
-    ? applyUnreadCountsEvent(merged, counts)
-    : merged;
 }
 
 export function writeStreamedEntriesPage(
