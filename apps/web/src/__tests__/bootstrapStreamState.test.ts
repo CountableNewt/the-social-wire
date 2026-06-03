@@ -24,6 +24,7 @@ function minimalProjection(
         authorDid: "did:web:skyreader.rss",
         authorHandle: "RSS",
         title: "Example RSS",
+        discoveredAt: "2026-01-01T00:00:00.000Z",
         appViewScope: {
           authorDid: "did:web:skyreader.rss",
           publicationAtUri: null,
