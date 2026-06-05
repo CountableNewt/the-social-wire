@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronRight, LogOut, RefreshCw, Bookmark, Archive } from "lucide-react";
+import iconSrc from "@/app/icon.png";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -266,9 +268,16 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <Image
+              src={iconSrc}
+              alt=""
+              width={24}
+              height={24}
+              className="shrink-0 rounded-md"
+            />
             <span className="truncate font-semibold text-sm">The Social Wire</span>
-            <span className="inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               Beta
             </span>
           </div>

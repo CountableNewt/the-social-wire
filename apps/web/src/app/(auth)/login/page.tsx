@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import iconSrc from "@/app/icon.png";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -26,6 +28,16 @@ export default function LoginPage() {
     <div className="flex min-h-[calc(100svh-var(--environment-banner-height,0px))] flex-1 items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
+          <div className="mb-4 flex justify-center">
+            <Image
+              src={iconSrc}
+              alt=""
+              width={56}
+              height={56}
+              className="rounded-2xl"
+              priority
+            />
+          </div>
           <h1 className="text-2xl font-bold tracking-tight">The Social Wire</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Sign in with your Bluesky or ATProto account
