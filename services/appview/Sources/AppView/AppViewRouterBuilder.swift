@@ -94,8 +94,7 @@ enum AppViewRouterBuilder {
 
     AppViewExtendedRoutes(
       readService: readService,
-      projectionService: projection,
-      repo: repo
+      projectionService: projection
     ).register(on: protected)
 
     let bootstrapStream = BootstrapStreamService(

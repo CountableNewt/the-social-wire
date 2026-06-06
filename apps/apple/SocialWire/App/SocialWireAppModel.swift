@@ -188,7 +188,10 @@ final class SocialWireAppModel {
 
     func cachedEntryIdsForBulkRead(publications: [DiscoveredPublication]) -> [String] {
         let publicationIds = publications.map(\.publicationId)
-        return readerCacheCoordinator?.distinctCachedEntryIds(publicationIds: publicationIds) ?? []
+        return PublicationUnreadCountLookup.distinctCachedEntryIds(
+            coordinator: readerCacheCoordinator,
+            publicationIds: publicationIds
+        )
     }
 
     func cachedEntryIds(for scope: ReaderMarkReadScope) -> [String] {
@@ -198,7 +201,10 @@ final class SocialWireAppModel {
         case .list(let source):
             cachedEntryIdsForBulkRead(publications: publicationsForBulkRead(list: source))
         case .publication(let publicationId):
-            readerCacheCoordinator?.distinctCachedEntryIds(publicationIds: [publicationId]) ?? []
+            PublicationUnreadCountLookup.distinctCachedEntryIds(
+                coordinator: readerCacheCoordinator,
+                publicationIds: [publicationId]
+            )
         case .entry, .unavailable:
             []
         }
@@ -217,7 +223,7 @@ final class SocialWireAppModel {
 
     private func bulkScopeHasUnread(_ scope: ReaderMarkReadScope) -> Bool {
         let publications = publicationsAffected(by: scope)
-        if publications.contains(where: { (unreadCountsByPublicationId[$0.publicationId] ?? 0) > 0 }) {
+        if publications.contains(where: { displayUnreadCount(publicationId: $0.publicationId) > 0 }) {
             return true
         }
         return cachedEntryIds(for: scope).contains { readAtByEntryId[$0] == nil }
@@ -248,6 +254,9 @@ final class SocialWireAppModel {
             do {
                 for gatewayScope in scopes {
                     _ = try await gateway.markAllRead(scope: gatewayScope)
+                }
+                for entryId in entryIds {
+                    await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
                 }
                 await syncCrossClientReadState()
             } catch {
@@ -335,8 +344,15 @@ final class SocialWireAppModel {
 
   /// AppView baseline reconciled with cached feed rows and local read state.
   private func displayUnreadCount(publicationId: String) -> Int {
-    let serverCount = unreadCountsByPublicationId[publicationId] ?? 0
-    let cachedEntryIds = readerCacheCoordinator?.distinctCachedEntryIds(publicationIds: [publicationId]) ?? []
+    let serverCount = PublicationUnreadCountLookup.lookup(
+      in: unreadCountsByPublicationId,
+      publicationId: publicationId
+    )
+    guard serverCount > 0 else { return 0 }
+    let cachedEntryIds = PublicationUnreadCountLookup.distinctCachedEntryIds(
+      coordinator: readerCacheCoordinator,
+      publicationIds: [publicationId]
+    )
     return EffectiveUnreadCount.effectivePublicationUnreadCount(
       serverCount: serverCount,
       cachedEntryIds: cachedEntryIds,
@@ -346,12 +362,18 @@ final class SocialWireAppModel {
 
   private func adjustUnreadCount(publicationId: String, delta: Int) {
     guard delta != 0 else { return }
-    let current = unreadCountsByPublicationId[publicationId] ?? 0
+    var map = unreadCountsByPublicationId
+    let current = PublicationUnreadCountLookup.lookup(in: map, publicationId: publicationId)
     let next = max(0, current + delta)
-    if next > 0 {
-      unreadCountsByPublicationId[publicationId] = next
-    } else {
-      unreadCountsByPublicationId.removeValue(forKey: publicationId)
+    PublicationUnreadCountLookup.store(next, for: publicationId, in: &map)
+    unreadCountsByPublicationId = map
+
+    if let projection = cachedPriorityProjection {
+      cachedPriorityProjection = PublicationProjectionMapping.applyingUnreadCounts(
+        to: projection,
+        counts: [publicationId: next],
+        replacePublicationIds: [publicationId]
+      )
     }
   }
 
@@ -362,47 +384,60 @@ final class SocialWireAppModel {
       return selectedPublication.publicationId
     }
     if let publication = gatewayAllPublicationRows.first(where: { publication in
-      (try? readerCacheCoordinator?.publicationEntries(publication.publicationId))?
-        .contains(where: { $0.entryId == entryId }) == true
+      let cacheKeys = [
+        publication.publicationId,
+        normalizeATRepoParam(publication.publicationId),
+        canonicalPublicationAtUriKey(publication.publicationId),
+      ].compactMap { $0 }
+      return cacheKeys.contains { cacheKey in
+        (try? readerCacheCoordinator?.publicationEntries(cacheKey))?
+          .contains(where: { $0.entryId == entryId }) == true
+      }
     }) {
       return publication.publicationId
     }
     return selectedPublication?.publicationId
   }
 
-    private func applyStreamUnreadCounts(_ counts: [String: Int]) {
-        let publicationIds = Set(
-            gatewayAllPublicationRows.map(\.publicationId)
-                + gatewayMyPublications.map(\.publicationId)
-                + gatewaySubscribedUnfoldered.map(\.publicationId)
-                + gatewayFollowingTab.map(\.publicationId)
+    private func sidebarPublicationIds() -> [String] {
+        Array(
+            Set(
+                gatewayAllPublicationRows.map(\.publicationId)
+                    + gatewayMyPublications.map(\.publicationId)
+                    + gatewaySubscribedUnfoldered.map(\.publicationId)
+                    + gatewayFollowingTab.map(\.publicationId)
+            )
         )
-        for publicationId in publicationIds {
-            let count = counts[publicationId] ?? 0
-            if count > 0 {
-                unreadCountsByPublicationId[publicationId] = count
-            } else {
-                unreadCountsByPublicationId.removeValue(forKey: publicationId)
-            }
+    }
+
+    private func applyStreamUnreadCounts(_ counts: [String: Int]) {
+        applyFetchedUnreadCounts(counts, publicationIds: sidebarPublicationIds())
+        var map = unreadCountsByPublicationId
+        for (publicationId, count) in counts where PublicationUnreadCountLookup.lookup(in: map, publicationId: publicationId) == 0 {
+            PublicationUnreadCountLookup.store(count, for: publicationId, in: &map)
         }
-        for (publicationId, count) in counts where !publicationIds.contains(publicationId) {
-            if count > 0 {
-                unreadCountsByPublicationId[publicationId] = count
-            } else {
-                unreadCountsByPublicationId.removeValue(forKey: publicationId)
-            }
-        }
+        unreadCountsByPublicationId = map
     }
 
     private func applyFetchedUnreadCounts(_ counts: [String: Int], publicationIds: [String]) {
-        for publicationId in publicationIds {
-            let count = counts[publicationId] ?? 0
-            if count > 0 {
-                unreadCountsByPublicationId[publicationId] = count
-            } else {
-                unreadCountsByPublicationId.removeValue(forKey: publicationId)
-            }
+        if let projection = cachedPriorityProjection {
+            cachedPriorityProjection = PublicationProjectionMapping.applyingUnreadCounts(
+                to: projection,
+                counts: counts,
+                replacePublicationIds: publicationIds
+            )
+            unreadCountsByPublicationId = PublicationProjectionMapping.unreadCountsMap(
+                from: cachedPriorityProjection!
+            )
+            return
         }
+
+        var map = unreadCountsByPublicationId
+        for publicationId in publicationIds {
+            let count = PublicationUnreadCountLookup.lookup(in: counts, publicationId: publicationId)
+            PublicationUnreadCountLookup.store(count, for: publicationId, in: &map)
+        }
+        unreadCountsByPublicationId = map
     }
 
     func restoreSession() async {
@@ -535,6 +570,7 @@ final class SocialWireAppModel {
     }
 
     func selectReaderListSource(_ source: ReaderListSource) {
+        guard readerListSource != source else { return }
         selectedEntry = nil
         unreadDeferredEntryId = nil
         applyReaderListSource(source, persist: true)
@@ -612,7 +648,7 @@ final class SocialWireAppModel {
             }
         }
 
-        readAtByEntryId = try await readTask
+        mergeReadAtByEntryId(try await readTask)
         savedLinks = try await savedTask
         archivedSavedLinks = try await archivedTask
         viewerProfile = try? await profileTask
@@ -677,7 +713,8 @@ final class SocialWireAppModel {
         guard let publicationId = pendingStreamSelectedPublicationId else { return }
         guard let publication = publicationMatchingId(publicationId) else { return }
 
-        if let page = pendingStreamedEntriesPage, page.publicationId == publicationId {
+        if let page = pendingStreamedEntriesPage,
+           PublicationUnreadCountLookup.publicationIdsMatch(page.publicationId, publicationId) {
             applyStreamedPublicationSelection(publication: publication, entries: page.entries, cursor: page.cursor)
             pendingStreamedEntriesPage = nil
             pendingStreamSelectedPublicationId = nil
@@ -691,9 +728,17 @@ final class SocialWireAppModel {
         publicationMatchingId(publicationId)
     }
 
+    func resolvedSavedLinkPublicationChip(for save: MergedLatrSave) -> SavedLinkPublicationChipModel? {
+        SavedLinkPublicationResolver.resolve(
+            for: save,
+            sidebarPublications: allPublicationRows,
+            publicationScopes: sidebarScopesByPublicationId
+        )
+    }
+
     private func publicationMatchingId(_ publicationId: String) -> DiscoveredPublication? {
         for publication in gatewayAllPublicationRows + subscribedPublications + followingTabPublications {
-            if publication.publicationId == publicationId {
+            if PublicationUnreadCountLookup.publicationIdsMatch(publication.publicationId, publicationId) {
                 return publication
             }
         }
@@ -1283,7 +1328,7 @@ final class SocialWireAppModel {
                 guard generation == entrySelectionGeneration else { return }
                 guard entries.contains(where: { $0.entryId == item.entryId }) else { return }
                 selectedEntry = cached
-            } else {
+            } else if selectedEntry?.entryId != item.entryId {
                 guard generation == entrySelectionGeneration else { return }
                 selectedEntry = nil
             }
@@ -1324,7 +1369,9 @@ final class SocialWireAppModel {
             let readAt = Date()
             try await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
             await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
-            readAtByEntryId[entryId] = readAt
+            var readMap = readAtByEntryId
+            readMap[entryId] = readAt
+            readAtByEntryId = readMap
             if let publicationId = publicationId(for: entryId) {
                 adjustUnreadCount(publicationId: publicationId, delta: -1)
             }
@@ -1343,14 +1390,18 @@ final class SocialWireAppModel {
                 let readAt = Date()
                 try await gateway.upsertReadMark(subjectUri: item.entryId, readAt: readAt)
                 await syncEntryReadStateToPDS(subjectURI: item.entryId, readAt: readAt)
-                readAtByEntryId[item.entryId] = readAt
+                var readMap = readAtByEntryId
+                readMap[item.entryId] = readAt
+                readAtByEntryId = readMap
                 if let publicationId = publicationId(for: item.entryId) {
                     adjustUnreadCount(publicationId: publicationId, delta: -1)
                 }
             } else {
                 try await gateway.deleteReadMark(subjectUri: item.entryId)
                 await syncEntryReadStateRemovalToPDS(subjectURI: item.entryId)
-                readAtByEntryId.removeValue(forKey: item.entryId)
+                var readMap = readAtByEntryId
+                readMap.removeValue(forKey: item.entryId)
+                readAtByEntryId = readMap
                 if let publicationId = publicationId(for: item.entryId) {
                     adjustUnreadCount(publicationId: publicationId, delta: 1)
                 }
@@ -1365,21 +1416,39 @@ final class SocialWireAppModel {
     func syncCrossClientReadState() async {
         guard isSignedIn else { return }
 
+        let priorReadAtByEntryId = readAtByEntryId
+        var remoteReadAtByEntryId: [String: Date] = [:]
         do {
-            let remote = try await pds.listEntryReadStates()
-            for (entryId, readAt) in remote {
-                if let existing = readAtByEntryId[entryId] {
-                    readAtByEntryId[entryId] = min(existing, readAt)
-                } else {
-                    readAtByEntryId[entryId] = readAt
-                }
-            }
+            remoteReadAtByEntryId = try await pds.listEntryReadStates()
+            mergeReadAtByEntryId(remoteReadAtByEntryId)
         } catch {
             /* keep in-memory read map */
         }
 
+        if useAppViewEntryTimelines {
+            let readsNeedingAppViewSync = remoteReadAtByEntryId.filter { entryId, readAt in
+                guard let prior = priorReadAtByEntryId[entryId] else { return true }
+                return readAt < prior
+            }
+            for (entryId, readAt) in readsNeedingAppViewSync {
+                try? await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
+            }
+        }
+
         await refreshSidebarUnreadCounts()
         await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+    }
+
+    private func mergeReadAtByEntryId(_ remote: [String: Date]) {
+        var merged = readAtByEntryId
+        for (entryId, readAt) in remote {
+            if let existing = merged[entryId] {
+                merged[entryId] = min(existing, readAt)
+            } else {
+                merged[entryId] = readAt
+            }
+        }
+        readAtByEntryId = merged
     }
 
     private func syncEntryReadStateToPDS(subjectURI: String, readAt: Date) async {
@@ -1746,7 +1815,10 @@ final class SocialWireAppModel {
 
     private func clearUnreadCounts(for publications: [DiscoveredPublication]) {
         for publication in publications {
-            unreadCountsByPublicationId.removeValue(forKey: publication.publicationId)
+            PublicationUnreadCountLookup.remove(
+                for: publication.publicationId,
+                from: &unreadCountsByPublicationId
+            )
         }
     }
 

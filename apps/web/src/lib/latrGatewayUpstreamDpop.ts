@@ -14,8 +14,5 @@ export function pdsXrpcMethodForSocialWireGatewayRequest(
   const method = gatewayMethod.toUpperCase();
   const path = gatewayPath.startsWith("/") ? gatewayPath : `/${gatewayPath}`;
 
-  if (method === "POST" && path === "/v1/appview/mark-all-read") {
-    return { xrpcMethod: "com.atproto.repo.putRecord", httpMethod: "POST" };
-  }
   return null;
 }

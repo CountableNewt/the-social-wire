@@ -90,24 +90,67 @@ final class PDSRecordService {
     }
 
     func listEntryReadStates() async throws -> [String: Date] {
-        let page: ListRecordsResponse<EntryReadStateRecord> = try await xrpc.listRecords(repo: "", collection: Self.entryReadState, authorized: true)
         var out: [String: Date] = [:]
-        for record in page.records {
-            guard let date = DateFormatters.date(from: record.value.readAt) else { continue }
-            let existing = out[record.value.subjectUri]
-            out[record.value.subjectUri] = min(existing ?? date, date)
+        for collection in [Self.entryReadState, Self.legacyEntryReadState] {
+            try await mergeEntryReadStates(from: collection, into: &out)
         }
         return out
     }
 
     func markRead(subjectURI: String, readAt: Date = Date()) async throws {
+        let canonicalRkey = DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI)
         let now = DateFormatters.string(from: readAt)
-        let record = EntryReadStateRecord(type: Self.entryReadState, subjectUri: subjectURI, readAt: now, updatedAt: DateFormatters.string())
-        try await xrpc.putRecord(collection: Self.entryReadState, rkey: DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI), record: record)
+        let record = EntryReadStateRecord(
+            type: Self.entryReadState,
+            subjectUri: subjectURI,
+            readAt: now,
+            updatedAt: DateFormatters.string()
+        )
+        try await xrpc.putRecord(collection: Self.entryReadState, rkey: canonicalRkey, record: record)
+        await deleteLegacyEntryReadStateKeys(subjectURI: subjectURI, keepRkey: canonicalRkey)
     }
 
     func markUnread(subjectURI: String) async throws {
-        try await xrpc.deleteRecord(collection: Self.entryReadState, rkey: DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI))
+        await deleteLegacyEntryReadStateKeys(subjectURI: subjectURI, keepRkey: nil)
+        try await xrpc.deleteRecord(
+            collection: Self.entryReadState,
+            rkey: DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI)
+        )
+    }
+
+    private func mergeEntryReadStates(
+        from collection: String,
+        into out: inout [String: Date]
+    ) async throws {
+        var cursor: String?
+        repeat {
+            let page: ListRecordsResponse<EntryReadStateRecord> = try await xrpc.listRecords(
+                repo: "",
+                collection: collection,
+                limit: 100,
+                cursor: cursor,
+                authorized: true
+            )
+            for record in page.records {
+                let subjectURI = record.value.subjectUri.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !subjectURI.isEmpty,
+                      let date = DateFormatters.date(from: record.value.readAt)
+                else { continue }
+                let existing = out[subjectURI]
+                out[subjectURI] = min(existing ?? date, date)
+            }
+            cursor = page.cursor
+        } while cursor != nil
+    }
+
+    private func deleteLegacyEntryReadStateKeys(subjectURI: String, keepRkey: String?) async {
+        let legacyRkeys = [
+            DeterministicKeys.legacyHexEntryReadStateRKey(subjectURI: subjectURI),
+            DeterministicKeys.legacyIOSLatrItemRKey(subjectURI: subjectURI),
+        ]
+        for legacyRkey in legacyRkeys where legacyRkey != keepRkey {
+            try? await xrpc.deleteRecord(collection: Self.entryReadState, rkey: legacyRkey)
+        }
     }
 
     func getPreferences() async throws -> RepoRecord<PreferencesRecord>? {

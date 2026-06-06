@@ -82,6 +82,7 @@ struct SubscribedPublicationSidebarTree: View {
                 Spacer(minLength: 6)
                 SidebarCountLabel(count: appModel.sumUnread(for: pubs))
             }
+            .readerFullWidthTapLabel()
         }
         .readerClearListRow()
         .swipeActions {
@@ -110,15 +111,19 @@ struct SubscribedPublicationSidebarTree: View {
     }
 
     private func publicationRow(_ publication: DiscoveredPublication) -> some View {
-        PublicationSidebarRow(
-            publication: publication,
-            unreadCount: appModel.unreadCachedBadge(for: publication)
-        )
+        Button {
+            appModel.selectedSidebar = .publication(publication.publicationId)
+            onPublicationTap?(publication)
+        } label: {
+            PublicationSidebarRow(
+                publication: publication,
+                unreadCount: appModel.unreadCachedBadge(for: publication)
+            )
+            .readerFullWidthTapLabel()
+        }
+        .buttonStyle(.plain)
         .readerClearListRow()
         .tag(SidebarSelection.publication(publication.publicationId))
-        .onTapGesture {
-            onPublicationTap?(publication)
-        }
         .contextMenu {
             Button {
                 Task { await appModel.refreshPublication(publication) }

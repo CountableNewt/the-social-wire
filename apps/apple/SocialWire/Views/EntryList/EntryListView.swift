@@ -2,7 +2,7 @@ import SwiftUI
 
 struct EntryListView: View {
     @Environment(SocialWireAppModel.self) private var appModel
-    var onOpenEntry: (() -> Void)?
+    var onEntryOpened: (() -> Void)? = nil
 
     var body: some View {
         List {
@@ -16,17 +16,14 @@ struct EntryListView: View {
             } else {
                 Section("Articles") {
                     ForEach(appModel.filteredEntries) { entry in
-                        EntryRow(entry: entry, isRead: appModel.readAtByEntryId[entry.entryId] != nil)
-                            .readerClearListRow()
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                Task {
-                                    await appModel.selectEntry(entry)
-                                    if appModel.selectedEntry?.entryId == entry.entryId {
-                                        onOpenEntry?()
-                                    }
-                                }
-                            }
+                        Button {
+                            Task { await openEntry(entry) }
+                        } label: {
+                            EntryRow(entry: entry, isRead: appModel.readAtByEntryId[entry.entryId] != nil)
+                                .readerFullWidthTapLabel()
+                        }
+                        .buttonStyle(.plain)
+                        .readerClearListRow()
                             .contextMenu {
                                 Button {
                                     Task {
@@ -81,6 +78,12 @@ struct EntryListView: View {
                 await appModel.loadEntries(for: publication)
             }
         }
+    }
+
+    private func openEntry(_ entry: EntryListItem) async {
+        await appModel.selectEntry(entry)
+        guard appModel.selectedEntry?.entryId == entry.entryId else { return }
+        onEntryOpened?()
     }
 
     private var unreadChaseTaskKey: String {

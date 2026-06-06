@@ -547,9 +547,6 @@ final class SocialWireGatewayClient {
             {
                 return "com.atproto.repo.createRecord"
             }
-            if path.hasSuffix("/read-marks") || path.hasSuffix("/mark-all-read") {
-                return "com.atproto.repo.putRecord"
-            }
         case "PUT":
             if path.contains("/folders/") || path.hasSuffix("/prefs") {
                 return "com.atproto.repo.putRecord"

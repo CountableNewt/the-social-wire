@@ -144,3 +144,49 @@ func sumUnreadCount(
 ) -> Int {
     publications.reduce(0) { $0 + unreadCount($1) }
 }
+
+/// Unread-count map keys (mirrors web `lookupUnreadCountInMap` — normalized equality only).
+enum PublicationUnreadCountLookup {
+    static func publicationIdsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        normalizeATRepoParam(lhs) == normalizeATRepoParam(rhs)
+    }
+
+    static func lookup(in map: [String: Int], publicationId: String) -> Int {
+        let target = normalizeATRepoParam(publicationId)
+        for (key, count) in map where normalizeATRepoParam(key) == target {
+            return count
+        }
+        return map[publicationId] ?? 0
+    }
+
+    static func remove(for publicationId: String, from map: inout [String: Int]) {
+        let target = normalizeATRepoParam(publicationId)
+        for key in map.keys where normalizeATRepoParam(key) == target {
+            map.removeValue(forKey: key)
+        }
+    }
+
+    static func store(_ count: Int, for publicationId: String, in map: inout [String: Int]) {
+        remove(for: publicationId, from: &map)
+        if count > 0 {
+            map[normalizeATRepoParam(publicationId)] = count
+        }
+    }
+
+    @MainActor
+    static func distinctCachedEntryIds(
+        coordinator: ReaderCacheCoordinator?,
+        publicationIds: [String]
+    ) -> [String] {
+        guard let coordinator else { return [] }
+        var cacheKeys = Set<String>()
+        for publicationId in publicationIds {
+            cacheKeys.insert(publicationId)
+            cacheKeys.insert(normalizeATRepoParam(publicationId))
+            if let canonical = canonicalPublicationAtUriKey(publicationId) {
+                cacheKeys.insert(canonical)
+            }
+        }
+        return coordinator.distinctCachedEntryIds(publicationIds: Array(cacheKeys))
+    }
+}

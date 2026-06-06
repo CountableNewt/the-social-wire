@@ -6,7 +6,6 @@ import ThinAppViewCore
 struct AppViewExtendedRoutes {
   let readService: ThinAppViewReadService
   let projectionService: PublicationProjectionService
-  let repo: ATProtoAuthenticatedRepoClient
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
     group.get("/v1/appview/entry") { request, context async throws -> AppViewEntryDetailResponse in
@@ -50,7 +49,6 @@ struct AppViewExtendedRoutes {
       let body = try await request.decode(as: ScopedMarkAllReadRequest.self, context: context)
       let sidebar = try await projectionService.sidebar(auth: auth)
       let rows = Self.rows(for: body.scope, sidebar: sidebar)
-      let now = ISO8601DateFormatter().string(from: Date())
       var marked = 0
       for row in rows {
         let unread = try await readService.listEntries(
@@ -64,17 +62,6 @@ struct AppViewExtendedRoutes {
           limit: 500
         )
         for entry in unread.entries {
-          try await repo.putRecord(
-            auth: auth,
-            collection: PublicationLexicons.entryReadState,
-            rkey: DeterministicKeys.entryReadStateRKey(subjectURI: entry.entryId),
-            record: [
-              "$type": PublicationLexicons.entryReadState,
-              "subjectUri": entry.entryId,
-              "readAt": now,
-              "updatedAt": now,
-            ]
-          )
           try await readService.upsertReadMark(auth: auth, subjectUri: entry.entryId, readAt: Date())
           marked += 1
         }

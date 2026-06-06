@@ -49,19 +49,37 @@ struct MainSplitView: View {
 
     // MARK: - Regular (iPad)
 
+    private var compactUsesArticlesPane: Bool {
+        appModel.readerListSource.compactUsesArticlesPane
+    }
+
     private var regularSplitView: some View {
         NavigationStack {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                ReaderSidebarColumn(
-                    showingNewFolder: $showingNewFolder,
-                    showingAddPublication: $showingAddPublication
-                )
-            } content: {
-                articlesColumn
-            } detail: {
-                detailColumn
+            Group {
+                if compactUsesArticlesPane {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        ReaderSidebarColumn(
+                            showingNewFolder: $showingNewFolder,
+                            showingAddPublication: $showingAddPublication
+                        )
+                    } content: {
+                        articlesColumn
+                    } detail: {
+                        detailColumn
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                } else {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        ReaderSidebarColumn(
+                            showingNewFolder: $showingNewFolder,
+                            showingAddPublication: $showingAddPublication
+                        )
+                    } detail: {
+                        detailColumn
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                }
             }
-            .navigationSplitViewStyle(.balanced)
             .navigationTitle("The Social Wire")
             .navigationBarTitleDisplayMode(.inline)
             .readerShellOverlay(showingProfile: $showingProfile, compactPane: nil)
@@ -79,16 +97,26 @@ struct MainSplitView: View {
         }
     }
 
+    @ViewBuilder
     private var compactReaderTabView: some View {
+        if compactUsesArticlesPane {
+            compactFourPaneTabView
+        } else {
+            compactThreePaneTabView
+        }
+    }
+
+    /// Subscribed / Following: lists → publications → articles → reader (tags 0…3).
+    private var compactFourPaneTabView: some View {
         TabView(selection: $compactPane) {
-            ListsView(navigateToPane: navigateCompactPane)
+            ListsView(onListSourceTap: openListSource)
                 .tag(ReaderPane.lists)
 
             PublicationsPaneView(
                 showingNewFolder: $showingNewFolder,
                 showingAddPublication: $showingAddPublication,
-                navigateToPane: navigateCompactPane,
-                onPublicationTap: handleCompactPublicationTap
+                onPublicationTap: openPublication,
+                onSavedLinkTap: openSavedLink
             )
             .tag(ReaderPane.publications)
 
@@ -99,10 +127,41 @@ struct MainSplitView: View {
                 .tag(ReaderPane.reader)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+        .id("compact-four-pane")
     }
 
-    private func navigateCompactPane(_ pane: ReaderPane) {
-        setCompactPane(to: pane)
+    /// Read Later / Archive: lists → saved links → reader (contiguous tags 0…2).
+    private var compactThreePaneTabView: some View {
+        TabView(selection: compactThreePaneTabSelection) {
+            ListsView(onListSourceTap: openListSource)
+                .tag(0)
+
+            PublicationsPaneView(
+                showingNewFolder: $showingNewFolder,
+                showingAddPublication: $showingAddPublication,
+                onPublicationTap: openPublication,
+                onSavedLinkTap: openSavedLink
+            )
+            .tag(1)
+
+            readerColumn
+                .tag(2)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .id("compact-three-pane")
+    }
+
+    private var compactThreePaneTabSelection: Binding<Int> {
+        Binding(
+            get: { compactPane.compactTabTag(usesArticlesPane: false) },
+            set: { newTag in
+                compactPane = ReaderPane.fromCompactTabTag(newTag, usesArticlesPane: false)
+            }
+        )
+    }
+
+    private func navigateCompactPane(_ pane: ReaderPane, animated: Bool = false) {
+        setCompactPane(to: pane, animated: animated)
     }
 
     private var compactNavigationTitle: String {
@@ -128,17 +187,12 @@ struct MainSplitView: View {
 
     @ViewBuilder
     private var articlesColumn: some View {
-        switch appModel.readerListSource {
-        case .readLater, .archive:
-            readLaterArticlesPlaceholder
-        case .subscribed, .following:
-            if appModel.selectedSidebar == .myPublications {
-                PublicationCollectionView(title: "My Publications", publications: appModel.myPublications)
-            } else if appModel.selectedPublication != nil {
-                EntryListView(onOpenEntry: compact ? { navigateCompactPane(.reader) } : nil)
-            } else {
-                selectPublicationPlaceholder
-            }
+        if appModel.selectedSidebar == .myPublications {
+            PublicationCollectionView(title: "My Publications", publications: appModel.myPublications)
+        } else if appModel.selectedPublication != nil {
+            EntryListView(onEntryOpened: compact ? { navigateCompactPane(.reader, animated: true) } : nil)
+        } else {
+            selectPublicationPlaceholder
         }
     }
 
@@ -172,14 +226,6 @@ struct MainSplitView: View {
         )
     }
 
-    private var readLaterArticlesPlaceholder: some View {
-        ContentUnavailableView(
-            "Read Later",
-            systemImage: "bookmark",
-            description: Text("Select a saved link in Publications, then open it in the reader.")
-        )
-    }
-
     private var chooseArticlePlaceholder: some View {
         ContentUnavailableView(
             "Select an Article",
@@ -198,26 +244,42 @@ struct MainSplitView: View {
         }
     }
 
-    // MARK: - Compact pager
+    // MARK: - Compact navigation actions
 
-    private func setCompactPane(to pane: ReaderPane) {
-        withAnimation(Self.compactPaneAnimation) {
+    private func setCompactPane(to pane: ReaderPane, animated: Bool) {
+        var transaction = Transaction()
+        if !animated {
+            transaction.disablesAnimations = true
+        }
+        withTransaction(transaction) {
             compactPane = pane
         }
     }
 
-    private static var compactPaneAnimation: Animation {
-        .easeInOut(duration: 0.35)
+    private func openListSource(_ source: ReaderListSource) {
+        appModel.selectReaderListSource(source)
+        navigateCompactPane(CompactReaderNavigation.paneAfterListSource(source), animated: true)
+    }
+
+    private func openPublication(_ publication: DiscoveredPublication) {
+        Task {
+            if appModel.selectedPublication?.publicationId != publication.publicationId {
+                await appModel.selectPublication(publication)
+            }
+            navigateCompactPane(
+                CompactReaderNavigation.paneAfterPublication(appModel.readerListSource),
+                animated: true
+            )
+        }
+    }
+
+    private func openSavedLink(_ save: MergedLatrSave) {
+        appModel.selectedEntry = nil
+        appModel.selectedSavedLink = save
+        navigateCompactPane(CompactReaderNavigation.paneAfterDetail(), animated: true)
     }
 
     // MARK: - Selection
-
-    private func handleCompactPublicationTap(_ publication: DiscoveredPublication) {
-        Task {
-            await appModel.selectPublication(publication)
-            navigateCompactPane(.articles)
-        }
-    }
 
     private func handleSidebarSelection(_ selection: SidebarSelection?) async {
         guard let selection else {
@@ -234,7 +296,9 @@ struct MainSplitView: View {
         }
         switch selection {
         case .publication(let id):
-            if let publication = appModel.publication(forId: id) {
+            if let publication = appModel.publication(forId: id),
+               appModel.selectedPublication?.publicationId != id
+            {
                 await appModel.selectPublication(publication)
             }
         case .saved:
@@ -251,19 +315,23 @@ struct MainSplitView: View {
 
     private func handleCompactPaneChange(from oldPane: ReaderPane, to newPane: ReaderPane) {
         guard compact else { return }
-        if newPane == .articles, oldPane == .reader {
+        let transition = CompactReaderNavigation.swipeTransition(
+            from: oldPane,
+            to: newPane,
+            usesArticlesPane: compactUsesArticlesPane
+        )
+        if transition.clearsReaderDetail {
             Task {
                 await appModel.dismissReaderDetail()
                 appModel.dismissSavedLinkDetail()
             }
         }
-        if newPane == .publications, oldPane == .articles {
+        if transition.clearsArticleSelection {
             appModel.selectedEntry = nil
             appModel.selectedSavedLink = nil
-            // Deselect the list row so tapping the same publication fires selection again.
             appModel.selectedSidebar = nil
         }
-        if newPane == .lists, oldPane != .lists {
+        if transition.clearsFeedState {
             appModel.selectedEntry = nil
             appModel.selectedSavedLink = nil
             appModel.selectedPublication = nil
@@ -280,30 +348,46 @@ private struct CompactReaderSelectionHandlers: ViewModifier {
     @Binding var compactPane: ReaderPane
     let onSidebarSelection: (SidebarSelection?) async -> Void
     let onCompactPaneChange: (ReaderPane, ReaderPane) -> Void
-    let onNavigatePane: (ReaderPane) -> Void
+    let onNavigatePane: (ReaderPane, Bool) -> Void
 
     func body(content: Content) -> some View {
         @Bindable var model = appModel
 
         content
             .onChange(of: model.selectedSidebar) { _, selection in
-                if compact, case .publication = selection {
-                    model.prepareForPublicationSelection()
-                    onNavigatePane(.articles)
-                }
                 Task { await onSidebarSelection(selection) }
             }
-            .onChange(of: model.selectedPublication?.publicationId) { oldId, publicationId in
-                guard compact, publicationId != nil, oldId != publicationId else { return }
-                onNavigatePane(.articles)
+            .onChange(of: model.selectedEntry?.entryId) { _, entryId in
+                guard compact, entryId != nil else { return }
+                guard CompactReaderNavigation.shouldAdvanceToReader(
+                    compactPane: compactPane,
+                    hasDetailSelection: true
+                ) else { return }
+                onNavigatePane(.reader, true)
             }
             .onChange(of: model.selectedSavedLink?.id) { _, saveId in
                 guard compact, saveId != nil else { return }
-                onNavigatePane(.reader)
+                guard CompactReaderNavigation.shouldAdvanceToReader(
+                    compactPane: compactPane,
+                    hasDetailSelection: true
+                ) else { return }
+                onNavigatePane(.reader, true)
+            }
+            .onChange(of: model.readerListSource) { _, source in
+                guard compact else { return }
+                if let remapped = CompactReaderNavigation.remapPaneAfterListSourceChange(
+                    compactPane: compactPane,
+                    newSource: source
+                ) {
+                    compactPane = remapped
+                }
             }
             .onChange(of: compactPane) { oldPane, newPane in
                 guard compact else { return }
-                onCompactPaneChange(oldPane, newPane)
+                // Defer side effects so `TabView` page transitions can settle first.
+                Task { @MainActor in
+                    onCompactPaneChange(oldPane, newPane)
+                }
             }
     }
 }

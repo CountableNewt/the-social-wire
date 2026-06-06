@@ -2,18 +2,17 @@ import SwiftUI
 
 struct ListsView: View {
     @Environment(SocialWireAppModel.self) private var appModel
-    private let navigateToPane: (ReaderPane) -> Void
+    private let onListSourceTap: (ReaderListSource) -> Void
 
-    init(navigateToPane: @escaping (ReaderPane) -> Void) {
-        self.navigateToPane = navigateToPane
+    init(onListSourceTap: @escaping (ReaderListSource) -> Void) {
+        self.onListSourceTap = onListSourceTap
     }
 
     var body: some View {
         List {
             ForEach(ReaderListSource.allCases) { source in
                 Button {
-                    appModel.selectReaderListSource(source)
-                    navigateToPane(.publications)
+                    onListSourceTap(source)
                 } label: {
                     HStack {
                         Label(source.rawValue, systemImage: source.systemImage)
@@ -23,6 +22,7 @@ struct ListsView: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
+                    .readerFullWidthTapLabel()
                 }
                 .buttonStyle(.plain)
                 .readerClearListRow()

@@ -32,6 +32,7 @@ struct ReaderSidebarColumn: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
+                    .readerFullWidthTapLabel()
                 }
                 .buttonStyle(.plain)
                 .readerClearListRow()
@@ -56,10 +57,14 @@ struct ReaderSidebarColumn: View {
                             Button {
                                 appModel.selectedSavedLink = save
                             } label: {
-                                SavedLinkRow(save: save)
+                                SavedLinkRow(
+                                    save: save,
+                                    isSelected: appModel.selectedSavedLink?.id == save.id
+                                )
                             }
                             .buttonStyle(.plain)
-                            .readerClearListRow()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .readerFullWidthCardRow()
                             .contextMenu {
                                 if appModel.readerListSource == .archive {
                                     Button("Unarchive") {

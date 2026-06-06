@@ -3,43 +3,51 @@ import SwiftUI
 struct SavedLinkRow: View {
     @Environment(SocialWireAppModel.self) private var appModel
     let save: MergedLatrSave
+    var isSelected: Bool = false
 
     private var publicationChip: SavedLinkPublicationChipModel? {
-        SavedLinkPublicationResolver.resolve(
-            for: save,
-            sidebarPublications: appModel.allPublicationRows
-        )
+        appModel.resolvedSavedLinkPublicationChip(for: save)
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack(alignment: .bottomLeading) {
-                thumbnail
-                if let publicationChip {
-                    SavedLinkPublicationChip(model: publicationChip)
-                        .padding(4)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            if let publicationChip {
+                SavedLinkPublicationChip(model: publicationChip)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(save.title)
-                    .font(.headline)
-                    .lineLimit(2)
+            HStack(alignment: .top, spacing: 12) {
+                thumbnail
 
-                if let excerpt = save.excerpt, !excerpt.isEmpty {
-                    Text(excerpt)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(save.title)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    if let excerpt = save.excerpt, !excerpt.isEmpty {
+                        Text(excerpt)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                         .lineLimit(2)
                 }
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
             }
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.12) : Color(.secondarySystemGroupedBackground))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.35) : Color(.separator).opacity(0.35), lineWidth: 1)
+        }
     }
 
     @ViewBuilder

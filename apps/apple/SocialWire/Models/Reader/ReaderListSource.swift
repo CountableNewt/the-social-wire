@@ -17,4 +17,13 @@ enum ReaderListSource: String, CaseIterable, Identifiable, Hashable {
         case .following: "person.2"
         }
     }
+
+    /// Subscribed/Following use a four-pane compact pager (lists → publications → articles → reader).
+    /// Read Later/Archive use three panes (lists → saved links → reader).
+    var compactUsesArticlesPane: Bool {
+        switch self {
+        case .readLater, .archive: false
+        case .subscribed, .following: true
+        }
+    }
 }

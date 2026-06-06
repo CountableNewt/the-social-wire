@@ -7,24 +7,46 @@ struct SavedLinkPublicationChipModel: Equatable, Sendable {
 }
 
 enum SavedLinkPublicationResolver {
-    static func resolve(for save: MergedLatrSave, sidebarPublications: [DiscoveredPublication]) -> SavedLinkPublicationChipModel? {
-        if let matched = matchFromSidebar(save: save, sidebarPublications: sidebarPublications) {
-            return matched
+    static func resolve(
+        for save: MergedLatrSave,
+        sidebarPublications: [DiscoveredPublication],
+        publicationScopes: [String: PublicationAppViewScopeDTO] = [:]
+    ) -> SavedLinkPublicationChipModel? {
+        if let sidebarMatch = matchFromSidebar(
+            save: save,
+            sidebarPublications: sidebarPublications,
+            publicationScopes: publicationScopes
+        ) {
+            if let base = resolveFromMetadata(save: save) {
+                return enrich(base: base, with: sidebarMatch)
+            }
+            return chip(from: sidebarMatch)
         }
         return resolveFromMetadata(save: save)
     }
 
     private static func matchFromSidebar(
         save: MergedLatrSave,
-        sidebarPublications: [DiscoveredPublication]
-    ) -> SavedLinkPublicationChipModel? {
+        sidebarPublications: [DiscoveredPublication],
+        publicationScopes: [String: PublicationAppViewScopeDTO]
+    ) -> DiscoveredPublication? {
         let articleHosts = articleHostKeys(for: save)
         if !articleHosts.isEmpty {
             for publication in sidebarPublications {
+                if let scope = publicationScopes[publication.publicationId] {
+                    for siteUrl in scope.publicationSiteUrls {
+                        guard let host = siteHostKey(siteUrl), articleHosts.contains(host) else { continue }
+                        return publication
+                    }
+                }
+                for siteUrl in publication.publicationSiteUrls {
+                    guard let host = siteHostKey(siteUrl), articleHosts.contains(host) else { continue }
+                    return publication
+                }
                 if let site = publicationSiteHost(for: publication.publicationId),
                    articleHosts.contains(site)
                 {
-                    return chip(from: publication)
+                    return publication
                 }
             }
         }
@@ -34,7 +56,7 @@ enum SavedLinkPublicationResolver {
         {
             let matches = sidebarPublications.filter { $0.authorDid == authorDid }
             if matches.count == 1, let publication = matches.first {
-                return chip(from: publication)
+                return publication
             }
         }
         return nil
@@ -46,25 +68,35 @@ enum SavedLinkPublicationResolver {
             let homepage = SavedLinkEmbedURL.previewURL(for: save).flatMap { URL(string: $0.originString) }
             return SavedLinkPublicationChipModel(
                 name: name,
-                faviconURL: homepage.map { $0.appending(path: "favicon.ico") },
+                faviconURL: homepage.flatMap { PublicationSiteFavicon.url(for: $0.absoluteString) }.flatMap(URL.init(string:)),
                 homepageURL: homepage
             )
         }
         if let url = SavedLinkEmbedURL.previewURL(for: save), let host = url.host {
             return SavedLinkPublicationChipModel(
                 name: host.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression),
-                faviconURL: URL(string: "\(url.scheme ?? "https")://\(host)/favicon.ico"),
+                faviconURL: PublicationSiteFavicon.url(for: url.absoluteString).flatMap(URL.init(string:)),
                 homepageURL: URL(string: "\(url.scheme ?? "https")://\(host)")
             )
         }
         return nil
     }
 
+    private static func enrich(
+        base: SavedLinkPublicationChipModel,
+        with publication: DiscoveredPublication
+    ) -> SavedLinkPublicationChipModel {
+        SavedLinkPublicationChipModel(
+            name: publication.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? base.name : publication.title,
+            faviconURL: publication.displayImageURLs.first ?? base.faviconURL,
+            homepageURL: base.homepageURL ?? publicationSiteURL(for: publication)
+        )
+    }
+
     private static func chip(from publication: DiscoveredPublication) -> SavedLinkPublicationChipModel {
         SavedLinkPublicationChipModel(
             name: publication.title,
-            faviconURL: publication.iconUrl.flatMap(URL.init(string:))
-                ?? publication.avatarUrl.flatMap(URL.init(string:)),
+            faviconURL: publication.displayImageURLs.first,
             homepageURL: publicationSiteURL(for: publication)
         )
     }
@@ -115,6 +147,9 @@ enum SavedLinkPublicationResolver {
     private static func publicationSiteURL(for publication: DiscoveredPublication) -> URL? {
         if publication.publicationId.lowercased().hasPrefix("http") {
             return URL(string: publication.publicationId)
+        }
+        if let site = publication.publicationSiteUrls.first {
+            return URL(string: PublicURLNormalizer.normalizeHttpURLToHTTPS(site))
         }
         return nil
     }

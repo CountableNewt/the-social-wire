@@ -22,7 +22,9 @@ struct WebPreview: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView {
-        WKWebView()
+        let webView = WKWebView()
+        webView.allowsBackForwardNavigationGestures = false
+        return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {

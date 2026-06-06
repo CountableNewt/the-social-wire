@@ -6,8 +6,8 @@ struct PublicationAvatar: View {
 
     var body: some View {
         Group {
-            if let url = publication.displayImageURL {
-                CachedRemoteImage(urls: [url], maxPixelSize: max(size * 3, 72)) {
+            if !publication.displayImageURLs.isEmpty {
+                CachedRemoteImage(urls: publication.displayImageURLs, maxPixelSize: max(size * 3, 72)) {
                     placeholder
                 }
                 .scaledToFill()

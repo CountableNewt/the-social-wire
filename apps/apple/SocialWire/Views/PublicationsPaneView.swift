@@ -4,8 +4,8 @@ struct PublicationsPaneView: View {
     @Environment(SocialWireAppModel.self) private var appModel
     @Binding var showingNewFolder: Bool
     @Binding var showingAddPublication: Bool
-    var navigateToPane: (ReaderPane) -> Void
     var onPublicationTap: ((DiscoveredPublication) -> Void)? = nil
+    var onSavedLinkTap: ((MergedLatrSave) -> Void)? = nil
 
     var body: some View {
         @Bindable var model = appModel
@@ -13,11 +13,7 @@ struct PublicationsPaneView: View {
         Group {
             switch appModel.readerListSource {
             case .readLater, .archive:
-                SavedLinksListContent(
-                    onSelectSave: {
-                        navigateToPane(.reader)
-                    }
-                )
+                SavedLinksListContent(onSavedLinkTap: onSavedLinkTap)
             case .subscribed:
                 List(selection: $model.selectedSidebar) {
                     SubscribedPublicationSidebarTree(
@@ -40,7 +36,7 @@ struct PublicationsPaneView: View {
 /// Read-later rows for the publications pane (no local toolbar).
 struct SavedLinksListContent: View {
     @Environment(SocialWireAppModel.self) private var appModel
-    var onSelectSave: (() -> Void)?
+    var onSavedLinkTap: ((MergedLatrSave) -> Void)? = nil
 
     private var isArchivedView: Bool {
         appModel.readerListSource == .archive
@@ -55,11 +51,9 @@ struct SavedLinksListContent: View {
     }
 
     var body: some View {
-        @Bindable var model = appModel
-
         Group {
             if appModel.readLaterLatrConfigured {
-                List(selection: $model.selectedSavedLink) {
+                List {
                     if appModel.currentSavedLinks.isEmpty {
                         ContentUnavailableView(
                             isArchivedView ? "Nothing Archived Yet" : "Nothing Queued Yet",
@@ -73,47 +67,57 @@ struct SavedLinksListContent: View {
                         .readerClearListRow()
                     } else {
                         ForEach(appModel.currentSavedLinks) { save in
-                            SavedLinkRow(save: save)
-                                .tag(save)
-                                .readerClearListRow()
-                                .contextMenu {
-                                    if isArchivedView {
-                                        Button("Unarchive") {
-                                            Task { await appModel.unarchive(save) }
-                                        }
-                                    } else {
-                                        Button("Archive") {
-                                            Task { await appModel.archive(save) }
-                                        }
+                            Button {
+                                if let onSavedLinkTap {
+                                    onSavedLinkTap(save)
+                                } else {
+                                    appModel.selectedSavedLink = save
+                                }
+                            } label: {
+                                SavedLinkRow(
+                                    save: save,
+                                    isSelected: appModel.selectedSavedLink?.id == save.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .readerFullWidthCardRow()
+                            .contextMenu {
+                                if isArchivedView {
+                                    Button("Unarchive") {
+                                        Task { await appModel.unarchive(save) }
                                     }
-                                    Button("Delete", role: .destructive) {
-                                        Task { await appModel.delete(save) }
+                                } else {
+                                    Button("Archive") {
+                                        Task { await appModel.archive(save) }
                                     }
                                 }
-                                .swipeActions {
-                                    if isArchivedView {
-                                        Button("Unarchive") {
-                                            Task { await appModel.unarchive(save) }
-                                        }
-                                        .tint(.blue)
-                                    } else {
-                                        Button("Archive") {
-                                            Task { await appModel.archive(save) }
-                                        }
-                                        .tint(.orange)
-                                    }
-                                    Button("Delete", role: .destructive) {
-                                        Task { await appModel.delete(save) }
-                                    }
+                                Button("Delete", role: .destructive) {
+                                    Task { await appModel.delete(save) }
                                 }
+                            }
+                            .swipeActions {
+                                if isArchivedView {
+                                    Button("Unarchive") {
+                                        Task { await appModel.unarchive(save) }
+                                    }
+                                    .tint(.blue)
+                                } else {
+                                    Button("Archive") {
+                                        Task { await appModel.archive(save) }
+                                    }
+                                    .tint(.orange)
+                                }
+                                Button("Delete", role: .destructive) {
+                                    Task { await appModel.delete(save) }
+                                }
+                            }
                         }
                     }
                 }
-                .readerListCanvas()
-                .onChange(of: model.selectedSavedLink?.id) { _, saveId in
-                    guard saveId != nil else { return }
-                    onSelectSave?()
-                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, 12, for: .scrollContent)
             } else {
                 ContentUnavailableView(
                     "Read-Later List Unavailable",

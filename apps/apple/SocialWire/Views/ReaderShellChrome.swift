@@ -116,6 +116,10 @@ struct ReaderShellOverlayModifier: ViewModifier {
         }
     }
 
+    private var showsArticlesFilter: Bool {
+        appModel.readerListSource.compactUsesArticlesPane
+    }
+
     func body(content: Content) -> some View {
         content
             .toolbar {
@@ -150,7 +154,9 @@ struct ReaderShellOverlayModifier: ViewModifier {
                 }
             }
             .overlay(alignment: .bottom) {
-                floatingFilterBar
+                if showsArticlesFilter {
+                    floatingFilterBar
+                }
             }
             .alert(markReadDialogTitle, isPresented: $showMarkReadConfirm) {
                 Button(markReadConfirmTitle) {
@@ -179,5 +185,18 @@ extension View {
     func readerClearListRow() -> some View {
         listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+    }
+
+    /// Full-width detached card rows (Read Later / Archive).
+    func readerFullWidthCardRow() -> some View {
+        listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+            .listRowSeparator(.hidden)
+    }
+
+    /// Expand button/list row labels to the full row width for reliable taps.
+    func readerFullWidthTapLabel() -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
     }
 }

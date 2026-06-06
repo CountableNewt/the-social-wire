@@ -29,6 +29,7 @@ struct PublicationCollectionView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
+                        .readerFullWidthTapLabel()
                     }
                     .buttonStyle(.plain)
                     .readerClearListRow()

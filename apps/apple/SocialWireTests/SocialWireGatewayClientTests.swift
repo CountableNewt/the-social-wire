@@ -55,6 +55,68 @@ struct SocialWireGatewayClientTests {
         #expect(counts["at://did:plc:author/site.standard.publication/p1"] == 3)
     }
 
+    @Test("unreadCountsMap prefers unreadCountsByPublicationId over embedded row count")
+    func unreadCountsMapPrefersRecordMap() throws {
+        let data = Data("""
+        {
+          "viewerDid": "did:plc:viewer",
+          "allPublicationRows": [{
+            "publicationId": "did:plc:alice",
+            "authorDid": "did:plc:alice",
+            "title": "Alice",
+            "discoveredAt": "2026-01-01T00:00:00.000Z",
+            "unreadCount": 4,
+            "appViewScope": {
+              "authorDid": "did:plc:alice",
+              "publicationAtUri": null,
+              "publicationScopeAtUris": [],
+              "publicationSiteUrls": []
+            }
+          }],
+          "myPublications": [],
+          "subscribedUnfoldered": [],
+          "followingTabPublications": [],
+          "enrollAuthorDids": [],
+          "refreshedAt": "2026-01-01T00:00:00.000Z",
+          "unreadCountsByPublicationId": { "did:plc:alice": 1 }
+        }
+        """.utf8)
+        let decoded = try JSONDecoder().decode(PublicationSidebarResponseDTO.self, from: data)
+        let counts = PublicationProjectionMapping.unreadCountsMap(from: decoded)
+        #expect(counts["did:plc:alice"] == 1)
+    }
+
+    @Test("unreadCountsMap does not resurrect stale embedded counts when record map is empty")
+    func unreadCountsMapIgnoresStaleEmbeddedWhenRecordEmpty() throws {
+        let data = Data("""
+        {
+          "viewerDid": "did:plc:viewer",
+          "allPublicationRows": [{
+            "publicationId": "did:plc:alice",
+            "authorDid": "did:plc:alice",
+            "title": "Alice",
+            "discoveredAt": "2026-01-01T00:00:00.000Z",
+            "unreadCount": 2,
+            "appViewScope": {
+              "authorDid": "did:plc:alice",
+              "publicationAtUri": null,
+              "publicationScopeAtUris": [],
+              "publicationSiteUrls": []
+            }
+          }],
+          "myPublications": [],
+          "subscribedUnfoldered": [],
+          "followingTabPublications": [],
+          "enrollAuthorDids": [],
+          "refreshedAt": "2026-01-01T00:00:00.000Z",
+          "unreadCountsByPublicationId": {}
+        }
+        """.utf8)
+        let decoded = try JSONDecoder().decode(PublicationSidebarResponseDTO.self, from: data)
+        let counts = PublicationProjectionMapping.unreadCountsMap(from: decoded)
+        #expect(counts["did:plc:alice"] == nil)
+    }
+
     @Test("AppViewEntryListResponse decodes entries")
     func appViewEntryListResponseDecodesEntries() throws {
         let data = Data("""

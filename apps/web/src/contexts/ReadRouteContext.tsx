@@ -46,7 +46,7 @@ export type MarkEntryReadOptions = {
 
 export type MarkEntriesReadOptions = {
   publications?: DiscoveredPublication[];
-  /** When false, skip per-entry PDS writes (e.g. bulk mark-all-read uses AppView gateway). */
+  /** When false, skip per-entry PDS writes (optimistic UI only). */
   syncToPds?: boolean;
 };
 

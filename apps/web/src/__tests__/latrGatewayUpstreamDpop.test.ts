@@ -42,15 +42,12 @@ describe("pdsXrpcMethodForGatewayRequest", () => {
 });
 
 describe("pdsXrpcMethodForSocialWireGatewayRequest", () => {
-  it("maps POST mark-all-read to putRecord", () => {
+  it("does not require upstream DPoP for mark-all-read", () => {
     expect(
       pdsXrpcMethodForSocialWireGatewayRequest(
         "POST",
         "/v1/appview/mark-all-read"
       )
-    ).toEqual({
-      xrpcMethod: "com.atproto.repo.putRecord",
-      httpMethod: "POST",
-    });
+    ).toBeNull();
   });
 });
