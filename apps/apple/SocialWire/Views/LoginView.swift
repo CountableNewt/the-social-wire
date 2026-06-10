@@ -43,6 +43,7 @@ struct LoginView: View {
                         } label: {
                             if isSigningIn {
                                 ProgressView()
+                                    .accessibilityLabel("Signing In")
                             } else {
                                 Label("Sign In", systemImage: "person.crop.circle.badge.checkmark")
                             }

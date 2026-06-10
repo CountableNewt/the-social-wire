@@ -15,7 +15,7 @@ import { fetchAppViewUnreadCounts } from "@/lib/thinAppViewClient";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 /** Delay after bootstrap before a one-time feed refresh (background enroll may still be running). */
-export const FEED_POST_BOOTSTRAP_REFRESH_MS = 2_500;
+export const FEED_POST_BOOTSTRAP_REFRESH_MS = 1_000;
 
 /** Poll interval for the active publication feed while the tab is visible. */
 export const FEED_PROACTIVE_REFRESH_INTERVAL_MS = 45_000;

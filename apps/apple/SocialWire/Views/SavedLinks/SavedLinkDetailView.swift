@@ -34,6 +34,7 @@ struct SavedLinkDetailView: View {
                     .padding(.vertical, 8)
 
                     WebPreview(url: url)
+                        .accessibilityLabel("Article content")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
@@ -75,6 +76,7 @@ struct SavedLinkDetailView: View {
             Form {
                 TextEditor(text: text)
                     .frame(minHeight: 160)
+                    .accessibilityLabel("Compose \(title)")
             }
             .navigationTitle(title)
             .toolbar {
@@ -119,6 +121,9 @@ struct SavedLinkToolbar: View {
     let isArchivedView: Bool
     @Binding var showingQuote: Bool
     @Binding var showingReply: Bool
+    @State private var confirmingDelete = false
+    @State private var reactionFeedback = 0
+    @State private var deleteFeedback = 0
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -146,6 +151,7 @@ struct SavedLinkToolbar: View {
 
                 if entry?.bskyPostUri != nil {
                     Button {
+                        reactionFeedback += 1
                         Task { await appModel.likeEntry(entry!) }
                     } label: {
                         Label("Like", systemImage: "heart")
@@ -153,6 +159,7 @@ struct SavedLinkToolbar: View {
                     .buttonStyle(.bordered)
 
                     Button {
+                        reactionFeedback += 1
                         Task { await appModel.repostEntry(entry!) }
                     } label: {
                         Label("Repost", systemImage: "repeat")
@@ -184,12 +191,24 @@ struct SavedLinkToolbar: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await appModel.delete(save) }
+                    confirmingDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Delete saved link")
             }
         }
+        .confirmationDialog("Delete this saved link?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    await appModel.delete(save)
+                    deleteFeedback += 1
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sensoryFeedback(.success, trigger: reactionFeedback)
+        .sensoryFeedback(.success, trigger: deleteFeedback)
     }
 }

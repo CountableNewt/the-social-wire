@@ -17,7 +17,7 @@ actor PublicationProjectionService {
   private var sidebarRowCacheByViewer: [String: [String: SidebarPublicationRow]] = [:]
 
   private static let appViewScopeCacheTTL: TimeInterval = 5 * 60
-  private static let discoveryCacheTTL: TimeInterval = 2 * 60
+  private static let discoveryCacheTTL: TimeInterval = 10 * 60
 
   init(
     httpClient: HTTPClient,
@@ -97,7 +97,10 @@ actor PublicationProjectionService {
 
   // MARK: - Discovery
 
-  private func discoverContext(auth: AuthContext) async throws -> SidebarDiscoveryContext {
+  private func discoverContext(
+    auth: AuthContext,
+    includeFollowDiscovery: Bool = true
+  ) async throws -> SidebarDiscoveryContext {
     let viewerDid = auth.did
 
     let folders = try await loadFolders(auth: auth)
@@ -105,14 +108,19 @@ actor PublicationProjectionService {
     let subscriptionValues = try await loadGraphSubscriptions(auth: auth)
     let skyreaderRecords = try await loadSkyreaderSubscriptions(auth: auth)
 
-    let discovered = await PublicationFollowDiscovery.discover(
-      viewerDid: viewerDid,
-      auth: auth,
-      repo: repo,
-      httpClient: httpClient,
-      plcURL: plcURL,
-      logger: logger
-    )
+    let discovered: [ProjectionDiscoveredRow]
+    if includeFollowDiscovery {
+      discovered = await PublicationFollowDiscovery.discover(
+        viewerDid: viewerDid,
+        auth: auth,
+        repo: repo,
+        httpClient: httpClient,
+        plcURL: plcURL,
+        logger: logger
+      )
+    } else {
+      discovered = []
+    }
 
     let rssRows = PublicationProjectionLogic.skyreaderRows(from: skyreaderRecords)
     let subscriptionKeys = PublicationProjectionLogic.subscriptionPublicationKeys(from: subscriptionValues)
@@ -170,10 +178,17 @@ actor PublicationProjectionService {
       return folderId == nil || folderId?.isEmpty == true
     }
 
-    let following = PublicationProjectionLogic.filterFollowingTab(
-      followOwnedUnsubscribed: segmented.followOwnedUnsubscribed,
-      myPublications: myPublications
-    )
+    let following: [ProjectionDiscoveredRow]
+    if includeFollowDiscovery {
+      following = PublicationProjectionLogic.filterFollowingTab(
+        followOwnedUnsubscribed: segmented.followOwnedUnsubscribed,
+        myPublications: myPublications
+      )
+    } else if let cached = discoveryCacheByViewer[viewerDid], cached.expiresAt > Date() {
+      following = cached.context.following
+    } else {
+      following = []
+    }
 
     let allRows = discovered + rssRows + graphOrphanRows
     let enrollAuthorDids = Array(
@@ -225,16 +240,33 @@ actor PublicationProjectionService {
   }
 
   func bootstrapPrioritySidebar(auth: AuthContext) async throws -> BootstrapPrioritySidebarResult {
-    let context = try await discoverContext(auth: auth)
-    cacheDiscovery(context, viewerDid: auth.did)
+    let context: SidebarDiscoveryContext
+    if let cached = discoveryCacheByViewer[auth.did], cached.expiresAt > Date() {
+      context = cached.context
+    } else {
+      context = try await discoverContext(auth: auth, includeFollowDiscovery: false)
+    }
     let response = try await buildSidebarResponse(
       context: context,
       auth: auth,
       phase: .priority,
       refreshedAt: Date(),
-      includeUnreadCounts: true
+      includeUnreadCounts: false
     )
     return BootstrapPrioritySidebarResult(response: response, context: context)
+  }
+
+  /// Full follow discovery + sidebar rebuild for background cache refresh after bootstrap.
+  func refreshFullDiscoverySidebar(auth: AuthContext) async throws -> PublicationSidebarResponse {
+    let context = try await discoverContext(auth: auth, includeFollowDiscovery: true)
+    cacheDiscovery(context, viewerDid: auth.did)
+    return try await buildSidebarResponse(
+      context: context,
+      auth: auth,
+      phase: .full,
+      refreshedAt: Date(),
+      includeUnreadCounts: false
+    )
   }
 
   func bootstrapFolderSidebar(
@@ -246,7 +278,7 @@ actor PublicationProjectionService {
       auth: auth,
       phase: .folderPublications,
       refreshedAt: Date(),
-      includeUnreadCounts: true
+      includeUnreadCounts: false
     )
     return AppViewBootstrapSidebarFoldersPayload(
       folderSections: response.folderSections,
@@ -265,28 +297,17 @@ actor PublicationProjectionService {
 
   /// Live unread totals from the AppView index (ignores embedded sidebar row counts).
   func freshUnreadCountsMap(for rows: [SidebarPublicationRow], viewerDid: String) async -> [String: Int] {
-    var counts: [String: Int] = [:]
-    await withTaskGroup(of: (String, Int)?.self) { group in
-      for row in rows {
-        group.addTask {
-          let unreadCount = try? await self.thinStore.countUnreadEntries(
-            viewerDid: viewerDid,
-            authorDid: row.appViewScope.authorDid,
-            publicationAtUri: row.appViewScope.publicationAtUri,
-            publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
-            publicationSiteUrls: row.appViewScope.publicationSiteUrls
-          )
-          guard let unreadCount, unreadCount > 0 else { return nil }
-          return (row.publicationId, unreadCount)
-        }
-      }
-      for await result in group {
-        if let (publicationId, count) = result {
-          counts[publicationId] = count
-        }
-      }
+    guard !rows.isEmpty else { return [:] }
+    let scopes = rows.map {
+      PublicationUnreadScope(
+        publicationId: $0.publicationId,
+        authorDid: $0.appViewScope.authorDid,
+        publicationAtUri: $0.appViewScope.publicationAtUri,
+        publicationScopeAtUris: $0.appViewScope.publicationScopeAtUris,
+        publicationSiteUrls: $0.appViewScope.publicationSiteUrls
+      )
     }
-    return counts
+    return (try? await thinStore.countUnreadEntriesBatch(viewerDid: viewerDid, scopes: scopes)) ?? [:]
   }
 
   private func buildSidebarResponse(

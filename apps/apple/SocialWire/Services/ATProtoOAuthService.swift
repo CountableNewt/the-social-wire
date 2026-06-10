@@ -23,7 +23,13 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
         "repo:com.latr.saved.external?action=create&action=update&action=delete",
         "repo:com.latr.saved.item?action=create&action=update&action=delete",
         "repo:site.standard.graph.subscription?action=create&action=update&action=delete",
-        "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete"
+        "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete",
+        // Bluesky social actions (quote/reply use putRecord; like/repost use create + delete to toggle).
+        // NOTE: the published client metadata at `/ios-client-metadata.json` must list these same
+        // scopes or the authorization server will reject the broadened request (returns 403 on write).
+        "repo:app.bsky.feed.post?action=create&action=update&action=delete",
+        "repo:app.bsky.feed.like?action=create&action=delete",
+        "repo:app.bsky.feed.repost?action=create&action=delete"
     ].joined(separator: " ")
 
     private(set) var session: AuthSession?
@@ -54,6 +60,26 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
 
         if let rawKey = keychain.string(for: "oauth.dpopKey") {
             await dpop.replacePrivateKey(base64: rawKey)
+        }
+
+        // Reuse a still-valid persisted access token to avoid a token-refresh round-trip on every
+        // launch. validSession() refreshes lazily once <60s remain, so a stale token self-heals on
+        // the first authenticated request.
+        if let accessToken = keychain.string(for: "oauth.accessToken"),
+           let expiresRaw = keychain.string(for: "oauth.expiresAt"),
+           let expiresInterval = TimeInterval(expiresRaw),
+           Date(timeIntervalSince1970: expiresInterval).timeIntervalSinceNow > 60
+        {
+            session = AuthSession(
+                did: did,
+                pdsURL: pdsURL,
+                tokenEndpoint: tokenEndpoint,
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                tokenType: keychain.string(for: "oauth.tokenType") ?? "DPoP",
+                expiresAt: Date(timeIntervalSince1970: expiresInterval)
+            )
+            return
         }
 
         do {
@@ -177,7 +203,9 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        ASPresentationAnchor()
+        // ASWebAuthenticationSession always invokes this on the main thread, so the main-actor
+        // anchor creation is safe to assume isolated here.
+        MainActor.assumeIsolated { ASPresentationAnchor() }
     }
 
     /// Builds the browser authorization redirect after PAR (`client_id` + `request_uri` only).
@@ -363,6 +391,11 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
         keychain.set(pdsURL.absoluteString, for: "oauth.pdsURL")
         keychain.set(tokenEndpoint.absoluteString, for: "oauth.tokenEndpoint")
         keychain.set(tokens.refreshToken, for: "oauth.refreshToken")
+        // Persist the access token + expiry so a warm launch can reuse a still-valid token instead
+        // of forcing a token-refresh round-trip in restoreSession().
+        keychain.set(next.accessToken, for: "oauth.accessToken")
+        keychain.set(next.tokenType, for: "oauth.tokenType")
+        keychain.set(String(next.expiresAt.timeIntervalSince1970), for: "oauth.expiresAt")
         Task {
             let rawKey = await dpop.exportPrivateKey()
             keychain.set(rawKey, for: "oauth.dpopKey")
@@ -375,6 +408,9 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
         keychain.remove("oauth.pdsURL")
         keychain.remove("oauth.tokenEndpoint")
         keychain.remove("oauth.refreshToken")
+        keychain.remove("oauth.accessToken")
+        keychain.remove("oauth.tokenType")
+        keychain.remove("oauth.expiresAt")
         keychain.remove("oauth.dpopKey")
         resetPendingOAuthState()
     }

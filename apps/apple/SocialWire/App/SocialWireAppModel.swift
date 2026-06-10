@@ -57,6 +57,13 @@ final class SocialWireAppModel {
     private var sidebarScopesByPublicationId: [String: PublicationAppViewScopeDTO] = [:]
     /// Server unread counts keyed by publication id (sidebar projection + optional refresh).
     private var unreadCountsByPublicationId: [String: Int] = [:]
+    /// Cached sidebar section unread totals (recomputed when counts or folder membership change).
+    private(set) var foldersSectionUnreadCount = 0
+    private(set) var subscribedUnfolderedSectionUnreadCount = 0
+    private(set) var folderUnreadCountsByRkey: [String: Int] = [:]
+    private(set) var followingSectionUnreadCount = 0
+    /// Dedupes pagination triggers when the last filtered row re-appears during fast scroll.
+    private var entriesPaginationTriggeredForEntryId: String?
     /// Set false after a 404 from `/v1/appview/*` (API deployed without `ENABLE_THIN_APPVIEW`).
     private var appViewRoutesAvailable = true
 
@@ -259,7 +266,8 @@ final class SocialWireAppModel {
                 unreadCountsByPublicationId = savedUnreadCounts
                 readAtByEntryId = savedReadAtByEntryId
                 markAppViewUnavailableIfNeeded(error)
-                errorMessage = error.localizedDescription
+                // Mark-all-read is an automatic side effect of navigation; failures roll back the
+                // optimistic counts above without interrupting the user with a modal alert.
             }
         }
     }
@@ -362,6 +370,7 @@ final class SocialWireAppModel {
         replacePublicationIds: [publicationId]
       )
     }
+    refreshSidebarUnreadSumCaches()
   }
 
   private func publicationId(for entryId: String) -> String? {
@@ -397,13 +406,14 @@ final class SocialWireAppModel {
         )
     }
 
-    private func applyStreamUnreadCounts(_ counts: [String: Int]) {
-        applyFetchedUnreadCounts(counts, publicationIds: sidebarPublicationIds())
-        var map = unreadCountsByPublicationId
-        for (publicationId, count) in counts where PublicationUnreadCountLookup.lookup(in: map, publicationId: publicationId) == 0 {
-            PublicationUnreadCountLookup.store(count, for: publicationId, in: &map)
-        }
-        unreadCountsByPublicationId = map
+    private func applyStreamUnreadCounts(
+        _ counts: [String: Int],
+        replacePublicationIds: [String]? = nil
+    ) {
+        applyFetchedUnreadCounts(
+            counts,
+            publicationIds: replacePublicationIds ?? sidebarPublicationIds()
+        )
     }
 
     private func applyFetchedUnreadCounts(_ counts: [String: Int], publicationIds: [String]) {
@@ -416,6 +426,7 @@ final class SocialWireAppModel {
             unreadCountsByPublicationId = PublicationProjectionMapping.unreadCountsMap(
                 from: cachedPriorityProjection!
             )
+            refreshSidebarUnreadSumCaches()
             return
         }
 
@@ -425,9 +436,13 @@ final class SocialWireAppModel {
             PublicationUnreadCountLookup.store(count, for: publicationId, in: &map)
         }
         unreadCountsByPublicationId = map
+        refreshSidebarUnreadSumCaches()
     }
 
+    @ObservationIgnored private var launchStartedAt: Date?
+
     func restoreSession() async {
+        launchStartedAt = Date()
         await authService.restoreSession()
         if isSignedIn {
             await refreshAll()
@@ -460,6 +475,11 @@ final class SocialWireAppModel {
         publicationPrefs = [:]
         sidebarScopesByPublicationId = [:]
         unreadCountsByPublicationId = [:]
+        foldersSectionUnreadCount = 0
+        subscribedUnfolderedSectionUnreadCount = 0
+        folderUnreadCountsByRkey = [:]
+        followingSectionUnreadCount = 0
+        entriesPaginationTriggeredForEntryId = nil
         gatewaySubscribedUnfoldered = []
         gatewayMyPublications = []
         gatewayFollowingTab = []
@@ -548,6 +568,19 @@ final class SocialWireAppModel {
         sumUnreadCount(for: publications, unreadCount: unreadCachedBadge(for:))
     }
 
+    func folderUnreadCount(rkey: String) -> Int {
+        folderUnreadCountsByRkey[rkey] ?? 0
+    }
+
+    private func refreshSidebarUnreadSumCaches() {
+        subscribedUnfolderedSectionUnreadCount = sumUnread(for: subscribedUnfolderedPublications)
+        followingSectionUnreadCount = sumUnread(for: followingTabPublications)
+        folderUnreadCountsByRkey = Dictionary(uniqueKeysWithValues: folders.map { folder in
+            (rkey(from: folder.uri), sumUnread(for: publications(in: folder)))
+        })
+        foldersSectionUnreadCount = folderUnreadCountsByRkey.values.reduce(0, +)
+    }
+
     func openMyPublications() {
         selectedSidebar = .myPublications
         selectedPublication = nil
@@ -597,27 +630,31 @@ final class SocialWireAppModel {
         isLoading = true
         sidebarFetching = true
         folderPublicationsLoading = !hasSidebarSnapshot
-        defer {
-            isLoading = false
-            sidebarFetching = false
-            folderPublicationsLoading = false
-        }
 
         restoreCachedSidebarSnapshot(viewerDid: viewerDID)
         restoreLastSelectedPublicationEntriesIfCached()
+        if hasSidebarSnapshot, let launchStartedAt {
+            logBootstrapPhase("cachedContentReady", startedAt: launchStartedAt)
+        }
 
-        do {
-            try await refreshPublicationSidebarFromBootstrapStream(viewerDID: viewerDID)
-            persistSidebarSnapshot(viewerDid: viewerDID)
-            Task(priority: .utility) { [weak self] in
-                await self?.refreshGatewayPreferencesSnapshot()
+        Task { @MainActor in
+            do {
+                await gateway.warmGatewayDpopNonce()
+                try await refreshPublicationSidebarFromBootstrapStream(viewerDID: viewerDID)
+                persistSidebarSnapshot(viewerDid: viewerDID)
+                Task(priority: .utility) { [weak self] in
+                    await self?.refreshGatewayPreferencesSnapshot()
+                }
+                Task(priority: .utility) { [weak self] in
+                    try? await Task.sleep(for: .seconds(8))
+                    await self?.prefetchSidebarPublicationsLimited()
+                }
+                startProactiveFeedRefreshLoop()
+            } catch {
+                if !hasSidebarSnapshot {
+                    errorMessage = "Could not load publications from the server. \(error.localizedDescription)"
+                }
             }
-            Task(priority: .utility) {
-                await self.prefetchSidebarPublications()
-            }
-            startProactiveFeedRefreshLoop()
-        } catch {
-            errorMessage = "Could not load publications from the server. \(error.localizedDescription)"
         }
     }
 
@@ -647,7 +684,6 @@ final class SocialWireAppModel {
         mergeReadAtByEntryId((try? await readTask) ?? [:])
         await refreshSavedLinks()
         viewerProfile = try? await profileTask
-        await refreshSidebarUnreadCounts()
     }
 
     private func logBootstrapPhase(_ phase: String, startedAt: Date) {
@@ -664,11 +700,12 @@ final class SocialWireAppModel {
             applyGatewaySidebarProjection(projection)
             hasSidebarSnapshot = true
             folderPublicationsLoading = true
+            sidebarFetching = false
             logBootstrapPhase("sidebarPriority", startedAt: streamStarted)
             Task { await applyPendingStreamedBootstrapSelectionIfNeeded() }
         case .unreadCounts:
-            guard let counts = event.unreadCounts?.counts else { return }
-            applyStreamUnreadCounts(counts)
+            guard let payload = event.unreadCounts else { return }
+            applyStreamUnreadCounts(payload.counts, replacePublicationIds: payload.replacePublicationIds)
             logBootstrapPhase("unreadCounts", startedAt: streamStarted)
         case .selectedPublication:
             pendingStreamSelectedPublicationId = event.selectedPublication?.publicationId
@@ -676,6 +713,7 @@ final class SocialWireAppModel {
         case .entriesPage:
             pendingStreamedEntriesPage = event.entriesPage
             logBootstrapPhase("entriesPage", startedAt: streamStarted)
+            isLoading = false
             Task { await applyPendingStreamedBootstrapSelectionIfNeeded() }
         case .sidebarFolders:
             guard let payload = event.sidebarFolders else { return }
@@ -722,10 +760,13 @@ final class SocialWireAppModel {
                 pendingStreamSelectedPublicationId = nil
                 return
             }
-            applyStreamedPublicationSelection(publication: publication, entries: page.entries, cursor: page.cursor)
-            pendingStreamedEntriesPage = nil
-            pendingStreamSelectedPublicationId = nil
-            return
+        applyStreamedPublicationSelection(publication: publication, entries: page.entries, cursor: page.cursor)
+        pendingStreamedEntriesPage = nil
+        pendingStreamSelectedPublicationId = nil
+        if page.entries.isEmpty {
+            scheduleBootstrapFeedRefresh()
+        }
+        return
         }
 
         guard selectedPublication == nil else { return }
@@ -828,6 +869,7 @@ final class SocialWireAppModel {
         }
 
         prefetchPublicationAvatarImages(gatewayAllPublicationRows)
+        refreshSidebarUnreadSumCaches()
     }
 
     private func restoreCachedSidebarSnapshot(viewerDid: String) {
@@ -950,6 +992,30 @@ final class SocialWireAppModel {
         preferencesFromGateway = envelope.record
     }
 
+    private func prefetchSidebarPublicationsLimited() async {
+        let selectedId = selectedPublication?.publicationId
+            ?? UserDefaults.standard.string(forKey: Self.lastSelectedPublicationKey)
+
+        var targets: [DiscoveredPublication] = []
+        if let selectedId, let selected = publicationMatchingId(selectedId) {
+            targets.append(selected)
+        }
+        if targets.count < 2,
+           let next = gatewayAllPublicationRows.first(where: { $0.publicationId != selectedId })
+        {
+            targets.append(next)
+        }
+        guard !targets.isEmpty else { return }
+
+        await withTaskGroup(of: Void.self) { group in
+            for publication in targets {
+                group.addTask {
+                    try? await self.cacheOnlyLoadEntries(publication: publication)
+                }
+            }
+        }
+    }
+
     private func prefetchSidebarPublications() async {
         let publications = gatewayAllPublicationRows
         guard !publications.isEmpty else { return }
@@ -982,7 +1048,7 @@ final class SocialWireAppModel {
     }
 
     private static let entryPrefetchMaxEntries = 50
-    private static let feedPostBootstrapRefreshDelay: Duration = .seconds(2.5)
+    private static let feedPostBootstrapRefreshDelay: Duration = .seconds(1)
     private static let feedProactiveRefreshInterval: Duration = .seconds(45)
     private var proactiveFeedRefreshTask: Task<Void, Never>?
 
@@ -1157,6 +1223,7 @@ final class SocialWireAppModel {
 
     func loadEntries(for publication: DiscoveredPublication, forceNetworkRefresh: Bool = false) async {
         entriesNextCursor = nil
+        entriesPaginationTriggeredForEntryId = nil
         var hadCachedEntries = false
         if let coordinator = readerCacheCoordinator,
            let snapshot = try? coordinator.publicationEntries(publication.publicationId) {
@@ -1229,7 +1296,11 @@ final class SocialWireAppModel {
         }
     }
 
-    func loadMoreEntriesIfNeeded(for publication: DiscoveredPublication) async {
+    func loadMoreEntriesIfNeeded(for publication: DiscoveredPublication, triggeredByEntryId entryId: String? = nil) async {
+        if let entryId {
+            guard entriesPaginationTriggeredForEntryId != entryId else { return }
+            entriesPaginationTriggeredForEntryId = entryId
+        }
         guard canLoadMoreEntries else { return }
         guard !isLoadingEntries, !isLoadingMoreEntries else { return }
         guard selectedPublication?.publicationId == publication.publicationId else { return }
@@ -1245,6 +1316,9 @@ final class SocialWireAppModel {
             persistPublicationEntries(publication.publicationId, entries: entries)
             await prefetchThumbnailImages(for: page.entries)
         } catch {
+            if entryId != nil {
+                entriesPaginationTriggeredForEntryId = nil
+            }
             markAppViewUnavailableIfNeeded(error)
         }
     }
@@ -1266,6 +1340,7 @@ final class SocialWireAppModel {
         if newValue == .unread, let publication = selectedPublication {
             entries = []
             entriesNextCursor = nil
+            entriesPaginationTriggeredForEntryId = nil
             await loadEntries(for: publication, forceNetworkRefresh: true)
             if filteredEntries.isEmpty, canLoadMoreEntries {
                 await chaseUnreadPagesIfNeeded(for: publication)
@@ -1349,7 +1424,8 @@ final class SocialWireAppModel {
         } catch {
             guard generation == entrySelectionGeneration else { return }
             markAppViewUnavailableIfNeeded(error)
-            errorMessage = error.localizedDescription
+            // Opening an article is part of routine navigation; if the detail fetch fails we keep
+            // any cached selection and let the reader show its placeholder rather than popping a modal.
         }
     }
 
@@ -1369,7 +1445,8 @@ final class SocialWireAppModel {
             }
         } catch {
             markAppViewUnavailableIfNeeded(error)
-            errorMessage = error.localizedDescription
+            // Auto mark-as-read fires while scrolling/opening articles; a failure here must not
+            // interrupt the user with a modal alert.
         }
     }
 
@@ -1400,7 +1477,8 @@ final class SocialWireAppModel {
             }
         } catch {
             markAppViewUnavailableIfNeeded(error)
-            errorMessage = error.localizedDescription
+            // Read-state toggles shouldn't pop a modal; the optimistic UI simply stays unchanged
+            // on failure (no mutation happens before the awaited call succeeds).
         }
     }
 
@@ -1441,6 +1519,7 @@ final class SocialWireAppModel {
             }
         }
         readAtByEntryId = merged
+        refreshSidebarUnreadSumCaches()
     }
 
     private func syncEntryReadStateToPDS(subjectURI: String, readAt: Date) async {
@@ -1482,6 +1561,7 @@ final class SocialWireAppModel {
             rkey: optimisticRkey,
             name: trimmed
         )
+        refreshSidebarUnreadSumCaches()
 
         do {
             let created = try await gateway.createFolder(GatewayFolderWriteBody(name: trimmed))
@@ -1500,6 +1580,7 @@ final class SocialWireAppModel {
             persistSidebarSnapshot(viewerDid: viewerDID)
         } catch {
             restoreSidebarLayoutRollback(rollback)
+            refreshSidebarUnreadSumCaches()
             errorMessage = error.localizedDescription
         }
     }
@@ -1514,6 +1595,7 @@ final class SocialWireAppModel {
             publicationPrefs: &publicationPrefs,
             folderRkey: folderRkey
         )
+        refreshSidebarUnreadSumCaches()
 
         do {
             try await gateway.deleteFolder(rkey: folderRkey)
@@ -1522,6 +1604,7 @@ final class SocialWireAppModel {
             }
         } catch {
             restoreSidebarLayoutRollback(rollback)
+            refreshSidebarUnreadSumCaches()
             errorMessage = error.localizedDescription
         }
     }
@@ -1538,6 +1621,7 @@ final class SocialWireAppModel {
             myPublicationIds: Set(gatewayMyPublications.map(\.publicationId)),
             followingPublicationIds: Set(gatewayFollowingTab.map(\.publicationId))
         )
+        refreshSidebarUnreadSumCaches()
 
         do {
             let existing = publicationPrefs[publication.publicationId]
@@ -1555,6 +1639,7 @@ final class SocialWireAppModel {
             }
         } catch {
             restoreSidebarLayoutRollback(rollback)
+            refreshSidebarUnreadSumCaches()
             errorMessage = error.localizedDescription
         }
     }
@@ -1615,7 +1700,8 @@ final class SocialWireAppModel {
             savedLinks = try await pds.listMergedLatrSaves(state: .active, latrGateway: latrListGateway)
             archivedSavedLinks = try await pds.listMergedLatrSaves(state: .archived, latrGateway: latrListGateway)
         } catch {
-            errorMessage = error.localizedDescription
+            // Passive refresh (runs on pane appear and after mutations). Keep whatever links are
+            // already shown and don't interrupt navigation with a modal alert.
         }
     }
 
@@ -1668,7 +1754,7 @@ final class SocialWireAppModel {
             }
             await refreshSavedLinks()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't save this article to Read Later. \(error.localizedDescription)"
         }
     }
 
@@ -1685,7 +1771,7 @@ final class SocialWireAppModel {
         } catch {
             savedLinks = snapshotActive
             archivedSavedLinks = snapshotArchived
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't archive this link. \(error.localizedDescription)"
         }
     }
 
@@ -1702,7 +1788,7 @@ final class SocialWireAppModel {
         } catch {
             savedLinks = snapshotActive
             archivedSavedLinks = snapshotArchived
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't move this link back to Read Later. \(error.localizedDescription)"
         }
     }
 
@@ -1719,7 +1805,7 @@ final class SocialWireAppModel {
         } catch {
             savedLinks = snapshotActive
             archivedSavedLinks = snapshotArchived
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't delete this saved link. \(error.localizedDescription)"
         }
     }
 
@@ -1750,7 +1836,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createLike(entry: entry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't like this post. \(error.localizedDescription)"
         }
     }
 
@@ -1758,7 +1844,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createRepost(entry: entry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't repost this post. \(error.localizedDescription)"
         }
     }
 
@@ -1767,7 +1853,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createReply(text: text, entry: selectedEntry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't post your reply. \(error.localizedDescription)"
         }
     }
 
@@ -1776,7 +1862,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createQuote(text: text, entry: selectedEntry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't post your quote. \(error.localizedDescription)"
         }
     }
 
@@ -1785,7 +1871,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createLike(entry: selectedEntry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't like this post. \(error.localizedDescription)"
         }
     }
 
@@ -1794,7 +1880,7 @@ final class SocialWireAppModel {
         do {
             try await publicationsService.createRepost(entry: selectedEntry)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn't repost this post. \(error.localizedDescription)"
         }
     }
 
@@ -1818,6 +1904,7 @@ final class SocialWireAppModel {
                 from: &unreadCountsByPublicationId
             )
         }
+        refreshSidebarUnreadSumCaches()
     }
 
     private func gatewayMarkAllReadScopes(for scope: ReaderMarkReadScope) -> [GatewayMarkAllReadScopeDTO] {

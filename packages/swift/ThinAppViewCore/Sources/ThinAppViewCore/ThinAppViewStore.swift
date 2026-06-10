@@ -31,6 +31,11 @@ public protocol ThinAppViewStore: Actor {
     publicationSiteUrls: [String]
   ) async throws -> Int
 
+  func countUnreadEntriesBatch(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [String: Int]
+
   func deleteExpiredContent(before: Date) async throws -> Int
   func deleteExpiredReadMarks(before: Date) async throws -> Int
 

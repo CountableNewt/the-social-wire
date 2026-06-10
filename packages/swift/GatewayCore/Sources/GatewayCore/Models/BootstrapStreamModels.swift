@@ -13,9 +13,11 @@ public enum AppViewBootstrapStreamEventKind: String, Codable, Sendable {
 
 public struct AppViewBootstrapUnreadCountsPayload: Codable, Sendable, Equatable {
   public let counts: [String: Int]
+  public let replacePublicationIds: [String]?
 
-  public init(counts: [String: Int]) {
+  public init(counts: [String: Int], replacePublicationIds: [String]? = nil) {
     self.counts = counts
+    self.replacePublicationIds = replacePublicationIds
   }
 }
 
@@ -130,8 +132,14 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
     Self(kind: .sidebarPriority, sidebarPriority: response)
   }
 
-  public static func unreadCounts(_ counts: [String: Int]) -> Self {
-    Self(kind: .unreadCounts, unreadCounts: .init(counts: counts))
+  public static func unreadCounts(
+    _ counts: [String: Int],
+    replacePublicationIds: [String]? = nil
+  ) -> Self {
+    Self(
+      kind: .unreadCounts,
+      unreadCounts: .init(counts: counts, replacePublicationIds: replacePublicationIds)
+    )
   }
 
   public static func selectedPublication(publicationId: String) -> Self {

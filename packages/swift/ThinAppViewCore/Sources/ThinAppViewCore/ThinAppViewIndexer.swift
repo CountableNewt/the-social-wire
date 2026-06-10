@@ -43,11 +43,20 @@ public actor ThinAppViewIndexer {
     let record = (try JSONSerialization.jsonObject(with: recordJSON) as? [String: Any]) ?? [:]
 
     if collection == RssFeedLexicons.skyreaderFeedSubscription {
-      if operation != "delete", let rssIngestion {
-        if let feedUrl = ThinAppViewRssIngestion.feedUrl(fromSubscriptionRecord: record) {
-          _ = try? await rssIngestion.ingestFeed(normalizedFeedUrl: feedUrl)
-        }
-      }
+      await handleSkyreaderSubscriptionCommit(
+        repoDid: repoDid,
+        record: record,
+        operation: operation
+      )
+      return
+    }
+
+    if collection == ThinAppViewConfig.graphSubscriptionCollection {
+      await handleGraphSubscriptionCommit(
+        repoDid: repoDid,
+        record: record,
+        operation: operation
+      )
       return
     }
 
@@ -92,6 +101,66 @@ public actor ThinAppViewIndexer {
     )
     try await store.upsertContentItem(item)
     await invalidateFirstPageCaches(for: item.publicationSite)
+  }
+
+  private func handleSkyreaderSubscriptionCommit(
+    repoDid: String,
+    record: [String: Any],
+    operation: String
+  ) async {
+    let normalizedFeedUrl = ThinAppViewRssIngestion.feedUrl(fromSubscriptionRecord: record)
+
+    if operation != "delete", let normalizedFeedUrl, let rssIngestion {
+      _ = try? await rssIngestion.ingestFeed(normalizedFeedUrl: normalizedFeedUrl)
+    }
+
+    guard let projectionCache else { return }
+
+    await ThinAppViewProjectionCacheWarmer.invalidateViewerSubscriptionCaches(
+      projectionCache: projectionCache,
+      viewerDid: repoDid
+    )
+
+    if let normalizedFeedUrl {
+      await ThinAppViewProjectionCacheWarmer.invalidateFirstPageKeys(
+        projectionCache: projectionCache,
+        viewerDid: repoDid,
+        publicationId: RssFeedIdentity.rssPublicationId(from: normalizedFeedUrl)
+      )
+      if operation != "delete" {
+        await ThinAppViewProjectionCacheWarmer.warmRssFirstPage(
+          store: store,
+          projectionCache: projectionCache,
+          viewerDid: repoDid,
+          normalizedFeedUrl: normalizedFeedUrl
+        )
+      }
+    }
+  }
+
+  private func handleGraphSubscriptionCommit(
+    repoDid: String,
+    record: [String: Any],
+    operation: String
+  ) async {
+    guard let projectionCache else { return }
+
+    await ThinAppViewProjectionCacheWarmer.invalidateViewerSubscriptionCaches(
+      projectionCache: projectionCache,
+      viewerDid: repoDid
+    )
+
+    if operation != "delete",
+       let publication = (record["publication"] as? String)?
+         .trimmingCharacters(in: .whitespacesAndNewlines),
+       !publication.isEmpty
+    {
+      await ThinAppViewProjectionCacheWarmer.invalidateFirstPageKeys(
+        projectionCache: projectionCache,
+        viewerDid: repoDid,
+        publicationId: publication
+      )
+    }
   }
 
   private func invalidateFirstPageCaches(for publicationSite: String?) async {

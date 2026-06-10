@@ -74,6 +74,36 @@ enum MergedLatrSave: Identifiable, Codable, Equatable, Hashable, Sendable {
         }
     }
 
+    var rowSubtitle: String {
+        switch self {
+        case .external(let save):
+            save.rowSubtitle ?? Self.fallbackRowSubtitle(from: save)
+        case .native(let save):
+            save.rowSubtitle ?? Self.fallbackRowSubtitle(from: save)
+        }
+    }
+
+    private static func fallbackRowSubtitle(from save: MergedLatrExternalSave) -> String {
+        EntryDisplayDate.savedLinkRowSubtitle(
+            site: save.site,
+            previewHost: URL(string: save.url)?.host,
+            author: save.author,
+            publishedAt: save.publishedAt,
+            savedAt: save.savedAt
+        )
+    }
+
+    private static func fallbackRowSubtitle(from save: MergedLatrNativeSave) -> String {
+        EntryDisplayDate.savedLinkRowSubtitle(
+            site: save.site,
+            previewHost: save.url.flatMap(URL.init(string:))?.host
+                ?? save.linkedWebUrl.flatMap(URL.init(string:))?.host,
+            author: save.author,
+            publishedAt: save.publishedAt,
+            savedAt: save.savedAt
+        )
+    }
+
     var state: String? {
         switch self {
         case .external(let save): save.state

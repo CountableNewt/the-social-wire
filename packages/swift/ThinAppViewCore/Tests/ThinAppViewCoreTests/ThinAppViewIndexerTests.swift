@@ -199,6 +199,122 @@ struct ThinAppViewIndexerTests {
     )
     #expect(all.entries.isEmpty)
   }
+
+  @Test("graph subscription commit invalidates viewer sidebar projection cache")
+  func graphSubscriptionInvalidatesSidebarCache() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-graph-sub-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let cachePath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-graph-sub-cache-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: cachePath) }
+
+    let logger = Logger(label: "indexer.test")
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: logger)
+    let projectionCache = try SQLiteAppViewProjectionCacheStore(path: cachePath, logger: logger)
+    let config = ThinAppViewConfig.fromEnvironment(["ENABLE_THIN_APPVIEW": "true"])
+    let indexer = ThinAppViewIndexer(
+      store: store,
+      config: config,
+      logger: logger,
+      projectionCache: projectionCache
+    )
+
+    try await projectionCache.storeSidebarProjectionJSON(
+      viewerDid: "did:plc:viewer",
+      jsonBody: #"{"viewerDid":"did:plc:viewer"}"#,
+      expiresAt: Date().addingTimeInterval(3600)
+    )
+
+    let record: [String: Any] = [
+      "publication": "at://did:plc:author/site.standard.publication/main",
+    ]
+    let recordJSON = try JSONSerialization.data(withJSONObject: record)
+
+    try await indexer.handleCommit(
+      repoDid: "did:plc:viewer",
+      collection: ThinAppViewConfig.graphSubscriptionCollection,
+      rkey: "sub1",
+      cid: "bafysub",
+      recordJSON: recordJSON,
+      operation: "create"
+    )
+
+    #expect(try await projectionCache.cachedSidebarProjectionJSON(viewerDid: "did:plc:viewer") == nil)
+  }
+
+  @Test("skyreader subscription commit warms first page when feed rows already indexed")
+  func skyreaderSubscriptionWarmsFirstPage() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-rss-sub-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let cachePath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-rss-sub-cache-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: cachePath) }
+
+    let logger = Logger(label: "indexer.test")
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: logger)
+    let projectionCache = try SQLiteAppViewProjectionCacheStore(path: cachePath, logger: logger)
+    let config = ThinAppViewConfig.fromEnvironment(["ENABLE_THIN_APPVIEW": "true"])
+    let indexer = ThinAppViewIndexer(
+      store: store,
+      config: config,
+      logger: logger,
+      projectionCache: projectionCache
+    )
+
+    let feedUrl = "https://example.com/feed.xml"
+    let publicationId = RssFeedIdentity.rssPublicationId(from: feedUrl)
+    let now = Date()
+    let entryUri = RssFeedIdentity.rssEntryId(normalizedFeedUrl: feedUrl, stableItemKey: "link:\(feedUrl)/one")
+    try await store.upsertContentItem(
+      IndexedContentItem(
+        uri: entryUri,
+        cid: RssFeedIdentity.deterministicCid(for: entryUri),
+        authorDid: RssFeedLexicons.rssAuthorDid,
+        collection: RssFeedLexicons.skyreaderFeedEntry,
+        createdAt: now,
+        indexedAt: now,
+        publicationSite: feedUrl,
+        render: ContentRenderFields(
+          title: "RSS Item",
+          publishedAt: ISO8601DateFormatter().string(from: now)
+        ),
+        expiresAt: now.addingTimeInterval(3600)
+      )
+    )
+
+    let record: [String: Any] = [
+      "feedUrl": feedUrl,
+      "sourceType": "rss",
+    ]
+    let recordJSON = try JSONSerialization.data(withJSONObject: record)
+
+    try await indexer.handleCommit(
+      repoDid: "did:plc:viewer",
+      collection: RssFeedLexicons.skyreaderFeedSubscription,
+      rkey: "rss1",
+      cid: "bafyrss",
+      recordJSON: recordJSON,
+      operation: "create"
+    )
+
+    let cached = try await projectionCache.cachedFirstPageJSON(
+      viewerDid: "did:plc:viewer",
+      publicationId: publicationId
+    )
+    #expect(cached?.contains("RSS Item") == true)
+  }
 }
 
 @Suite("ThinAppViewQuerySupport")

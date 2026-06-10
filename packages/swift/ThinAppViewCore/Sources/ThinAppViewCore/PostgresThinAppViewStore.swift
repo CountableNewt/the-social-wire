@@ -570,6 +570,40 @@ public init(pool: PostgresClient, logger: Logger) {
     )
   }
 
+  public func countUnreadEntriesBatch(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [String: Int] {
+    guard !scopes.isEmpty else { return [:] }
+
+    let authorDids = Array(Set(scopes.map(\.authorDid)))
+    let now = Date()
+    let rows = try await pool.query(
+      """
+      SELECT ci.author_did, ci.publication_site
+      FROM content_items ci
+      LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
+      WHERE ci.author_did = ANY(\(authorDids))
+        AND ci.expires_at > \(now)
+        AND rm.subject_uri IS NULL
+      """,
+      logger: logger
+    )
+
+    var unreadSiteFieldsByAuthor: [String: [String?]] = Dictionary(
+      uniqueKeysWithValues: authorDids.map { ($0, []) }
+    )
+    for try await row in rows {
+      let (authorDid, site): (String, String?) = try row.decode((String, String?).self)
+      unreadSiteFieldsByAuthor[authorDid, default: []].append(site)
+    }
+
+    return ThinAppViewQuerySupport.batchUnreadCounts(
+      scopes: scopes,
+      unreadSiteFieldsByAuthor: unreadSiteFieldsByAuthor
+    )
+  }
+
   public func deleteExpiredContent(before: Date) async throws -> Int {
     let rows = try await pool.query(
       "DELETE FROM content_items WHERE expires_at <= \(before) RETURNING uri",

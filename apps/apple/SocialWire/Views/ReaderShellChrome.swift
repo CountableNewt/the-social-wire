@@ -40,6 +40,7 @@ struct ReaderShellOverlayModifier: ViewModifier {
     @Binding var showingProfile: Bool
     var compactPane: ReaderPane?
     @State private var showMarkReadConfirm = false
+    @State private var markReadFeedback = 0
 
     private var isCompact: Bool {
         horizontalSizeClass == .compact
@@ -162,12 +163,14 @@ struct ReaderShellOverlayModifier: ViewModifier {
                 Button(markReadConfirmTitle) {
                     Task {
                         await appModel.markRead(for: markReadScope)
+                        markReadFeedback += 1
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(markReadDialogMessage)
             }
+            .sensoryFeedback(.success, trigger: markReadFeedback)
     }
 }
 

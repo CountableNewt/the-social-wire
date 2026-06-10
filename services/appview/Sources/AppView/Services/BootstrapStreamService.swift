@@ -50,15 +50,22 @@ struct BootstrapStreamService {
         viewerDid: auth.did
       )
 
-      let unreadStarted = Date()
       let unreadRows = priority.response.allPublicationRows
         + priority.response.myPublications
         + priority.response.subscribedUnfoldered
         + priority.response.followingTabPublications
-      let unreadCounts = await projectionService.freshUnreadCountsMap(
+
+      let unreadStarted = Date()
+      let foldersStarted = Date()
+      async let unreadCountsTask = projectionService.freshUnreadCountsMap(
         for: unreadRows,
         viewerDid: auth.did
       )
+      async let foldersTask = projectionService.bootstrapFolderSidebar(
+        auth: auth,
+        context: priority.context
+      )
+      let unreadCounts = await unreadCountsTask
       try await writeEvent(.unreadCounts(unreadCounts), writer: &writer)
       BootstrapStreamTimings.logPhase(
         logger,
@@ -81,11 +88,7 @@ struct BootstrapStreamService {
         Task { await self.enrollAuthorForBootstrap(auth: auth, row: row) }
       }
 
-      let foldersStarted = Date()
-      let folders = try await projectionService.bootstrapFolderSidebar(
-        auth: auth,
-        context: priority.context
-      )
+      let folders = try await foldersTask
       try await writeEvent(.sidebarFolders(folders), writer: &writer)
       BootstrapStreamTimings.logPhase(
         logger,
@@ -93,6 +96,30 @@ struct BootstrapStreamService {
         startedAt: foldersStarted,
         viewerDid: auth.did
       )
+
+      let priorityPublicationIds = Set(unreadRows.map(\.publicationId))
+      let folderUnreadRows = folders.allPublicationRows.filter {
+        !priorityPublicationIds.contains($0.publicationId)
+      }
+      if !folderUnreadRows.isEmpty {
+        let folderUnreadStarted = Date()
+        let folderUnreadCounts = await projectionService.freshUnreadCountsMap(
+          for: folderUnreadRows,
+          viewerDid: auth.did
+        )
+        let folderPublicationIds = folderUnreadRows.map(\.publicationId)
+        try await writeEvent(
+          .unreadCounts(folderUnreadCounts, replacePublicationIds: folderPublicationIds),
+          writer: &writer
+        )
+        BootstrapStreamTimings.logPhase(
+          logger,
+          phase: "folderUnreadCounts",
+          startedAt: folderUnreadStarted,
+          viewerDid: auth.did,
+          extra: ["publicationCount": "\(folderUnreadCounts.count)"]
+        )
+      }
 
       if let selectedId, let selectedRow {
         try await writeEvent(.selectedPublication(publicationId: selectedId), writer: &writer)
@@ -188,8 +215,8 @@ struct BootstrapStreamService {
       + snapshot.priority.myPublications
       + snapshot.priority.subscribedUnfoldered
       + snapshot.priority.followingTabPublications
-    let unreadCounts = await projectionService.freshUnreadCountsMap(
-      for: unreadRows,
+    let unreadCounts = await cachedBootstrapUnreadCounts(
+      rows: unreadRows,
       viewerDid: auth.did
     )
     try await writeEvent(.unreadCounts(unreadCounts), writer: &writer)
@@ -223,7 +250,27 @@ struct BootstrapStreamService {
   private func scheduleBackgroundRefresh(auth: AuthContext, priority: PublicationSidebarResponse) {
     Task {
       do {
-        _ = try await self.projectionService.bootstrapPrioritySidebar(auth: auth)
+        _ = try await self.projectionService.refreshFullDiscoverySidebar(auth: auth)
+        let refreshed = try await self.projectionService.bootstrapPrioritySidebar(auth: auth)
+        let folders = try await self.projectionService.bootstrapFolderSidebar(
+          auth: auth,
+          context: refreshed.context
+        )
+        guard let projectionCache else { return }
+        let cacheExpires = Date().addingTimeInterval(AppViewProjectionCacheTTL.sidebarSeconds)
+        let snapshot = BootstrapSidebarCacheSnapshot(
+          priority: refreshed.response,
+          folderPayload: folders
+        )
+        if let data = try? JSONEncoder().encode(snapshot),
+           let json = String(data: data, encoding: .utf8)
+        {
+          try? await projectionCache.storeSidebarProjectionJSON(
+            viewerDid: auth.did,
+            jsonBody: json,
+            expiresAt: cacheExpires
+          )
+        }
         _ = priority
       } catch {
         self.logger.warning(
@@ -365,20 +412,41 @@ struct BootstrapStreamService {
       return
     }
 
-    // Cold path: no cache — wait for in-flight enroll, then read the index.
+    // Cold path: do not block the stream on PDS enroll — client refreshes feed after `done`.
     if let enrollTask {
-      await enrollTask.value
+      Task { await enrollTask.value }
     } else {
-      await enrollAuthorForBootstrap(auth: auth, row: row)
+      Task { await enrollAuthorForBootstrap(auth: auth, row: row) }
     }
-    if let page = try await readService.liveFirstPage(auth: auth, scope: row.appViewScope, limit: 50) {
-      try await emitBootstrapEntriesPage(publicationId: publicationId, page: page, writer: &writer)
-    } else {
-      try await writeEvent(
-        .warning("Could not load first feed page for \(publicationId)."),
-        writer: &writer
-      )
+    try await emitBootstrapEntriesPage(
+      publicationId: publicationId,
+      page: AppViewEntryListResponse(entries: [], cursor: nil),
+      writer: &writer
+    )
+  }
+
+  /// Stale-first unread map for cached bootstrap: projection cache, then live counts in background.
+  private func cachedBootstrapUnreadCounts(
+    rows: [SidebarPublicationRow],
+    viewerDid: String
+  ) async -> [String: Int] {
+    if let projectionCache,
+       let cached = try? await projectionCache.cachedUnreadCounts(viewerDid: viewerDid),
+       !cached.isEmpty
+    {
+      Task {
+        let fresh = await projectionService.freshUnreadCountsMap(for: rows, viewerDid: viewerDid)
+        guard !fresh.isEmpty else { return }
+        let expiresAt = Date().addingTimeInterval(AppViewProjectionCacheTTL.unreadCountsSeconds)
+        try? await projectionCache.storeUnreadCounts(
+          viewerDid: viewerDid,
+          counts: fresh,
+          expiresAt: expiresAt
+        )
+      }
+      return cached
     }
+    return await projectionService.freshUnreadCountsMap(for: rows, viewerDid: viewerDid)
   }
 
   private func emitBootstrapEntriesPage(

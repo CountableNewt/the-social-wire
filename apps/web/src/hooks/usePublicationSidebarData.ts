@@ -154,6 +154,7 @@ export function usePublicationSidebarData() {
     string | null
   >(null);
   const [sidebarFetching, setSidebarFetching] = useState(false);
+  const [bootstrapStreamComplete, setBootstrapStreamComplete] = useState(false);
   const [folderPublicationsLoading, setFolderPublicationsLoading] = useState(false);
   const [projectionError, setProjectionError] = useState<Error | null>(null);
   const streamGenerationRef = useRef(0);
@@ -184,6 +185,7 @@ export function usePublicationSidebarData() {
     setStreamProjection(undefined);
     setStreamSelectedPublicationId(null);
     setSidebarFetching(false);
+    setBootstrapStreamComplete(false);
     setFolderPublicationsLoading(false);
     setProjectionError(null);
   }
@@ -210,6 +212,7 @@ export function usePublicationSidebarData() {
       bootstrapFeedPublicationIdRef.current = null;
 
       setSidebarFetching(true);
+      setBootstrapStreamComplete(false);
       setProjectionError(null);
       setFolderPublicationsLoading(!hadSidebarSnapshot);
 
@@ -223,6 +226,7 @@ export function usePublicationSidebarData() {
 
               if (event.kind === "sidebarPriority") {
                 markBootstrapPerf("sidebarPriority");
+                setSidebarFetching(false);
               }
               if (event.kind === "unreadCounts") {
                 markBootstrapPerf("unreadCounts");
@@ -260,8 +264,19 @@ export function usePublicationSidebarData() {
                   setStreamSelectedPublicationId(event.payload.publicationId);
                   pendingAutoSelectPublicationIdRef.current = null;
                 }
+                if (event.payload.entries.length === 0) {
+                  queueBootstrapFeedRefresh({
+                    queryClient: qc,
+                    publicationKey: normalizeAtRepoParam(
+                      event.payload.publicationId
+                    ),
+                    oauthSession: oauth,
+                    viewerDid: did,
+                  });
+                }
               }
               if (event.kind === "done") {
+                setBootstrapStreamComplete(true);
                 if (pendingAutoSelectPublicationIdRef.current) {
                   setStreamSelectedPublicationId(
                     pendingAutoSelectPublicationIdRef.current
@@ -458,6 +473,7 @@ export function usePublicationSidebarData() {
     folderPublicationsLoading: folderPublicationsListLoading,
     hasSidebarSnapshot,
     sidebarFetching,
+    bootstrapStreamComplete,
     refresh,
     refreshUnreadCountsFromAppView,
     viewerDid: session?.did,

@@ -397,7 +397,14 @@ final class PDSRecordService {
                     author: metadata.author,
                     publishedAt: metadata.publishedAt,
                     language: metadata.language,
-                    linkedWebUrl: metadata.linkedWebUrl
+                    linkedWebUrl: metadata.linkedWebUrl,
+                    rowSubtitle: latrRowSubtitle(
+                        site: metadata.site,
+                        previewURL: metadata.linkedWebUrl,
+                        author: metadata.author,
+                        publishedAt: metadata.publishedAt,
+                        savedAt: item.value.savedAt
+                    )
                 )))
                 continue
             }
@@ -420,7 +427,14 @@ final class PDSRecordService {
                 author: metadata.author,
                 publishedAt: metadata.publishedAt,
                 language: metadata.language,
-                linkedWebUrl: metadata.linkedWebUrl
+                linkedWebUrl: metadata.linkedWebUrl,
+                rowSubtitle: latrRowSubtitle(
+                    site: metadata.site,
+                    previewURL: external.value.url,
+                    author: metadata.author,
+                    publishedAt: metadata.publishedAt,
+                    savedAt: item.value.savedAt
+                )
             )))
         }
 
@@ -447,7 +461,14 @@ final class PDSRecordService {
                     author: metadata.author,
                     publishedAt: metadata.publishedAt,
                     language: metadata.language,
-                    linkedWebUrl: metadata.linkedWebUrl
+                    linkedWebUrl: metadata.linkedWebUrl,
+                    rowSubtitle: latrRowSubtitle(
+                        site: metadata.site,
+                        previewURL: metadata.linkedWebUrl,
+                        author: metadata.author,
+                        publishedAt: metadata.publishedAt,
+                        savedAt: item.value.savedAt
+                    )
                 )))
                 continue
             }
@@ -471,10 +492,33 @@ final class PDSRecordService {
                 author: metadata.author,
                 publishedAt: metadata.publishedAt,
                 language: metadata.language,
-                linkedWebUrl: metadata.linkedWebUrl
+                linkedWebUrl: metadata.linkedWebUrl,
+                rowSubtitle: latrRowSubtitle(
+                    site: metadata.site,
+                    previewURL: linked ?? item.value.subjectUri,
+                    author: metadata.author,
+                    publishedAt: metadata.publishedAt,
+                    savedAt: item.value.savedAt
+                )
             )))
         }
 
         return rows.sorted { $0.savedAt > $1.savedAt }
+    }
+
+    nonisolated private static func latrRowSubtitle(
+        site: String?,
+        previewURL: String?,
+        author: String?,
+        publishedAt: String?,
+        savedAt: String
+    ) -> String {
+        EntryDisplayDate.savedLinkRowSubtitle(
+            site: site,
+            previewHost: previewURL.flatMap(URL.init(string:))?.host,
+            author: author,
+            publishedAt: publishedAt,
+            savedAt: savedAt
+        )
     }
 }

@@ -17,6 +17,7 @@ struct EntryRow: View {
                 }
             }
             .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
 
             thumbnail
 
@@ -33,7 +34,7 @@ struct EntryRow: View {
                         .lineLimit(1)
                 }
 
-                Text(Self.formatted(entry.publishedAt))
+                Text(entry.displayPublishedAt)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -59,15 +60,11 @@ struct EntryRow: View {
         }
         .frame(width: 56, height: 56)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityHidden(true)
     }
 
     private var thumbnailPlaceholder: some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(Color(.tertiarySystemFill))
-    }
-
-    private static func formatted(_ raw: String) -> String {
-        guard let date = DateFormatters.date(from: raw) else { return raw }
-        return date.formatted(date: .abbreviated, time: .omitted)
     }
 }

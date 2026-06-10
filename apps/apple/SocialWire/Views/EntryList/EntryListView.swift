@@ -4,6 +4,8 @@ struct EntryListView: View {
     @Environment(SocialWireAppModel.self) private var appModel
     var navigationEpoch: (() -> UInt)? = nil
     var onEntryOpened: ((UInt) -> Void)? = nil
+    @State private var refreshFeedback = 0
+    @State private var saveFeedback = 0
 
     var body: some View {
         List {
@@ -28,8 +30,11 @@ struct EntryListView: View {
                         }
                         .buttonStyle(.plain)
                         .readerClearListRow()
+                        .accessibilityElement(children: .combine)
+                        .accessibilityValue(appModel.readAtByEntryId[entry.entryId] == nil ? "Unread" : "Read")
                             .contextMenu {
                                 Button {
+                                    saveFeedback += 1
                                     Task {
                                         await appModel.saveEntry(
                                             entryId: entry.entryId,
@@ -50,7 +55,12 @@ struct EntryListView: View {
                                 guard entry.entryId == appModel.filteredEntries.last?.entryId,
                                       let publication = appModel.selectedPublication
                                 else { return }
-                                Task { await appModel.loadMoreEntriesIfNeeded(for: publication) }
+                                Task {
+                                    await appModel.loadMoreEntriesIfNeeded(
+                                        for: publication,
+                                        triggeredByEntryId: entry.entryId
+                                    )
+                                }
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(appModel.readAtByEntryId[entry.entryId] == nil ? "Read" : "Unread") {
@@ -80,7 +90,10 @@ struct EntryListView: View {
             if let publication = appModel.selectedPublication {
                 await appModel.loadEntries(for: publication)
             }
+            refreshFeedback += 1
         }
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: refreshFeedback)
+        .sensoryFeedback(.success, trigger: saveFeedback)
     }
 
     private func openEntry(_ entry: EntryListItem, navigationEpoch: UInt) async {

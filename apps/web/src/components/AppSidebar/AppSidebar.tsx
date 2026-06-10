@@ -101,13 +101,14 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     followingPublicationsLoading,
     streamSelectedPublicationId,
     hasSidebarSnapshot,
+    bootstrapStreamComplete,
   } = usePublicationSidebarData();
 
   useCrossClientReadSync();
 
   usePrefetchSidebarPublicationEntries(
     allPublicationRows,
-    hasSidebarSnapshot && !!session,
+    hasSidebarSnapshot && !!session && bootstrapStreamComplete,
     selectedPubId ?? streamSelectedPublicationId
   );
 

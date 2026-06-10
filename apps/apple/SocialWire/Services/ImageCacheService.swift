@@ -43,7 +43,7 @@ actor ImageCacheService {
         }
 
         let task = Task<UIImage?, Never> {
-            defer { Task { await self.clearInFlight(key) } }
+            defer { Task { self.clearInFlight(key) } }
 
             do {
                 let (data, response) = try await session.data(from: url)

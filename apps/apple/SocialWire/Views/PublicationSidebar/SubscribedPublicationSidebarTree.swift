@@ -6,6 +6,8 @@ struct SubscribedPublicationSidebarTree: View {
     @Binding var showingNewFolder: Bool
     @Binding var showingAddPublication: Bool
     var onPublicationTap: ((DiscoveredPublication) -> Void)? = nil
+    @State private var folderPendingDelete: RepoRecord<FolderRecord>?
+    @State private var folderDeleteFeedback = 0
 
     var body: some View {
         @Bindable var model = appModel
@@ -27,7 +29,7 @@ struct SubscribedPublicationSidebarTree: View {
                 .readerClearListRow()
             }
         } header: {
-            SidebarSectionLabel(title: "Folders", unreadCount: foldersSectionUnread)
+            SidebarSectionLabel(title: "Folders", unreadCount: appModel.foldersSectionUnreadCount)
         }
         .onChange(of: model.sidebarFoldersSectionExpanded) { _, _ in
             appModel.noteSidebarExpandedPresentationChanged()
@@ -55,12 +57,33 @@ struct SubscribedPublicationSidebarTree: View {
         } header: {
             SidebarSectionLabel(
                 title: "Publications",
-                unreadCount: appModel.sumUnread(for: appModel.subscribedUnfolderedPublications)
+                unreadCount: appModel.subscribedUnfolderedSectionUnreadCount
             )
         }
         .onChange(of: model.sidebarPublicationsSectionExpanded) { _, _ in
             appModel.noteSidebarExpandedPresentationChanged()
         }
+        .confirmationDialog(
+            "Delete folder?",
+            isPresented: Binding(
+                get: { folderPendingDelete != nil },
+                set: { if !$0 { folderPendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: folderPendingDelete
+        ) { folder in
+            Button("Delete", role: .destructive) {
+                Task { await appModel.deleteFolder(folder) }
+                folderDeleteFeedback += 1
+                folderPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                folderPendingDelete = nil
+            }
+        } message: { folder in
+            Text("This deletes \"\(folder.value.name)\" and does not unsubscribe from its publications.")
+        }
+        .sensoryFeedback(.success, trigger: folderDeleteFeedback)
     }
 
     @ViewBuilder
@@ -77,17 +100,18 @@ struct SubscribedPublicationSidebarTree: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 12)
+                    .accessibilityHidden(true)
                 Text(folder.value.name)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                SidebarCountLabel(count: appModel.sumUnread(for: pubs))
+                SidebarCountLabel(count: appModel.folderUnreadCount(rkey: folderRkey))
             }
             .readerFullWidthTapLabel()
         }
         .readerClearListRow()
         .swipeActions {
             Button("Delete", role: .destructive) {
-                Task { await appModel.deleteFolder(folder) }
+                folderPendingDelete = folder
             }
         }
 
@@ -130,12 +154,6 @@ struct SubscribedPublicationSidebarTree: View {
             } label: {
                 Label("Refresh Publication", systemImage: "arrow.clockwise")
             }
-        }
-    }
-
-    private var foldersSectionUnread: Int {
-        appModel.folders.reduce(0) { total, folder in
-            total + appModel.sumUnread(for: appModel.publications(in: folder))
         }
     }
 }

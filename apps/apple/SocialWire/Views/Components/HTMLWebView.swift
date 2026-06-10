@@ -8,7 +8,7 @@ final class ArticleWebNavigationHandling: NSObject, WKNavigationDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
         if navigationAction.navigationType == .linkActivated,
            let url = navigationAction.request.url
@@ -28,6 +28,7 @@ private final class StableHeightWebView: WKWebView {
     }
 }
 
+@MainActor
 private func configureArticleWebView(_ webView: WKWebView, coordinator: NSObject & WKNavigationDelegate) {
     webView.isOpaque = false
     webView.backgroundColor = .clear
@@ -37,6 +38,7 @@ private func configureArticleWebView(_ webView: WKWebView, coordinator: NSObject
     webView.navigationDelegate = coordinator
     webView.scrollView.isScrollEnabled = true
     webView.scrollView.bounces = true
+    webView.scrollView.alwaysBounceVertical = false
     webView.scrollView.contentInsetAdjustmentBehavior = .automatic
     webView.scrollView.delaysContentTouches = false
 }
@@ -58,10 +60,10 @@ struct HTMLWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let wrapped = HTMLRenderer.wrappedHTML(html, colorScheme: colorScheme)
         let loadKey = HTMLWebView.LoadKey(html: html, colorScheme: colorScheme, baseURL: baseURL)
         guard context.coordinator.loadedKey != loadKey else { return }
         context.coordinator.loadedKey = loadKey
+        let wrapped = HTMLRenderer.wrappedHTML(html, colorScheme: colorScheme)
         webView.loadHTMLString(wrapped, baseURL: baseURL)
     }
 
@@ -77,7 +79,7 @@ struct HTMLWebView: UIViewRepresentable {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             ArticleWebNavigationHandling.shared.webView(
                 webView,
@@ -114,7 +116,7 @@ struct WebPreview: UIViewRepresentable {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             ArticleWebNavigationHandling.shared.webView(
                 webView,

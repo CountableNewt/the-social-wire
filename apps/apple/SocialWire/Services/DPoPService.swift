@@ -13,7 +13,7 @@ actor DPoPService {
         let origin = originKey(for: url)
         let nonce = nonceByOrigin[origin]
 
-        var header: [String: JSONValue] = [
+        let header: [String: JSONValue] = [
             "typ": .string("dpop+jwt"),
             "alg": .string("ES256"),
             "jwk": jwkValue()

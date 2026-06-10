@@ -18,4 +18,5 @@ struct MergedLatrExternalSave: Codable, Equatable, Hashable, Sendable {
     var publishedAt: String?
     var language: String?
     var linkedWebUrl: String?
+    var rowSubtitle: String?
 }

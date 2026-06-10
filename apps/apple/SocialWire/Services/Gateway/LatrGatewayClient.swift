@@ -95,7 +95,7 @@ final class LatrGatewayClient {
     }
 
     private func authorizedRequestData(method: String, path: String, body: Data?) async throws -> Data {
-        guard var comps = URLComponents(url: transportBaseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
+        guard let comps = URLComponents(url: transportBaseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
             throw SocialWireError.invalidURL
         }
         guard let url = comps.url else {
@@ -227,7 +227,11 @@ final class LatrGatewayClient {
             return "com.atproto.repo.listRecords"
         }
         if method == "POST" && path == "/v1/latr/saves" {
-            return "com.atproto.repo.createRecord"
+            // L@tr saved items use deterministic rkeys (URL/subject-derived), so the gateway writes
+            // them upstream with putRecord — not createRecord. Bind the upstream DPoP proof's `htu`
+            // to putRecord to match the endpoint the gateway actually calls, otherwise the PDS
+            // rejects the write with `invalid_dpop_proof: DPoP "htu" mismatch`.
+            return "com.atproto.repo.putRecord"
         }
         if method == "PATCH", path.contains("/v1/latr/saves/"), path.hasSuffix("/state") {
             return "com.atproto.repo.putRecord"

@@ -14,7 +14,7 @@ export type BootstrapStreamEventKind =
 export type BootstrapStreamEvent = {
   kind: BootstrapStreamEventKind;
   sidebarPriority?: PublicationSidebarProjection;
-  unreadCounts?: { counts: Record<string, number> };
+  unreadCounts?: { counts: Record<string, number>; replacePublicationIds?: string[] };
   selectedPublication?: { publicationId: string };
   entriesPage?: {
     publicationId: string;
@@ -32,7 +32,7 @@ export type BootstrapStreamEvent = {
 
 export type ParsedBootstrapStreamEvent =
   | { kind: "sidebarPriority"; payload: PublicationSidebarProjection }
-  | { kind: "unreadCounts"; payload: { counts: Record<string, number> } }
+  | { kind: "unreadCounts"; payload: { counts: Record<string, number>; replacePublicationIds?: string[] } }
   | { kind: "selectedPublication"; payload: { publicationId: string } }
   | {
       kind: "entriesPage";

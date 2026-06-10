@@ -204,6 +204,48 @@ public enum ThinAppViewQuerySupport {
       }
     }
   }
+
+  static func unreadCountForScope(
+    unreadSiteFields: [String?],
+    publicationAtUri: String?,
+    publicationScopeAtUris: [String],
+    publicationSiteUrls: [String]
+  ) -> Int {
+    let scoped = requiresPublicationSiteFilter(
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls
+    )
+    if !scoped {
+      return unreadSiteFields.count
+    }
+    return countMatchingPublicationSites(
+      siteFields: unreadSiteFields,
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls
+    )
+  }
+
+  static func batchUnreadCounts(
+    scopes: [PublicationUnreadScope],
+    unreadSiteFieldsByAuthor: [String: [String?]]
+  ) -> [String: Int] {
+    var counts: [String: Int] = [:]
+    for scope in scopes {
+      let siteFields = unreadSiteFieldsByAuthor[scope.authorDid] ?? []
+      let count = unreadCountForScope(
+        unreadSiteFields: siteFields,
+        publicationAtUri: scope.publicationAtUri,
+        publicationScopeAtUris: scope.publicationScopeAtUris,
+        publicationSiteUrls: scope.publicationSiteUrls
+      )
+      if count > 0 {
+        counts[scope.publicationId] = count
+      }
+    }
+    return counts
+  }
 }
 
 extension ContentRenderFields {

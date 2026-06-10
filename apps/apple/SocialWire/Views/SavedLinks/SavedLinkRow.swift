@@ -31,7 +31,7 @@ struct SavedLinkRow: View {
                             .lineLimit(2)
                     }
 
-                    Text(subtitle)
+                    Text(save.rowSubtitle)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
@@ -40,6 +40,8 @@ struct SavedLinkRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -56,32 +58,11 @@ struct SavedLinkRow: View {
         }
         .frame(width: 56, height: 56)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityHidden(true)
     }
 
     private var thumbnailPlaceholder: some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(Color(.tertiarySystemFill))
-    }
-
-    private var subtitle: String {
-        var parts: [String] = []
-        if let site = save.site, !site.isEmpty {
-            parts.append(site)
-        } else if let host = SavedLinkEmbedURL.previewURL(for: save)?.host {
-            parts.append(host)
-        }
-        if let author = save.author, !author.isEmpty {
-            parts.append(author)
-        }
-        if let publishedAt = save.publishedAt, !publishedAt.isEmpty {
-            parts.append(Self.formatted(publishedAt))
-        }
-        parts.append(Self.formatted(save.savedAt))
-        return parts.joined(separator: " · ")
-    }
-
-    private static func formatted(_ raw: String) -> String {
-        guard let date = DateFormatters.date(from: raw) else { return raw }
-        return date.formatted(date: .abbreviated, time: .shortened)
     }
 }

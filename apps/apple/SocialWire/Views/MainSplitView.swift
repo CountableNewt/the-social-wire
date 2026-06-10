@@ -28,9 +28,6 @@ struct MainSplitView: View {
                     ProfileView()
                 }
             }
-            .refreshable {
-                await appModel.refreshAll()
-            }
             .modifier(CompactReaderSelectionHandlers(
                 compact: compact,
                 compactPane: $compactPane,

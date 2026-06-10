@@ -431,6 +431,44 @@ public init(path dbPath: String, logger: Logger) throws {
     )
   }
 
+  public func countUnreadEntriesBatch(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [String: Int] {
+    guard !scopes.isEmpty else { return [:] }
+
+    let authorDids = Array(Set(scopes.map(\.authorDid)))
+    let nowIso = Self.isoString(from: Date())
+    let placeholders = authorDids.map { _ in "?" }.joined(separator: ", ")
+
+    let unreadSiteFieldsByAuthor: [String: [String?]] = try await db.read { db in
+      var grouped: [String: [String?]] = Dictionary(uniqueKeysWithValues: authorDids.map { ($0, []) })
+      let rows = try Row.fetchAll(
+        db,
+        sql: """
+          SELECT ci.author_did, ci.publication_site
+          FROM content_items ci
+          LEFT JOIN read_marks rm
+            ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
+          WHERE ci.author_did IN (\(placeholders))
+            AND ci.expires_at > ?
+            AND rm.subject_uri IS NULL
+          """,
+        arguments: StatementArguments([viewerDid] + authorDids + [nowIso])
+      )
+      for row in rows {
+        let authorDid: String = row["author_did"]
+        grouped[authorDid, default: []].append(row["publication_site"] as String?)
+      }
+      return grouped
+    }
+
+    return ThinAppViewQuerySupport.batchUnreadCounts(
+      scopes: scopes,
+      unreadSiteFieldsByAuthor: unreadSiteFieldsByAuthor
+    )
+  }
+
   public func deleteExpiredContent(before: Date) async throws -> Int {
     let beforeIso = Self.isoString(from: before)
     return try await db.write { db in

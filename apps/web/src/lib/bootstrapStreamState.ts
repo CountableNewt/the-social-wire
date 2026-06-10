@@ -136,7 +136,11 @@ export function applyBootstrapStreamEvent(args: {
         projection = applyUnreadCountsEvent(
           projection,
           args.event.payload.counts,
-          { replacePublicationIds: publicationIdsFromProjection(projection) }
+          {
+            replacePublicationIds:
+              args.event.payload.replacePublicationIds ??
+              publicationIdsFromProjection(projection),
+          }
         );
       }
       break;

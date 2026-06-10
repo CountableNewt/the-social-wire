@@ -14,6 +14,9 @@ import {
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 
+/** Delay before background prefetch of non-selected sidebar publications. */
+const BULK_PREFETCH_DELAY_MS = 8_000;
+
 /** Max parallel first-page prefetches per batch (avoids flooding the network). */
 const PREFETCH_CONCURRENCY = 2;
 
@@ -131,6 +134,11 @@ export function usePrefetchSidebarPublicationEntries(
     void (async () => {
       const oauth = getOAuthSession();
       if (!oauth) return;
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, BULK_PREFETCH_DELAY_MS);
+      });
+      if (cancelled) return;
 
       const orderedIds = orderPublicationIdsForPrefetch(
         sidebarPublicationIds,

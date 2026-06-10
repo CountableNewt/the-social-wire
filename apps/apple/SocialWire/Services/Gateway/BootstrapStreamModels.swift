@@ -25,6 +25,7 @@ struct BootstrapStreamEventDTO: Codable, Sendable {
 
 struct BootstrapUnreadCountsPayloadDTO: Codable, Sendable {
     let counts: [String: Int]
+    let replacePublicationIds: [String]?
 }
 
 struct BootstrapSelectedPublicationPayloadDTO: Codable, Sendable {

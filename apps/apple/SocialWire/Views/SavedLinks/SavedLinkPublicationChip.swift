@@ -11,6 +11,7 @@ struct SavedLinkPublicationChip: View {
                 }
                 .frame(width: 16, height: 16)
                 .clipShape(Circle())
+                .accessibilityHidden(true)
             }
             Text(model.name)
                 .font(.caption.weight(.medium))

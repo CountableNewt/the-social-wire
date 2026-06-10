@@ -17,6 +17,10 @@ final class SocialWireGatewayClient {
         self.urlSession = urlSession
     }
 
+    func warmGatewayDpopNonce() async {
+        _ = try? await fetchSyncPreferences(ifNoneMatch: nil)
+    }
+
     func fetchSyncPreferences(ifNoneMatch: String?) async throws -> GatewayHTTPResult {
         try await authorizedGET(path: "/v1/sync/preferences", query: [:], ifNoneMatch: ifNoneMatch)
     }
@@ -356,37 +360,43 @@ final class SocialWireGatewayClient {
         }
 
         let session = try await auth.validSession()
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
-        try await authorize(
-            &request,
-            session: session,
-            gatewayPath: "/v1/appview/bootstrap-stream",
-            gatewayMethod: "GET"
-        )
 
-        let (bytes, response) = try await urlSession.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else {
+        func authorizedStreamRequest() async throws -> URLRequest {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+            try await authorize(
+                &request,
+                session: session,
+                gatewayPath: "/v1/appview/bootstrap-stream",
+                gatewayMethod: "GET"
+            )
+            return request
+        }
+
+        var (bytes, response) = try await urlSession.bytes(for: authorizedStreamRequest())
+        guard var http = response as? HTTPURLResponse else {
             throw SocialWireError.badResponse("Missing gateway response.")
         }
         await auth.dpop.updateNonce(from: http)
+
+        // Cold-origin DPoP-nonce challenge: the server replies 401/400 with a fresh DPoP-Nonce when
+        // the client hasn't seeded one yet. Re-authorize with that nonce and retry once (mirrors
+        // authorizedRequest); otherwise a first-launch challenge would fail the whole bootstrap.
+        if [401, 400].contains(http.statusCode), http.value(forHTTPHeaderField: "DPoP-Nonce") != nil {
+            (bytes, response) = try await urlSession.bytes(for: authorizedStreamRequest())
+            guard let retryHttp = response as? HTTPURLResponse else {
+                throw SocialWireError.badResponse("Missing gateway response.")
+            }
+            http = retryHttp
+            await auth.dpop.updateNonce(from: http)
+        }
+
         guard (200 ..< 300).contains(http.statusCode) else {
             throw SocialWireError.badResponse("Bootstrap stream failed (\(http.statusCode)).")
         }
 
-        var buffer = Data()
-        for try await byte in bytes {
-            buffer.append(byte)
-            while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-                let lineData = buffer[..<newlineIndex]
-                buffer.removeSubrange(..<(newlineIndex + 1))
-                let line = String(decoding: lineData, as: UTF8.self)
-                try Self.consumeBootstrapLine(line, onEvent: onEvent)
-            }
-        }
-        if !buffer.isEmpty {
-            let line = String(decoding: buffer, as: UTF8.self)
+        for try await line in bytes.lines {
             try Self.consumeBootstrapLine(line, onEvent: onEvent)
         }
     }

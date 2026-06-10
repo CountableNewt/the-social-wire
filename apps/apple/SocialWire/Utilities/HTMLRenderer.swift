@@ -41,46 +41,67 @@ enum HTMLRenderer {
         <meta name="color-scheme" content="light dark">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src data:;">
         <style>
+          /* Mirrors the web reading view (Tailwind `prose prose-sm`): system font stack,
+             ~1.7 line-height, the same heading scale, and full-measure body (no max-width). */
           :root { color-scheme: light dark; }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-            font-size: 17px;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+            font-size: 16px;
             color: \(palette.text);
             background: transparent;
-            line-height: 1.58;
-            padding: 0 18px 32px;
+            line-height: 1.7142857;
+            padding: 4px 16px 32px;
             margin: 0;
+            max-width: none;
             overflow-wrap: break-word;
             -webkit-text-size-adjust: 100%;
           }
-          h1, h2, h3, h4, h5, h6 { line-height: 1.2; color: \(palette.text); }
+          h1, h2, h3, h4, h5, h6 {
+            color: \(palette.text);
+            font-weight: 600;
+            line-height: 1.3;
+            margin: 1.6em 0 0.6em;
+          }
+          h1 { font-size: 1.9em; line-height: 1.2; }
+          h2 { font-size: 1.5em; }
+          h3 { font-size: 1.25em; }
+          h4 { font-size: 1.05em; }
+          h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
           p, li, span, div, td, th, blockquote, figcaption, label {
             color: \(palette.text);
           }
-          a, a:visited { color: \(palette.link); }
-          img, video { max-width: 100%; height: auto; border-radius: 8px; }
+          p { margin: 0 0 1.14em; }
+          ul, ol { margin: 0 0 1.14em; padding-left: 1.6em; }
+          li { margin: 0.35em 0; }
+          a, a:visited { color: \(palette.link); text-decoration: underline; }
+          img, video { max-width: 100%; height: auto; border-radius: 8px; margin: 1.14em 0; }
+          figure { margin: 1.14em 0; }
+          figcaption { font-size: 0.85em; color: \(palette.muted); text-align: center; }
           pre, code, kbd, samp {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             background: \(palette.codeBackground);
             color: \(palette.text);
             border-radius: 6px;
+            font-size: 0.875em;
           }
           pre {
             overflow-x: auto;
             white-space: pre-wrap;
-            padding: 10px 12px;
+            padding: 12px 14px;
+            margin: 1.14em 0;
           }
-          code { padding: 0.1em 0.25em; }
-          pre code { padding: 0; background: transparent; }
+          code { padding: 0.1em 0.3em; }
+          pre code { padding: 0; background: transparent; font-size: 1em; }
           blockquote {
             border-left: 3px solid \(palette.muted);
-            margin-left: 0;
-            padding-left: 14px;
+            margin: 1.14em 0;
+            padding-left: 1em;
             color: \(palette.muted);
+            font-style: italic;
           }
-          table { border-collapse: collapse; width: 100%; }
+          table { border-collapse: collapse; width: 100%; margin: 1.14em 0; font-size: 0.9em; }
           th, td { border: 1px solid \(palette.border); padding: 6px 8px; }
-          hr { border: none; border-top: 1px solid \(palette.border); }
+          hr { border: none; border-top: 1px solid \(palette.border); margin: 1.7em 0; }
           \(darkOverrides)
         </style>
         </head>

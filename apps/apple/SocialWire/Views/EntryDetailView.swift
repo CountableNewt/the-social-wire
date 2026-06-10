@@ -20,10 +20,10 @@ struct EntryDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(entry.title)
-                        .font(.title.bold())
+                        .font(.title2.weight(.semibold))
                     Text(Self.formatted(entry.publishedAt))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -67,10 +67,12 @@ struct EntryDetailView: View {
         switch presentationMode {
         case .html:
             HTMLWebView(html: entry.contentHtml, baseURL: entry.canonicalURL)
+                .accessibilityLabel("Article content")
                 .id(entry.entryId)
         case .webPreview:
             if let url = entry.canonicalURL {
                 WebPreview(url: url)
+                    .accessibilityLabel("Article content")
             } else {
                 emptyBody
             }
@@ -100,6 +102,7 @@ struct EntryDetailView: View {
             Form {
                 TextEditor(text: text)
                     .frame(minHeight: 160)
+                    .accessibilityLabel("Compose \(title)")
             }
             .navigationTitle(title)
             .toolbar {
@@ -118,7 +121,7 @@ struct EntryDetailView: View {
                             do {
                                 try await onPost()
                             } catch {
-                                appModel.errorMessage = error.localizedDescription
+                                appModel.errorMessage = "Couldn't post your \(title == "Quote Post" ? "quote" : "reply"). \(error.localizedDescription)"
                             }
                         }
                     }
@@ -140,11 +143,13 @@ struct ArticleToolbar: View {
     let entry: EntryDetail
     @Binding var showingQuote: Bool
     @Binding var showingReply: Bool
+    @State private var reactionFeedback = 0
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button {
+                    reactionFeedback += 1
                     Task {
                         await appModel.saveEntry(
                             entryId: entry.entryId,
@@ -189,6 +194,7 @@ struct ArticleToolbar: View {
                 }
 
                 Button {
+                    reactionFeedback += 1
                     Task { await appModel.likeEntry(entry) }
                 } label: {
                     Label("Like", systemImage: "heart")
@@ -197,6 +203,7 @@ struct ArticleToolbar: View {
                 .disabled(entry.bskyPostUri == nil)
 
                 Button {
+                    reactionFeedback += 1
                     Task { await appModel.repostEntry(entry) }
                 } label: {
                     Label("Repost", systemImage: "repeat")
@@ -205,6 +212,9 @@ struct ArticleToolbar: View {
                 .disabled(entry.bskyPostUri == nil)
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
+        .sensoryFeedback(.success, trigger: reactionFeedback)
     }
 }

@@ -6,6 +6,7 @@ struct PublicationsPaneView: View {
     @Binding var showingAddPublication: Bool
     var onPublicationTap: ((DiscoveredPublication) -> Void)? = nil
     var onSavedLinkTap: ((MergedLatrSave) -> Void)? = nil
+    @State private var refreshFeedback = 0
 
     var body: some View {
         @Bindable var model = appModel
@@ -30,6 +31,11 @@ struct PublicationsPaneView: View {
                 .readerListCanvas()
             }
         }
+        .refreshable {
+            await appModel.refreshAll()
+            refreshFeedback += 1
+        }
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: refreshFeedback)
     }
 }
 
@@ -37,6 +43,8 @@ struct PublicationsPaneView: View {
 struct SavedLinksListContent: View {
     @Environment(SocialWireAppModel.self) private var appModel
     var onSavedLinkTap: ((MergedLatrSave) -> Void)? = nil
+    @State private var savePendingDelete: MergedLatrSave?
+    @State private var deleteFeedback = 0
 
     private var isArchivedView: Bool {
         appModel.readerListSource == .archive
@@ -83,7 +91,7 @@ struct SavedLinksListContent: View {
                             }
                         }
                         Button("Delete", role: .destructive) {
-                            Task { await appModel.delete(save) }
+                            savePendingDelete = save
                         }
                     }
                     .swipeActions {
@@ -99,7 +107,7 @@ struct SavedLinksListContent: View {
                             .tint(.orange)
                         }
                         Button("Delete", role: .destructive) {
-                            Task { await appModel.delete(save) }
+                            savePendingDelete = save
                         }
                     }
                 }
@@ -111,5 +119,28 @@ struct SavedLinksListContent: View {
         .task(id: appModel.readerListSource) {
             await appModel.refreshSavedLinks()
         }
+        .confirmationDialog(
+            "Delete saved link?",
+            isPresented: Binding(
+                get: { savePendingDelete != nil },
+                set: { if !$0 { savePendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: savePendingDelete
+        ) { save in
+            Button("Delete", role: .destructive) {
+                Task {
+                    await appModel.delete(save)
+                    deleteFeedback += 1
+                }
+                savePendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                savePendingDelete = nil
+            }
+        } message: { save in
+            Text("This removes \"\(save.title)\" from \(isArchivedView ? "Archive" : "Read Later").")
+        }
+        .sensoryFeedback(.success, trigger: deleteFeedback)
     }
 }

@@ -17,6 +17,7 @@ struct PublicationAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 
     private var placeholder: some View {
