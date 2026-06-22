@@ -173,8 +173,8 @@ function thumbnailFromItem(
   }
 
   const html =
-    item.content?.trim() ||
     (item as { contentEncoded?: string }).contentEncoded?.trim() ||
+    item.content?.trim() ||
     item.contentSnippet?.trim() ||
     "";
   const fromHtml = firstImageUrlFromHtml(html, item.link?.trim());
@@ -230,8 +230,8 @@ function escapeHtmlText(s: string): string {
 
 function htmlBodyFromItem(item: RssParserItemFields): string {
   const raw =
-    item.content?.trim() ||
     (item as { contentEncoded?: string }).contentEncoded?.trim() ||
+    item.content?.trim() ||
     "";
   if (raw) return raw;
   const snippet = item.contentSnippet?.trim() || "";

@@ -69,8 +69,8 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
   return (
     <article
       className={cn(
-        "flex min-h-0 w-full max-w-none flex-1 flex-col px-3 pt-1 sm:px-4 sm:pt-2 md:px-6 lg:px-8",
-        showEmbed ? "pb-1 sm:pb-2" : "pb-8 sm:pb-10"
+        "flex min-h-0 w-full max-w-none flex-1 flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
+        showEmbed ? "md:pb-2" : "md:pb-8 lg:pb-10"
       )}
     >
       <div
@@ -122,10 +122,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
         </div>
         <EntrySocialToolbar
           entry={entry}
-          className={cn(
-            showEmbed ? "!mb-0 sm:!mb-0" : undefined,
-            "max-md:border-b-0 max-md:border-t max-md:pb-3 max-md:pt-3 max-md:mb-0 max-md:mt-4 sm:max-md:pb-3.5 sm:max-md:pt-3.5 sm:max-md:mt-6"
-          )}
+          className={cn(showEmbed ? "md:!mb-0" : undefined)}
         />
       </div>
     </article>

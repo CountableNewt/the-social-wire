@@ -25,12 +25,21 @@ describe("entryArticlePresentation", () => {
     ).toBe("embed");
   });
 
-  it("prefers record HTML for substantial bodies", () => {
+  it("prefers live-site rendering even when record HTML is substantial", () => {
     const long = `<p>${"word ".repeat(80)}</p>`;
     expect(
       resolveEntryArticlePresentation({
         contentHtml: long,
         originalUrl: "https://example.com/article",
+      })
+    ).toBe("embed");
+  });
+
+  it("uses substantial record HTML when no live-site URL is available", () => {
+    const long = `<p>${"word ".repeat(80)}</p>`;
+    expect(
+      resolveEntryArticlePresentation({
+        contentHtml: long,
       })
     ).toBe("html");
   });

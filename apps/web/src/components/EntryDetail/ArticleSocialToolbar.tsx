@@ -117,8 +117,9 @@ export function ArticleSocialToolbar({
       <div
         className={cn(
           "-mx-1 w-full border-b border-border pb-3 mb-2 sm:-mx-0 sm:pb-3.5 sm:mb-3",
-          "max-md:grid max-md:grid-cols-2 max-md:gap-1 max-md:items-stretch",
-          "max-md:[&>button]:w-full max-md:[&>a]:w-full",
+          "max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-40 max-md:mx-0 max-md:mb-0 max-md:flex max-md:flex-nowrap max-md:items-center max-md:gap-2 max-md:overflow-x-auto max-md:border-b-0 max-md:border-t max-md:bg-background/95 max-md:px-3 max-md:py-2 max-md:pb-[calc(env(safe-area-inset-bottom)+0.5rem)] max-md:shadow-[0_-16px_36px_-28px_oklch(0_0_0/0.55)] max-md:backdrop-blur-md max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
+          "max-md:[&>button]:size-11 max-md:[&>button]:min-h-[44px] max-md:[&>button]:min-w-[44px] max-md:[&>button]:shrink-0 max-md:[&>button]:px-0",
+          "max-md:[&>a]:size-11 max-md:[&>a]:min-h-[44px] max-md:[&>a]:min-w-[44px] max-md:[&>a]:shrink-0 max-md:[&>a]:px-0",
           "md:flex md:flex-wrap md:items-center md:gap-2",
           className
         )}
@@ -140,7 +141,7 @@ export function ArticleSocialToolbar({
           <Heart
             className={cn("size-5 shrink-0 sm:size-3.5", liked && "fill-current text-red-600")}
           />
-          <span className="text-xs font-medium sm:text-sm">
+          <span className="sr-only text-xs font-medium md:not-sr-only md:text-sm">
             {liked ? "Unlike" : "Like"}
           </span>
         </Button>
@@ -154,7 +155,7 @@ export function ArticleSocialToolbar({
           onClick={() => setReplyOpen(true)}
         >
           <Reply className="size-5 shrink-0 sm:size-3.5" />
-          <span className="text-xs font-medium sm:text-sm">Reply</span>
+          <span className="sr-only text-xs font-medium md:not-sr-only md:text-sm">Reply</span>
         </Button>
 
         <Button
@@ -178,7 +179,7 @@ export function ArticleSocialToolbar({
           }}
         >
           <Repeat className="size-5 shrink-0 sm:size-3.5" />
-          <span className="text-xs font-medium sm:text-sm">
+          <span className="sr-only text-xs font-medium md:not-sr-only md:text-sm">
             {reposted ? "Undo Repost" : "Repost"}
           </span>
         </Button>
@@ -191,7 +192,7 @@ export function ArticleSocialToolbar({
           onClick={() => setQuoteOpen(true)}
         >
           <MessageSquareQuote className="size-5 shrink-0 sm:size-3.5" />
-          <span className="text-xs font-medium sm:text-sm">Quote</span>
+          <span className="sr-only text-xs font-medium md:not-sr-only md:text-sm">Quote</span>
         </Button>
 
         {showReadLaterSave && canonUrl ? (
@@ -218,7 +219,7 @@ export function ArticleSocialToolbar({
             ) : (
               <BookmarkPlus className="size-5 shrink-0 sm:size-3.5" />
             )}
-            <span className="text-xs font-medium sm:text-sm">
+            <span className="sr-only text-xs font-medium md:not-sr-only md:text-sm">
               {alreadyLatrSaved ? "Saved" : "Save"}
             </span>
           </Button>
@@ -237,14 +238,14 @@ export function ArticleSocialToolbar({
             aria-label="Open Canonical Article in New Tab"
           >
             <Link2 className="size-5 shrink-0 sm:size-3.5" />
-            <span className="max-w-[5rem] truncate text-xs font-medium sm:max-w-[9rem] sm:text-sm">
+            <span className="sr-only max-w-[5rem] truncate text-xs font-medium md:not-sr-only md:max-w-[9rem] md:text-sm">
               Link
             </span>
           </a>
         ) : null}
 
         {!hasLinkedPost ? (
-          <p className="w-full max-md:col-span-2 text-[11px] leading-snug text-muted-foreground sm:text-xs">
+          <p className="w-full text-[11px] leading-snug text-muted-foreground max-md:hidden sm:text-xs">
             Like, Reply, and Repost need a linked Bluesky post on the original
             record (
             <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
