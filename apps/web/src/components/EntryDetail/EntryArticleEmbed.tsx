@@ -15,6 +15,7 @@ import {
 } from "@/lib/embedIframeStability";
 import { fetchOEmbedForPage } from "@/lib/oEmbedClient";
 import { getCachedOEmbed } from "@/lib/oEmbedCache";
+import { articleFallbackContentIsVerified } from "@/lib/articleFallbackVerification";
 import { sanitizeEmbedUrlForIframe } from "@/lib/publicResourceUrl";
 import { cn } from "@/lib/utils";
 
@@ -256,13 +257,12 @@ function IframeArticleEmbed({
     !failed &&
     !unstableEmbed &&
     (probeBlocksEmbed === null || showIframe);
-  const normalizedExpectedAtUri = expectedAtUri?.trim();
-  const normalizedPageAtUri = pageAtUri?.trim();
-  const verifiedFallbackContent =
-    !normalizedExpectedAtUri ||
-    normalizedExpectedAtUri === normalizedPageAtUri
-      ? fallbackContent
-      : undefined;
+  const verifiedFallbackContent = articleFallbackContentIsVerified({
+    expectedAtUri,
+    pageAtUri,
+  })
+    ? fallbackContent
+    : undefined;
 
   return (
     <div
