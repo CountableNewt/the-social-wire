@@ -6,7 +6,6 @@ import { dedupeEntryListItems } from "@/lib/rssFeedCore";
 import {
   mergeSidebarProjections,
   publicationIdsFromProjection,
-  sidebarPublicationRows,
   type PublicationSidebarProjection,
 } from "@/lib/publicationProjectionClient";
 import {

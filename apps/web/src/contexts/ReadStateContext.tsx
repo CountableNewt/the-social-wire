@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -43,7 +42,7 @@ export type ReadStateContextValue = {
   markEntryUnread: (entryId: string, options?: MarkEntryReadOptions) => void;
   markEntriesRead: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
-  /** Stable callback identity — reads latest readMap via ref. */
+  /** Returns whether the entry is marked read in local/PDS-merged state. */
   isEntryRead: (entryId: string) => boolean;
   /** Bumps when readMap changes; use in unread memo deps. */
   readEpoch: number;
@@ -55,8 +54,6 @@ const ReadStateContext = createContext<ReadStateContextValue | null>(null);
 export function ReadStateProvider({ children }: { children: ReactNode }) {
   const [readMap, setReadMap] = useState<EntryReadStateV1>({});
   const [readEpoch, setReadEpoch] = useState(0);
-  const readMapRef = useRef(readMap);
-  readMapRef.current = readMap;
 
   const bumpReadEpoch = useCallback(() => {
     setReadEpoch((e) => e + 1);
@@ -265,9 +262,10 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     [bumpReadEpoch, pdsClient, queryClient, viewerDid]
   );
 
-  const isEntryRead = useCallback((entryId: string) => {
-    return Boolean(readMapRef.current[entryId]);
-  }, []);
+  const isEntryRead = useCallback(
+    (entryId: string) => Boolean(readMap[entryId]),
+    [readMap]
+  );
 
   const syncReadStateFromPDS = useCallback(async () => {
     if (!pdsClient) return;

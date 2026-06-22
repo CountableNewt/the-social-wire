@@ -88,7 +88,10 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   const streamGenerationRef = useRef(0);
   const pendingAutoSelectPublicationIdRef = useRef<string | null>(null);
   const bootstrapFeedPublicationIdRef = useRef<string | null>(null);
-  const bootstrapCompletedAtRef = useRef<number | null>(null);
+  const bootstrapCompletedAtRef = useRef<{
+    did: string;
+    completedAt: number;
+  } | null>(null);
   const unreadRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -120,10 +123,12 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     setBootstrapStreamComplete(false);
     setFolderPublicationsLoading(false);
     setProjectionError(null);
-    bootstrapCompletedAtRef.current = null;
   }
 
-  const mergedProjection = streamProjection ?? cachedProjection ?? undefined;
+  const effectiveStreamProjection =
+    did === streamOwnerDid ? streamProjection : undefined;
+  const mergedProjection =
+    effectiveStreamProjection ?? cachedProjection ?? undefined;
 
   const runBootstrapStream = useCallback(
     async (controller: AbortController) => {
@@ -210,7 +215,10 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
               }
               if (event.kind === "done") {
                 setBootstrapStreamComplete(true);
-                bootstrapCompletedAtRef.current = Date.now();
+                bootstrapCompletedAtRef.current = {
+                  did,
+                  completedAt: Date.now(),
+                };
                 if (pendingAutoSelectPublicationIdRef.current) {
                   setStreamSelectedPublicationId(
                     pendingAutoSelectPublicationIdRef.current
@@ -363,8 +371,11 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     const oauth = getOAuthSession();
     if (!oauth || !did) return;
 
-    const completedAt = bootstrapCompletedAtRef.current;
-    if (completedAt != null && Date.now() - completedAt < 5000) {
+    const completed = bootstrapCompletedAtRef.current;
+    if (
+      completed?.did === did &&
+      Date.now() - completed.completedAt < 5000
+    ) {
       return;
     }
 

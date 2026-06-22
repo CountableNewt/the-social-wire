@@ -8,11 +8,10 @@ export {
 
 /** PDS XRPC method for Social Wire gateway routes that write through to the viewer PDS. */
 export function pdsXrpcMethodForSocialWireGatewayRequest(
-  gatewayMethod: string,
-  gatewayPath: string
+  _gatewayMethod: string,
+  _gatewayPath: string
 ): { xrpcMethod: string; httpMethod: "GET" | "POST" } | null {
-  const method = gatewayMethod.toUpperCase();
-  const path = gatewayPath.startsWith("/") ? gatewayPath : `/${gatewayPath}`;
-
+  void _gatewayMethod;
+  void _gatewayPath;
   return null;
 }

@@ -32,6 +32,8 @@ export function useSidebarUnreadController(
   const entriesEpoch = useEntriesCacheEpoch();
 
   return useMemo(() => {
+    void entriesEpoch;
+    void readEpoch;
     const map = new Map<string, number>();
     for (const pub of publications) {
       const serverCount = unreadCountsByPublicationId
