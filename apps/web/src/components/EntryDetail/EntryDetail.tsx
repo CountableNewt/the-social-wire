@@ -69,7 +69,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
   return (
     <article
       className={cn(
-        "flex min-h-0 w-full max-w-none flex-1 flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
+        "flex min-h-0 w-full max-w-none flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+7.25rem)] flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+7.25rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
         showEmbed ? "md:pb-2" : "md:pb-8 lg:pb-10"
       )}
     >
@@ -85,7 +85,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
               href={canonicalArticleHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground sm:min-h-0 sm:text-sm sm:py-0"
+              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 text-xs font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 transition-colors hover:text-primary hover:decoration-primary sm:min-h-0 sm:text-sm sm:py-0"
             >
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
               View original
@@ -103,7 +103,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
               fallbackContent={
                 safeHTML.trim() ? (
                   <div
-                    className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
+                    className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-a:text-[var(--purple-foreground)] prose-a:underline prose-a:decoration-[var(--purple-border)] prose-a:decoration-2 prose-a:underline-offset-4 prose-a:transition-colors hover:prose-a:text-primary hover:prose-a:decoration-primary prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
                     // Safe: content is sanitized before rendering.
                     dangerouslySetInnerHTML={{ __html: safeHTML }}
                   />
@@ -120,7 +120,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
             </p>
           ) : (
             <div
-              className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
+              className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-a:text-[var(--purple-foreground)] prose-a:underline prose-a:decoration-[var(--purple-border)] prose-a:decoration-2 prose-a:underline-offset-4 prose-a:transition-colors hover:prose-a:text-primary hover:prose-a:decoration-primary prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
               // Safe: content is sanitized before rendering.
               dangerouslySetInnerHTML={{ __html: safeHTML }}
             />

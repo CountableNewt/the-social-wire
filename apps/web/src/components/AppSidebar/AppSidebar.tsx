@@ -242,28 +242,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
 
   useEffect(() => {
     if (!selectedPubId) return;
-
-    const pref = prefsMap.get(selectedPubId);
-    const pub = allPublicationRows.find((p) => p.publicationId === selectedPubId);
-    if (!pub) return;
-
-    const folderId = pref?.value.folderId;
-    if (folderId) {
-      const folder = folders.find((f) => rkeyFromURI(f.uri) === folderId);
-      if (folder) {
-        setSelectedFolderUri(folder.uri);
-        return;
-      }
-    }
-
     setSelectedFolderUri(null);
-  }, [
-    selectedPubId,
-    allPublicationRows,
-    prefsMap,
-    folders,
-    setSelectedFolderUri,
-  ]);
+  }, [selectedPubId, setSelectedFolderUri]);
 
   return (
     <Sidebar>

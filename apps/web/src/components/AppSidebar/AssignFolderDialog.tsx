@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { useFolders } from "@/hooks/useFolders";
 import { useSetPublicationFolder } from "@/hooks/usePublications";
 import { rkeyFromURI } from "@/lib/pdsClient";
+import { cn } from "@/lib/utils";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type { RepoRecord, PublicationPrefsRecord } from "@/lib/pdsClient";
 
@@ -54,9 +55,11 @@ export function AssignFolderDialog({
           <Label>Folder</Label>
           <div className="flex flex-col gap-1">
             <button
-              className={`rounded px-3 py-2 text-left text-sm hover:bg-muted ${
-                selected === null ? "bg-muted font-medium" : ""
-              }`}
+              className={cn(
+                "rounded-xl border border-transparent px-3 py-2 text-left text-sm transition-[background-color,border-color,box-shadow,color] hover:border-[var(--purple-border)] hover:bg-muted hover:[box-shadow:var(--purple-glow-hover)]",
+                selected === null &&
+                  "border-[var(--purple-border)] bg-[var(--purple-surface)] font-semibold text-[var(--purple-foreground)] [box-shadow:var(--purple-glow-selected)]"
+              )}
               onClick={() => setSelected(null)}
             >
               All Publications (No Folder)
@@ -64,9 +67,11 @@ export function AssignFolderDialog({
             {folders.map((f) => (
               <button
                 key={f.uri}
-                className={`flex items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-muted ${
-                  selected === rkeyFromURI(f.uri) ? "bg-muted font-medium" : ""
-                }`}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-sm transition-[background-color,border-color,box-shadow,color] hover:border-[var(--purple-border)] hover:bg-muted hover:[box-shadow:var(--purple-glow-hover)]",
+                  selected === rkeyFromURI(f.uri) &&
+                    "border-[var(--purple-border)] bg-[var(--purple-surface)] font-semibold text-[var(--purple-foreground)] [box-shadow:var(--purple-glow-selected)]"
+                )}
                 onClick={() => setSelected(rkeyFromURI(f.uri))}
               >
                 <span>{f.value.icon ?? "📁"}</span>

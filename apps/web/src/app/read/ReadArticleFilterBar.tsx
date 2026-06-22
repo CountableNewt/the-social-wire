@@ -89,10 +89,10 @@ export function ReadArticleFilterBar() {
           id="read-shell-filter-all"
           aria-selected={articleListFilter === "all"}
           className={cn(
-            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-colors",
+            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-[background-color,box-shadow,color]",
             articleListFilter === "all"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground"
+              ? "bg-primary text-primary-foreground [box-shadow:var(--purple-glow-selected)]"
+              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground hover:[box-shadow:var(--purple-glow-hover)]"
           )}
           onClick={() => setArticleListFilter("all")}
         >
@@ -104,10 +104,10 @@ export function ReadArticleFilterBar() {
           id="read-shell-filter-unread"
           aria-selected={articleListFilter === "unread"}
           className={cn(
-            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-colors",
+            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-[background-color,box-shadow,color]",
             articleListFilter === "unread"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground"
+              ? "bg-primary text-primary-foreground [box-shadow:var(--purple-glow-selected)]"
+              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground hover:[box-shadow:var(--purple-glow-hover)]"
           )}
           onClick={() => setArticleListFilter("unread")}
         >

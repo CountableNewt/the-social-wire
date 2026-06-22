@@ -42,14 +42,14 @@ function EmbedUnavailableMessage({
 }) {
   if (fallbackContent) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 max-md:scroll-pb-[calc(env(safe-area-inset-bottom)+7.25rem)] max-md:pb-[calc(env(safe-area-inset-bottom)+7.25rem)]">
         <div className="mb-5 rounded-xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
           <p>{message}</p>
           <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-md py-2 text-sm font-medium text-primary hover:underline"
+            className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-md py-2 text-sm font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 hover:text-primary hover:decoration-primary"
           >
             <ExternalLink className="size-4 shrink-0" aria-hidden />
             {linkLabel}
@@ -67,7 +67,7 @@ function EmbedUnavailableMessage({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-primary hover:underline"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 hover:text-primary hover:decoration-primary"
       >
         <ExternalLink className="size-4 shrink-0" aria-hidden />
         {linkLabel}

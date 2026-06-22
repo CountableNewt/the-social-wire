@@ -73,7 +73,8 @@ export function OEmbedArticleView({ oembed, pageUrl }: Props) {
           href={oembed.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          data-hypertext="true"
+          className="text-sm font-medium"
         >
           Open in New Tab
         </a>
@@ -88,7 +89,8 @@ export function OEmbedArticleView({ oembed, pageUrl }: Props) {
         href={pageUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+        data-hypertext="true"
+        className="text-sm font-medium"
       >
         Open in New Tab
       </a>

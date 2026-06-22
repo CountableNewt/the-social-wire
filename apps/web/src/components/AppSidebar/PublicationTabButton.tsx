@@ -21,8 +21,8 @@ export function PublicationTabButton({
       className={cn(
         "flex h-8 min-h-8 min-w-0 items-center justify-center rounded-xl px-3 py-0 text-center text-xs font-semibold transition-[background-color,border-color,box-shadow,color] backdrop-blur-sm",
         active
-          ? "border border-[var(--purple-border)] bg-primary font-bold text-primary-foreground shadow-sm dark:border-sidebar-border dark:bg-sidebar-primary dark:text-sidebar-primary-foreground"
-          : "border border-transparent bg-transparent text-muted-foreground hover:border-sidebar-border/55 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground dark:hover:bg-sidebar-accent/38"
+          ? "border border-[var(--purple-border)] bg-primary font-bold text-primary-foreground [box-shadow:var(--purple-glow-selected)]"
+          : "border border-transparent bg-transparent text-muted-foreground hover:border-[var(--purple-border)] hover:bg-sidebar-accent/50 hover:text-sidebar-foreground hover:[box-shadow:var(--purple-glow-hover)] dark:hover:bg-sidebar-accent/38"
       )}
     >
       <span className="block truncate">{children}</span>
