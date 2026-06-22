@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-const PURPLE_BTN_GLOW =
+const PRIMARY_BTN_GLOW =
   "hover:[box-shadow:var(--purple-glow-hover)] active:[box-shadow:var(--purple-glow-selected)]"
 
 const buttonVariants = cva(
@@ -13,20 +13,14 @@ const buttonVariants = cva(
       variant: {
         default: cn(
           "bg-primary text-primary-foreground shadow-[0_10px_24px_-16px_var(--primary)] [a]:hover:bg-primary/80 hover:bg-primary/90",
-          PURPLE_BTN_GLOW
+          PRIMARY_BTN_GLOW
         ),
-        outline: cn(
-          "border-border bg-card/90 shadow-sm hover:border-[var(--purple-border)] hover:bg-accent/70 hover:text-accent-foreground aria-expanded:border-[var(--purple-border)] aria-expanded:bg-accent/70 aria-expanded:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-          PURPLE_BTN_GLOW
-        ),
-        secondary: cn(
-          "border-border/70 bg-secondary text-secondary-foreground shadow-sm hover:bg-accent/75 aria-expanded:bg-accent aria-expanded:text-accent-foreground",
-          PURPLE_BTN_GLOW
-        ),
-        ghost: cn(
-          "hover:bg-accent/70 hover:text-accent-foreground aria-expanded:bg-accent/70 aria-expanded:text-accent-foreground dark:hover:bg-muted/50",
-          PURPLE_BTN_GLOW
-        ),
+        outline:
+          "border-border bg-card/90 shadow-sm hover:border-border hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "border-border/70 bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 aria-expanded:bg-secondary/85 aria-expanded:text-secondary-foreground",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",

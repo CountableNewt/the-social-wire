@@ -22,7 +22,7 @@ export default function MyPublicationsPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain p-4 md:p-6">
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="truncate text-xl font-black tracking-tight text-[var(--purple-foreground)]">
+          <h1 className="truncate text-xl font-black tracking-tight text-foreground">
             My Publications
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -69,7 +69,7 @@ export default function MyPublicationsPage() {
           ))}
         </ul>
       ) : myPublications.length === 0 ? (
-        <div className="mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-dashed border-[var(--purple-border)] bg-card/70 p-6 text-sm text-muted-foreground shadow-[var(--soft-elevation)]">
+        <div className="mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-dashed border-border bg-card/70 p-6 text-sm text-muted-foreground shadow-[var(--soft-elevation)]">
           <p>
             Nothing here yet—we look for publications published under your DID (Standard
             Site discovery and related sources). Use{" "}
@@ -83,7 +83,7 @@ export default function MyPublicationsPage() {
             <li key={pub.publicationId}>
               <Link
                 href={`/read/${encodeURIComponent(pub.publicationId)}`}
-                className="flex min-h-16 items-center gap-3 rounded-2xl border border-border/80 bg-card/88 px-3 py-2 text-card-foreground shadow-[var(--soft-elevation)] transition-[border-color,background-color,box-shadow] hover:border-[var(--purple-border)] hover:bg-accent/45 hover:[box-shadow:var(--purple-glow-hover)]"
+                className="flex min-h-16 items-center gap-3 rounded-2xl border border-border/80 bg-card/88 px-3 py-2 text-card-foreground shadow-[var(--soft-elevation)] transition-[border-color,background-color,box-shadow] hover:border-border hover:bg-muted/45 hover:shadow-md"
               >
                 <Avatar
                   src={pub.iconUrl ?? pub.avatarUrl}

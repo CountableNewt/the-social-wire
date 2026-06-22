@@ -329,7 +329,7 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
         hiddenOnMobile={Boolean(resolvedSelectedRowId)}
       >
         <div className="flex shrink-0 items-center border-b bg-background/75 px-3 py-2 backdrop-blur-md">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--purple-foreground)]">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             {listHeaderLabel}
           </p>
         </div>

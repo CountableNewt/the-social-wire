@@ -91,7 +91,7 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
       >
         <div className="shrink-0 border-b bg-background/75 px-3 py-2 backdrop-blur-md">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--purple-foreground)]">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
               Articles
             </p>
             <DevRecordKindBadge info={publicationKind} />
@@ -131,7 +131,7 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
               >
                 <ChevronLeft className="size-5" />
               </Button>
-              <span className="text-sm font-semibold text-[var(--purple-foreground)]">
+              <span className="text-sm font-semibold text-foreground">
                 Articles
               </span>
             </div>

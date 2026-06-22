@@ -40,7 +40,7 @@ export default function LoginPage() {
               priority
             />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--purple-foreground)]">The Social Wire</h1>
+          <h1 className="text-2xl font-black tracking-tight text-foreground">The Social Wire</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Sign in with your Bluesky or ATProto account
           </p>

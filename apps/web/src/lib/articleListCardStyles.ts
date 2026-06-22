@@ -10,8 +10,8 @@ export function articleListCardButtonClassName(options: {
   return cn(
     "flex w-full flex-col overflow-hidden rounded-2xl border border-border/75 bg-card/88 text-left shadow-[var(--soft-elevation)] backdrop-blur-sm",
     "transition-[border-color,background-color,box-shadow,opacity]",
-    "hover:border-[var(--purple-border)] hover:bg-accent/35 hover:[box-shadow:var(--purple-glow-hover)]",
-    "dark:border-border/55 dark:bg-card/82 dark:hover:border-[var(--purple-border)] dark:hover:bg-muted/40",
+    "hover:border-border hover:bg-muted/45 hover:shadow-md",
+    "dark:border-border/55 dark:bg-card/82 dark:hover:border-border dark:hover:bg-muted/40",
     options.isSelected &&
       "border-[var(--purple-border)] bg-[var(--purple-surface)] shadow-inner ring-1 ring-[var(--purple-border)] dark:bg-[var(--purple-surface)]",
     options.subdued && "opacity-80"
@@ -25,7 +25,7 @@ export function savedLinkListCardButtonClassName(options: {
   return cn(
     "flex w-full flex-col overflow-hidden rounded-2xl border border-border/75 bg-card/75 text-left shadow-[var(--soft-elevation)] backdrop-blur-sm",
     "transition-[border-color,box-shadow,opacity]",
-    "hover:border-[var(--purple-border)] hover:[box-shadow:var(--purple-glow-hover)]",
+    "hover:border-border hover:bg-muted/35 hover:shadow-md",
     "dark:border-border/55",
     options.isSelected && "border-[var(--purple-border)] bg-[var(--purple-surface)] ring-1 ring-[var(--purple-border)]",
   );

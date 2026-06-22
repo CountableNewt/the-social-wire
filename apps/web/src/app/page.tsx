@@ -56,7 +56,7 @@ export default function Home() {
               height={44}
               className="shrink-0 rounded-2xl shadow-[0_12px_28px_-18px_var(--primary)]"
             />
-            <span className="truncate text-base font-black text-[var(--purple-foreground)]">
+            <span className="truncate text-base font-black text-foreground">
               The Social Wire
             </span>
           </Link>
@@ -86,7 +86,7 @@ export default function Home() {
 
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-4 pb-16 pt-10 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <h1 className="text-5xl font-black leading-[0.95] tracking-tight text-[var(--purple-foreground)] sm:text-6xl lg:text-7xl">
+            <h1 className="text-5xl font-black leading-[0.95] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
               The Social Wire
             </h1>
             <p className="mt-5 max-w-xl text-lg font-semibold leading-8 text-foreground/78 sm:text-xl">
