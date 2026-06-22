@@ -17,4 +17,20 @@ struct RssHtmlBodyFormatterTests {
     )
     #expect(html == "<p>First line<br />second line</p><p>Second paragraph</p>")
   }
+
+  @Test("removes publisher widget config text")
+  func removesPublisherWidgetConfigText() {
+    let html = RssHtmlBodyFormatter.htmlBody(
+      contentHTML: """
+        <p>Readable article text.</p>
+        window.HYPE_DESK_CONFIG = { productTitle: "Robot", purchaseUrl: "https://example.com" };
+        <p>More article text.</p>
+        """,
+      summary: nil
+    )
+    #expect(html.contains("Readable article text."))
+    #expect(html.contains("More article text."))
+    #expect(!html.contains("HYPE_DESK_CONFIG"))
+    #expect(!html.contains("productTitle"))
+  }
 }

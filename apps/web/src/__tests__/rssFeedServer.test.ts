@@ -6,6 +6,7 @@ import {
   rssItemsSortedNewestFirst,
   rssParserItemToDetail,
   rssParserItemToListItem,
+  stripRssBodyNoise,
 } from "@/lib/rssFeedServer";
 
 const MIN_RSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -87,5 +88,17 @@ describe("rssFeedServer", () => {
     expect(
       plainTextRssBodyToHtml("First line\nsecond line\n\nSecond paragraph")
     ).toBe("<p>First line<br />second line</p><p>Second paragraph</p>");
+  });
+
+  it("strips publisher widget config noise from RSS bodies", () => {
+    const body = stripRssBodyNoise(`
+      <p>Readable article text.</p>
+      window.HYPE_DESK_CONFIG = { productTitle: "Robot", purchaseUrl: "https://example.com" };
+      <p>More article text.</p>
+    `);
+    expect(body).toContain("Readable article text.");
+    expect(body).toContain("More article text.");
+    expect(body).not.toContain("HYPE_DESK_CONFIG");
+    expect(body).not.toContain("productTitle");
   });
 });

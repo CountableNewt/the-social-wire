@@ -232,6 +232,21 @@ function looksLikeHtml(s: string): boolean {
   return /<[a-zA-Z][^>]*>/.test(s);
 }
 
+export function stripRssBodyNoise(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(
+      /\bwindow\.[A-Za-z_$][\w$]*\s*=\s*\{[\s\S]*?\};?/g,
+      ""
+    )
+    .replace(
+      /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*\{[\s\S]*?\};?/g,
+      ""
+    )
+    .trim();
+}
+
 export function plainTextRssBodyToHtml(text: string): string {
   const normalized = text
     .replace(/\r\n/g, "\n")
@@ -259,8 +274,13 @@ function htmlBodyFromItem(item: RssParserItemFields): string {
     (item as { contentEncoded?: string }).contentEncoded?.trim() ||
     item.content?.trim() ||
     "";
-  if (raw) return looksLikeHtml(raw) ? raw : plainTextRssBodyToHtml(raw);
-  const snippet = item.contentSnippet?.trim() || "";
+  const cleanedRaw = stripRssBodyNoise(raw);
+  if (cleanedRaw) {
+    return looksLikeHtml(cleanedRaw)
+      ? cleanedRaw
+      : plainTextRssBodyToHtml(cleanedRaw);
+  }
+  const snippet = stripRssBodyNoise(item.contentSnippet?.trim() || "");
   if (snippet) {
     return looksLikeHtml(snippet) ? snippet : plainTextRssBodyToHtml(snippet);
   }

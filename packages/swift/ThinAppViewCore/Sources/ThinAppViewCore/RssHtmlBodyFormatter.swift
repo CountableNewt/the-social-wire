@@ -5,12 +5,14 @@ public enum RssHtmlBodyFormatter {
     if let html = contentHTML?.trimmingCharacters(in: .whitespacesAndNewlines),
        !html.isEmpty
     {
-      return looksLikeHTML(html) ? html : plainTextToHtml(html)
+      let cleaned = stripNoise(html)
+      return looksLikeHTML(cleaned) ? cleaned : plainTextToHtml(cleaned)
     }
     if let snippet = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
        !snippet.isEmpty
     {
-      return looksLikeHTML(snippet) ? snippet : plainTextToHtml(snippet)
+      let cleaned = stripNoise(snippet)
+      return looksLikeHTML(cleaned) ? cleaned : plainTextToHtml(cleaned)
     }
     return "<p></p>"
   }
@@ -39,6 +41,31 @@ public enum RssHtmlBodyFormatter {
       }
       .filter { !$0.isEmpty }
       .joined()
+  }
+
+  private static func stripNoise(_ text: String) -> String {
+    text
+      .replacingOccurrences(
+        of: #"<script\b[^>]*>[\s\S]*?</script>"#,
+        with: "",
+        options: .regularExpression
+      )
+      .replacingOccurrences(
+        of: #"<style\b[^>]*>[\s\S]*?</style>"#,
+        with: "",
+        options: .regularExpression
+      )
+      .replacingOccurrences(
+        of: #"\bwindow\.[A-Za-z_$][\w$]*\s*=\s*\{[\s\S]*?\};?"#,
+        with: "",
+        options: .regularExpression
+      )
+      .replacingOccurrences(
+        of: #"\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*\{[\s\S]*?\};?"#,
+        with: "",
+        options: .regularExpression
+      )
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private static let paragraphBreakRegex = try! NSRegularExpression(pattern: #"\n{2,}"#)

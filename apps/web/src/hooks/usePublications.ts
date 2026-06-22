@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { usePDSClient } from "./usePDSClient";
 import { useAuth } from "./useAuth";
@@ -34,6 +39,11 @@ import {
   rssPublicationIdFromNormalizedFeedUrl,
 } from "@/lib/rssFeedCore";
 import {
+  fetchEntriesInfinitePage,
+  ENTRIES_QUERY_KEY,
+  type EntriesPage,
+} from "@/hooks/useEntries";
+import {
   enrollAuthorsInAppView,
   isThinAppViewEnabled,
 } from "@/lib/thinAppViewClient";
@@ -41,7 +51,11 @@ import {
   applyPublicationFolderMoveToProjection,
   reconcilePublicationPrefAfterWrite,
 } from "@/lib/optimisticPublicationFolderMove";
-import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
+import {
+  appViewScopeFromProjection,
+  refreshPublicationSidebar,
+  type PublicationSidebarProjection,
+} from "@/lib/publicationProjectionClient";
 
 export type { DiscoveredPublication };
 
@@ -54,6 +68,30 @@ export const SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY = [
 ] as const;
 export const DISCOVERY_QUERY_KEY = (did: string) =>
   ["discovery", "publications-v2", did] as const;
+
+const ADD_PUBLICATION_REFRESH_ATTEMPTS = 4;
+const ADD_PUBLICATION_REFRESH_RETRY_MS = 450;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function refreshSidebarUntilPublicationVisible(args: {
+  oauthSession: OAuthSession;
+  publicationId: string;
+}): Promise<PublicationSidebarProjection> {
+  let lastProjection: PublicationSidebarProjection | null = null;
+  for (let attempt = 0; attempt < ADD_PUBLICATION_REFRESH_ATTEMPTS; attempt++) {
+    if (attempt > 0) await delay(ADD_PUBLICATION_REFRESH_RETRY_MS);
+    const projection = await refreshPublicationSidebar(args.oauthSession);
+    lastProjection = projection;
+    if (appViewScopeFromProjection(projection, args.publicationId)) {
+      return projection;
+    }
+  }
+  if (lastProjection) return lastProjection;
+  return refreshPublicationSidebar(args.oauthSession);
+}
 
 // ── Publication prefs ─────────────────────────────────────────────────────────
 
@@ -566,11 +604,13 @@ export function useAddPublicationFromAnyLink() {
   return useMutation({
     mutationFn: async (input: { link: string; title?: string }) => {
       if (!client) throw new Error("OAuth session required");
+      const oauth = getOAuthSession();
+      if (!oauth) throw new Error("OAuth session required");
       const { resolveAddPublicationOnGateway } = await import(
         "@/lib/publicationProjectionClient"
       );
       const gateway = await resolveAddPublicationOnGateway(
-        getOAuthSession()!,
+        oauth,
         input.link
       );
       if (gateway.error) throw new Error(gateway.error);
@@ -578,6 +618,16 @@ export function useAddPublicationFromAnyLink() {
         await client.createPublicationSubscription({
           publication: gateway.result.publicationAtUri,
         });
+        const projection = await refreshSidebarUntilPublicationVisible({
+          oauthSession: oauth,
+          publicationId: gateway.result.publicationAtUri,
+        });
+        if (did) {
+          qc.setQueryData(
+            PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+            projection
+          );
+        }
         return {
           kind: "standard-site" as const,
           navigatePubId: gateway.result.publicationAtUri,
@@ -592,9 +642,33 @@ export function useAddPublicationFromAnyLink() {
           title: input.title?.trim() || gateway.result.title,
           siteUrl: gateway.result.siteUrl,
         });
+        await enrollAuthorsInAppView(oauth, [], [normalized]);
+        const navigatePubId = rssPublicationIdFromNormalizedFeedUrl(normalized);
+        const projection = await refreshSidebarUntilPublicationVisible({
+          oauthSession: oauth,
+          publicationId: navigatePubId,
+        });
+        if (did) {
+          qc.setQueryData(
+            PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+            projection
+          );
+          const firstPage = await fetchEntriesInfinitePage({
+            normalizedPublicationKey: navigatePubId,
+            pageParam: undefined,
+            oauthSession: oauth,
+            viewerDid: did,
+            queryClient: qc,
+            skipEnroll: true,
+          });
+          qc.setQueryData<InfiniteData<EntriesPage>>(
+            [...ENTRIES_QUERY_KEY(navigatePubId), "all"],
+            { pages: [firstPage], pageParams: [undefined] }
+          );
+        }
         return {
           kind: "rss" as const,
-          navigatePubId: rssPublicationIdFromNormalizedFeedUrl(normalized),
+          navigatePubId,
         };
       }
       throw new Error("Could not resolve link");

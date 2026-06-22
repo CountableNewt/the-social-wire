@@ -103,7 +103,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
               fallbackContent={
                 safeHTML.trim() ? (
                   <div
-                    className="prose prose-sm dark:prose-invert flow-root max-w-none [&_img]:h-auto [&_img]:max-w-full"
+                    className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
                     // Safe: content is sanitized before rendering.
                     dangerouslySetInnerHTML={{ __html: safeHTML }}
                   />
@@ -120,7 +120,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
             </p>
           ) : (
             <div
-              className="prose prose-sm dark:prose-invert flow-root max-w-none [&_img]:h-auto [&_img]:max-w-full"
+              className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
               // Safe: content is sanitized before rendering.
               dangerouslySetInnerHTML={{ __html: safeHTML }}
             />
