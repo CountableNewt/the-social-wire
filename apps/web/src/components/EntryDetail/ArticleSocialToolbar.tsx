@@ -34,6 +34,12 @@ function shareArticleUrl(entry: EntryDetail): string {
   return canon ?? "";
 }
 
+function mutationErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "That action could not be completed. Try again.";
+}
+
 interface ArticleSocialToolbarProps {
   entry: EntryDetail | null;
   className?: string;
@@ -74,12 +80,33 @@ export function ArticleSocialToolbar({
   const busySocial =
     toggleLikeMutation.isPending ||
     toggleRepostMutation.isPending ||
+    quoteMutation.isPending ||
     replyMutation.isPending ||
     viewerQuery.isLoading;
 
   const disabledHint = hasLinkedPost
     ? undefined
     : "Like, Reply, and Repost need a Bluesky post linked to this article.";
+  const replyError = mutationErrorMessage(replyMutation.error);
+  const quoteError = mutationErrorMessage(quoteMutation.error);
+  const repostError = mutationErrorMessage(toggleRepostMutation.error);
+
+  const handleReplyOpenChange = (open: boolean) => {
+    setReplyOpen(open);
+    replyMutation.reset();
+    if (!open) setReplyText("");
+  };
+
+  const handleQuoteOpenChange = (open: boolean) => {
+    setQuoteOpen(open);
+    quoteMutation.reset();
+    if (!open) setQuoteText("");
+  };
+
+  const handleRepostOpenChange = (open: boolean) => {
+    setRepostOpen(open);
+    toggleRepostMutation.reset();
+  };
 
   const submitQuote = () => {
     const text = quoteText.trim();
@@ -256,7 +283,7 @@ export function ArticleSocialToolbar({
         ) : null}
       </div>
 
-      <Dialog open={repostOpen} onOpenChange={setRepostOpen}>
+      <Dialog open={repostOpen} onOpenChange={handleRepostOpenChange}>
         <DialogContent showCloseButton className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Repost This Article?</DialogTitle>
@@ -265,6 +292,11 @@ export function ArticleSocialToolbar({
               undo a repost anytime from this toolbar.
             </DialogDescription>
           </DialogHeader>
+          {repostError ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {repostError}
+            </p>
+          ) : null}
           <DialogFooter className="mx-0 mb-0 grid grid-cols-2 gap-2 border-0 bg-transparent p-0 pt-2 sm:flex sm:flex-row sm:justify-end">
             <Button
               variant="outline"
@@ -286,7 +318,7 @@ export function ArticleSocialToolbar({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={replyOpen} onOpenChange={setReplyOpen}>
+      <Dialog open={replyOpen} onOpenChange={handleReplyOpenChange}>
         <DialogContent showCloseButton className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Reply</DialogTitle>
@@ -304,13 +336,18 @@ export function ArticleSocialToolbar({
               rows={4}
               className="flex min-h-[100px] w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             />
+            {replyError ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {replyError}
+              </p>
+            ) : null}
           </div>
           <DialogFooter className="mx-0 mb-0 grid grid-cols-2 gap-2 border-0 bg-transparent p-0 pt-2 sm:flex sm:flex-row sm:justify-end">
             <Button
               variant="outline"
               size="sm"
               className="min-w-24"
-              onClick={() => setReplyOpen(false)}
+              onClick={() => handleReplyOpenChange(false)}
             >
               Cancel
             </Button>
@@ -326,7 +363,7 @@ export function ArticleSocialToolbar({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={quoteOpen} onOpenChange={setQuoteOpen}>
+      <Dialog open={quoteOpen} onOpenChange={handleQuoteOpenChange}>
         <DialogContent showCloseButton className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Quote Post</DialogTitle>
@@ -346,13 +383,18 @@ export function ArticleSocialToolbar({
               rows={4}
               className="flex min-h-[100px] w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             />
+            {quoteError ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {quoteError}
+              </p>
+            ) : null}
           </div>
           <DialogFooter className="mx-0 mb-0 grid grid-cols-2 gap-2 border-0 bg-transparent p-0 pt-2 sm:flex sm:flex-row sm:justify-end">
             <Button
               variant="outline"
               size="sm"
               className="min-w-24"
-              onClick={() => setQuoteOpen(false)}
+              onClick={() => handleQuoteOpenChange(false)}
             >
               Cancel
             </Button>
