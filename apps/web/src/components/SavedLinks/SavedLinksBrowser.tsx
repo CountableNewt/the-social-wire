@@ -499,7 +499,7 @@ export function SavedLinksBrowser({ mode }: SavedLinksBrowserProps) {
               }
             />
 
-            <div className="flex min-h-0 flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+9rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+9rem)] sm:px-4 md:pb-2">
+            <div className="flex min-h-0 flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+6.25rem)] flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] sm:px-4 md:pb-2">
               {selectedIframeSrc ? (
                 <EntryArticleEmbed
                   url={selectedIframeSrc}
