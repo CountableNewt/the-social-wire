@@ -54,7 +54,8 @@ async function uploadExternalCardThumb(
 ) {
   for (const url of externalCardThumbnailCandidates(entry)) {
     try {
-      const res = await fetch(url);
+      const params = new URLSearchParams({ url });
+      const res = await fetch(`/api/bluesky-card-thumb?${params.toString()}`);
       if (!res.ok) continue;
       const blob = await res.blob();
       if (!blob.type.startsWith("image/")) continue;

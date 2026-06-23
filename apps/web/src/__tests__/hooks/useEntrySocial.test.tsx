@@ -150,9 +150,13 @@ describe("useEntrySocial", () => {
       aud: "https://pds.example",
       sub: "did:plc:me",
     });
-    globalThis.fetch = mock(async () =>
-      new Response(new Blob(["thumb"], { type: "image/png" }))
-    ) as unknown as typeof fetch;
+    const fetchMock = mock(async (url: string) => {
+      expect(url).toBe(
+        "/api/bluesky-card-thumb?url=https%3A%2F%2Fcdn.example%2Fthumb.png"
+      );
+      return new Response(new Blob(["thumb"], { type: "image/png" }));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const { result } = renderHook(
       () =>
@@ -168,6 +172,7 @@ describe("useEntrySocial", () => {
     await result.current.quoteMutation.mutateAsync("Worth reading");
 
     expect(uploadBlobMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const postedRecord = postMock.mock.calls[0]?.[0] as unknown;
     expect(postedRecord).toMatchObject({
       embed: {
