@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, beforeEach } from "bun:test";
+import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
 import { renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
@@ -13,6 +13,16 @@ const likeMock = mock(async (uri: string, cid: string) => {
   void uri;
   void cid;
 });
+const uploadBlobMock = mock(async (blob: Blob) => ({
+  data: {
+    blob: {
+      $type: "blob",
+      ref: { $link: "bafkreithumb" },
+      mimeType: blob.type,
+      size: blob.size,
+    },
+  },
+}));
 const getPostsMock = mock(async () => ({ data: { posts: [] } }));
 const getTokenInfoMock = mock(async () => ({
   scope: "atproto",
@@ -41,6 +51,7 @@ mock.module("@/hooks/useAuth", () => ({
 mock.module("@/lib/atprotoClient", () => ({
   createOAuthAgent: () => ({
     post: postMock,
+    uploadBlob: uploadBlobMock,
     like: likeMock,
     deleteLike: mock(async () => undefined),
     repost: mock(async () => undefined),
@@ -77,17 +88,26 @@ function makeWrapper() {
 const entry: EntryDetail = {
   entryId: "at://did:plc:author/site.standard.document/post1",
   title: "A good article",
+  summary: "A useful summary from the publisher.",
   publishedAt: "2026-06-22T00:00:00.000Z",
   contentHtml: "",
   originalUrl: "https://example.com/a-good-article",
 };
 
 describe("useEntrySocial", () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     postMock.mockClear();
     likeMock.mockClear();
+    uploadBlobMock.mockClear();
     getPostsMock.mockClear();
     getTokenInfoMock.mockClear();
+    globalThis.fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it("creates a quote post when the OAuth grant includes Bluesky post access", async () => {
@@ -114,8 +134,48 @@ describe("useEntrySocial", () => {
         external: {
           uri: "https://example.com/a-good-article",
           title: "A good article",
+          description: "A useful summary from the publisher.",
           associatedRecord:
             "at://did:plc:author/site.standard.document/post1",
+        },
+      },
+    });
+  });
+
+  it("uploads an external card thumbnail when the image is fetchable", async () => {
+    getTokenInfoMock.mockResolvedValueOnce({
+      scope:
+        "atproto repo:app.bsky.feed.post?action=create&action=delete",
+      iss: "https://pds.example",
+      aud: "https://pds.example",
+      sub: "did:plc:me",
+    });
+    globalThis.fetch = mock(async () =>
+      new Response(new Blob(["thumb"], { type: "image/png" }))
+    ) as unknown as typeof fetch;
+
+    const { result } = renderHook(
+      () =>
+        useEntrySocial({
+          ...entry,
+          thumbnailUrl: "https://cdn.example/thumb.png",
+        }),
+      {
+        wrapper: makeWrapper(),
+      }
+    );
+
+    await result.current.quoteMutation.mutateAsync("Worth reading");
+
+    expect(uploadBlobMock).toHaveBeenCalledTimes(1);
+    const postedRecord = postMock.mock.calls[0]?.[0] as unknown;
+    expect(postedRecord).toMatchObject({
+      embed: {
+        external: {
+          thumb: {
+            ref: { $link: "bafkreithumb" },
+            mimeType: "image/png",
+          },
         },
       },
     });

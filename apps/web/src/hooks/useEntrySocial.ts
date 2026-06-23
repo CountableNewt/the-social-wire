@@ -9,6 +9,7 @@ import {
   type EntryDetail,
 } from "@/lib/atprotoClient";
 import { canonicalArticleHttpsUrl } from "@/lib/articleCanonicalUrl";
+import { decodeHtmlEntities } from "@/lib/decodeHtmlEntities";
 import { isOriginalEntryContentUri } from "@/lib/savedLinkSocialTarget";
 
 export const bskyPostViewerKey = (uri: string | undefined) =>
@@ -21,6 +22,51 @@ type BskyRepoCollection =
 
 const REAUTH_FOR_BSKY_WRITE_MESSAGE =
   "Your Bluesky posting permission needs to be refreshed. Sign out and sign back in, then try again.";
+const MAX_EXTERNAL_THUMB_BYTES = 1_000_000;
+
+function truncateExternalText(text: string, maxLength: number): string {
+  const normalized = decodeHtmlEntities(text).replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function externalCardTitle(entry: EntryDetail | null): string {
+  return truncateExternalText(entry?.title?.trim() || "Article", 300);
+}
+
+function externalCardDescription(entry: EntryDetail | null): string {
+  return truncateExternalText(
+    entry?.summary?.trim() || entry?.contentHtml?.trim() || "",
+    1_000
+  );
+}
+
+function externalCardThumbnailCandidates(entry: EntryDetail | null): string[] {
+  return [
+    entry?.thumbnailUrl?.trim(),
+    entry?.thumbnailFallbackUrl?.trim(),
+  ].filter((url): url is string => !!url && /^https:\/\//i.test(url));
+}
+
+async function uploadExternalCardThumb(
+  agent: ReturnType<typeof createOAuthAgent>,
+  entry: EntryDetail | null
+) {
+  for (const url of externalCardThumbnailCandidates(entry)) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) continue;
+      if (blob.size === 0 || blob.size > MAX_EXTERNAL_THUMB_BYTES) continue;
+      const uploaded = await agent.uploadBlob(blob);
+      return uploaded.data.blob;
+    } catch {
+      /* Thumbnail upload is best-effort; post the card without an image. */
+    }
+  }
+  return undefined;
+}
 
 function scopeAllowsRepoAction(
   scopeToken: string,
@@ -122,7 +168,8 @@ export function useEntrySocial(entry: EntryDetail | null) {
       const agent = createOAuthAgent(oauth);
       const shareUrl = entry ? canonicalArticleHttpsUrl(entry) : null;
       if (!shareUrl) throw new Error("No canonical article URL for this entry");
-      const title = entry?.title ?? "Article";
+      const title = externalCardTitle(entry);
+      const description = externalCardDescription(entry);
 
       if (uri && cid) {
         await agent.post({
@@ -135,14 +182,16 @@ export function useEntrySocial(entry: EntryDetail | null) {
         return;
       }
 
+      const thumb = await uploadExternalCardThumb(agent, entry);
       await agent.post({
         text,
         embed: {
           $type: "app.bsky.embed.external",
           external: {
             uri: shareUrl,
-            title: title.slice(0, 300),
-            description: "",
+            title,
+            description,
+            ...(thumb ? { thumb } : {}),
             ...(entry?.entryId && isOriginalEntryContentUri(entry.entryId)
               ? { associatedRecord: entry.entryId }
               : {}),

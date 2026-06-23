@@ -126,6 +126,7 @@ export async function getEntryFromAppView(
     summary?: string;
     publishedAt: string;
     thumbnailUrl?: string;
+    thumbnailFallbackUrl?: string;
     contentHtml?: string;
     originalUrl?: string;
   };
@@ -136,8 +137,11 @@ export async function getEntryFromAppView(
   return {
     entryId: json.entryId,
     title: json.title,
+    summary: json.summary,
     publishedAt: json.publishedAt,
     contentHtml: json.contentHtml ?? json.summary ?? "",
+    thumbnailUrl: json.thumbnailUrl,
+    thumbnailFallbackUrl: json.thumbnailFallbackUrl,
     ...(normalizedOriginal
       ? { originalUrl: normalizedOriginal, embedUrl: normalizedOriginal }
       : {}),

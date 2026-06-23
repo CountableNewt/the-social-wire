@@ -98,7 +98,10 @@ describe("thinAppViewClient", () => {
         JSON.stringify({
           entryId: "at://did:plc:alice/site.standard.document/entry1",
           title: "Detail",
+          summary: "Detail summary",
           publishedAt: "2024-01-01T00:00:00.000Z",
+          thumbnailUrl: "https://cdn.example/detail.jpg",
+          thumbnailFallbackUrl: "https://cdn.example/detail-fallback.jpg",
           contentHtml: "<p>Hi</p>",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -111,6 +114,11 @@ describe("thinAppViewClient", () => {
       "at://did:plc:alice/site.standard.document/entry1"
     );
     expect(entry?.title).toBe("Detail");
+    expect(entry?.summary).toBe("Detail summary");
+    expect(entry?.thumbnailUrl).toBe("https://cdn.example/detail.jpg");
+    expect(entry?.thumbnailFallbackUrl).toBe(
+      "https://cdn.example/detail-fallback.jpg"
+    );
     expect(fetchHandler).toHaveBeenCalledTimes(1);
   });
 

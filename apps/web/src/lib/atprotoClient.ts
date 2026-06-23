@@ -103,9 +103,12 @@ export interface EntryListItem {
 export interface EntryDetail {
   entryId: string;
   title: string;
+  summary?: string;
   publishedAt: string;
   /** Full entry content as HTML. May be empty if the record stores markdown or a blob. */
   contentHtml: string;
+  thumbnailUrl?: string;
+  thumbnailFallbackUrl?: string;
   originalUrl?: string;
   /**
    * Canonical HTTPS URL for embedding the live site (record URLs, site.standard `site`+`path`, etc.).
