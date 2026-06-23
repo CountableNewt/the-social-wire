@@ -9,6 +9,7 @@ struct PublicationCollectionView: View {
         List {
             if publications.isEmpty {
                 ContentUnavailableView("No Publications", systemImage: "newspaper")
+                    .readerClearListRow()
             } else {
                 ForEach(publications) { publication in
                     Button {
@@ -27,22 +28,19 @@ struct PublicationCollectionView: View {
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
                         }
+                        .readerFullWidthTapLabel()
                     }
                     .buttonStyle(.plain)
+                    .readerClearListRow()
                     .contextMenu {
                         FolderAssignmentMenu(publication: publication)
-                        Button(publicationIsHidden(publication) ? "Unhide" : "Hide", systemImage: publicationIsHidden(publication) ? "eye" : "eye.slash") {
-                            Task { await appModel.setHidden(publication, hidden: !publicationIsHidden(publication)) }
-                        }
                     }
                 }
             }
         }
+        .readerListCanvas()
         .navigationTitle(title)
-    }
-
-    private func publicationIsHidden(_ publication: DiscoveredPublication) -> Bool {
-        appModel.publicationPrefs[publication.publicationId]?.value.hidden ?? false
     }
 }

@@ -1,12 +1,23 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { usePDSClient } from "./usePDSClient";
 import { useAuth } from "./useAuth";
+import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
 import {
   discoverPublications,
+  discoveredPublicationFromAtUri,
   normalizeAtRepoParam,
   parseAtUri,
+  PUBLICATION_RECORD_COLLECTIONS,
+  publicationRepoDid,
   type DiscoveredPublication,
 } from "@/lib/atprotoClient";
 import {
@@ -27,6 +38,24 @@ import {
   normalizedFeedUrlFromRssPublicationId,
   rssPublicationIdFromNormalizedFeedUrl,
 } from "@/lib/rssFeedCore";
+import {
+  fetchEntriesInfinitePage,
+  ENTRIES_QUERY_KEY,
+  type EntriesPage,
+} from "@/hooks/useEntries";
+import {
+  enrollAuthorsInAppView,
+  isThinAppViewEnabled,
+} from "@/lib/thinAppViewClient";
+import {
+  applyPublicationFolderMoveToProjection,
+  reconcilePublicationPrefAfterWrite,
+} from "@/lib/optimisticPublicationFolderMove";
+import {
+  appViewScopeFromProjection,
+  refreshPublicationSidebar,
+  type PublicationSidebarProjection,
+} from "@/lib/publicationProjectionClient";
 
 export type { DiscoveredPublication };
 
@@ -38,7 +67,31 @@ export const SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY = [
   "skyreaderFeedSubscriptions",
 ] as const;
 export const DISCOVERY_QUERY_KEY = (did: string) =>
-  ["discovery", "publication-icons-v1", did] as const;
+  ["discovery", "publications-v2", did] as const;
+
+const ADD_PUBLICATION_REFRESH_ATTEMPTS = 4;
+const ADD_PUBLICATION_REFRESH_RETRY_MS = 450;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function refreshSidebarUntilPublicationVisible(args: {
+  oauthSession: OAuthSession;
+  publicationId: string;
+}): Promise<PublicationSidebarProjection> {
+  let lastProjection: PublicationSidebarProjection | null = null;
+  for (let attempt = 0; attempt < ADD_PUBLICATION_REFRESH_ATTEMPTS; attempt++) {
+    if (attempt > 0) await delay(ADD_PUBLICATION_REFRESH_RETRY_MS);
+    const projection = await refreshPublicationSidebar(args.oauthSession);
+    lastProjection = projection;
+    if (appViewScopeFromProjection(projection, args.publicationId)) {
+      return projection;
+    }
+  }
+  if (lastProjection) return lastProjection;
+  return refreshPublicationSidebar(args.oauthSession);
+}
 
 // ── Publication prefs ─────────────────────────────────────────────────────────
 
@@ -145,6 +198,76 @@ export function skyreaderSubscriptionsToDiscoveredPublications(
   return out;
 }
 
+/** Sidebar rows for graph subscriptions not already present in discovery/RSS rows. */
+export function useGraphSubscriptionPublications(
+  subscriptions: RepoRecord<{ publication?: string }>[],
+  existingRows: DiscoveredPublication[]
+) {
+  const { getOAuthSession } = useAuth();
+
+  const existingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of existingRows) {
+      for (const key of publicationSubscriptionMatchKeys(row)) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }, [existingRows]);
+
+  const orphanPublicationUris = useMemo(() => {
+    const uris = new Set<string>();
+    for (const row of subscriptions) {
+      const raw = row.value.publication?.trim();
+      if (!raw) continue;
+      const normalized = normalizeAtRepoParam(raw);
+      const parsed = parseAtUri(normalized);
+      if (!parsed || !PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+        continue;
+      }
+      const lookup = new Set<string>();
+      addPublicationSubscriptionLookupKeys(lookup, normalized);
+      if ([...lookup].some((key) => existingKeys.has(key))) continue;
+      uris.add(normalized);
+    }
+    return [...uris].sort();
+  }, [subscriptions, existingKeys]);
+
+  return useQuery({
+    queryKey: ["graphSubscriptionPublications", orphanPublicationUris],
+    queryFn: async (): Promise<DiscoveredPublication[]> => {
+      const oauthSession = getOAuthSession();
+      const rows = await Promise.all(
+        orphanPublicationUris.map((uri) =>
+          discoveredPublicationFromAtUri(uri, oauthSession ?? undefined)
+        )
+      );
+      return rows.filter((row): row is DiscoveredPublication => row !== null);
+    },
+    enabled: orphanPublicationUris.length > 0,
+    staleTime: 30_000,
+  });
+}
+
+/** Fire-and-forget enrollment of followed author DIDs into the thin AppView index. */
+function maybeEnrollDiscoveryAuthors(
+  oauthSession: OAuthSession | null,
+  publications: DiscoveredPublication[]
+): void {
+  if (!isThinAppViewEnabled() || !oauthSession) return;
+  const authorDids = [
+    ...new Set(
+      publications
+        .map((p) => p.authorDid?.trim())
+        .filter((did): did is string => Boolean(did))
+    ),
+  ];
+  if (authorDids.length === 0) return;
+  void enrollAuthorsInAppView(oauthSession, authorDids).catch(() => {
+    /* best-effort backfill */
+  });
+}
+
 // ── Discovery ─────────────────────────────────────────────────────────────────
 
 /**
@@ -164,6 +287,9 @@ export function useDiscovery() {
         signal,
         onProgress: (list) =>
           qc.setQueryData(DISCOVERY_QUERY_KEY(did), list),
+      }).then((list) => {
+        maybeEnrollDiscoveryAuthors(oauthSession, list);
+        return list;
       });
     },
     enabled: !!did && !!session,
@@ -189,6 +315,9 @@ export function useRefreshDiscovery() {
       return discoverPublications(did, oauthSession, {
         onProgress: (list) =>
           qc.setQueryData(DISCOVERY_QUERY_KEY(did), list),
+      }).then((list) => {
+        maybeEnrollDiscoveryAuthors(oauthSession, list);
+        return list;
       });
     },
   });
@@ -198,6 +327,7 @@ export function useRefreshDiscovery() {
 
 export function useSetPublicationFolder() {
   const client = usePDSClient();
+  const { session } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -209,38 +339,63 @@ export function useSetPublicationFolder() {
       folderId: string | null;
       existingRkey?: string;
     }) => {
-      if (!client) throw new Error("No PDS client — not signed in");
-      return client.upsertPublicationPrefs(
+      if (!client) {
+        throw new Error("Sign in to move publications between folders on your PDS.");
+      }
+      const result = await client.upsertPublicationPrefs(
         publicationId,
         { folderId },
         existingRkey
       );
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: PUB_PREFS_QUERY_KEY }),
-  });
-}
-
-export function useHidePublication() {
-  const client = usePDSClient();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      publicationId,
-      hidden,
-      existingRkey,
-    }: {
-      publicationId: string;
-      hidden: boolean;
-      existingRkey?: string;
-    }) => {
-      if (!client) throw new Error("No PDS client — not signed in");
-      return client.upsertPublicationPrefs(
+      return {
+        uri: result.uri,
+        rkey: rkeyFromURI(result.uri),
         publicationId,
-        { hidden },
-        existingRkey
+      };
+    },
+    onMutate: async ({ publicationId, folderId }) => {
+      const did = session?.did;
+      if (!did) return undefined;
+
+      const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+      await qc.cancelQueries({ queryKey });
+
+      const previousProjection =
+        qc.getQueryData<PublicationSidebarProjection>(queryKey);
+      if (!previousProjection) return undefined;
+
+      const nextProjection = applyPublicationFolderMoveToProjection(
+        previousProjection,
+        { publicationId, folderId }
+      );
+      if (nextProjection) {
+        qc.setQueryData(queryKey, nextProjection);
+      }
+
+      return { previousProjection };
+    },
+    onError: (_error, _params, context) => {
+      const did = session?.did;
+      if (!did || !context?.previousProjection) return;
+      qc.setQueryData(
+        PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+        context.previousProjection
       );
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: PUB_PREFS_QUERY_KEY }),
+    onSuccess: (written) => {
+      const did = session?.did;
+      if (!did) return;
+
+      const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+      qc.setQueryData<PublicationSidebarProjection>(queryKey, (current) => {
+        if (!current) return current;
+        return reconcilePublicationPrefAfterWrite(
+          current,
+          written.publicationId,
+          written
+        );
+      });
+    },
   });
 }
 
@@ -441,82 +596,109 @@ export function useRefreshSkyreaderSubscriptionIcon() {
  * `site.standard.graph.subscription` or Skyreader RSS subscription on the PDS.
  */
 export function useAddPublicationFromAnyLink() {
-  const client = usePDSClient();
   const qc = useQueryClient();
-  const { session } = useAuth();
+  const client = usePDSClient();
+  const { session, getOAuthSession } = useAuth();
   const did = session?.did ?? null;
 
   return useMutation({
     mutationFn: async (input: { link: string; title?: string }) => {
-      if (!client) throw new Error("No PDS client — not signed in");
-      const res = await fetch("/api/resolve-add-publication", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: input.link }),
-      });
-      const json = (await res.json()) as {
-        kind?: unknown;
-        error?: string;
-        publicationAtUri?: unknown;
-        feedUrl?: unknown;
-        title?: unknown;
-        siteUrl?: unknown;
-        feedIconUrl?: unknown;
-      };
-
-      const errMsg =
-        typeof json.error === "string" ? json.error : "Could not resolve link";
-      if (!res.ok) throw new Error(errMsg);
-
-      if (json.kind === "standard-site" && typeof json.publicationAtUri === "string") {
+      if (!client) throw new Error("OAuth session required");
+      const oauth = getOAuthSession();
+      if (!oauth) throw new Error("OAuth session required");
+      const { resolveAddPublicationOnGateway } = await import(
+        "@/lib/publicationProjectionClient"
+      );
+      const gateway = await resolveAddPublicationOnGateway(
+        oauth,
+        input.link
+      );
+      if (gateway.error) throw new Error(gateway.error);
+      if (gateway.result?.kind === "standard-site") {
         await client.createPublicationSubscription({
-          publication: json.publicationAtUri,
+          publication: gateway.result.publicationAtUri,
         });
+        const projection = await refreshSidebarUntilPublicationVisible({
+          oauthSession: oauth,
+          publicationId: gateway.result.publicationAtUri,
+        });
+        if (did) {
+          qc.setQueryData(
+            PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+            projection
+          );
+        }
         return {
           kind: "standard-site" as const,
-          navigatePubId: json.publicationAtUri,
+          navigatePubId: gateway.result.publicationAtUri,
+          authorDid: publicationRepoDid(gateway.result.publicationAtUri),
         };
       }
-
-      if (json.kind === "rss" && typeof json.feedUrl === "string") {
-        const normalized = normalizeRssFeedUrlInput(json.feedUrl);
+      if (gateway.result?.kind === "rss") {
+        const normalized = normalizeRssFeedUrlInput(gateway.result.feedUrl);
         if (!normalized) throw new Error("Invalid feed URL from resolver");
-        const resolvedTitle =
-          typeof json.title === "string" ? json.title.trim() : "";
-        const resolvedSite =
-          typeof json.siteUrl === "string" ? json.siteUrl.trim() : "";
-        const resolvedIcon =
-          typeof json.feedIconUrl === "string" ? json.feedIconUrl.trim() : "";
         await client.createSkyreaderFeedSubscription({
           feedUrl: normalized,
-          title:
-            input.title?.trim() ||
-            (resolvedTitle ? resolvedTitle : undefined),
-          siteUrl: resolvedSite
-            ? resolvedSite
-            : (() => {
-                try {
-                  return new URL(normalized).origin;
-                } catch {
-                  return undefined;
-                }
-              })(),
-          ...(resolvedIcon ? { customIconUrl: resolvedIcon } : {}),
+          title: input.title?.trim() || gateway.result.title,
+          siteUrl: gateway.result.siteUrl,
         });
+        await enrollAuthorsInAppView(oauth, [], [normalized]);
+        const navigatePubId = rssPublicationIdFromNormalizedFeedUrl(normalized);
+        const projection = await refreshSidebarUntilPublicationVisible({
+          oauthSession: oauth,
+          publicationId: navigatePubId,
+        });
+        if (did) {
+          qc.setQueryData(
+            PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+            projection
+          );
+          const firstPage = await fetchEntriesInfinitePage({
+            normalizedPublicationKey: navigatePubId,
+            pageParam: undefined,
+            oauthSession: oauth,
+            viewerDid: did,
+            queryClient: qc,
+            skipEnroll: true,
+          });
+          qc.setQueryData<InfiniteData<EntriesPage>>(
+            [...ENTRIES_QUERY_KEY(navigatePubId), "all"],
+            { pages: [firstPage], pageParams: [undefined] }
+          );
+        }
         return {
           kind: "rss" as const,
-          navigatePubId: rssPublicationIdFromNormalizedFeedUrl(normalized),
+          navigatePubId,
         };
       }
-
-      throw new Error(
-        typeof json.error === "string" ? json.error : "Unexpected resolver response."
-      );
+      throw new Error("Could not resolve link");
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: PUBLICATION_SUBSCRIPTIONS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: SKYREADER_FEED_SUBSCRIPTIONS_QUERY_KEY });
-      if (did) qc.invalidateQueries({ queryKey: DISCOVERY_QUERY_KEY(did) });
+      qc.invalidateQueries({ queryKey: ["graphSubscriptionPublications"] });
+      if (did) {
+        qc.invalidateQueries({ queryKey: DISCOVERY_QUERY_KEY(did) });
+        qc.invalidateQueries({
+          queryKey: ["publicationSidebarProjection", did],
+        });
+      }
+      const oauthSession = getOAuthSession();
+      if (
+        result?.kind === "standard-site" &&
+        typeof result.authorDid === "string" &&
+        oauthSession
+      ) {
+        maybeEnrollDiscoveryAuthors(oauthSession, [
+          {
+            publicationId: result.navigatePubId,
+            authorDid: result.authorDid,
+            authorHandle: result.authorDid,
+            title: "",
+            discoveredAt: new Date().toISOString(),
+          },
+        ]);
+      }
     },
   });
 }

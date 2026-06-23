@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EntryRow } from "./EntryRow";
 import { useEntries } from "@/hooks/useEntries";
+import { useProactiveFeedRefresh } from "@/hooks/useProactiveFeedRefresh";
 import {
   sortEntryListItemsNewestFirst,
   type EntryListItem,
 } from "@/lib/atprotoClient";
+import { dedupeEntryListItems } from "@/lib/rssFeedCore";
 import {
   filterEntriesForArticleFilter,
   type ArticleListFilter,
 } from "@/lib/entryArticleFilter";
+import { EntryListVirtualPane } from "./EntryListVirtualPane";
 
 export type { ArticleListFilter };
 
@@ -22,117 +23,10 @@ interface EntryListProps {
   onSelectEntry: (entryId: string) => void;
   isEntryRead: (entryId: string) => boolean;
   readIndicatorsEnabled: boolean;
-  /** Ignored when `readIndicatorsEnabled` is false (Hidden Publications). */
+  /** When false, read/unread visuals are suppressed without changing persisted state. */
   articleFilter: ArticleListFilter;
   markEntryRead: (entryId: string) => void;
   markEntryUnread: (entryId: string) => void;
-}
-
-type VirtualPaneProps = {
-  visibleEntries: EntryListItem[];
-  selectedEntryId: string | null;
-  onSelectEntry: (entryId: string) => void;
-  isEntryRead: (entryId: string) => boolean;
-  readIndicatorsEnabled: boolean;
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  fetchNextPage: () => void;
-  markEntryRead: (entryId: string) => void;
-  markEntryUnread: (entryId: string) => void;
-};
-
-/**
- * Isolated virtual list so we can remount it when the filter changes and reset
- * TanStack Virtual measurements (avoids overlapping rows / stray borders).
- */
-function EntryListVirtualPane({
-  visibleEntries,
-  selectedEntryId,
-  onSelectEntry,
-  isEntryRead,
-  readIndicatorsEnabled,
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-  markEntryRead,
-  markEntryUnread,
-}: VirtualPaneProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const virtualCount =
-    hasNextPage ? visibleEntries.length + 1 : visibleEntries.length;
-
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual's internal store is not React-memoizable
-  const virtualizer = useVirtualizer({
-    count: virtualCount,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 112,
-    overscan: 5,
-  });
-
-  const items = virtualizer.getVirtualItems();
-
-  return (
-    <div ref={parentRef} className="h-full overflow-y-auto overscroll-y-contain">
-      <div
-        style={{ height: virtualizer.getTotalSize() }}
-        className="relative w-full"
-      >
-        {items.map((virtualItem) => {
-          const isLoaderRow = virtualItem.index === visibleEntries.length;
-
-          if (isLoaderRow) {
-            if (hasNextPage && !isFetchingNextPage) {
-              void fetchNextPage();
-            }
-            return (
-              <div
-                key="loader"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualItem.start}px)`,
-                  height: virtualItem.size,
-                }}
-                className="flex items-center justify-center border-b border-transparent p-4"
-              >
-                <Skeleton className="h-10 w-full rounded-md" />
-              </div>
-            );
-          }
-
-          const entry = visibleEntries[virtualItem.index];
-          return (
-            <div
-              key={entry.entryId}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-              ref={virtualizer.measureElement}
-              data-index={virtualItem.index}
-              data-entry-id={entry.entryId}
-            >
-              <EntryRow
-                entry={entry}
-                isSelected={selectedEntryId === entry.entryId}
-                onSelect={onSelectEntry}
-                isRead={isEntryRead(entry.entryId)}
-                readIndicatorsEnabled={readIndicatorsEnabled}
-                onMarkEntryRead={markEntryRead}
-                onMarkEntryUnread={markEntryUnread}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 export function EntryList({
@@ -145,18 +39,38 @@ export function EntryList({
   markEntryRead,
   markEntryUnread,
 }: EntryListProps) {
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useEntries(pubId);
-
-  const allEntries: EntryListItem[] = useMemo(() => {
-    const flat = data?.pages.flatMap((p) => p.entries) ?? [];
-    return sortEntryListItemsNewestFirst(flat);
-  }, [data?.pages]);
-
   const effectiveFilter: ArticleListFilter = useMemo(() => {
     if (!readIndicatorsEnabled) return "all";
     return articleFilter;
   }, [readIndicatorsEnabled, articleFilter]);
+
+  // Read/unread is tracked client-side (`ReadRouteContext`). Always fetch the
+  // full list from AppView and apply the All/Unread filter locally so tab
+  // switches and context-menu marks stay in sync even when read-mark write-through
+  // to AppView is still catching up.
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    scopePending,
+  } = useEntries(pubId, "all");
+
+  useProactiveFeedRefresh(
+    pubId,
+    "all",
+    !isLoading && !scopePending && (data?.pages.length ?? 0) > 0
+  );
+
+  const allEntries: EntryListItem[] = useMemo(() => {
+    const flat = dedupeEntryListItems(data?.pages.flatMap((p) => p.entries) ?? []);
+    return sortEntryListItemsNewestFirst(flat);
+  }, [data?.pages]);
 
   const visibleEntries: EntryListItem[] = useMemo(() => {
     return filterEntriesForArticleFilter(
@@ -191,12 +105,27 @@ export function EntryList({
     fetchNextPage,
   ]);
 
-  if (isLoading && allEntries.length === 0) {
+  if ((isLoading || scopePending) && allEntries.length === 0) {
     return (
-      <div className="space-y-2 p-4">
+      <div className="space-y-1.5 p-2">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-md" />
+          <Skeleton key={i} className="h-36 w-full rounded-lg" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError && allEntries.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+        <p>{error instanceof Error ? error.message : "Could not load entries."}</p>
+        <button
+          type="button"
+          className="text-primary underline-offset-4 hover:underline"
+          onClick={() => void refetch()}
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -218,7 +147,7 @@ export function EntryList({
     return (
       <div className="space-y-2 p-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-md" />
+          <Skeleton key={i} className="h-36 w-full rounded-lg" />
         ))}
       </div>
     );
@@ -242,6 +171,7 @@ export function EntryList({
       readIndicatorsEnabled={readIndicatorsEnabled}
       hasNextPage={hasNextPage}
       isFetchingNextPage={isFetchingNextPage}
+      isFetchNextPageError={isFetchNextPageError}
       fetchNextPage={fetchNextPage}
       markEntryRead={markEntryRead}
       markEntryUnread={markEntryUnread}

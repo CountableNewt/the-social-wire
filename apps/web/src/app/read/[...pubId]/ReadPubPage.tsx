@@ -1,86 +1,101 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import { EntryDetail } from "@/components/EntryDetail/EntryDetail";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
+import {
+  READER_LIST_COLUMN_WIDTH_KEY,
+  ResizableListColumn,
+} from "@/components/shared/ResizableListColumn";
 import { Button } from "@/components/ui/button";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
+import { recordKindFromPubId } from "@/lib/recordKindDebug";
 import { cn } from "@/lib/utils";
 
 export default function ReadPubPage({ pubId }: { pubId: string }) {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const publicationKind = recordKindFromPubId(pubId);
   const {
     markEntryRead,
     markEntryUnread,
     isEntryRead,
-    isHiddenFolderContext,
-    effectiveArticleListFilter,
+    articleListFilter,
   } = useReadRoute();
 
   const selectedRef = useRef<string | null>(null);
-  const filterRef = useRef(effectiveArticleListFilter);
+  const filterRef = useRef(articleListFilter);
   useEffect(() => {
     selectedRef.current = selectedEntryId;
-    filterRef.current = effectiveArticleListFilter;
+    filterRef.current = articleListFilter;
   });
 
-  const prevFilterRef = useRef(effectiveArticleListFilter);
+  const markOptions = useMemo(() => ({ publicationId: pubId }), [pubId]);
+
+  const markEntryReadForPub = useCallback(
+    (entryId: string) => markEntryRead(entryId, markOptions),
+    [markEntryRead, markOptions]
+  );
+
+  const markEntryUnreadForPub = useCallback(
+    (entryId: string) => markEntryUnread(entryId, markOptions),
+    [markEntryUnread, markOptions]
+  );
+
+  const prevFilterRef = useRef(articleListFilter);
   useEffect(() => {
     const prev = prevFilterRef.current;
-    if (prev === "unread" && effectiveArticleListFilter === "all" && selectedEntryId) {
-      markEntryRead(selectedEntryId);
+    if (prev === "unread" && articleListFilter === "all" && selectedEntryId) {
+      markEntryReadForPub(selectedEntryId);
     }
-    prevFilterRef.current = effectiveArticleListFilter;
-  }, [effectiveArticleListFilter, selectedEntryId, markEntryRead]);
+    prevFilterRef.current = articleListFilter;
+  }, [articleListFilter, selectedEntryId, markEntryReadForPub]);
 
   useEffect(() => {
     return () => {
       if (filterRef.current === "unread" && selectedRef.current) {
-        markEntryRead(selectedRef.current);
+        markEntryReadForPub(selectedRef.current);
       }
     };
-  }, [pubId, markEntryRead]);
+  }, [pubId, markEntryReadForPub]);
 
   const handleSelectEntry = useCallback(
     (entryId: string) => {
-      if (effectiveArticleListFilter === "unread") {
-        // Mark the previous open article read before switching — never call
-        // markEntryRead inside setState's updater (that updates the parent
-        // provider during a child state update and triggers a React warning).
+      if (articleListFilter === "unread") {
         if (selectedEntryId && selectedEntryId !== entryId) {
-          markEntryRead(selectedEntryId);
+          markEntryReadForPub(selectedEntryId);
         }
         setSelectedEntryId(entryId);
         return;
       }
       setSelectedEntryId(entryId);
-      markEntryRead(entryId);
+      markEntryReadForPub(entryId);
     },
-    [markEntryRead, effectiveArticleListFilter, selectedEntryId]
+    [markEntryReadForPub, articleListFilter, selectedEntryId]
   );
 
   const handleBackToList = useCallback(() => {
-    if (effectiveArticleListFilter === "unread" && selectedEntryId) {
-      markEntryRead(selectedEntryId);
+    if (articleListFilter === "unread" && selectedEntryId) {
+      markEntryReadForPub(selectedEntryId);
     }
     setSelectedEntryId(null);
-  }, [effectiveArticleListFilter, selectedEntryId, markEntryRead]);
+  }, [articleListFilter, selectedEntryId, markEntryReadForPub]);
 
   return (
     <div className="flex h-full min-h-0 max-h-full flex-1 flex-col overflow-hidden md:flex-row md:items-stretch">
       {/* Article list — desktop: beside publications sidebar; mobile: full width until an entry opens */}
-      <aside
-        className={cn(
-          "flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-muted/20",
-          "w-full flex-1 md:h-full md:w-72 md:shrink-0 md:flex-none",
-          selectedEntryId && "hidden md:flex"
-        )}
+      <ResizableListColumn
+        storageKey={READER_LIST_COLUMN_WIDTH_KEY}
+        hiddenOnMobile={Boolean(selectedEntryId)}
       >
-        <div className="shrink-0 border-b px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Articles
-          </p>
+        <div className="shrink-0 border-b bg-background/75 px-3 py-2 backdrop-blur-md">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Articles
+            </p>
+            <DevRecordKindBadge info={publicationKind} />
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           <EntryList
@@ -88,39 +103,39 @@ export default function ReadPubPage({ pubId }: { pubId: string }) {
             selectedEntryId={selectedEntryId}
             onSelectEntry={handleSelectEntry}
             isEntryRead={isEntryRead}
-            readIndicatorsEnabled={!isHiddenFolderContext}
-            articleFilter={effectiveArticleListFilter}
-            markEntryRead={markEntryRead}
-            markEntryUnread={markEntryUnread}
+            readIndicatorsEnabled
+            articleFilter={articleListFilter}
+            markEntryRead={markEntryReadForPub}
+            markEntryUnread={markEntryUnreadForPub}
           />
         </div>
-      </aside>
+      </ResizableListColumn>
 
       {/* Entry detail */}
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain md:h-full",
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:h-full",
           !selectedEntryId && "hidden md:flex"
         )}
       >
         {selectedEntryId ? (
           <>
-            <div className="bg-background sticky top-0 z-10 flex min-h-[44px] shrink-0 items-center gap-2 border-b px-1 py-0 md:hidden">
+            <div className="sticky top-0 z-30 flex min-h-[52px] shrink-0 items-center gap-2 border-b bg-background/90 px-1.5 py-1 backdrop-blur-md md:px-3">
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="size-11 shrink-0 rounded-lg"
+                className="size-11 shrink-0 md:hidden"
                 aria-label="Back to Articles"
                 onClick={handleBackToList}
               >
                 <ChevronLeft className="size-5" />
               </Button>
-              <span className="text-sm font-medium text-muted-foreground">
+              <span className="text-sm font-semibold text-foreground">
                 Articles
               </span>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain">
               <EntryDetail entryId={selectedEntryId} />
             </div>
           </>

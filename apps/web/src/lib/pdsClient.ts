@@ -10,10 +10,17 @@
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
+import {
+  resolveLatrSaveRowDisplay,
+} from "@/lib/latrSaveMetadataBackfill";
+import { listLatrSavedItemsViaGateway } from "@/lib/latrGatewaySaves";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import {
-  resolveNativeSavedSubjectPreview,
-  type NativeSavedSubjectPreview,
+  isThinAppViewEnabled,
+  writeThroughReadMark,
+  writeThroughReadMarkDelete,
+} from "@/lib/thinAppViewClient";
+import {
   parseAtUri,
   PUBLICATION_RECORD_COLLECTIONS,
 } from "@/lib/atprotoClient";
@@ -25,26 +32,60 @@ import {
   latrItemRkeyFromSubjectUri,
   normalizeLatrHttpsUrl,
 } from "@/lib/latrSavedUrls";
+import {
+  legacyHexEntryReadStateRkey,
+  legacyIOSLatrExternalRkey,
+  legacyIOSLatrItemRkey,
+} from "@/lib/legacyRecordKeys";
 
 // ── Lexicon collection IDs ────────────────────────────────────────────────────
 
-export const COLLECTION_FOLDER = "com.thesocialwire.folder";
-export const COLLECTION_PUB_PREFS = "com.thesocialwire.publicationPrefs";
-export const COLLECTION_PREFERENCES = "com.thesocialwire.preferences";
+export const COLLECTION_FOLDER = "app.thesocialwire.folder";
+export const COLLECTION_PUB_PREFS = "app.thesocialwire.publicationPrefs";
+export const COLLECTION_PREFERENCES = "app.thesocialwire.preferences";
+export const LEGACY_COLLECTION_FOLDER = "com.thesocialwire.folder";
+export const LEGACY_COLLECTION_PUB_PREFS = "com.thesocialwire.publicationPrefs";
+export const LEGACY_COLLECTION_PREFERENCES = "com.thesocialwire.preferences";
 export const COLLECTION_STANDARD_SITE_SUBSCRIPTION =
   "site.standard.graph.subscription";
 /** Skyreader RSS/Atom subscriptions (writes require OAuth repo scope). */
 export const COLLECTION_SKYREADER_FEED_SUBSCRIPTION =
   "app.skyreader.feed.subscription";
-export const COLLECTION_LATR_SAVED_EXTERNAL = "com.latr.saved.external";
-export const COLLECTION_LATR_SAVED_ITEM = "com.latr.saved.item";
+import {
+  COLLECTION_LATR_SAVED_EXTERNAL,
+  COLLECTION_LATR_SAVED_ITEM,
+  LEGACY_COLLECTION_LATR_SAVED_EXTERNAL,
+  LEGACY_COLLECTION_LATR_SAVED_ITEM,
+  parseLatrExternalSubject,
+} from "@/lib/latrCollections";
+
+export {
+  COLLECTION_LATR_SAVED_EXTERNAL,
+  COLLECTION_LATR_SAVED_ITEM,
+  LEGACY_COLLECTION_LATR_SAVED_EXTERNAL,
+  LEGACY_COLLECTION_LATR_SAVED_ITEM,
+} from "@/lib/latrCollections";
 /** Per-entry feed read positions (subject AT-URI + read timestamps). */
-export const COLLECTION_ENTRY_READ_STATE = "com.thesocialwire.entryReadState";
+export const COLLECTION_ENTRY_READ_STATE = "app.thesocialwire.entryReadState";
+export const LEGACY_COLLECTION_ENTRY_READ_STATE =
+  "com.thesocialwire.entryReadState";
 export const PREFERENCES_RKEY = "self";
 
-/** Sidebar pseudo-folder URI (not a real `com.thesocialwire.folder` record). */
+export const LEGACY_LEXICON_COLLECTIONS: ReadonlyArray<{
+  legacy: string;
+  current: string;
+}> = [
+  { legacy: LEGACY_COLLECTION_FOLDER, current: COLLECTION_FOLDER },
+  { legacy: LEGACY_COLLECTION_PUB_PREFS, current: COLLECTION_PUB_PREFS },
+  { legacy: LEGACY_COLLECTION_PREFERENCES, current: COLLECTION_PREFERENCES },
+  {
+    legacy: LEGACY_COLLECTION_ENTRY_READ_STATE,
+    current: COLLECTION_ENTRY_READ_STATE,
+  },
+];
+
+/** Sidebar pseudo-folder URI (not a real `app.thesocialwire.folder` record). */
 export const PSEUDO_FOLDER_MY_URI = "__my__";
-export const PSEUDO_FOLDER_HIDDEN_URI = "__hidden__";
 
 // ── Record types ──────────────────────────────────────────────────────────────
 
@@ -91,6 +132,7 @@ export interface SkyreaderFeedSubscriptionRecord {
 
 export type ReadLaterServicePreference =
   | "latr-link"
+  | "latrkit"
   | "instapaper"
   | "omnivore"
   | "readwise-reader"
@@ -106,7 +148,7 @@ export interface PreferencesRecord {
   readLaterService?: ReadLaterServicePreference;
   readLaterConnections?: Partial<
     Record<
-      Exclude<ReadLaterServicePreference, "latr-link">,
+      Exclude<ReadLaterServicePreference, "latr-link" | "latrkit">,
       ReadLaterConnectionPreference
     >
   >;
@@ -137,9 +179,29 @@ export interface LatrSavedItemRecord {
   tags?: string[];
   note?: string;
   lastOpenedAt?: string;
+  linkedWebUrl?: string;
+  previewTitle?: string;
+  previewExcerpt?: string;
+  previewSite?: string;
+  previewImage?: string;
+  previewAuthor?: string;
 }
 
-/** PDS `com.thesocialwire.entryReadState` record shape. */
+/** Which saved-link rows to include when listing merged PDS saves. */
+export type LatrSaveListState = "active" | "archived" | "all";
+
+export interface LatrSaveMetadata {
+  title?: string;
+  excerpt?: string;
+  image?: string;
+  site?: string;
+  author?: string;
+  publishedAt?: string;
+  language?: string;
+  linkedWebUrl?: string;
+}
+
+/** PDS `app.thesocialwire.entryReadState` record shape. */
 export interface EntryReadStateRecord {
   $type: typeof COLLECTION_ENTRY_READ_STATE;
   subjectUri: string;
@@ -163,6 +225,11 @@ export type MergedLatrSave =
       title?: string;
       excerpt?: string;
       image?: string;
+      site?: string;
+      author?: string;
+      publishedAt?: string;
+      language?: string;
+      linkedWebUrl?: string;
     }
   | {
       kind: "native";
@@ -175,6 +242,11 @@ export type MergedLatrSave =
       excerpt?: string;
       url?: string;
       image?: string;
+      site?: string;
+      author?: string;
+      publishedAt?: string;
+      language?: string;
+      linkedWebUrl?: string;
     };
 
 export interface MergedLatrHttpsSave {
@@ -192,6 +264,40 @@ export interface MergedLatrHttpsSave {
   title?: string;
   excerpt?: string;
   image?: string;
+  site?: string;
+  author?: string;
+  publishedAt?: string;
+  language?: string;
+  linkedWebUrl?: string;
+}
+
+function mergeLatrSaveMetadata(
+  external: LatrSavedExternalRecord | undefined,
+  item: LatrSavedItemRecord
+): LatrSaveMetadata {
+  return {
+    title: item.previewTitle?.trim() || external?.title?.trim() || undefined,
+    excerpt: item.previewExcerpt?.trim() || external?.excerpt?.trim() || undefined,
+    image: item.previewImage?.trim() || external?.image?.trim() || undefined,
+    site: item.previewSite?.trim() || external?.site?.trim() || undefined,
+    author: item.previewAuthor?.trim() || external?.author?.trim() || undefined,
+    publishedAt: external?.publishedAt?.trim() || undefined,
+    language: external?.language?.trim() || undefined,
+    linkedWebUrl: item.linkedWebUrl?.trim() || undefined,
+  };
+}
+
+/** Filter merged rows by queue state (`unread` and missing state count as active). */
+export function filterMergedLatrSavesByState(
+  rows: MergedLatrSave[],
+  state: LatrSaveListState
+): MergedLatrSave[] {
+  return rows.filter((row) => {
+    const itemState = row.state ?? "unread";
+    if (state === "all") return true;
+    if (state === "archived") return itemState === "archived";
+    return itemState !== "archived";
+  });
 }
 
 export interface RepoRecord<T> {
@@ -200,7 +306,37 @@ export interface RepoRecord<T> {
   value: T;
 }
 
-const LATR_EXTERNAL_SUBJECT_MARKER = `/${COLLECTION_LATR_SAVED_EXTERNAL}/`;
+const LATR_SAVED_EXTERNAL_COLLECTIONS = [
+  COLLECTION_LATR_SAVED_EXTERNAL,
+  LEGACY_COLLECTION_LATR_SAVED_EXTERNAL,
+] as const;
+
+const LATR_SAVED_ITEM_COLLECTIONS = [
+  COLLECTION_LATR_SAVED_ITEM,
+  LEGACY_COLLECTION_LATR_SAVED_ITEM,
+] as const;
+
+async function listRepoRecords<T>(
+  agent: Agent,
+  repoDid: string,
+  collection: string,
+  signal?: AbortSignal
+): Promise<RepoRecord<T>[]> {
+  const all: RepoRecord<T>[] = [];
+  let cursor: string | undefined;
+  do {
+    signal?.throwIfAborted();
+    const response = await agent.api.com.atproto.repo.listRecords({
+      repo: repoDid,
+      collection,
+      limit: 100,
+      cursor,
+    });
+    all.push(...(response.data.records as unknown as RepoRecord<T>[]));
+    cursor = response.data.cursor ?? undefined;
+  } while (cursor);
+  return all;
+}
 
 /**
  * Pairs queue items with HTTPS external wrappers and keeps native ATProto subjects as rows.
@@ -217,8 +353,9 @@ export function mergeExternalsAndItemsToHttpsRows(
 
   for (const itemRec of items) {
     const { subjectUri, savedAt } = itemRec.value;
-    const m = subjectUri.indexOf(LATR_EXTERNAL_SUBJECT_MARKER);
-    if (m < 0) {
+    const externalSubject = parseLatrExternalSubject(subjectUri);
+    if (!externalSubject) {
+      const metadata = mergeLatrSaveMetadata(undefined, itemRec.value);
       rows.push({
         kind: "native",
         savedAt,
@@ -226,10 +363,11 @@ export function mergeExternalsAndItemsToHttpsRows(
         itemUri: itemRec.uri,
         subjectUri,
         ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
+        ...metadata,
       });
       continue;
     }
-    const externalRkey = subjectUri.slice(m + LATR_EXTERNAL_SUBJECT_MARKER.length);
+    const { externalRkey } = externalSubject;
 
     const ext = externalsByRkey.get(externalRkey);
     if (!ext) continue;
@@ -245,9 +383,7 @@ export function mergeExternalsAndItemsToHttpsRows(
       itemUri: itemRec.uri,
       subjectUri,
       ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
-      title: ext.value.title,
-      excerpt: ext.value.excerpt,
-      image: ext.value.image,
+      ...mergeLatrSaveMetadata(ext.value, itemRec.value),
     });
   }
 
@@ -272,6 +408,77 @@ export function mergeExternalsAndItemsToHttpsRows(
   return deduped;
 }
 
+/**
+ * Build merged saved-link rows from gateway `GET /v1/latr/saves` item records.
+ * External wrapper URLs come from item preview / linkedWebUrl fields (no direct PDS list).
+ */
+export function mergedLatrSavesFromGatewayItems(
+  items: RepoRecord<LatrSavedItemRecord>[]
+): MergedLatrSave[] {
+  const rows: MergedLatrSave[] = [];
+
+  for (const itemRec of items) {
+    const { subjectUri, savedAt } = itemRec.value;
+    const externalSubject = parseLatrExternalSubject(subjectUri);
+    if (!externalSubject) {
+      const metadata = mergeLatrSaveMetadata(undefined, itemRec.value);
+      rows.push({
+        kind: "native",
+        savedAt,
+        itemRkey: rkeyFromURI(itemRec.uri),
+        itemUri: itemRec.uri,
+        subjectUri,
+        ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
+        ...metadata,
+      });
+      continue;
+    }
+
+    const { externalRkey } = externalSubject;
+    const linked = itemRec.value.linkedWebUrl?.trim();
+    const normalized = linked ? normalizeLatrHttpsUrl(linked) : null;
+    const metadata = mergeLatrSaveMetadata(undefined, itemRec.value);
+
+    rows.push({
+      kind: "external",
+      normalizedUrl: normalized ?? linked ?? subjectUri,
+      url: linked ?? normalized ?? subjectUri,
+      savedAt,
+      externalRkey,
+      itemRkey: rkeyFromURI(itemRec.uri),
+      externalUri: subjectUri,
+      itemUri: itemRec.uri,
+      subjectUri,
+      ...(itemRec.value.state ? { state: itemRec.value.state } : {}),
+      ...metadata,
+    });
+  }
+
+  rows.sort((a, b) => {
+    const ta = Date.parse(a.savedAt);
+    const tb = Date.parse(b.savedAt);
+    return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+  });
+
+  const seen = new Set<string>();
+  const deduped: MergedLatrSave[] = [];
+  for (const row of rows) {
+    const k =
+      row.kind === "external"
+        ? `external:${row.normalizedUrl.toLowerCase()}`
+        : `native:${row.subjectUri}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    deduped.push(row);
+  }
+
+  return deduped;
+}
+
+function latrReadLaterUsesGateway(): boolean {
+  return process.env.NEXT_PUBLIC_LATR_READ_LATER_PROVIDER?.trim() !== "pds-direct";
+}
+
 // ── Client class ──────────────────────────────────────────────────────────────
 
 export class PDSClient {
@@ -289,6 +496,11 @@ export class PDSClient {
     this.agent = new Agent(oauthSession);
     this.did = did;
     this.oauthSession = oauthSession;
+  }
+
+  /** Authenticated viewer DID (for one-shot migration guards). */
+  get viewerDid(): string {
+    return this.did;
   }
 
   // ── Folders ──────────────────────────────────────────────────────────────
@@ -544,7 +756,7 @@ export class PDSClient {
 
   async upsertPublicationPrefs(
     publicationId: string,
-    updates: Partial<Pick<PublicationPrefsRecord, "sortOrder" | "hidden">> & {
+    updates: Partial<Pick<PublicationPrefsRecord, "sortOrder">> & {
       folderId?: string | null;
     },
     existingRkey?: string
@@ -563,8 +775,6 @@ export class PDSClient {
       updates.sortOrder !== undefined
         ? updates.sortOrder
         : (prev?.sortOrder ?? 0);
-    const hidden =
-      updates.hidden !== undefined ? updates.hidden : (prev?.hidden ?? false);
 
     let folderId: string | undefined;
     if ("folderId" in updates) {
@@ -577,7 +787,7 @@ export class PDSClient {
       $type: COLLECTION_PUB_PREFS,
       publicationId,
       sortOrder,
-      hidden,
+      hidden: false,
       createdAt: prev?.createdAt ?? new Date().toISOString(),
       ...(folderId !== undefined ? { folderId } : {}),
     };
@@ -627,9 +837,10 @@ export class PDSClient {
   async upsertPreferences(
     updates: Partial<
       Pick<PreferencesRecord, "readLaterService" | "readLaterConnections">
-    >
+    >,
+    existing: RepoRecord<PreferencesRecord> | null | undefined = undefined
   ): Promise<{ uri: string; cid: string }> {
-    const current = await this.getPreferences();
+    const current = existing === undefined ? await this.getPreferences() : existing;
     const prev = current?.value ?? null;
     const now = new Date().toISOString();
     const record: PreferencesRecord = {
@@ -643,59 +854,58 @@ export class PDSClient {
       ...updates,
     };
 
-    const updated = await this.agent.api.com.atproto.repo.putRecord({
-      repo: this.did,
-      collection: COLLECTION_PREFERENCES,
-      rkey: PREFERENCES_RKEY,
-      record: record as unknown as Record<string, unknown>,
-    });
+    const updated = current
+      ? await this.agent.api.com.atproto.repo.putRecord({
+          repo: this.did,
+          collection: COLLECTION_PREFERENCES,
+          rkey: PREFERENCES_RKEY,
+          record: record as unknown as Record<string, unknown>,
+        })
+      : await this.agent.api.com.atproto.repo.createRecord({
+          repo: this.did,
+          collection: COLLECTION_PREFERENCES,
+          rkey: PREFERENCES_RKEY,
+          record: record as unknown as Record<string, unknown>,
+        });
 
     return { uri: updated.data.uri, cid: updated.data.cid };
   }
 
-  // ── L@tr read-later (`com.latr.saved.*`) ──────────────────────────────────
+  // ── L@tr read-later (`link.latr.saved.*`) ─────────────────────────────────
 
   async listLatrSavedExternals(signal?: AbortSignal): Promise<RepoRecord<LatrSavedExternalRecord>[]> {
-    const all: RepoRecord<LatrSavedExternalRecord>[] = [];
-    let cursor: string | undefined;
-    do {
-      signal?.throwIfAborted();
-      const response = await this.agent.api.com.atproto.repo.listRecords({
-        repo: this.did,
-        collection: COLLECTION_LATR_SAVED_EXTERNAL,
-        limit: 100,
-        cursor,
-      });
-      all.push(
-        ...(response.data.records as unknown as RepoRecord<LatrSavedExternalRecord>[])
-      );
-      cursor = response.data.cursor ?? undefined;
-    } while (cursor);
-    return all;
+    const byRkey = new Map<string, RepoRecord<LatrSavedExternalRecord>>();
+    for (const collection of LATR_SAVED_EXTERNAL_COLLECTIONS) {
+      for (const record of await listRepoRecords<LatrSavedExternalRecord>(
+        this.agent,
+        this.did,
+        collection,
+        signal
+      )) {
+        byRkey.set(rkeyFromURI(record.uri), record);
+      }
+    }
+    return [...byRkey.values()];
   }
 
   async listLatrSavedItems(signal?: AbortSignal): Promise<RepoRecord<LatrSavedItemRecord>[]> {
-    const all: RepoRecord<LatrSavedItemRecord>[] = [];
-    let cursor: string | undefined;
-    do {
-      signal?.throwIfAborted();
-      const response = await this.agent.api.com.atproto.repo.listRecords({
-        repo: this.did,
-        collection: COLLECTION_LATR_SAVED_ITEM,
-        limit: 100,
-        cursor,
-      });
-      all.push(
-        ...(response.data.records as unknown as RepoRecord<LatrSavedItemRecord>[])
-      );
-      cursor = response.data.cursor ?? undefined;
-    } while (cursor);
-    return all;
+    const byRkey = new Map<string, RepoRecord<LatrSavedItemRecord>>();
+    for (const collection of LATR_SAVED_ITEM_COLLECTIONS) {
+      for (const record of await listRepoRecords<LatrSavedItemRecord>(
+        this.agent,
+        this.did,
+        collection,
+        signal
+      )) {
+        byRkey.set(rkeyFromURI(record.uri), record);
+      }
+    }
+    return [...byRkey.values()];
   }
 
   /**
    * Idempotent HTTPS read-later slot (deterministic repo keys aligned with latr-link):
-   * upserts `com.latr.saved.external` plus a `com.latr.saved.item` pointing at its AT URI.
+   * upserts `link.latr.saved.external` plus a `link.latr.saved.item` pointing at its AT URI.
    */
   async saveHttpsReadLater(
     displayUrlHttps: string,
@@ -720,7 +930,21 @@ export class PDSClient {
       });
       prevExternal = current.data.value as unknown as LatrSavedExternalRecord;
     } catch {
-      prevExternal = null;
+      const legacyRkey = await legacyIOSLatrExternalRkey(normalizedUrl);
+      if (legacyRkey !== externalRkey) {
+        try {
+          const legacy = await this.agent.api.com.atproto.repo.getRecord({
+            repo: this.did,
+            collection: COLLECTION_LATR_SAVED_EXTERNAL,
+            rkey: legacyRkey,
+          });
+          prevExternal = legacy.data.value as unknown as LatrSavedExternalRecord;
+        } catch {
+          prevExternal = null;
+        }
+      } else {
+        prevExternal = null;
+      }
     }
 
     const titleNext =
@@ -749,6 +973,19 @@ export class PDSClient {
       rkey: externalRkey,
       record: externalRecord as unknown as Record<string, unknown>,
     });
+
+    const legacyExternalRkey = await legacyIOSLatrExternalRkey(normalizedUrl);
+    if (legacyExternalRkey !== externalRkey) {
+      try {
+        await this.agent.api.com.atproto.repo.deleteRecord({
+          repo: this.did,
+          collection: COLLECTION_LATR_SAVED_EXTERNAL,
+          rkey: legacyExternalRkey,
+        });
+      } catch {
+        /* legacy record may already be absent */
+      }
+    }
 
     const externalUri =
       `at://${this.did}/${COLLECTION_LATR_SAVED_EXTERNAL}/${externalRkey}`;
@@ -837,7 +1074,53 @@ export class PDSClient {
     const externalUri =
       `at://${this.did}/${COLLECTION_LATR_SAVED_EXTERNAL}/${externalRkey}`;
     const itemRkey = await latrItemRkeyFromSubjectUri(externalUri);
+    await this.setLatrSaveItemState(itemRkey, "archived");
+  }
 
+  /** Delete a saved item by deterministic item rkey (external or native). */
+  async deleteLatrSaveItem(itemRkey: string): Promise<void> {
+    let prevItem: LatrSavedItemRecord | null = null;
+    try {
+      const currentItem = await this.agent.api.com.atproto.repo.getRecord({
+        repo: this.did,
+        collection: COLLECTION_LATR_SAVED_ITEM,
+        rkey: itemRkey,
+      });
+      prevItem = currentItem.data.value as unknown as LatrSavedItemRecord;
+    } catch {
+      prevItem = null;
+    }
+
+    try {
+      await this.agent.api.com.atproto.repo.deleteRecord({
+        repo: this.did,
+        collection: COLLECTION_LATR_SAVED_ITEM,
+        rkey: itemRkey,
+      });
+    } catch {
+      /* best-effort: record may already be absent */
+    }
+
+    if (!prevItem) return;
+
+    const externalSubject = parseLatrExternalSubject(prevItem.subjectUri);
+    if (!externalSubject) return;
+
+    try {
+      await this.agent.api.com.atproto.repo.deleteRecord({
+        repo: this.did,
+        collection: externalSubject.collection,
+        rkey: externalSubject.externalRkey,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  async setLatrSaveItemState(
+    itemRkey: string,
+    state: "archived" | "unread"
+  ): Promise<void> {
     const currentItem = await this.agent.api.com.atproto.repo.getRecord({
       repo: this.did,
       collection: COLLECTION_LATR_SAVED_ITEM,
@@ -849,12 +1132,16 @@ export class PDSClient {
       $type: COLLECTION_LATR_SAVED_ITEM,
       subjectUri: prevItem.subjectUri,
       savedAt: prevItem.savedAt,
-      state: "archived",
+      state,
       ...(prevItem.tags ? { tags: prevItem.tags } : {}),
       ...(prevItem.note ? { note: prevItem.note } : {}),
-      ...(prevItem.lastOpenedAt
-        ? { lastOpenedAt: prevItem.lastOpenedAt }
-        : {}),
+      ...(prevItem.lastOpenedAt ? { lastOpenedAt: prevItem.lastOpenedAt } : {}),
+      ...(prevItem.linkedWebUrl ? { linkedWebUrl: prevItem.linkedWebUrl } : {}),
+      ...(prevItem.previewTitle ? { previewTitle: prevItem.previewTitle } : {}),
+      ...(prevItem.previewExcerpt ? { previewExcerpt: prevItem.previewExcerpt } : {}),
+      ...(prevItem.previewSite ? { previewSite: prevItem.previewSite } : {}),
+      ...(prevItem.previewImage ? { previewImage: prevItem.previewImage } : {}),
+      ...(prevItem.previewAuthor ? { previewAuthor: prevItem.previewAuthor } : {}),
     };
 
     await this.agent.api.com.atproto.repo.putRecord({
@@ -917,11 +1204,20 @@ export class PDSClient {
       rkey,
       record: record as unknown as Record<string, unknown>,
     });
+    await this.deleteLegacyEntryReadStateKeys(subjectUri, rkey);
+    if (isThinAppViewEnabled()) {
+      void writeThroughReadMark(this.oauthSession, subjectUri, readAt).catch(
+        () => {
+          /* best-effort index sync */
+        }
+      );
+    }
   }
 
   /** Best-effort delete; record may already be absent on the PDS. */
   async deleteEntryReadState(subjectUri: string): Promise<void> {
     const rkey = await latrItemRkeyFromSubjectUri(subjectUri);
+    await this.deleteLegacyEntryReadStateKeys(subjectUri, null);
     try {
       await this.agent.api.com.atproto.repo.deleteRecord({
         repo: this.did,
@@ -931,23 +1227,49 @@ export class PDSClient {
     } catch {
       /* record may already be absent */
     }
+    if (isThinAppViewEnabled()) {
+      void writeThroughReadMarkDelete(this.oauthSession, subjectUri).catch(
+        () => {
+          /* best-effort index sync */
+        }
+      );
+    }
   }
 
   /** Joins wrappers with queue rows for read-later browsing. */
-  async listMergedLatrSaves(signal?: AbortSignal): Promise<MergedLatrSave[]> {
-    const externals = await this.listLatrSavedExternals(signal);
-    const items = await this.listLatrSavedItems(signal);
+  async listMergedLatrSaves(
+    options: { state?: LatrSaveListState; signal?: AbortSignal } = {}
+  ): Promise<MergedLatrSave[]> {
+    const { state = "active", signal } = options;
+
+    let rows: MergedLatrSave[];
+    if (latrReadLaterUsesGateway()) {
+      try {
+        rows = mergedLatrSavesFromGatewayItems(
+          await listLatrSavedItemsViaGateway(this.oauthSession, { signal })
+        );
+      } catch {
+        rows = mergeExternalsAndItemsToHttpsRows(
+          await this.listLatrSavedExternals(signal),
+          await this.listLatrSavedItems(signal)
+        );
+      }
+    } else {
+      rows = mergeExternalsAndItemsToHttpsRows(
+        await this.listLatrSavedExternals(signal),
+        await this.listLatrSavedItems(signal)
+      );
+    }
+
+    const filtered = filterMergedLatrSavesByState(rows, state);
+
     signal?.throwIfAborted();
-    const rows = mergeExternalsAndItemsToHttpsRows(externals, items).filter(
-      (row) => row.state !== "archived"
-    );
     return Promise.all(
-      rows.map(async (row): Promise<MergedLatrSave> => {
-        if (row.kind !== "native") return row;
-        const preview = await this.resolveNativePreview(row.subjectUri);
-        if (!preview) return row;
-        return { ...row, ...preview };
-      })
+      filtered.map((row) =>
+        resolveLatrSaveRowDisplay(this.oauthSession, row, {
+          reconcileToPds: false,
+        })
+      )
     );
   }
 
@@ -956,13 +1278,96 @@ export class PDSClient {
     return this.listMergedLatrSaves();
   }
 
-  private async resolveNativePreview(
-    subjectUri: string
-  ): Promise<NativeSavedSubjectPreview | null> {
-    try {
-      return await resolveNativeSavedSubjectPreview(subjectUri, this.oauthSession);
-    } catch {
-      return null;
+  /**
+   * Copies legacy `com.thesocialwire.*` records into `app.thesocialwire.*` and deletes the old rows.
+   * No-op when legacy collections are empty.
+   */
+  async migrateLegacyLexiconsIfNeeded(): Promise<LexiconMigrationSummary> {
+    const summary = emptyLexiconMigrationSummary();
+
+    for (const { legacy, current } of LEGACY_LEXICON_COLLECTIONS) {
+      const probe = await this.agent.api.com.atproto.repo.listRecords({
+        repo: this.did,
+        collection: legacy,
+        limit: 1,
+      });
+      if (!probe.data.records?.length) continue;
+
+      let cursor: string | undefined;
+      do {
+        const page = await this.agent.api.com.atproto.repo.listRecords({
+          repo: this.did,
+          collection: legacy,
+          limit: 100,
+          cursor,
+        });
+
+        for (const record of page.data.records ?? []) {
+          const rkey = rkeyFromURI(record.uri);
+          const targetRkey =
+            legacy === LEGACY_COLLECTION_PREFERENCES ? PREFERENCES_RKEY : rkey;
+
+          let exists = false;
+          try {
+            await this.agent.api.com.atproto.repo.getRecord({
+              repo: this.did,
+              collection: current,
+              rkey: targetRkey,
+            });
+            exists = true;
+          } catch {
+            exists = false;
+          }
+
+          if (!exists) {
+            const migrated = {
+              ...(record.value as Record<string, unknown>),
+              $type: current,
+            };
+            await this.agent.api.com.atproto.repo.putRecord({
+              repo: this.did,
+              collection: current,
+              rkey: targetRkey,
+              record: migrated,
+            });
+            incrementLexiconMigrationCopied(summary, legacy);
+          }
+
+          await this.agent.api.com.atproto.repo.deleteRecord({
+            repo: this.did,
+            collection: legacy,
+            rkey,
+          });
+          incrementLexiconMigrationDeleted(summary, legacy);
+        }
+
+        cursor = page.data.cursor;
+      } while (cursor);
+    }
+
+    return summary;
+  }
+
+  /** Removes legacy hex / iOS-prefixed read-state keys after canonical write or delete. */
+  private async deleteLegacyEntryReadStateKeys(
+    subjectUri: string,
+    keepRkey: string | null
+  ): Promise<void> {
+    const legacyKeys = [
+      await legacyHexEntryReadStateRkey(subjectUri),
+      await legacyIOSLatrItemRkey(subjectUri),
+    ];
+    for (const legacyRkey of legacyKeys) {
+      if (keepRkey != null && legacyRkey === keepRkey) continue;
+      try {
+        await this.agent.api.com.atproto.repo.deleteRecord({
+          repo: this.did,
+          collection: COLLECTION_ENTRY_READ_STATE,
+          rkey: legacyRkey,
+        });
+      } catch {
+        /* legacy record may already be absent */
+      }
     }
   }
 }
@@ -971,13 +1376,92 @@ export class PDSClient {
 
 /**
  * Extracts the rkey from an at-uri.
- * at://did:plc:xxx/com.thesocialwire.folder/rkey → "rkey"
+ * at://did:plc:xxx/app.thesocialwire.folder/rkey → "rkey"
  */
 export function rkeyFromURI(uri: string): string {
   return uri.split("/").pop() ?? uri;
 }
 
-/** Deterministic `com.thesocialwire.entryReadState` rkey from an entry AT-URI. */
+export interface LexiconMigrationSummary {
+  foldersCopied: number;
+  publicationPrefsCopied: number;
+  preferencesCopied: number;
+  entryReadStateCopied: number;
+  foldersDeleted: number;
+  publicationPrefsDeleted: number;
+  preferencesDeleted: number;
+  entryReadStateDeleted: number;
+}
+
+export function lexiconMigrationChanged(
+  summary: LexiconMigrationSummary
+): boolean {
+  return (
+    summary.foldersCopied > 0 ||
+    summary.publicationPrefsCopied > 0 ||
+    summary.preferencesCopied > 0 ||
+    summary.entryReadStateCopied > 0 ||
+    summary.foldersDeleted > 0 ||
+    summary.publicationPrefsDeleted > 0 ||
+    summary.preferencesDeleted > 0 ||
+    summary.entryReadStateDeleted > 0
+  );
+}
+
+function emptyLexiconMigrationSummary(): LexiconMigrationSummary {
+  return {
+    foldersCopied: 0,
+    publicationPrefsCopied: 0,
+    preferencesCopied: 0,
+    entryReadStateCopied: 0,
+    foldersDeleted: 0,
+    publicationPrefsDeleted: 0,
+    preferencesDeleted: 0,
+    entryReadStateDeleted: 0,
+  };
+}
+
+function incrementLexiconMigrationCopied(
+  summary: LexiconMigrationSummary,
+  legacyCollection: string
+): void {
+  switch (legacyCollection) {
+    case LEGACY_COLLECTION_FOLDER:
+      summary.foldersCopied += 1;
+      break;
+    case LEGACY_COLLECTION_PUB_PREFS:
+      summary.publicationPrefsCopied += 1;
+      break;
+    case LEGACY_COLLECTION_PREFERENCES:
+      summary.preferencesCopied += 1;
+      break;
+    case LEGACY_COLLECTION_ENTRY_READ_STATE:
+      summary.entryReadStateCopied += 1;
+      break;
+  }
+}
+
+function incrementLexiconMigrationDeleted(
+  summary: LexiconMigrationSummary,
+  legacyCollection: string
+): void {
+  switch (legacyCollection) {
+    case LEGACY_COLLECTION_FOLDER:
+      summary.foldersDeleted += 1;
+      break;
+    case LEGACY_COLLECTION_PUB_PREFS:
+      summary.publicationPrefsDeleted += 1;
+      break;
+    case LEGACY_COLLECTION_PREFERENCES:
+      summary.preferencesDeleted += 1;
+      break;
+    case LEGACY_COLLECTION_ENTRY_READ_STATE:
+      summary.entryReadStateDeleted += 1;
+      break;
+  }
+}
+
+/** Deterministic `app.thesocialwire.entryReadState` rkey from an entry AT-URI. */
 export async function entryReadStateRkeyFromSubjectUri(
   subjectUri: string
 ): Promise<string> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   BookmarkPlus,
   BookmarkX,
@@ -47,6 +47,9 @@ import {
 import { useCachedBulkReadActions } from "@/hooks/useCachedBulkReadActions";
 import { standardSiteSubscriptionTargetFromDiscovery } from "@/lib/publicationSubscriptionMatch";
 import { isRssPublicationId } from "@/lib/rssFeedCore";
+import { isDevDebugUiEnabled } from "@/lib/appEnv";
+import { recordKindFromPublication } from "@/lib/recordKindDebug";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { cn } from "@/lib/utils";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
 
@@ -74,7 +77,7 @@ interface PublicationSubItemProps {
   sidebarTab: PublicationSidebarTab;
 }
 
-export function PublicationSubItem({
+function PublicationSubItemInner({
   publication,
   unreadCount,
   isSelected,
@@ -95,10 +98,13 @@ export function PublicationSubItem({
   const bulkPublicationList = useMemo(() => [publication], [publication]);
   const {
     bulkDisabled,
-    hideReadBulkMenus,
     applyMarkAllRead,
     applyMarkAllUnread,
-  } = useCachedBulkReadActions(bulkPublicationList);
+  } = useCachedBulkReadActions(bulkPublicationList, {
+    gatewayScopes: [
+      { kind: "publication", publicationId: publication.publicationId },
+    ],
+  });
 
   const prefs = prefsMap.get(publication.publicationId);
   const currentFolderId = prefs?.value.folderId ?? null;
@@ -183,6 +189,12 @@ export function PublicationSubItem({
     return match ? `In "${match.value.name}"` : "Move To Folder";
   }, [currentFolderId, folders]);
 
+  const recordKind = useMemo(
+    () => recordKindFromPublication(publication),
+    [publication]
+  );
+  const devRecordKindVisible = isDevDebugUiEnabled();
+
   return (
     <SidebarMenuSubItem>
       <ContextMenu onOpenChange={handleOpenChange}>
@@ -193,20 +205,28 @@ export function PublicationSubItem({
             render={<button type="button" />}
             onClick={() => onSelect(publication.publicationId)}
             className={cn(
-              "min-w-0 flex-1 gap-2",
-              unreadCount > 0 && "relative pr-8"
+              "relative min-w-0 flex-1 gap-2 pr-8",
+              devRecordKindVisible &&
+                "h-auto min-h-9 items-start overflow-visible py-1.5"
             )}
           >
             <PublicationLeadingAvatar publication={publication} />
-            <span className="min-w-0 flex-1 truncate">{publication.title}</span>
-            {unreadCount > 0 ? (
-              <SidebarMenuBadge
-                className="top-1/2 -translate-y-1/2"
-                aria-label={`${unreadCount} unread`}
-              >
-                {unreadCount}
-              </SidebarMenuBadge>
-            ) : null}
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+              <span className="w-full truncate">{publication.title}</span>
+              <DevRecordKindBadge info={recordKind} />
+            </div>
+            <SidebarMenuBadge
+              className={cn(
+                "top-1/2 -translate-y-1/2",
+                unreadCount <= 0 && "pointer-events-none opacity-0"
+              )}
+              aria-hidden={unreadCount <= 0}
+              aria-label={
+                unreadCount > 0 ? `${unreadCount} unread` : undefined
+              }
+            >
+              {unreadCount > 0 ? unreadCount : 0}
+            </SidebarMenuBadge>
           </SidebarMenuSubButton>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-[11rem]">
@@ -261,28 +281,24 @@ export function PublicationSubItem({
               })}
             </ContextMenuSubContent>
           </ContextMenuSub>
-          {!hideReadBulkMenus ? (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                disabled={busy || bulkDisabled}
-                className="gap-2"
-                onClick={() => setMarkAllReadDialogOpen(true)}
-              >
-                Mark All As Read
-              </ContextMenuItem>
-              <ContextMenuItem
-                disabled={busy || bulkDisabled}
-                className="gap-2"
-                onClick={() => {
-                  applyMarkAllUnread();
-                  hapticSuccess();
-                }}
-              >
-                Mark All As Unread
-              </ContextMenuItem>
-            </>
-          ) : null}
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={busy || bulkDisabled}
+            className="gap-2"
+            onClick={() => setMarkAllReadDialogOpen(true)}
+          >
+            Mark All As Read
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={busy || bulkDisabled}
+            className="gap-2"
+            onClick={() => {
+              applyMarkAllUnread();
+              hapticSuccess();
+            }}
+          >
+            Mark All As Unread
+          </ContextMenuItem>
           {sidebarTab === "following" ? (
             <>
               <ContextMenuSeparator />
@@ -405,6 +421,8 @@ export function PublicationSubItem({
     </SidebarMenuSubItem>
   );
 }
+
+export const PublicationSubItem = memo(PublicationSubItemInner);
 
 function PublicationLeadingAvatar({
   publication,

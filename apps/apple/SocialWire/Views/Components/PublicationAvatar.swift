@@ -6,26 +6,23 @@ struct PublicationAvatar: View {
 
     var body: some View {
         Group {
-            if let url = publication.displayImageURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        placeholder
-                    }
+            if !publication.displayImageURLs.isEmpty {
+                CachedRemoteImage(urls: publication.displayImageURLs, maxPixelSize: max(size * 3, 72)) {
+                    placeholder
                 }
+                .scaledToFill()
             } else {
                 placeholder
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: min(8, size / 4), style: .continuous))
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 
     private var placeholder: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: min(8, size / 4), style: .continuous)
+            Circle()
                 .fill(.secondary.opacity(0.14))
             Text(String(publication.title.prefix(1)).uppercased())
                 .font(.system(size: size * 0.42, weight: .semibold))

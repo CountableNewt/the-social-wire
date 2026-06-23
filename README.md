@@ -11,12 +11,13 @@ Web (Next.js 16.2+)     iOS/iPadOS (SwiftUI)
        │                        │
        └─── ATProto OAuth ──────┘
                    │
-                   ▼
-        User's ATProto PDS  ←── direct read/write/read
-          com.thesocialwire.folder
-          com.thesocialwire.publicationPrefs
-          app.bsky.graph.follow (existing)
-          site.standard.entry
+       ┌───────────┴───────────┐
+       ▼                       ▼
+User's ATProto PDS      Social Wire gateway (optional)
+  app.thesocialwire.*     /v1/sync, /v1/appview/*
+  site.standard.*         Thin AppView index (EU ams)
+       │
+       └── Author PDS — entry bodies + canonical read state
 ```
 
 ## Monorepo Structure
@@ -27,17 +28,17 @@ the-social-wire/
     web/         # Next.js 16.2+ web client (Bun)
     apple/       # SwiftUI iOS/iPadOS app
   services/
-    api/         # Swift Package + Hummingbird 2 service; `fly.toml` + Dockerfile for Fly.io
+    gateway/         # OAuth, sync, PDS writes, AppView proxy (Hummingbird; Fly.io)
+    appview/         # Publication sidebar + Thin AppView read index (Fly.io)
+    appview-worker/  # Jetstream ingestion for Thin AppView (Fly.io)
   packages/
-    lexicons/    # com.thesocialwire.* ATProto lexicons
-    spec/        # OpenAPI 3.1 spec (service API)
+    lexicons/    # app.thesocialwire.* ATProto lexicons
+    spec/        # OpenAPI 3.1 spec (gateway + appview routes)
   supabase/
     config.toml  # Supabase CLI; migrations/ for hosted Postgres (see .github/workflows/supabase.yml)
-  infra/
-    docker/      # docker-compose — builds API from services/api + Caddy + Portainer
   docs/
     architecture/
-    wiki/        # Markdown synced to GitHub Wiki (see .github/workflows/publish-wiki.yml)
+    wiki/        # Markdown synced to GitHub Wiki on push to main (see .github/workflows/publish-wiki.yml)
 ```
 
 ## Prerequisites
@@ -45,9 +46,8 @@ the-social-wire/
 | Tool | Version |
 |------|---------|
 | [Bun](https://bun.sh) | Matches root [`package.json`](package.json) `packageManager` (currently 1.3.x) |
-| [Swift](https://swift.org/install) | 6.1+ for iOS (`apps/apple`); run `swift test` locally for `services/api` |
-| [Docker](https://docker.com) | ≥ 25 (optional; local compose stack) |
-| [Fly CLI](https://fly.io/docs/flyctl/install/) | Latest (API deploys / ops) |
+| [Swift](https://swift.org/install) | 6.1+ for iOS (`apps/apple`); run `swift test` locally for gateway/appview packages |
+| [Fly CLI](https://fly.io/docs/flyctl/install/) | Latest (Fly deploys / ops) |
 | [Xcode](https://developer.apple.com/xcode/) | 16+ (for iOS) |
 
 ## Quick Start
@@ -67,42 +67,69 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Running tests
+### Full-stack local dev (optional)
 
 ```bash
-# TypeScript / React tests
-cd apps/web && bun run test
+# Gateway (OAuth, sync, writes)
+cd services/gateway && APP_ENV=local swift run Gateway
 
-# iOS tests — Cmd+U in Xcode
+# AppView (sidebar + Thin AppView reads)
+cd services/appview && APP_ENV=local ENABLE_THIN_APPVIEW=true swift run AppView
+
+# AppView worker (Jetstream ingestion)
+cd services/appview-worker && APP_ENV=local ENABLE_THIN_APPVIEW=true swift run AppViewWorker
+
+# Supabase (optional — Docker)
+supabase start && supabase db reset --local
+```
+
+### Running tests
+
+See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface plans and PR checklists.
+
+```bash
+cd apps/web && bun test
+cd services/gateway && swift test
+cd services/appview && swift test
+cd services/appview-worker && swift test
+cd packages/swift/ThinAppViewCore && swift test
+
+# iOS — Cmd+U in Xcode (see docs/test-plans/apple.md)
 ```
 
 ## Architecture Principles
 
 - **Protocol-first**: user data lives on the user's own ATProto PDS as published records, not in our database
-- **Direct clients**: discovery and content reads use public ATProto XRPC instead of a Social Wire API dependency
+- **PDS-canonical reads**: entry detail and read-state writes target the user's and authors' PDS repos
+- **Optional Thin AppView**: when enabled, the gateway indexes Level-1 list rows + read marks in EU Postgres for faster timelines and server-side unread filtering (see [docs/architecture/appview.md](docs/architecture/appview.md))
+- **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
-- **No AppView required for v1**: clients can discover followed publications without cross-user indexing
 
 ## Deployment
 
 | Component | Where |
 |-----------|-------|
 | Web | Vercel (automatic from `main` / `dev` branches) |
-| API | Fly.io (`deploy.yml` — two Fly apps for prod + dev) |
-| Local API + TLS | `infra/docker` compose (builds `services/api` Dockerfile) |
+| Gateway | Fly.io (`the-social-wire-*-gateway`, **`ams`**) |
+| AppView | Fly.io (`the-social-wire-*-appview`, **`ams`**) |
+| AppView worker | Fly.io (`the-social-wire-*-appview-worker`, **`ams`**) |
+| Database (index + cache) | Supabase Postgres (`supabase/migrations/`) |
 | CI/CD | GitHub Actions + Vercel + Fly |
 
 See [docs/architecture/overview.md](docs/architecture/overview.md) for the full architecture narrative.
 
 ## Docs
 
+- **[Test plans](docs/test-plans/README.md)** — verification commands and coverage inventory
+- **[Contributing](CONTRIBUTING.md)** — PR workflow and test location conventions
 - **[GitHub Wiki](https://github.com/Stygian-Tech/the-social-wire/wiki)** — curated navigation and links into this repository
 - [Architecture overview](docs/architecture/overview.md)
 - [Lexicons](docs/architecture/lexicons.md)
 - [Discovery chain](docs/architecture/discovery.md)
+- [Thin AppView](docs/architecture/appview.md)
 - [Web app](apps/web/README.md)
 - [Apple app](apps/apple/README.md)
-- [Legacy service API](services/api/README.md)
+- [OpenAPI spec](packages/spec/README.md)
 - [Lexicon reference](packages/lexicons/README.md)
 
 ## License

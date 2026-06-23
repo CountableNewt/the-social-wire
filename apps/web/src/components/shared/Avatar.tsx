@@ -1,3 +1,9 @@
+"use client";
+
+import { useState } from "react";
+
+import { useCachedImageUrl } from "@/hooks/useCachedImageUrl";
+
 interface AvatarProps {
   src?: string | null;
   alt: string;
@@ -6,20 +12,25 @@ interface AvatarProps {
 }
 
 export function Avatar({ src, alt, size = 32, className = "" }: AvatarProps) {
-  if (src) {
+  const { objectUrl, failed: cacheFailed } = useCachedImageUrl(src);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const showImage = Boolean(objectUrl) && !cacheFailed && !loadFailed;
+
+  if (showImage) {
     return (
+      /* eslint-disable-next-line @next/next/no-img-element -- arbitrary PDS / publisher URLs */
       <img
-        src={src}
+        src={objectUrl}
         alt={alt}
         width={size}
         height={size}
         className={`rounded-full object-cover ${className}`}
         referrerPolicy="no-referrer"
+        onError={() => setLoadFailed(true)}
       />
     );
   }
 
-  // Fallback: initials avatar
   const initials = alt
     .split(" ")
     .slice(0, 2)

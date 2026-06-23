@@ -1,0 +1,27 @@
+meta {
+  name: Get AppView Bootstrap Stream
+  type: http
+  seq: 19
+}
+
+get {
+  url: {{baseUrl}}/v1/appview/bootstrap-stream
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/x-ndjson
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}
+
+docs {
+  Cache-first initial load for web and iOS. Proxied to AppView without response buffering.
+
+  Returns `application/x-ndjson` — one JSON object per line, in order:
+  `sidebarPriority`, `unreadCounts`, optional `selectedPublication`, optional `entriesPage`,
+  `sidebarFolders`, optional `warning`/`error`, then `done`.
+
+  Requires `ENABLE_THIN_APPVIEW=true` on AppView and `APPVIEW_BASE_URL` on the gateway.
+}

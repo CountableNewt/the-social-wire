@@ -13,7 +13,7 @@ actor DPoPService {
         let origin = originKey(for: url)
         let nonce = nonceByOrigin[origin]
 
-        var header: [String: JSONValue] = [
+        let header: [String: JSONValue] = [
             "typ": .string("dpop+jwt"),
             "alg": .string("ES256"),
             "jwk": jwkValue()
@@ -47,6 +47,91 @@ actor DPoPService {
               let url = response.url
         else { return }
         nonceByOrigin[originKey(for: url)] = nonce
+    }
+
+    /// Advances the viewer PDS DPoP nonce chain before minting upstream write proofs (RFC 9449 single-use nonces).
+    func advancePdsDpopNonce(
+        session: AuthSession,
+        collection: String = "link.latr.saved.item",
+        urlSession: URLSession = .shared
+    ) async {
+        var listComponents = URLComponents(
+            url: session.pdsURL.appending(path: "xrpc/com.atproto.repo.listRecords"),
+            resolvingAgainstBaseURL: false
+        )
+        listComponents?.queryItems = [
+            URLQueryItem(name: "repo", value: session.did),
+            URLQueryItem(name: "collection", value: collection),
+            URLQueryItem(name: "limit", value: "1"),
+        ]
+        if let listURL = listComponents?.url {
+            let nonceBefore = nonceByOrigin[originKey(for: listURL)]
+            await sendPdsDpopProbe(method: "GET", url: listURL, session: session, urlSession: urlSession)
+            if nonceByOrigin[originKey(for: listURL)] != nonceBefore {
+                return
+            }
+        }
+
+        let putURL = session.pdsURL.appending(path: "xrpc/com.atproto.repo.putRecord")
+        await sendPdsDpopWriteProbe(url: putURL, session: session, collection: collection, urlSession: urlSession)
+    }
+
+    private func sendPdsDpopWriteProbe(
+        url: URL,
+        session: AuthSession,
+        collection: String,
+        urlSession: URLSession
+    ) async {
+        let body = """
+        {"repo":"\(session.did)","collection":"\(collection)","rkey":"_dpop_nonce_probe","record":{"$type":"\(collection)"}}
+        """
+        await sendPdsDpopProbe(
+            method: "POST",
+            url: url,
+            session: session,
+            urlSession: urlSession,
+            body: Data(body.utf8)
+        )
+    }
+
+    private func sendPdsDpopProbe(
+        method: String,
+        url: URL,
+        session: AuthSession,
+        urlSession: URLSession,
+        body: Data? = nil
+    ) async {
+        func signedRequest() throws -> URLRequest {
+            var request = URLRequest(url: url)
+            request.httpMethod = method
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let body {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = body
+            }
+            request.setValue("DPoP \(session.accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue(
+                try proof(method: method, url: url, accessToken: session.accessToken),
+                forHTTPHeaderField: "DPoP"
+            )
+            return request
+        }
+
+        guard let initial = try? signedRequest(),
+              let (_, response) = try? await urlSession.data(for: initial),
+              let http = response as? HTTPURLResponse
+        else { return }
+
+        updateNonce(from: http)
+
+        guard [401, 400].contains(http.statusCode),
+              http.value(forHTTPHeaderField: "DPoP-Nonce") != nil,
+              let retry = try? signedRequest(),
+              let (_, retryResponse) = try? await urlSession.data(for: retry),
+              let retryHttp = retryResponse as? HTTPURLResponse
+        else { return }
+
+        updateNonce(from: retryHttp)
     }
 
     func exportPrivateKey() -> String {

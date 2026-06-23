@@ -4,8 +4,14 @@ import { useMemo } from "react";
 import { ExternalLink } from "lucide-react";
 import { EntryArticleEmbed } from "@/components/EntryDetail/EntryArticleEmbed";
 import { EntrySocialToolbar } from "@/components/EntryDetail/EntrySocialToolbar";
+import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEntry } from "@/hooks/useEntries";
+import {
+  lockedEntryArticlePresentation,
+  type EntryArticlePresentation,
+} from "@/lib/entryArticlePresentation";
+import { recordKindFromEntryId } from "@/lib/recordKindDebug";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { sanitizeHTMLWithLinks } from "@/lib/sanitize";
 import { cn } from "@/lib/utils";
@@ -22,11 +28,15 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
     [entry?.contentHtml]
   );
 
-  /**
-   * Prefer sanitized record HTML over live iframe when present — avoids broken embeds (e.g. fed
-   * bridge query params) and mixed-origin iframe 404s; tradeoff: no live-site chrome in-page.
-   */
-  const preferRecordBodyOverEmbed = Boolean(entry) && safeHTML.trim().length > 0;
+  const presentation: EntryArticlePresentation | null = entry
+    ? lockedEntryArticlePresentation(entryId, {
+        contentHtml: safeHTML,
+        embedUrl: entry.embedUrl,
+        originalUrl: entry.originalUrl,
+      })
+    : null;
+
+  const showEmbed = presentation === "embed" && Boolean(entry?.embedUrl);
 
   const canonicalArticleHref =
     entry?.embedUrl ?? entry?.originalUrl
@@ -56,13 +66,11 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
     );
   }
 
-  const showEmbed = Boolean(entry.embedUrl) && !preferRecordBodyOverEmbed;
-
   return (
     <article
       className={cn(
-        "flex min-h-0 w-full max-w-none flex-1 flex-col px-3 pt-1 sm:px-4 sm:pt-2 md:px-6 lg:px-8",
-        showEmbed ? "pb-1 sm:pb-2" : "pb-8 sm:pb-10"
+        "flex min-h-0 w-full max-w-none flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+6.25rem)] flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
+        showEmbed ? "md:pb-2" : "md:pb-8 lg:pb-10"
       )}
     >
       <div
@@ -77,7 +85,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
               href={canonicalArticleHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground sm:min-h-0 sm:text-sm sm:py-0"
+              className="inline-flex min-h-[44px] min-w-0 items-center gap-1 py-2 text-xs font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 transition-colors hover:text-primary hover:decoration-primary sm:min-h-0 sm:text-sm sm:py-0"
             >
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
               View original
@@ -91,30 +99,42 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
               url={entry.embedUrl!}
               title={entry.title}
               className="min-h-0 flex-1"
+              expectedAtUri={entry.entryId}
+              fallbackContent={
+                safeHTML.trim() ? (
+                  <div
+                    className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-a:text-[var(--purple-foreground)] prose-a:underline prose-a:decoration-[var(--purple-border)] prose-a:decoration-2 prose-a:underline-offset-4 prose-a:transition-colors hover:prose-a:text-primary hover:prose-a:decoration-primary prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
+                    // Safe: content is sanitized before rendering.
+                    dangerouslySetInnerHTML={{ __html: safeHTML }}
+                  />
+                ) : undefined
+              }
             />
           </div>
         ) : null}
 
-        {!showEmbed && !safeHTML.trim() ? (
-          <p className="text-sm text-muted-foreground">
-            No embed URL or HTML body is available for this entry.
-          </p>
-        ) : (
-          <div
-            className="prose prose-sm dark:prose-invert max-w-none"
-            // Safe: content is sanitized before rendering.
-            dangerouslySetInnerHTML={{ __html: safeHTML }}
-          />
-        )}
+        {!showEmbed ? (
+          !safeHTML.trim() ? (
+            <p className="text-sm text-muted-foreground">
+              No embed URL or HTML body is available for this entry.
+            </p>
+          ) : (
+            <div
+              className="prose prose-sm dark:prose-invert flow-root max-w-none leading-7 prose-a:text-[var(--purple-foreground)] prose-a:underline prose-a:decoration-[var(--purple-border)] prose-a:decoration-2 prose-a:underline-offset-4 prose-a:transition-colors hover:prose-a:text-primary hover:prose-a:decoration-primary prose-p:my-3 prose-img:my-5 prose-figure:my-5 prose-headings:mt-6 prose-headings:mb-3 prose-ul:my-3 prose-ol:my-3 [&_br]:block [&_br]:content-[''] [&_img]:h-auto [&_img]:max-w-full"
+              // Safe: content is sanitized before rendering.
+              dangerouslySetInnerHTML={{ __html: safeHTML }}
+            />
+          )
+        ) : null}
       </div>
 
-      <div className="order-2 shrink-0 md:order-1">
+      <div className="relative z-10 order-2 clear-both shrink-0 bg-background/95 md:sticky md:top-0 md:z-20 md:order-1 md:-mx-6 md:border-b md:bg-background/95 md:px-6 md:pt-2 md:backdrop-blur-md lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <DevRecordKindBadge info={recordKindFromEntryId(entry.entryId)} />
+        </div>
         <EntrySocialToolbar
           entry={entry}
-          className={cn(
-            showEmbed ? "!mb-0 sm:!mb-0" : undefined,
-            "max-md:border-b-0 max-md:border-t max-md:pb-3 max-md:pt-3 max-md:mb-0 max-md:mt-4 sm:max-md:pb-3.5 sm:max-md:pt-3.5 sm:max-md:mt-6"
-          )}
+          className={cn(showEmbed ? "md:!mb-0" : undefined)}
         />
       </div>
     </article>

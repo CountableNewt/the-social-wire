@@ -1,8 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OEmbedArticleView } from "@/components/EntryDetail/OEmbedArticleView";
+import {
+  getCachedEmbedProbeFrameable,
+  setCachedEmbedProbeFrameable,
+} from "@/lib/embedProbeCache";
+import {
+  isCachedUnstableEmbed,
+  markUnstableEmbed,
+  registerIframeLoadEvent,
+} from "@/lib/embedIframeStability";
+import { fetchOEmbedForPage } from "@/lib/oEmbedClient";
+import { getCachedOEmbed } from "@/lib/oEmbedCache";
+import { articleFallbackContentIsVerified } from "@/lib/articleFallbackVerification";
 import { sanitizeEmbedUrlForIframe } from "@/lib/publicResourceUrl";
 import { cn } from "@/lib/utils";
 
@@ -12,66 +25,188 @@ interface EntryArticleEmbedProps {
   url: string;
   title: string;
   className?: string;
+  fallbackContent?: ReactNode;
+  expectedAtUri?: string;
 }
 
-function BlockedEmbedMessage({ href }: { href: string }) {
+function EmbedUnavailableMessage({
+  href,
+  message,
+  linkLabel,
+  fallbackContent,
+}: {
+  href: string;
+  message: string;
+  linkLabel: string;
+  fallbackContent?: ReactNode;
+}) {
+  if (fallbackContent) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 max-md:scroll-pb-[calc(env(safe-area-inset-bottom)+6.25rem)] max-md:pb-[calc(env(safe-area-inset-bottom)+6.25rem)]">
+        <div className="mb-5 rounded-xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+          <p>{message}</p>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-md py-2 text-sm font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 hover:text-primary hover:decoration-primary"
+          >
+            <ExternalLink className="size-4 shrink-0" aria-hidden />
+            {linkLabel}
+          </a>
+        </div>
+        {fallbackContent}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
-      <p>This site blocks embedding.</p>
+      <p>{message}</p>
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-primary hover:underline"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-[var(--purple-foreground)] underline decoration-[var(--purple-border)] underline-offset-4 hover:text-primary hover:decoration-primary"
       >
         <ExternalLink className="size-4 shrink-0" aria-hidden />
-        Open
+        {linkLabel}
       </a>
     </div>
   );
 }
 
-function IframeLoadFailedMessage({ href }: { href: string }) {
-  return (
-    <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
-      <p>
-        This page cannot be embedded (the site may block iframes). Open it in a new tab or read the
-        full content below.
-      </p>
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-primary hover:underline"
-      >
-        <ExternalLink className="size-4 shrink-0" aria-hidden />
-        Open in New Tab
-      </a>
-    </div>
-  );
-}
-
-/** iframe embed of the canonical article URL with sandbox defaults and loading UI. */
+/** Article embed: oEmbed first, then sandboxed iframe with load-storm protection. */
 export function EntryArticleEmbed(props: EntryArticleEmbedProps) {
-  return <EntryArticleEmbedInner key={props.url} {...props} />;
+  const pageUrl = useMemo(() => sanitizeEmbedUrlForIframe(props.url), [props.url]);
+  return <EntryArticleEmbedInner key={pageUrl} {...props} pageUrl={pageUrl} />;
 }
+
+type OEmbedPhase = "pending" | "hit" | "miss";
 
 function EntryArticleEmbedInner({
-  url,
   title,
   className,
-}: EntryArticleEmbedProps) {
+  fallbackContent,
+  expectedAtUri,
+  pageUrl,
+}: Omit<EntryArticleEmbedProps, "url"> & { pageUrl: string }) {
+  const cachedOEmbed = getCachedOEmbed(pageUrl);
+  const [oembedPhase, setOembedPhase] = useState<OEmbedPhase>(() => {
+    if (!cachedOEmbed) return "pending";
+    return cachedOEmbed.status === "hit" ? "hit" : "miss";
+  });
+  const [oembedPayload, setOembedPayload] = useState(
+    () => (cachedOEmbed?.status === "hit" ? cachedOEmbed.oembed : null)
+  );
+  const [pageAtUri, setPageAtUri] = useState(cachedOEmbed?.pageAtUri);
+
+  const oembedGeneration = useRef(0);
+
+  useEffect(() => {
+    if (cachedOEmbed) return;
+
+    const gen = ++oembedGeneration.current;
+    const ac = new AbortController();
+
+    void (async () => {
+      const result = await fetchOEmbedForPage(pageUrl, ac.signal);
+      if (gen !== oembedGeneration.current || ac.signal.aborted) return;
+      if (result.ok) {
+        setOembedPayload(result.oembed);
+        setPageAtUri(result.pageAtUri);
+        setOembedPhase("hit");
+      } else {
+        setPageAtUri(result.pageAtUri);
+        setOembedPhase("miss");
+      }
+    })();
+
+    return () => {
+      ac.abort();
+    };
+  }, [pageUrl, cachedOEmbed]);
+
+  if (oembedPhase === "pending") {
+    return (
+      <div
+        className={cn(
+          "relative flex min-h-0 w-full flex-1 flex-col overflow-hidden",
+          className
+        )}
+      >
+        <Skeleton className="min-h-0 h-full w-full rounded-none" />
+      </div>
+    );
+  }
+
+  if (oembedPhase === "hit" && oembedPayload) {
+    return (
+      <div
+        className={cn(
+          "relative flex min-h-0 w-full flex-1 flex-col overflow-hidden",
+          className
+        )}
+      >
+        <OEmbedArticleView oembed={oembedPayload} pageUrl={pageUrl} />
+      </div>
+    );
+  }
+
+  return (
+    <IframeArticleEmbed
+      title={title}
+      className={className}
+      iframeSrc={pageUrl}
+      fallbackContent={fallbackContent}
+      expectedAtUri={expectedAtUri}
+      pageAtUri={pageAtUri}
+    />
+  );
+}
+
+function IframeArticleEmbed({
+  title,
+  className,
+  iframeSrc,
+  fallbackContent,
+  expectedAtUri,
+  pageAtUri,
+}: {
+  title: string;
+  className?: string;
+  iframeSrc: string;
+  fallbackContent?: ReactNode;
+  expectedAtUri?: string;
+  pageAtUri?: string;
+}) {
+  const cachedFrameable = getCachedEmbedProbeFrameable(iframeSrc);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  /** `null` = probe in progress; `true` = headers say framing is blocked. */
-  const [probeBlocksEmbed, setProbeBlocksEmbed] = useState<boolean | null>(null);
+  const [unstableEmbed, setUnstableEmbed] = useState(() =>
+    isCachedUnstableEmbed(iframeSrc)
+  );
+  const [probeBlocksEmbed, setProbeBlocksEmbed] = useState<boolean | null>(() =>
+    cachedFrameable === undefined ? null : !cachedFrameable
+  );
 
-  const iframeSrc = useMemo(() => sanitizeEmbedUrlForIframe(url), [url]);
+  const loadTimestampsRef = useRef<number[]>([]);
 
   const handleLoad = useCallback(() => {
+    const { timestamps, unstable } = registerIframeLoadEvent(
+      loadTimestampsRef.current
+    );
+    loadTimestampsRef.current = timestamps;
+    if (unstable) {
+      markUnstableEmbed(iframeSrc);
+      setUnstableEmbed(true);
+      setLoaded(true);
+      setFailed(false);
+      return;
+    }
     setLoaded(true);
     setFailed(false);
-  }, []);
+  }, [iframeSrc]);
 
   const handleError = useCallback(() => {
     setFailed(true);
@@ -81,6 +216,10 @@ function EntryArticleEmbedInner({
   const probeGeneration = useRef(0);
 
   useEffect(() => {
+    if (getCachedEmbedProbeFrameable(iframeSrc) !== undefined) {
+      return;
+    }
+
     const gen = ++probeGeneration.current;
     const ac = new AbortController();
     const t = setTimeout(async () => {
@@ -91,14 +230,18 @@ function EntryArticleEmbedInner({
         );
         if (gen !== probeGeneration.current) return;
         if (!r.ok) {
+          setCachedEmbedProbeFrameable(iframeSrc, true);
           setProbeBlocksEmbed(false);
           return;
         }
         const body = (await r.json()) as { frameable?: boolean };
         if (gen !== probeGeneration.current) return;
-        setProbeBlocksEmbed(body.frameable === false);
+        const frameable = body.frameable !== false;
+        setCachedEmbedProbeFrameable(iframeSrc, frameable);
+        setProbeBlocksEmbed(!frameable);
       } catch {
         if (gen !== probeGeneration.current || ac.signal.aborted) return;
+        setCachedEmbedProbeFrameable(iframeSrc, true);
         setProbeBlocksEmbed(false);
       }
     }, EMBED_PROBE_DEBOUNCE_MS);
@@ -108,9 +251,18 @@ function EntryArticleEmbedInner({
     };
   }, [iframeSrc]);
 
-  const showIframe = probeBlocksEmbed === false && !failed;
+  const showIframe = probeBlocksEmbed === false && !failed && !unstableEmbed;
   const showBusyOverlay =
-    probeBlocksEmbed === null || (showIframe && !loaded && !failed);
+    !loaded &&
+    !failed &&
+    !unstableEmbed &&
+    (probeBlocksEmbed === null || showIframe);
+  const verifiedFallbackContent = articleFallbackContentIsVerified({
+    expectedAtUri,
+    pageAtUri,
+  })
+    ? fallbackContent
+    : undefined;
 
   return (
     <div
@@ -119,15 +271,32 @@ function EntryArticleEmbedInner({
         className
       )}
     >
-      {showBusyOverlay && (
+      {showBusyOverlay ? (
         <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-background">
           <Skeleton className="min-h-0 h-full w-full rounded-none" />
         </div>
-      )}
+      ) : null}
       {probeBlocksEmbed === true ? (
-        <BlockedEmbedMessage href={iframeSrc} />
+        <EmbedUnavailableMessage
+          href={iframeSrc}
+          message="This site blocks embedding."
+          linkLabel="Open"
+          fallbackContent={verifiedFallbackContent}
+        />
+      ) : unstableEmbed ? (
+        <EmbedUnavailableMessage
+          href={iframeSrc}
+          message="This page keeps reloading when embedded. Open it in a new tab to read."
+          linkLabel="Open in New Tab"
+          fallbackContent={verifiedFallbackContent}
+        />
       ) : failed ? (
-        <IframeLoadFailedMessage href={iframeSrc} />
+        <EmbedUnavailableMessage
+          href={iframeSrc}
+          message="This page cannot be embedded. Open it in a new tab or read the saved content below."
+          linkLabel="Open in New Tab"
+          fallbackContent={verifiedFallbackContent}
+        />
       ) : showIframe ? (
         <iframe
           title={`Embedded article: ${title}`}

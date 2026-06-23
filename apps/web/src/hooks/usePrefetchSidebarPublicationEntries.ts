@@ -2,71 +2,163 @@
 
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 import { useAuth } from "@/hooks/useAuth";
 import {
   ENTRIES_QUERY_KEY,
   ENTRIES_QUERY_STALE_MS,
+  entriesNextPageParam,
   fetchEntriesInfinitePage,
-  type EntriesPage,
 } from "@/hooks/useEntries";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 
+/** Delay before background prefetch of non-selected sidebar publications. */
+const BULK_PREFETCH_DELAY_MS = 8_000;
+
 /** Max parallel first-page prefetches per batch (avoids flooding the network). */
-const PREFETCH_CONCURRENCY = 4;
+const PREFETCH_CONCURRENCY = 2;
+
+/** Default article filter used by {@link useEntries} when opening a publication feed. */
+const PREFETCH_ARTICLE_FILTER = "all" as const;
+
+/** Selected publication first, then the rest in stable sidebar order. */
+export function orderPublicationIdsForPrefetch(
+  publicationIds: string[],
+  selectedPublicationId: string | null
+): string[] {
+  const unique = [
+    ...new Set(publicationIds.map((id) => normalizeAtRepoParam(id))),
+  ];
+  if (!selectedPublicationId) return unique;
+
+  const selected = normalizeAtRepoParam(selectedPublicationId);
+  if (!unique.includes(selected)) return unique;
+  return [selected, ...unique.filter((id) => id !== selected)];
+}
+
+async function prefetchPublicationFirstPage(args: {
+  queryClient: ReturnType<typeof useQueryClient>;
+  normalizedPublicationId: string;
+  oauthSession: OAuthSession;
+  viewerDid: string;
+}): Promise<void> {
+  const { queryClient, normalizedPublicationId, oauthSession, viewerDid } = args;
+
+  await queryClient.prefetchInfiniteQuery({
+    queryKey: [
+      ...ENTRIES_QUERY_KEY(normalizedPublicationId),
+      PREFETCH_ARTICLE_FILTER,
+    ] as const,
+    queryFn: ({ pageParam, signal: querySignal }) =>
+      fetchEntriesInfinitePage({
+        normalizedPublicationKey: normalizedPublicationId,
+        pageParam,
+        signal: querySignal,
+        oauthSession: oauthSession,
+        viewerDid,
+        articleFilter: PREFETCH_ARTICLE_FILTER,
+        queryClient,
+        // Sidebar already enrolls authors after bootstrap; skip per-prefetch enroll to avoid AppView DB stampedes.
+        skipEnroll: true,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: entriesNextPageParam,
+    staleTime: ENTRIES_QUERY_STALE_MS,
+  });
+}
 
 /**
- * Prefetches the first page of entries for every visible sidebar publication so unread counts
- * and the read tab can use cached data without opening each source first.
+ * Prefetches the first page (50 entries) for visible sidebar publications so opening a
+ * feed can reuse cached data. Runs in the background with limited concurrency; the
+ * active selection is prefetched immediately when it changes.
  */
 export function usePrefetchSidebarPublicationEntries(
   publications: DiscoveredPublication[],
-  enabled: boolean
+  enabled: boolean,
+  selectedPublicationId: string | null
 ) {
   const queryClient = useQueryClient();
   const { session, getOAuthSession } = useAuth();
 
-  const idsKey = useMemo(
+  const sidebarPublicationIds = useMemo(
     () =>
-      [...new Set(publications.map((p) => normalizeAtRepoParam(p.publicationId)))]
-        .sort()
-        .join("\x1e"),
+      [
+        ...new Set(
+          publications.map((p) => normalizeAtRepoParam(p.publicationId))
+        ),
+      ],
     [publications]
   );
 
-  useEffect(() => {
-    if (!enabled || !session || publications.length === 0) return;
+  const idsKey = useMemo(
+    () => [...sidebarPublicationIds].sort().join("\x1e"),
+    [sidebarPublicationIds]
+  );
 
-    let cancelled = false;
-    const normalizedIds = [
-      ...new Set(publications.map((p) => normalizeAtRepoParam(p.publicationId))),
-    ];
+  useEffect(() => {
+    if (!enabled || !session || !selectedPublicationId) return;
+
+    const normalized = normalizeAtRepoParam(selectedPublicationId);
+    if (!sidebarPublicationIds.includes(normalized)) return;
 
     void (async () => {
-      const oauth = getOAuthSession() ?? undefined;
-      for (let i = 0; i < normalizedIds.length; i += PREFETCH_CONCURRENCY) {
+      const oauth = getOAuthSession();
+      if (!oauth) return;
+      try {
+        await prefetchPublicationFirstPage({
+          queryClient,
+          normalizedPublicationId: normalized,
+          oauthSession: oauth,
+          viewerDid: session.did,
+        });
+      } catch {
+        /* AppView / offline — keep sidebar usable */
+      }
+    })();
+  }, [
+    enabled,
+    session,
+    selectedPublicationId,
+    sidebarPublicationIds,
+    queryClient,
+    getOAuthSession,
+  ]);
+
+  useEffect(() => {
+    if (!enabled || !session || sidebarPublicationIds.length === 0) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const oauth = getOAuthSession();
+      if (!oauth) return;
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, BULK_PREFETCH_DELAY_MS);
+      });
+      if (cancelled) return;
+
+      const orderedIds = orderPublicationIdsForPrefetch(
+        sidebarPublicationIds,
+        null
+      );
+
+      for (let i = 0; i < orderedIds.length; i += PREFETCH_CONCURRENCY) {
         if (cancelled) return;
-        const chunk = normalizedIds.slice(i, i + PREFETCH_CONCURRENCY);
+        const chunk = orderedIds.slice(i, i + PREFETCH_CONCURRENCY);
         await Promise.all(
           chunk.map(async (normalized) => {
             try {
-              await queryClient.prefetchInfiniteQuery({
-                queryKey: ENTRIES_QUERY_KEY(normalized),
-                queryFn: ({ pageParam, signal }) =>
-                  fetchEntriesInfinitePage({
-                    normalizedPublicationKey: normalized,
-                    pageParam,
-                    signal,
-                    oauthSession: oauth,
-                    streamFirstPageToCache: false,
-                  }),
-                initialPageParam: undefined as string | undefined,
-                getNextPageParam: (last: EntriesPage) => last.cursor,
-                staleTime: ENTRIES_QUERY_STALE_MS,
+              await prefetchPublicationFirstPage({
+                queryClient,
+                normalizedPublicationId: normalized,
+                oauthSession: oauth,
+                viewerDid: session.did,
               });
             } catch {
-              /* PDS / RSS / offline — keep sidebar usable */
+              /* AppView / offline — keep sidebar usable */
             }
           })
         );
@@ -76,5 +168,5 @@ export function usePrefetchSidebarPublicationEntries(
     return () => {
       cancelled = true;
     };
-  }, [enabled, session, idsKey, queryClient, getOAuthSession, publications.length]);
+  }, [enabled, session, idsKey, queryClient, getOAuthSession, sidebarPublicationIds]);
 }

@@ -2,8 +2,11 @@ import { describe, it, expect } from "bun:test";
 import {
   feedBrandingFromParsed,
   parseRssFeedXml,
+  plainTextRssBodyToHtml,
   rssItemsSortedNewestFirst,
+  rssParserItemToDetail,
   rssParserItemToListItem,
+  stripRssBodyNoise,
 } from "@/lib/rssFeedServer";
 
 const MIN_RSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -36,6 +39,22 @@ const RSS_WITH_IMAGE = `<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>`;
 
+const RSS_WITH_FULL_CONTENT = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Full Content</title>
+    <item>
+      <title>Full post</title>
+      <link>https://example.com/full-post</link>
+      <description>Short summary only.</description>
+      <content:encoded><![CDATA[
+        <article><p>Full publisher article body.</p><p>Second paragraph from the feed.</p></article>
+      ]]></content:encoded>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
 describe("rssFeedServer", () => {
   it("extracts channel image and site from parsed feed branding", async () => {
     const parsed = await parseRssFeedXml(RSS_WITH_IMAGE);
@@ -53,5 +72,33 @@ describe("rssFeedServer", () => {
     const row = rssParserItemToListItem(norm, items[0]!);
     expect(row.title).toBe("Hello");
     expect(row.entryId.startsWith("rssentry:")).toBe(true);
+  });
+
+  it("prefers full content:encoded HTML for detail bodies", async () => {
+    const norm = "https://example.com/feed.xml";
+    const items = await rssItemsSortedNewestFirst(RSS_WITH_FULL_CONTENT);
+    const detail = rssParserItemToDetail(norm, items[0]!);
+
+    expect(detail.contentHtml).toContain("Full publisher article body.");
+    expect(detail.contentHtml).not.toContain("Short summary only.");
+    expect(detail.embedUrl).toBe("https://example.com/full-post");
+  });
+
+  it("formats plain RSS bodies into readable paragraphs", () => {
+    expect(
+      plainTextRssBodyToHtml("First line\nsecond line\n\nSecond paragraph")
+    ).toBe("<p>First line<br />second line</p><p>Second paragraph</p>");
+  });
+
+  it("strips publisher widget config noise from RSS bodies", () => {
+    const body = stripRssBodyNoise(`
+      <p>Readable article text.</p>
+      window.HYPE_DESK_CONFIG = { productTitle: "Robot", purchaseUrl: "https://example.com" };
+      <p>More article text.</p>
+    `);
+    expect(body).toContain("Readable article text.");
+    expect(body).toContain("More article text.");
+    expect(body).not.toContain("HYPE_DESK_CONFIG");
+    expect(body).not.toContain("productTitle");
   });
 });

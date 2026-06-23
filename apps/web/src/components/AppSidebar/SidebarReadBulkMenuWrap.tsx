@@ -20,12 +20,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { useCachedBulkReadActions } from "@/hooks/useCachedBulkReadActions";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
+import type { GatewayMarkAllReadScope } from "@/lib/publicationProjectionClient";
+
+type SidebarDestructiveAction = {
+  label: string;
+  confirmationTitle: string;
+  confirmationDescription: ReactNode;
+  onConfirm: () => void;
+  pending?: boolean;
+};
 
 type SidebarReadBulkMenuWrapProps = {
   publications: DiscoveredPublication[];
   /** Shown in the confirmation dialog body for Mark All As Read */
   markAllReadConfirmation: ReactNode;
+  gatewayScopes?: GatewayMarkAllReadScope[];
   children: ReactNode;
+  destructiveAction?: SidebarDestructiveAction;
 };
 
 /**
@@ -35,20 +46,18 @@ type SidebarReadBulkMenuWrapProps = {
 export function SidebarReadBulkMenuWrap({
   publications,
   markAllReadConfirmation,
+  gatewayScopes,
   children,
+  destructiveAction,
 }: SidebarReadBulkMenuWrapProps) {
   const {
     bulkDisabled,
-    hideReadBulkMenus,
     applyMarkAllRead,
     applyMarkAllUnread,
-  } = useCachedBulkReadActions(publications);
+  } = useCachedBulkReadActions(publications, { gatewayScopes });
 
   const [markAllReadOpen, setMarkAllReadOpen] = useState(false);
-
-  if (hideReadBulkMenus) {
-    return <>{children}</>;
-  }
+  const [destructiveOpen, setDestructiveOpen] = useState(false);
 
   return (
     <>
@@ -72,6 +81,19 @@ export function SidebarReadBulkMenuWrap({
           >
             Mark All As Unread
           </ContextMenuItem>
+          {destructiveAction ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                disabled={destructiveAction.pending}
+                className="gap-2"
+                onClick={() => setDestructiveOpen(true)}
+              >
+                {destructiveAction.label}
+              </ContextMenuItem>
+            </>
+          ) : null}
         </ContextMenuContent>
       </ContextMenu>
       <Dialog open={markAllReadOpen} onOpenChange={setMarkAllReadOpen}>
@@ -101,6 +123,39 @@ export function SidebarReadBulkMenuWrap({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {destructiveAction ? (
+        <Dialog open={destructiveOpen} onOpenChange={setDestructiveOpen}>
+          <DialogContent showCloseButton>
+            <DialogHeader>
+              <DialogTitle>{destructiveAction.confirmationTitle}</DialogTitle>
+              <DialogDescription>
+                {destructiveAction.confirmationDescription}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={destructiveAction.pending}
+                onClick={() => setDestructiveOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={destructiveAction.pending}
+                onClick={() => {
+                  destructiveAction.onConfirm();
+                  setDestructiveOpen(false);
+                }}
+              >
+                {destructiveAction.label}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </>
   );
 }

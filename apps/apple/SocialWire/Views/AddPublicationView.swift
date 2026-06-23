@@ -33,7 +33,7 @@ struct AddPublicationView: View {
                             dismiss()
                         }
                     } label: {
-                        if isAdding { ProgressView() } else { Text("Add") }
+                        if isAdding { ProgressView().accessibilityLabel("Adding") } else { Text("Add") }
                     }
                     .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAdding)
                 }

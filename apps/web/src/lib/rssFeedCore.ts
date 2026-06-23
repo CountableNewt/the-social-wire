@@ -3,6 +3,7 @@
  */
 
 import { isBlockedEmbedProbeHostname } from "@/lib/embedFramePolicy";
+import { normalizePublicationSiteUrl } from "@/lib/atprotoClient";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 
 export const RSS_PUBLICATION_PREFIX = "rss:" as const;
@@ -116,12 +117,163 @@ export function stableItemKeyFromRssItem(item: {
     g = String((item.guid as { $?: string }).$).trim();
   }
 
-  if (g) return `guid:${g}`;
   const link = item.link?.trim();
-  if (link) return `link:${link}`;
+  const postKey = postIdentityStableKey(link) ?? postIdentityStableKey(g);
+  if (postKey) return postKey;
+
+  if (link) {
+    try {
+      return `link:${normalizeHttpUrlToHttps(link)}`;
+    } catch {
+      return `link:${link}`;
+    }
+  }
+  if (g) {
+    if (/^https?:\/\//i.test(g)) {
+      try {
+        return `guid:${normalizeHttpUrlToHttps(g)}`;
+      } catch {
+        return `guid:${g}`;
+      }
+    }
+    return `guid:${g}`;
+  }
   const title = item.title?.trim() ?? "";
   const d = item.isoDate?.trim() ?? "";
   return `fallback:${title}\n${d}`;
+}
+
+function postIdentityStableKey(raw: string | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    const host = url.hostname.toLowerCase();
+    const postId = url.searchParams.get("p");
+    if (postId && /^\d+$/.test(postId)) {
+      return `post:${host}:${postId}`;
+    }
+    for (const segment of url.pathname.split("/")) {
+      if (segment.length >= 5 && /^\d+$/.test(segment)) {
+        return `post:${host}:${segment}`;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function dedupeIdentityKeys(item: {
+  entryId: string;
+  summary?: string | null;
+  articleUrl?: string | null;
+}): Set<string> {
+  const keys = new Set<string>();
+  const link = canonicalLinkForEntryListItem({
+    entryId: item.entryId,
+    title: "",
+    publishedAt: "",
+    summary: item.summary,
+    articleUrl: item.articleUrl,
+  });
+  if (link) keys.add(`url:${link}`);
+
+  const decoded = rssEntryIdDecode(item.entryId);
+  if (decoded?.itemKey.startsWith("post:")) {
+    keys.add(decoded.itemKey);
+  }
+  if (decoded) {
+    const raw =
+      decoded.itemKey.startsWith("link:") || decoded.itemKey.startsWith("guid:")
+        ? decoded.itemKey.slice(decoded.itemKey.indexOf(":") + 1)
+        : null;
+    const postKey = raw ? postIdentityStableKey(raw) : null;
+    if (postKey) keys.add(postKey);
+  }
+  const articleUrl = item.articleUrl?.trim();
+  if (articleUrl) {
+    const postKey = postIdentityStableKey(articleUrl);
+    if (postKey) keys.add(postKey);
+  }
+  const summary = item.summary?.trim();
+  if (summary && /^https?:\/\//i.test(summary)) {
+    const postKey = postIdentityStableKey(summary);
+    if (postKey) keys.add(postKey);
+  }
+  return keys;
+}
+
+/** Normalizes article URLs for dedupe (HTTPS, no query/fragment). */
+export function canonicalArticleUrl(raw: string): string | null {
+  return normalizePublicationSiteUrl(raw);
+}
+
+export function canonicalLinkForEntryListItem(item: {
+  entryId: string;
+  title: string;
+  summary?: string | null;
+  publishedAt: string;
+  articleUrl?: string | null;
+}): string | null {
+  const articleUrl = item.articleUrl?.trim();
+  if (articleUrl) {
+    return canonicalArticleUrl(articleUrl);
+  }
+
+  const decoded = rssEntryIdDecode(item.entryId);
+  if (decoded) {
+    if (decoded.itemKey.startsWith("link:")) {
+      const raw = decoded.itemKey.slice("link:".length);
+      return canonicalArticleUrl(raw) ?? raw;
+    }
+    if (decoded.itemKey.startsWith("guid:")) {
+      const raw = decoded.itemKey.slice("guid:".length);
+      if (/^https?:\/\//i.test(raw)) {
+        return canonicalArticleUrl(raw) ?? raw;
+      }
+    }
+  }
+  const summary = item.summary?.trim();
+  if (summary && /^https?:\/\//i.test(summary)) {
+    return canonicalArticleUrl(summary) ?? summary;
+  }
+  return null;
+}
+
+export function dedupeEntryListItems<
+  T extends {
+    entryId: string;
+    title: string;
+    summary?: string | null;
+    publishedAt: string;
+    articleUrl?: string | null;
+  },
+>(items: T[]): T[] {
+  const seenEntryIds = new Set<string>();
+  const seenIdentityKeys = new Set<string>();
+  const seenTitlePublished = new Set<string>();
+  const deduped: T[] = [];
+
+  for (const item of items) {
+    if (seenEntryIds.has(item.entryId)) continue;
+    seenEntryIds.add(item.entryId);
+
+    const identityKeys = dedupeIdentityKeys(item);
+    const overlaps = [...identityKeys].some((key) => seenIdentityKeys.has(key));
+    if (identityKeys.size > 0) {
+      if (overlaps) continue;
+      for (const key of identityKeys) seenIdentityKeys.add(key);
+    } else {
+      const titleKey = `${item.title.trim().toLowerCase()}|${item.publishedAt}`;
+      if (seenTitlePublished.has(titleKey)) continue;
+      seenTitlePublished.add(titleKey);
+    }
+
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 export function rssEntryIdFromParts(

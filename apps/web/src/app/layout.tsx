@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import type { Viewport } from "next";
 import type { CSSProperties } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { Providers } from "./providers";
 import { EnvironmentBanner } from "@/components/shared/EnvironmentBanner";
+import {
+  environmentBannerHeight,
+  getAppEnv,
+} from "@/lib/appEnv";
 
 const siteUrl = (() => {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -16,10 +21,42 @@ const siteUrl = (() => {
   return "https://thesocialwire.app";
 })();
 
+const lightInstallIcon = "/icons/social-wire-icon-light-512.png";
+const darkInstallIcon = "/icons/social-wire-icon-dark-512.png";
+const appleTouchIcon = "/icons/social-wire-apple-touch.png";
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "The Social Wire",
   description: "A reader for the standard.site publishing ecosystem",
+  applicationName: "The Social Wire",
+  manifest: "/manifest-light.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "The Social Wire",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [
+      {
+        url: lightInstallIcon,
+        sizes: "512x512",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: darkInstallIcon,
+        sizes: "512x512",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    apple: {
+      url: appleTouchIcon,
+      sizes: "180x180",
+      type: "image/png",
+    },
+  },
   openGraph: {
     type: "website",
     title: "The Social Wire",
@@ -42,8 +79,15 @@ export const metadata: Metadata = {
   },
 };
 
-const env = process.env.NEXT_PUBLIC_APP_ENV ?? "local";
-const environmentBannerHeight = env === "prod" ? "0px" : "32px";
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+};
+
+const appEnv = getAppEnv();
 
 export default function RootLayout({
   children,
@@ -56,7 +100,7 @@ export default function RootLayout({
         <script
           id="dark-mode"
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');}catch(e){}})();`,
+            __html: `(function(){try{var root=document.documentElement;var media=window.matchMedia("(prefers-color-scheme: dark)");function apply(){var dark=media.matches;root.classList.toggle("dark",dark);root.style.colorScheme=dark?"dark":"light";}apply();if(typeof media.addEventListener==="function"){media.addEventListener("change",apply);}else if(typeof media.addListener==="function"){media.addListener(apply);}}catch(e){}})();`,
           }}
         />
       </head>
@@ -64,15 +108,15 @@ export default function RootLayout({
         className="min-h-full flex flex-col"
         style={
           {
-            "--environment-banner-height": environmentBannerHeight,
+            "--environment-banner-height": environmentBannerHeight(appEnv),
           } as CSSProperties
         }
       >
         <Providers>
-          <EnvironmentBanner />
+          <EnvironmentBanner appEnv={appEnv} />
           {children}
         </Providers>
-        <Analytics />
+        {appEnv === "prod" ? <Analytics /> : null}
       </body>
     </html>
   );

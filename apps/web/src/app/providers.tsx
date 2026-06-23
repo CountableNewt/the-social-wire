@@ -9,6 +9,9 @@ import {
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { AuthProvider } from "@/hooks/useAuth";
+import { LexiconMigrationRunner } from "@/hooks/useLexiconMigration";
+import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
+import { shouldPersistSidebarProjection } from "@/lib/sidebarProjectionPersist";
 
 /** localStorage key for dehydrated React Query cache (discovery + bounded entry lists). */
 const QUERY_PERSIST_KEY = "the-social-wire.react-query.v1";
@@ -37,9 +40,18 @@ function shouldPersistEntriesQuery(query: Query): boolean {
   return pageCount <= 3 && totalEntries <= 120;
 }
 
+function shouldPersistSidebarProjectionQuery(query: Query): boolean {
+  const key = query.queryKey;
+  if (!Array.isArray(key) || key[0] !== "publicationSidebarProjection") return false;
+  const data = query.state.data as PublicationSidebarProjection | undefined;
+  return shouldPersistSidebarProjection(data);
+}
+
 function shouldDehydrateQuery(query: Query): boolean {
   return (
-    shouldPersistDiscoveryQuery(query) || shouldPersistEntriesQuery(query)
+    shouldPersistDiscoveryQuery(query) ||
+    shouldPersistEntriesQuery(query) ||
+    shouldPersistSidebarProjectionQuery(query)
   );
 }
 
@@ -86,7 +98,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        <LexiconMigrationRunner />
+        {children}
+      </AuthProvider>
     </PersistQueryClientProvider>
   );
 }

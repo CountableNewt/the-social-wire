@@ -1,16 +1,103 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { useAuth } from "@/hooks/useAuth";
 import {
   createOAuthAgent,
   createPublicAppViewAgent,
   type EntryDetail,
 } from "@/lib/atprotoClient";
-import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
+import { canonicalArticleHttpsUrl } from "@/lib/articleCanonicalUrl";
+import { decodeHtmlEntities } from "@/lib/decodeHtmlEntities";
+import { isOriginalEntryContentUri } from "@/lib/savedLinkSocialTarget";
 
 export const bskyPostViewerKey = (uri: string | undefined) =>
   ["bsky-post-viewer", uri ?? ""] as const;
+
+type BskyRepoCollection =
+  | "app.bsky.feed.post"
+  | "app.bsky.feed.like"
+  | "app.bsky.feed.repost";
+
+const REAUTH_FOR_BSKY_WRITE_MESSAGE =
+  "Your Bluesky posting permission needs to be refreshed. Sign out and sign back in, then try again.";
+const MAX_EXTERNAL_THUMB_BYTES = 1_000_000;
+
+function truncateExternalText(text: string, maxLength: number): string {
+  const normalized = decodeHtmlEntities(text).replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function externalCardTitle(entry: EntryDetail | null): string {
+  return truncateExternalText(entry?.title?.trim() || "Article", 300);
+}
+
+function externalCardDescription(entry: EntryDetail | null): string {
+  return truncateExternalText(
+    entry?.summary?.trim() || entry?.contentHtml?.trim() || "",
+    1_000
+  );
+}
+
+function externalCardThumbnailCandidates(entry: EntryDetail | null): string[] {
+  return [
+    entry?.thumbnailUrl?.trim(),
+    entry?.thumbnailFallbackUrl?.trim(),
+  ].filter((url): url is string => !!url && /^https:\/\//i.test(url));
+}
+
+async function uploadExternalCardThumb(
+  agent: ReturnType<typeof createOAuthAgent>,
+  entry: EntryDetail | null
+) {
+  for (const url of externalCardThumbnailCandidates(entry)) {
+    try {
+      const params = new URLSearchParams({ url });
+      const res = await fetch(`/api/bluesky-card-thumb?${params.toString()}`);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) continue;
+      if (blob.size === 0 || blob.size > MAX_EXTERNAL_THUMB_BYTES) continue;
+      const uploaded = await agent.uploadBlob(blob);
+      return uploaded.data.blob;
+    } catch {
+      /* Thumbnail upload is best-effort; post the card without an image. */
+    }
+  }
+  return undefined;
+}
+
+function scopeAllowsRepoAction(
+  scopeToken: string,
+  collection: BskyRepoCollection,
+  action: "create" | "delete"
+): boolean {
+  if (scopeToken === `repo:${collection}` || scopeToken === "repo:*") {
+    return true;
+  }
+
+  const [repoScope, query = ""] = scopeToken.split("?");
+  if (repoScope !== `repo:${collection}`) return false;
+  if (!query) return true;
+
+  const params = new URLSearchParams(query);
+  const actions = params.getAll("action");
+  return actions.length === 0 || actions.includes(action);
+}
+
+async function requireBskyRepoScope(
+  session: OAuthSession,
+  collection: BskyRepoCollection,
+  action: "create" | "delete"
+): Promise<void> {
+  const info = await session.getTokenInfo("auto");
+  const scopes = String(info.scope ?? "").split(/\s+/).filter(Boolean);
+  if (!scopes.some((scope) => scopeAllowsRepoAction(scope, collection, action))) {
+    throw new Error(REAUTH_FOR_BSKY_WRITE_MESSAGE);
+  }
+}
 
 export function useEntrySocial(entry: EntryDetail | null) {
   const { getOAuthSession } = useAuth();
@@ -46,6 +133,11 @@ export function useEntrySocial(entry: EntryDetail | null) {
     mutationFn: async ({ likeUri }: { likeUri?: string }) => {
       const oauth = getOAuthSession();
       if (!oauth || !uri || !cid) throw new Error("Missing post or session");
+      await requireBskyRepoScope(
+        oauth,
+        "app.bsky.feed.like",
+        likeUri ? "delete" : "create"
+      );
       const agent = createOAuthAgent(oauth);
       if (likeUri) await agent.deleteLike(likeUri);
       else await agent.like(uri, cid);
@@ -57,6 +149,11 @@ export function useEntrySocial(entry: EntryDetail | null) {
     mutationFn: async ({ repostUri }: { repostUri?: string }) => {
       const oauth = getOAuthSession();
       if (!oauth || !uri || !cid) throw new Error("Missing post or session");
+      await requireBskyRepoScope(
+        oauth,
+        "app.bsky.feed.repost",
+        repostUri ? "delete" : "create"
+      );
       const agent = createOAuthAgent(oauth);
       if (repostUri) await agent.deleteRepost(repostUri);
       else await agent.repost(uri, cid);
@@ -68,16 +165,12 @@ export function useEntrySocial(entry: EntryDetail | null) {
     mutationFn: async (text: string) => {
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("Not signed in");
+      await requireBskyRepoScope(oauth, "app.bsky.feed.post", "create");
       const agent = createOAuthAgent(oauth);
-      const rawShare =
-        entry?.embedUrl ??
-        entry?.originalUrl ??
-        (typeof window !== "undefined" ? window.location.href : "");
-      const shareUrl =
-        rawShare.startsWith("http://") || rawShare.startsWith("https://")
-          ? normalizeHttpUrlToHttps(rawShare)
-          : rawShare;
-      const title = entry?.title ?? "Article";
+      const shareUrl = entry ? canonicalArticleHttpsUrl(entry) : null;
+      if (!shareUrl) throw new Error("No canonical article URL for this entry");
+      const title = externalCardTitle(entry);
+      const description = externalCardDescription(entry);
 
       if (uri && cid) {
         await agent.post({
@@ -90,16 +183,37 @@ export function useEntrySocial(entry: EntryDetail | null) {
         return;
       }
 
+      const thumb = await uploadExternalCardThumb(agent, entry);
       await agent.post({
         text,
         embed: {
           $type: "app.bsky.embed.external",
           external: {
             uri: shareUrl,
-            title: title.slice(0, 300),
-            description: "",
-            ...(entry?.entryId ? { associatedRecord: entry.entryId } : {}),
+            title,
+            description,
+            ...(thumb ? { thumb } : {}),
+            ...(entry?.entryId && isOriginalEntryContentUri(entry.entryId)
+              ? { associatedRecord: entry.entryId }
+              : {}),
           },
+        },
+      });
+    },
+    onSuccess: invalidateViewer,
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const oauth = getOAuthSession();
+      if (!oauth || !uri || !cid) throw new Error("Missing post or session");
+      await requireBskyRepoScope(oauth, "app.bsky.feed.post", "create");
+      const agent = createOAuthAgent(oauth);
+      await agent.post({
+        text,
+        reply: {
+          root: { uri, cid },
+          parent: { uri, cid },
         },
       });
     },
@@ -111,6 +225,7 @@ export function useEntrySocial(entry: EntryDetail | null) {
     toggleLikeMutation,
     toggleRepostMutation,
     quoteMutation,
+    replyMutation,
     hasLinkedPost: !!(uri && cid),
   };
 }

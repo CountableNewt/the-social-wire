@@ -25,6 +25,7 @@ export const BSKY_APPVIEW_PUBLIC = "https://public.api.bsky.app";
 const DISCOVERY_PUBLICATION_COLLECTIONS = [
   "site.standard.publication",
   "com.standard.publication",
+  "app.offprint.publication",
 ] as const;
 
 /**
@@ -95,14 +96,19 @@ export interface EntryListItem {
    * where blob `getBlob` URLs are never exposed to the browser.
    */
   thumbnailFallbackUrl?: string;
+  /** Canonical article HTTPS URL when the Thin AppView index knows one. */
+  originalUrl?: string;
 }
 
 export interface EntryDetail {
   entryId: string;
   title: string;
+  summary?: string;
   publishedAt: string;
   /** Full entry content as HTML. May be empty if the record stores markdown or a blob. */
   contentHtml: string;
+  thumbnailUrl?: string;
+  thumbnailFallbackUrl?: string;
   originalUrl?: string;
   /**
    * Canonical HTTPS URL for embedding the live site (record URLs, site.standard `site`+`path`, etc.).
@@ -149,6 +155,16 @@ const plcEndpointCache = new Map<string, string | null>();
 /** In-flight PLC resolution so concurrent list/thumbnail lookups share one network round-trip. */
 const plcEndpointInflight = new Map<string, Promise<string | null>>();
 
+/** Cache handle → DID for {@link resolveRepoDid} (App View resolveHandle). */
+const handleToDidCache = new Map<string, string>();
+
+/** Clears module-level memoization — for unit tests only. */
+export function resetAtprotoClientCachesForTests(): void {
+  plcEndpointCache.clear();
+  plcEndpointInflight.clear();
+  handleToDidCache.clear();
+}
+
 /**
  * Some PLC `#atproto_pds` endpoints (notably Bridgy Fed relay) answer `com.atproto.repo.listRecords`
  * but reject **`reverse=true`** with HTTP 400 — the param is valid per the lexicon on full PDSes.
@@ -189,9 +205,6 @@ async function plcPdsBaseForRepoDid(repoDid: string): Promise<string | null> {
   }
   return inflight;
 }
-
-/** Cache handle → DID for {@link resolveRepoDid} (App View resolveHandle). */
-const handleToDidCache = new Map<string, string>();
 
 /**
  * `repo` parameters must be a DID for PLC/PDS reads. Handles are resolved via public App View.
@@ -517,6 +530,44 @@ export function repoAndPublicationFilterFromPubId(pubId: string): {
     return { repoDid: parsed.did, publicationAtUri: normalized };
   }
   return { repoDid: normalized };
+}
+
+/**
+ * Like {@link repoAndPublicationFilterFromPubId}, but resolves `app.offprint.publication`
+ * wrappers to their inner `site.standard.publication` AT-URI for entry scoping.
+ */
+export async function resolvePublicationFilterFromPubId(
+  pubId: string,
+  oauthSession?: OAuthSession
+): Promise<{ repoDid: string; publicationAtUri?: string }> {
+  const base = repoAndPublicationFilterFromPubId(pubId);
+  if (base.publicationAtUri) return base;
+
+  const normalized = normalizeAtRepoParam(pubId);
+  const parsed = parseAtUri(normalized);
+  if (parsed?.collection !== "app.offprint.publication") return base;
+
+  const value = await getRecordOnAuthorRepo(
+    parsed.did,
+    parsed.collection,
+    parsed.rkey,
+    oauthSession
+  );
+  if (!value || typeof value !== "object") return base;
+
+  const inner = str((value as Record<string, unknown>).publication);
+  if (!inner) return base;
+
+  const innerNorm = normalizeAtRepoParam(inner);
+  const innerParsed = parseAtUri(innerNorm);
+  if (
+    !innerParsed ||
+    !PUBLICATION_RECORD_COLLECTIONS.has(innerParsed.collection)
+  ) {
+    return base;
+  }
+
+  return { repoDid: innerParsed.did, publicationAtUri: innerNorm };
 }
 
 /**
@@ -1043,7 +1094,11 @@ function publicationTitleFromRecord(
   value: Record<string, unknown>,
   fallback: string
 ): string {
-  if (collection === "site.standard.publication") {
+  if (
+    collection === "site.standard.publication" ||
+    collection === "com.standard.publication" ||
+    collection === "app.offprint.publication"
+  ) {
     const t = str(value.title) ?? str(value.name);
     if (t) return t;
   }
@@ -1109,7 +1164,13 @@ export async function probeFirstPublicationRecordUri(
       { limit: 1, reverse: false, signal: options?.signal },
       undefined
     );
-    if (records.length > 0) return records[0]!.uri;
+    if (records.length === 0) continue;
+    const row = records[0]!;
+    if (collection === "app.offprint.publication") {
+      const inner = str((row.value as Record<string, unknown>).publication);
+      if (inner) return normalizeAtRepoParam(inner);
+    }
+    return row.uri;
   }
   return null;
 }
@@ -1157,15 +1218,36 @@ export async function discoverOwnPublications(
       for (const row of records) {
         if (seen.has(row.uri)) continue;
         seen.add(row.uri);
-        const val = row.value as Record<string, unknown>;
+
+        let publicationId = row.uri;
+        let recordValue = row.value as Record<string, unknown>;
+        if (collection === "app.offprint.publication") {
+          const inner = str(recordValue.publication);
+          if (inner) {
+            publicationId = normalizeAtRepoParam(inner);
+            const innerParsed = parseAtUri(publicationId);
+            if (innerParsed) {
+              const innerRecord = await getRecordOnAuthorRepo(
+                innerParsed.did,
+                innerParsed.collection,
+                innerParsed.rkey,
+                oauthSession
+              );
+              if (innerRecord && typeof innerRecord === "object") {
+                recordValue = innerRecord as Record<string, unknown>;
+              }
+            }
+          }
+        }
+
         const label = authorDid;
         out.push({
-          publicationId: row.uri,
-          subscriptionPublicationId: row.uri,
+          publicationId,
+          subscriptionPublicationId: publicationId,
           authorDid,
           authorHandle: authorDid,
-          title: publicationTitleFromRecord(collection, val, label),
-          iconUrl: await publicationIconUrlFromRecord(row.uri, val),
+          title: publicationTitleFromRecord(collection, recordValue, label),
+          iconUrl: await publicationIconUrlFromRecord(publicationId, recordValue),
           discoveredAt,
         });
       }
@@ -1173,6 +1255,59 @@ export async function discoverOwnPublications(
     } while (cursor);
   }
   return out;
+}
+
+/**
+ * Hydrates a sidebar row from a publication AT-URI (e.g. manual graph subscription
+ * on an author the viewer does not follow).
+ */
+export async function discoveredPublicationFromAtUri(
+  publicationAtUri: string,
+  oauthSession?: OAuthSession
+): Promise<DiscoveredPublication | null> {
+  const normalized = normalizeAtRepoParam(publicationAtUri.trim());
+  const parsed = parseAtUri(normalized);
+  if (!parsed || !PUBLICATION_RECORD_COLLECTIONS.has(parsed.collection)) {
+    return null;
+  }
+
+  const value = await getRecordOnAuthorRepo(
+    parsed.did,
+    parsed.collection,
+    parsed.rkey,
+    oauthSession
+  );
+  if (!value || typeof value !== "object") return null;
+
+  const recordValue = value as Record<string, unknown>;
+  const discoveredAt = new Date().toISOString();
+  return {
+    publicationId: normalized,
+    subscriptionPublicationId: normalized,
+    authorDid: parsed.did,
+    authorHandle: parsed.did,
+    title: publicationTitleFromRecord(parsed.collection, recordValue, parsed.rkey),
+    iconUrl: await publicationIconUrlFromRecord(normalized, recordValue),
+    discoveredAt,
+  };
+}
+
+/** Public read of a publication-shaped record value (PLC + optional OAuth retry). */
+export async function fetchPublicationRecordValue(
+  publicationAtUri: string,
+  oauthSession?: OAuthSession
+): Promise<Record<string, unknown> | null> {
+  const normalized = normalizeAtRepoParam(publicationAtUri.trim());
+  const parsed = parseAtUri(normalized);
+  if (!parsed) return null;
+  const value = await getRecordOnAuthorRepo(
+    parsed.did,
+    parsed.collection,
+    parsed.rkey,
+    oauthSession
+  );
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
 }
 
 /**
@@ -1255,44 +1390,73 @@ export async function discoverPublications(
   }
 
   /** Stable follow order while probes finish out-of-order (parallel batches). */
-  const foundByDid = new Map<string, DiscoveredPublication>();
+  const foundByDid = new Map<string, DiscoveredPublication[]>();
   let viewerPublications: DiscoveredPublication[] = [];
 
   const discoveredAt = new Date().toISOString();
 
-  async function probeFollow(
+  async function probeAuthorPublications(
     follow: FollowProfile
-  ): Promise<DiscoveredPublication | null> {
+  ): Promise<DiscoveredPublication[]> {
     const sidebarLabel =
       follow.displayName?.trim() || follow.handle || follow.did;
+    const seen = new Set<string>();
+    const pubs: DiscoveredPublication[] = [];
 
     for (const collection of DISCOVERY_PUBLICATION_COLLECTIONS) {
-      const { records: rows } = await listRecordsOnAuthorRepo(
-        follow.did,
-        collection,
-        { limit: 1, reverse: false },
-        session
-      );
-      if (rows.length === 0) continue;
+      let cursor: string | undefined;
+      do {
+        const { records: rows, cursor: next } = await listRecordsOnAuthorRepo(
+          follow.did,
+          collection,
+          {
+            limit: OWN_PUBLICATIONS_PAGE_LIMIT,
+            cursor,
+            reverse: false,
+          },
+          session
+        );
+        for (const row of rows) {
+          if (seen.has(row.uri)) continue;
+          seen.add(row.uri);
 
-      const firstVal = rows[0]!.value as Record<string, unknown>;
-      const title = publicationTitleFromRecord(
-        collection,
-        firstVal,
-        sidebarLabel
-      );
+          let publicationId = row.uri;
+          let recordValue = row.value as Record<string, unknown>;
+          if (collection === "app.offprint.publication") {
+            const inner = str(recordValue.publication);
+            if (inner) {
+              publicationId = normalizeAtRepoParam(inner);
+              const innerParsed = parseAtUri(publicationId);
+              if (innerParsed) {
+                const innerRecord = await getRecordOnAuthorRepo(
+                  innerParsed.did,
+                  innerParsed.collection,
+                  innerParsed.rkey,
+                  session
+                );
+                if (innerRecord && typeof innerRecord === "object") {
+                  recordValue = innerRecord as Record<string, unknown>;
+                }
+              }
+            }
+          }
 
-      return {
-        publicationId: follow.did,
-        subscriptionPublicationId: rows[0]!.uri,
-        authorDid: follow.did,
-        authorHandle: follow.handle,
-        title,
-        iconUrl: await publicationIconUrlFromRecord(rows[0]!.uri, firstVal),
-        avatarUrl: follow.avatar,
-        discoveredAt,
-      };
+          pubs.push({
+            publicationId,
+            subscriptionPublicationId: publicationId,
+            authorDid: follow.did,
+            authorHandle: follow.handle,
+            title: publicationTitleFromRecord(collection, recordValue, sidebarLabel),
+            iconUrl: await publicationIconUrlFromRecord(publicationId, recordValue),
+            avatarUrl: follow.avatar,
+            discoveredAt,
+          });
+        }
+        cursor = next;
+      } while (cursor);
     }
+
+    if (pubs.length > 0) return pubs;
 
     for (const collection of DISCOVERY_CONTENT_COLLECTIONS) {
       const { records: rows } = await listRecordsOnAuthorRepo(
@@ -1303,17 +1467,19 @@ export async function discoverPublications(
       );
       if (rows.length === 0) continue;
 
-      return {
-        publicationId: follow.did,
-        authorDid: follow.did,
-        authorHandle: follow.handle,
-        title: sidebarLabel,
-        avatarUrl: follow.avatar,
-        discoveredAt,
-      };
+      return [
+        {
+          publicationId: follow.did,
+          authorDid: follow.did,
+          authorHandle: follow.handle,
+          title: sidebarLabel,
+          avatarUrl: follow.avatar,
+          discoveredAt,
+        },
+      ];
     }
 
-    return null;
+    return [];
   }
 
   async function hydrateViewerPublications(): Promise<void> {
@@ -1333,8 +1499,8 @@ export async function discoverPublications(
       }));
       return;
     }
-    const fallback = await probeFollow(viewer);
-    viewerPublications = fallback ? [fallback] : [];
+    const fallback = await probeAuthorPublications(viewer);
+    viewerPublications = fallback;
   }
 
   function snapshotOrdered(): DiscoveredPublication[] {
@@ -1343,8 +1509,8 @@ export async function discoverPublications(
       if (f.did === userDid) {
         for (const p of viewerPublications) list.push(p);
       } else {
-        const pub = foundByDid.get(f.did);
-        if (pub) list.push(pub);
+        const pubs = foundByDid.get(f.did);
+        if (pubs) list.push(...pubs);
       }
     }
     return list;
@@ -1365,9 +1531,9 @@ export async function discoverPublications(
     await Promise.allSettled(
       batch.map(async (follow) => {
         if (follow.did === userDid) return;
-        const pub = await probeFollow(follow);
-        if (pub) {
-          foundByDid.set(follow.did, pub);
+        const pubs = await probeAuthorPublications(follow);
+        if (pubs.length > 0) {
+          foundByDid.set(follow.did, pubs);
           onProgress?.(snapshotOrdered());
         }
       })
@@ -1453,22 +1619,175 @@ function publicationFilterEquivalenceKeys(publicationAtUri: string): Set<string>
   return keys;
 }
 
+/** Normalizes publication `url` / document `site` HTTPS values for scoped feeds. */
+export function normalizePublicationSiteUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+    return null;
+  }
+  try {
+    const normalized = normalizeHttpUrlToHttps(trimmed);
+    const u = new URL(normalized);
+    u.hash = "";
+    u.search = "";
+    let href = u.href;
+    if (href.endsWith("/")) href = href.slice(0, -1);
+    return href;
+  } catch {
+    return null;
+  }
+}
+
+function publicationSiteUrlsFromRecord(
+  value: Record<string, unknown>
+): Set<string> {
+  const keys = new Set<string>();
+  for (const field of ["url", "site", "siteUrl", "origin", "canonicalUrl"]) {
+    const raw = value[field];
+    if (typeof raw === "string") {
+      const norm = normalizePublicationSiteUrl(raw);
+      if (norm) keys.add(norm);
+    }
+  }
+  return keys;
+}
+
+function publicationDisplayName(value: Record<string, unknown>): string | null {
+  const name = str(value.name)?.trim() ?? str(value.title)?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
+/** Merges other publication records on the same repo with the same display name (Offprint migrations). */
+async function mergeSiblingPublicationScopeKeys(
+  authorDid: string,
+  primaryValue: Record<string, unknown>,
+  scope: PublicationScopeMatch,
+  oauthSession?: OAuthSession
+): Promise<void> {
+  const primaryName = publicationDisplayName(primaryValue)?.toLowerCase();
+  if (!primaryName) return;
+
+  for (const collection of DISCOVERY_PUBLICATION_COLLECTIONS) {
+    if (collection === "app.offprint.publication") continue;
+
+    let cursor: string | undefined;
+    do {
+      const { records, cursor: next } = await listRecordsOnAuthorRepo(
+        authorDid,
+        collection,
+        {
+          limit: OWN_PUBLICATIONS_PAGE_LIMIT,
+          cursor,
+          reverse: false,
+          signal: undefined,
+        },
+        oauthSession
+      );
+      for (const row of records) {
+        const val = row.value as Record<string, unknown>;
+        if (publicationDisplayName(val)?.toLowerCase() !== primaryName) continue;
+        for (const key of publicationFilterEquivalenceKeys(row.uri)) {
+          scope.atUriKeys.add(key);
+        }
+        for (const url of publicationSiteUrlsFromRecord(val)) {
+          scope.siteUrlKeys.add(url);
+        }
+      }
+      cursor = next;
+    } while (cursor);
+  }
+}
+
+export type PublicationScopeMatch = {
+  atUriKeys: Set<string>;
+  siteUrlKeys: Set<string>;
+};
+
+/** Builds AT-URI + HTTPS `url` keys used to scope documents to a publication record. */
+export async function buildPublicationScopeMatch(
+  publicationAtUri: string,
+  oauthSession?: OAuthSession
+): Promise<PublicationScopeMatch> {
+  const atUriKeys = publicationFilterEquivalenceKeys(publicationAtUri);
+  const siteUrlKeys = new Set<string>();
+  const parsed = parseAtUri(normalizeAtRepoParam(publicationAtUri));
+  if (parsed) {
+    const value = await getRecordOnAuthorRepo(
+      parsed.did,
+      parsed.collection,
+      parsed.rkey,
+      oauthSession
+    );
+    if (value && typeof value === "object") {
+      const recordValue = value as Record<string, unknown>;
+      for (const url of publicationSiteUrlsFromRecord(recordValue)) {
+        siteUrlKeys.add(url);
+      }
+      const scope: PublicationScopeMatch = { atUriKeys, siteUrlKeys };
+      await mergeSiblingPublicationScopeKeys(
+        parsed.did,
+        recordValue,
+        scope,
+        oauthSession
+      );
+      return scope;
+    }
+  }
+  return { atUriKeys, siteUrlKeys };
+}
+
+/** Extracts a publication AT-URI reference from an entry/document record. */
+function publicationRefFromEntryRecord(
+  recordValue: Record<string, unknown>
+): string | null {
+  for (const key of ["site", "publication", "publicationUri", "publicationId"]) {
+    const val = recordValue[key];
+    if (typeof val === "string") {
+      const got = canonicalPublicationAtUriKey(val);
+      if (got) return got;
+    }
+    const ref = parseStrongRef(val);
+    if (ref?.uri) {
+      const got = canonicalPublicationAtUriKey(ref.uri);
+      if (got) return got;
+    }
+  }
+  return null;
+}
+
+function publicationRefSiteUrlFromEntryRecord(
+  recordValue: Record<string, unknown>
+): string | null {
+  for (const key of ["site", "publication", "publicationUri", "publicationId"]) {
+    const val = recordValue[key];
+    if (typeof val === "string") {
+      const norm = normalizePublicationSiteUrl(val);
+      if (norm) return norm;
+    }
+  }
+  return null;
+}
+
+export function entryRecordMatchesPublicationScope(
+  recordValue: unknown,
+  match: PublicationScopeMatch
+): boolean {
+  if (!recordValue || typeof recordValue !== "object") return false;
+  const rv = recordValue as Record<string, unknown>;
+  const gotKey = publicationRefFromEntryRecord(rv);
+  if (gotKey !== null && match.atUriKeys.has(gotKey)) return true;
+  const siteUrl = publicationRefSiteUrlFromEntryRecord(rv);
+  return siteUrl !== null && match.siteUrlKeys.has(siteUrl);
+}
+
 export function entryRecordMatchesPublication(
   recordValue: unknown,
   publicationAtUri: string
 ): boolean {
-  if (!recordValue || typeof recordValue !== "object") return false;
-  const wantKeys = publicationFilterEquivalenceKeys(publicationAtUri);
-  if (wantKeys.size === 0) return false;
-  const site = (recordValue as Record<string, unknown>).site;
-  if (typeof site === "string") {
-    const got = canonicalPublicationAtUriKey(site);
-    return got !== null && wantKeys.has(got);
-  }
-  const ref = parseStrongRef(site);
-  if (!ref?.uri) return false;
-  const got = canonicalPublicationAtUriKey(ref.uri);
-  return got !== null && wantKeys.has(got);
+  return entryRecordMatchesPublicationScope(recordValue, {
+    atUriKeys: publicationFilterEquivalenceKeys(publicationAtUri),
+    siteUrlKeys: new Set(),
+  });
 }
 
 async function listEntriesForPublicationScope(
@@ -1480,6 +1799,10 @@ async function listEntriesForPublicationScope(
   options: Pick<ListEntriesOptions, "onProgress" | "signal">
 ): Promise<{ entries: EntryListItem[]; cursor?: string }> {
   const { onProgress, signal } = options;
+  const scopeMatch = await buildPublicationScopeMatch(
+    publicationAtUri,
+    oauthSession
+  );
   const colCount = LIST_COLLECTIONS_ORDER.length;
   const initial = decodePublicationListCursor(cursor);
   let col = Math.min(Math.max(initial.colIdx, 0), colCount - 1);
@@ -1506,7 +1829,7 @@ async function listEntriesForPublicationScope(
 
     const filteredItems = await recordsToListItems(
       res.records.filter((r) =>
-        entryRecordMatchesPublication(r.value, publicationAtUri)
+        entryRecordMatchesPublicationScope(r.value, scopeMatch)
       ),
       oauthSession
     );

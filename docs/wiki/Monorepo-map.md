@@ -8,19 +8,20 @@ the-social-wire/
     web/          # Next.js web client (Bun)
     apple/        # SwiftUI iOS/iPadOS
   services/
-    api/          # Swift / Hummingbird API package (`fly.toml`, Dockerfile)
+    gateway/          # OAuth, sync, PDS writes, AppView proxy (Fly.io)
+    appview/          # Sidebar projection + Thin AppView reads (Fly.io)
+    appview-worker/   # Jetstream ingestion (Fly.io)
   packages/
-    lexicons/     # com.thesocialwire.* (and related) lexicons
-    spec/         # OpenAPI for HTTP surfaces
+    lexicons/     # app.thesocialwire.* (and related) lexicons
+    spec/         # OpenAPI for HTTP surfaces (/v1/appview, /v1/sync, …)
   supabase/
-    migrations/   # Postgres migrations (API cache; Actions: .github/workflows/supabase.yml)
-  infra/
-    docker/       # docker-compose — builds API from services/api + Caddy
+    migrations/   # Postgres (pds_repo_record_cache, content_items, read_marks, …)
   docs/
-    architecture/ # narrative docs
-    wiki/         # markdown synced to this GitHub Wiki (via Actions)
+    architecture/ # narrative docs (overview, discovery, appview, lexicons)
+    wiki/         # markdown synced to GitHub Wiki on push to main (publish-wiki.yml)
 ```
 
 **Pointers**
 
 - [Root README](https://github.com/Stygian-Tech/the-social-wire/blob/main/README.md)
+- [[Thin-AppView]] — optional read index rollout

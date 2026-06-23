@@ -3,10 +3,15 @@
 - [[Home]]
 - [[Monorepo-map]]
 - [[Architecture]]
+- [[Thin-AppView]]
+- [[ThinAppViewCore]]
 - [[Web-app]]
 - [[Apple-client]]
 - [[Service-API]]
 - [[Lexicons]]
+- [[Testing]]
+- [[Contributing]]
+- [[Supabase]]
 
 ### Repository
 

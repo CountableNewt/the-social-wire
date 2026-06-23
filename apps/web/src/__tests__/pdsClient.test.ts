@@ -12,22 +12,27 @@ import {
   COLLECTION_FOLDER,
   COLLECTION_PUB_PREFS,
   COLLECTION_PREFERENCES,
+  LEGACY_COLLECTION_FOLDER,
+  LEGACY_COLLECTION_PUB_PREFS,
+  LEGACY_COLLECTION_PREFERENCES,
+  LEGACY_COLLECTION_ENTRY_READ_STATE,
   COLLECTION_STANDARD_SITE_SUBSCRIPTION,
   COLLECTION_LATR_SAVED_EXTERNAL,
   COLLECTION_LATR_SAVED_ITEM,
   COLLECTION_ENTRY_READ_STATE,
   COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
   mergeExternalsAndItemsToHttpsRows,
+  mergedLatrSavesFromGatewayItems,
+  filterMergedLatrSavesByState,
   entryReadStateRkeyFromSubjectUri,
   type LatrSavedExternalRecord,
   type LatrSavedItemRecord,
-  PSEUDO_FOLDER_HIDDEN_URI,
   PSEUDO_FOLDER_MY_URI,
 } from "@/lib/pdsClient";
 
 describe("rkeyFromURI", () => {
   it("extracts rkey from an at-uri", () => {
-    const uri = "at://did:plc:alice123/com.thesocialwire.folder/3lmn4op56qr7s";
+    const uri = "at://did:plc:alice123/app.thesocialwire.folder/3lmn4op56qr7s";
     expect(rkeyFromURI(uri)).toBe("3lmn4op56qr7s");
   });
 
@@ -36,22 +41,42 @@ describe("rkeyFromURI", () => {
   });
 
   it("handles at-uri for publicationPrefs", () => {
-    const uri = `at://did:plc:bob/com.thesocialwire.publicationPrefs/abc123`;
+    const uri = `at://did:plc:bob/app.thesocialwire.publicationPrefs/abc123`;
     expect(rkeyFromURI(uri)).toBe("abc123");
   });
 });
 
 describe("collection constants", () => {
   it("folder collection ID matches lexicon", () => {
-    expect(COLLECTION_FOLDER).toBe("com.thesocialwire.folder");
+    expect(COLLECTION_FOLDER).toBe("app.thesocialwire.folder");
   });
 
   it("publicationPrefs collection ID matches lexicon", () => {
-    expect(COLLECTION_PUB_PREFS).toBe("com.thesocialwire.publicationPrefs");
+    expect(COLLECTION_PUB_PREFS).toBe("app.thesocialwire.publicationPrefs");
   });
 
   it("preferences collection ID matches lexicon", () => {
-    expect(COLLECTION_PREFERENCES).toBe("com.thesocialwire.preferences");
+    expect(COLLECTION_PREFERENCES).toBe("app.thesocialwire.preferences");
+  });
+
+  it("legacy folder collection ID is preserved for migration", () => {
+    expect(LEGACY_COLLECTION_FOLDER).toBe("com.thesocialwire.folder");
+  });
+
+  it("legacy publicationPrefs collection ID is preserved for migration", () => {
+    expect(LEGACY_COLLECTION_PUB_PREFS).toBe(
+      "com.thesocialwire.publicationPrefs"
+    );
+  });
+
+  it("legacy preferences collection ID is preserved for migration", () => {
+    expect(LEGACY_COLLECTION_PREFERENCES).toBe("com.thesocialwire.preferences");
+  });
+
+  it("legacy entryReadState collection ID is preserved for migration", () => {
+    expect(LEGACY_COLLECTION_ENTRY_READ_STATE).toBe(
+      "com.thesocialwire.entryReadState"
+    );
   });
 
   it("standard.site subscription collection ID matches lexicon", () => {
@@ -68,13 +93,8 @@ describe("collection constants", () => {
 
   it("entryReadState collection ID matches lexicon", () => {
     expect(COLLECTION_ENTRY_READ_STATE).toBe(
-      "com.thesocialwire.entryReadState"
+      "app.thesocialwire.entryReadState"
     );
-  });
-
-  it("hidden pseudo-folder URI is stable", () => {
-    expect(PSEUDO_FOLDER_HIDDEN_URI).toBe("__hidden__");
-    expect(rkeyFromURI(PSEUDO_FOLDER_HIDDEN_URI)).toBe(PSEUDO_FOLDER_HIDDEN_URI);
   });
 
   it("my pseudo-folder URI is stable", () => {
@@ -169,6 +189,100 @@ describe("mergeExternalsAndItemsToHttpsRows", () => {
     expect(mergeExternalsAndItemsToHttpsRows(externals, items)[0].state).toBe(
       "archived"
     );
+  });
+
+  it("merges external metadata with item preview fallbacks", () => {
+    const externals = [
+      {
+        uri: extUri,
+        cid: "cid1",
+        value: {
+          ...external,
+          site: "example.com",
+          author: "Jane",
+          image: "https://example.com/thumb.jpg",
+        },
+      },
+    ];
+    const items = [
+      {
+        uri: `at://${did}/${COLLECTION_LATR_SAVED_ITEM}/item1`,
+        cid: "cx",
+        value: {
+          $type: COLLECTION_LATR_SAVED_ITEM,
+          subjectUri: extUri,
+          savedAt: "2026-06-01T12:00:00.000Z",
+          previewExcerpt: "Preview excerpt",
+        } satisfies LatrSavedItemRecord,
+      },
+    ];
+
+    const row = mergeExternalsAndItemsToHttpsRows(externals, items)[0];
+    expect(row.kind).toBe("external");
+    if (row.kind !== "external") throw new Error("Expected external row");
+    expect(row.site).toBe("example.com");
+    expect(row.author).toBe("Jane");
+    expect(row.image).toBe("https://example.com/thumb.jpg");
+    expect(row.excerpt).toBe("Preview excerpt");
+  });
+});
+
+describe("filterMergedLatrSavesByState", () => {
+  const did = "did:plc:testuser";
+  const extUri = `at://${did}/${COLLECTION_LATR_SAVED_EXTERNAL}/EXTKEYXYZ`;
+
+  function row(state?: "unread" | "archived") {
+    return {
+      kind: "external" as const,
+      normalizedUrl: "https://example.com/foo",
+      url: "https://example.com/foo",
+      savedAt: "2026-06-01T12:00:00.000Z",
+      externalRkey: "EXTKEYXYZ",
+      itemRkey: "item1",
+      externalUri: extUri,
+      itemUri: `at://${did}/${COLLECTION_LATR_SAVED_ITEM}/item1`,
+      subjectUri: extUri,
+      ...(state ? { state } : {}),
+    };
+  }
+
+  it("returns active rows when state is missing or unread", () => {
+    const rows = [row(), row("unread"), row("archived")];
+    expect(filterMergedLatrSavesByState(rows, "active")).toHaveLength(2);
+  });
+
+  it("returns only archived rows for archived filter", () => {
+    const rows = [row(), row("archived")];
+    expect(filterMergedLatrSavesByState(rows, "archived")).toEqual([
+      row("archived"),
+    ]);
+  });
+});
+
+describe("mergedLatrSavesFromGatewayItems", () => {
+  const did = "did:plc:testuser";
+  const extUri = `at://${did}/${COLLECTION_LATR_SAVED_EXTERNAL}/EXTKEYXYZ`;
+
+  it("builds external rows from item preview fields without listing externals on PDS", () => {
+    const rows = mergedLatrSavesFromGatewayItems([
+      {
+        uri: `at://${did}/${COLLECTION_LATR_SAVED_ITEM}/item1`,
+        cid: "cid",
+        value: {
+          $type: COLLECTION_LATR_SAVED_ITEM,
+          subjectUri: extUri,
+          savedAt: "2026-06-01T12:00:00.000Z",
+          linkedWebUrl: "https://example.com/foo",
+          previewTitle: "Example",
+        },
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("external");
+    if (rows[0].kind !== "external") throw new Error("Expected external row");
+    expect(rows[0].normalizedUrl).toBe("https://example.com/foo");
+    expect(rows[0].title).toBe("Example");
   });
 });
 

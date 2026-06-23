@@ -185,7 +185,7 @@ final class RSSParser: NSObject, XMLParserDelegate {
 }
 
 private extension DateFormatter {
-    nonisolated(unsafe) static let rfc822: DateFormatter = {
+    static let rfc822: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"

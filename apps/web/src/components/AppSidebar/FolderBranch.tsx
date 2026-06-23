@@ -9,6 +9,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { SidebarSubMenuSkeletonRows } from "./SidebarSubMenuSkeletonRows";
 import { cn } from "@/lib/utils";
 import { sumUnreadForPublications } from "@/lib/unreadCounts";
 import {
@@ -21,6 +22,8 @@ import type {
   FolderRecord,
   PublicationPrefsRecord,
 } from "@/lib/pdsClient";
+import { useDeleteFolder } from "@/hooks/useFolders";
+import { rkeyFromURI } from "@/lib/pdsClient";
 
 export type FolderBranchDisplay = Pick<
   RepoRecord<FolderRecord>["value"],
@@ -29,6 +32,7 @@ export type FolderBranchDisplay = Pick<
 
 interface FolderBranchProps {
   expandKey: string;
+  folderUri: string;
   folder: FolderBranchDisplay;
   isActive: boolean;
   expanded: boolean;
@@ -43,10 +47,12 @@ interface FolderBranchProps {
   publicationUnreadCounts: Map<string, number>;
   /** Shown after the folder name (e.g. All → unfoldered) */
   nameSuffix?: string;
+  publicationsLoading?: boolean;
 }
 
 export function FolderBranch({
   expandKey,
+  folderUri,
   folder,
   isActive,
   expanded,
@@ -60,7 +66,10 @@ export function FolderBranch({
   sidebarTab,
   publicationUnreadCounts,
   nameSuffix,
+  publicationsLoading = false,
 }: FolderBranchProps) {
+  const deleteFolder = useDeleteFolder();
+  const folderRkey = rkeyFromURI(folderUri);
   const subId = `sidebar-folder-sub-${expandKey.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const folderUnread = sumUnreadForPublications(
     publications,
@@ -71,12 +80,29 @@ export function FolderBranch({
     <SidebarMenuItem>
       <SidebarReadBulkMenuWrap
         publications={publications}
+        gatewayScopes={
+          folderRkey ? [{ kind: "folder", folderRkey }] : undefined
+        }
         markAllReadConfirmation={
           <>
             This marks every cached article in the folder &quot;{folder.name}&quot; as read.
             Entries that have not been loaded yet stay unchanged until you open them.
           </>
         }
+        destructiveAction={{
+          label: "Delete Folder",
+          confirmationTitle: "Delete Folder?",
+          confirmationDescription: (
+            <>
+              Delete &quot;{folder.name}&quot; and move its publications back to Publications.
+              This cannot be undone.
+            </>
+          ),
+          pending: deleteFolder.isPending,
+          onConfirm: () => {
+            deleteFolder.mutate(folderUri);
+          },
+        }}
       >
         <SidebarMenuButton
           type="button"
@@ -116,7 +142,9 @@ export function FolderBranch({
       </SidebarReadBulkMenuWrap>
       {expanded ? (
         <SidebarMenuSub id={subId} aria-label={folder.name} className="mt-1.5">
-          {publications.length === 0 ? (
+          {publicationsLoading && publications.length === 0 ? (
+            <SidebarSubMenuSkeletonRows count={2} />
+          ) : publications.length === 0 ? (
             <SidebarMenuSubItem>
               <span className="block min-w-0 break-words px-2 py-0.5 text-xs text-muted-foreground">
                 {emptyLabel}

@@ -7,19 +7,22 @@ import { AddPublicationDialog } from "@/components/AppSidebar/AddPublicationDial
 import { Avatar } from "@/components/shared/Avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePublicationSidebarData } from "@/hooks/usePublicationSidebarData";
+import {
+  useSidebarBootstrap,
+  useSidebarProjection,
+} from "@/contexts/PublicationSidebarContext";
 import { cn } from "@/lib/utils";
 
 export default function MyPublicationsPage() {
   const router = useRouter();
-  const { myPublications, sidebarListsLoading, refresh } =
-    usePublicationSidebarData();
+  const { myPublications } = useSidebarProjection();
+  const { sidebarListsLoading, refresh } = useSidebarBootstrap();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain p-4 md:p-6">
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h1 className="truncate text-lg font-semibold tracking-tight">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="truncate text-xl font-black tracking-tight text-foreground">
             My Publications
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -61,12 +64,12 @@ export default function MyPublicationsPage() {
         <ul className="mx-auto flex w-full max-w-2xl flex-col gap-2" aria-busy="true">
           {Array.from({ length: 5 }).map((_, i) => (
             <li key={i}>
-              <Skeleton className="h-14 w-full rounded-md border border-border/50" />
+              <Skeleton className="h-16 w-full rounded-2xl border border-border/50" />
             </li>
           ))}
         </ul>
       ) : myPublications.length === 0 ? (
-        <div className="mx-auto flex max-w-lg flex-col gap-3 rounded-md border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
+        <div className="mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-dashed border-border bg-card/70 p-6 text-sm text-muted-foreground shadow-[var(--soft-elevation)]">
           <p>
             Nothing here yet—we look for publications published under your DID (Standard
             Site discovery and related sources). Use{" "}
@@ -75,12 +78,12 @@ export default function MyPublicationsPage() {
           </p>
         </div>
       ) : (
-        <ul className="mx-auto flex w-full max-w-2xl flex-col gap-1.5">
+        <ul className="mx-auto flex w-full max-w-2xl flex-col gap-2">
           {myPublications.map((pub) => (
             <li key={pub.publicationId}>
               <Link
                 href={`/read/${encodeURIComponent(pub.publicationId)}`}
-                className="flex min-h-[3.25rem] items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-card-foreground transition-colors hover:bg-accent/40"
+                className="flex min-h-16 items-center gap-3 rounded-2xl border border-border/80 bg-card/88 px-3 py-2 text-card-foreground shadow-[var(--soft-elevation)] transition-[border-color,background-color,box-shadow] hover:border-border hover:bg-muted/45 hover:shadow-md"
               >
                 <Avatar
                   src={pub.iconUrl ?? pub.avatarUrl}

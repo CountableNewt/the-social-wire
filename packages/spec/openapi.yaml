@@ -3,29 +3,31 @@ openapi: "3.1.0"
 info:
   title: The Social Wire API
   description: |
-    Lightweight Swift **Social Wire gateway** that ships beside the Next.js web app:
+    HTTP contract for the Social Wire **distributed backend**:
 
-    - **OAuth client metadata** mirroring SPA + ATS clients (`/oauth/client-metadata.json`, `/ios-client-metadata.json`) with scopes sourced from **`ATProtoOAuthScopes`** so tunnel or Fly deployments expose stable discovery URLs.
+    - **`services/gateway`** (this spec's `servers` URLs) — OAuth client metadata, DPoP verification, PDS write-through, sync cache, unbuffered proxy to AppView.
+    - **`services/appview`** — publication sidebar projection (`/v1/publications/*`), Thin AppView read index (`/v1/appview/*`), bootstrap stream.
+    - **`services/appview-worker`** — Jetstream ingestion and proactive backfill (no HTTP surface).
 
-    - **Authenticated sync accelerators**: `Authorization: Bearer` or `Authorization: DPoP` access JWTs forwarded to ATProto repos, guarded by cryptographic JWKS verification **and** a mandatory RFC 9449 `DPoP` proof binding (`cnf.jkt` enforced when emitted by the issuer).
+    **OAuth client metadata** mirrors SPA + ATS clients (`/oauth/client-metadata.json`, `/ios-client-metadata.json`) with scopes from **`ATProtoOAuthScopes`**.
 
-    - **Performance caches**: short TTL blobs in **`pds_repo_record_cache`** (`Supabase`/SQLite); legacy **`discovery_cache` / `entry_cache`** persist only behind **`ENABLE_LEGACY_CONTENT_API`**.
+    **Authenticated routes** require `Authorization: Bearer` or `Authorization: DPoP` plus RFC 9449 `DPoP` proof binding (`cnf.jkt` when emitted by the issuer).
 
-    LATRHTTPS merge APIs deliberately stay out—continue using the hosted web helpers for LATR flows.
+    **Thin AppView** (`ENABLE_THIN_APPVIEW` on AppView): Level-1 entry index, unread counts, bootstrap-stream NDJSON initial load, scoped mark-all-read. Ingested by **`services/appview-worker`**.
 
-    **Legacy flag:** Setting `ENABLE_LEGACY_CONTENT_API` to `1/true/yes/on` re-registers `/discovery/**`, `/publications/**`, `/entries/**` for phased migrations only.
+    LATR HTTPS merge APIs stay on the Next.js web app — not documented here.
   version: "1.0.0"
   contact:
     name: Stygian Tech
     url: https://github.com/Stygian-Tech
 
 servers:
-  - url: https://api.thesocialwire.com
-    description: Production
-  - url: https://api-dev.thesocialwire.com
-    description: Development
+  - url: https://api.thesocialwire.app
+    description: Production gateway
+  - url: https://api.testing.thesocialwire.app
+    description: Development / testing gateway
   - url: http://localhost:8080
-    description: Local
+    description: Local gateway
 
 # ── Security ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,12 @@ components:
 
         **`DPoP` header**: supply `DPoP: <jwt proof>` whose **`ath`** claim covers the ASCII access JWT and whose **`cnf`** hash matches **`cnf.jkt`** whenever the issuer embeds confirmation.
 
+        **Hosted infra (first-party only):** when `OAUTH_GATEWAY_REQUIRE_KNOWN_CLIENT` is enabled server-side,
+        callers must present JWT claims compatible with **`OAUTH_GATEWAY_ALLOWED_CLIENT_IDS`**
+        (typically **`client_id`** / **`azp`**) **and/or** **`OAUTH_GATEWAY_ALLOWED_AUDIENCES`**.
+        Operators who **self-host** this gateway configure their own allowlists; arbitrary third-party OAuth
+        apps should not rely on Social Wire production API hosts without an explicit arrangement.
+
   schemas:
     Error:
       type: object
@@ -54,35 +62,6 @@ components:
           type: string
           description: Human-readable error description.
           example: Unauthorized — invalid ATProto JWT or malformed DPoP proof.
-
-    DiscoveredPublication:
-      type: object
-      required: [publicationId, authorDid, title, discoveredAt]
-      properties:
-        publicationId:
-          type: string
-          description: at-uri or canonical URL identifying the publication.
-          example: "at://did:plc:abc123/com.example.publication/main"
-        authorDid:
-          type: string
-          description: DID of the account that owns this publication.
-          example: "did:plc:abc123"
-        authorHandle:
-          type: string
-          description: Bluesky handle of the author (best-effort, may lag).
-          example: "alice.bsky.social"
-        title:
-          type: string
-          description: Display name of the publication.
-          example: "Alice's Tech Blog"
-        avatarUrl:
-          type: string
-          format: uri
-          description: Publication avatar / author avatar URL.
-        discoveredAt:
-          type: string
-          format: date-time
-          description: When this publication was last confirmed in the cache.
 
     EntryListItem:
       type: object
@@ -101,6 +80,12 @@ components:
         publishedAt:
           type: string
           format: date-time
+        originalUrl:
+          type: string
+          format: uri
+          description: |
+            Canonical article HTTPS URL when known (RSS link, render `articleUrl`, etc.).
+            Omitted for entries without a resolvable web permalink.
         isRead:
           type: boolean
           default: false
@@ -125,6 +110,137 @@ components:
           type: string
           format: uri
           description: Link to the original entry on standard.site.
+
+    PublicationAppViewScope:
+      type: object
+      required: [authorDid, publicationScopeAtUris, publicationSiteUrls]
+      properties:
+        authorDid:
+          type: string
+        publicationAtUri:
+          type: string
+          nullable: true
+        publicationScopeAtUris:
+          type: array
+          items:
+            type: string
+        publicationSiteUrls:
+          type: array
+          items:
+            type: string
+
+    SidebarPublicationRow:
+      type: object
+      required: [publicationId, authorDid, title, discoveredAt, appViewScope]
+      properties:
+        publicationId:
+          type: string
+        subscriptionPublicationId:
+          type: string
+          nullable: true
+        authorDid:
+          type: string
+        authorHandle:
+          type: string
+          nullable: true
+        title:
+          type: string
+        iconUrl:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        discoveredAt:
+          type: string
+          format: date-time
+        unreadCount:
+          type: integer
+          nullable: true
+        appViewScope:
+          $ref: "#/components/schemas/PublicationAppViewScope"
+
+    PublicationFolderSection:
+      type: object
+      required: [folderUri, folderRkey, name, publications, unreadCount]
+      properties:
+        folderUri:
+          type: string
+        folderRkey:
+          type: string
+        name:
+          type: string
+        publications:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidebarPublicationRow"
+        unreadCount:
+          type: integer
+
+    PublicationSidebarResponse:
+      type: object
+      required:
+        - viewerDid
+        - folders
+        - publicationPrefs
+        - folderSections
+        - allPublicationRows
+        - myPublications
+        - subscribedUnfoldered
+        - followingTabPublications
+        - enrollAuthorDids
+        - totalUnreadCount
+        - refreshedAt
+      properties:
+        viewerDid:
+          type: string
+        folders:
+          type: array
+          items:
+            type: object
+        publicationPrefs:
+          type: array
+          items:
+            type: object
+        folderSections:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationFolderSection"
+        allPublicationRows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidebarPublicationRow"
+        myPublications:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidebarPublicationRow"
+        subscribedUnfoldered:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidebarPublicationRow"
+        followingTabPublications:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidebarPublicationRow"
+        enrollAuthorDids:
+          type: array
+          items:
+            type: string
+        totalUnreadCount:
+          type: integer
+        refreshedAt:
+          type: string
+          format: date-time
+
+    ResolveAddPublicationResponse:
+      type: object
+      properties:
+        result:
+          type: object
+          nullable: true
+        error:
+          type: string
+          nullable: true
 
     CursorPage:
       type: object
@@ -213,7 +329,7 @@ paths:
   /v1/sync/preferences:
     get:
       operationId: getPreferencesEnvelope
-      summary: Canonical `com.thesocialwire.preferences` envelope
+      summary: Canonical `app.thesocialwire.preferences` envelope
       description: |
         Proxies cached `repo.getRecord` results for lexical `preferences` keyed by DID (token `sub`).
         Supports `If-None-Match` using the lexical `cid` as the weak validator when available.
@@ -291,160 +407,505 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  # ── Discovery ──────────────────────────────────────────────────────────────
+  # ── Publication sidebar projection ────────────────────────────────────────
 
-  /discovery/refresh:
-    post:
-      operationId: refreshDiscovery
-      summary: Refresh publication discovery
-      description: |
-        **`ENABLE_LEGACY_CONTENT_API` must be `true`** or this route responds `404`.
-
-        Triggers a re-scan of the authenticated user's follow graph to find
-        standard.site publications. Results are stored in the discovery cache.
-
-        This is an async operation — the endpoint returns immediately with a job
-        status. The client should poll `GET /discovery/{userDid}` to get results.
-      tags: [Discovery]
-      responses:
-        "202":
-          description: Discovery refresh accepted and running.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    enum: [accepted]
-                  message:
-                    type: string
-                    example: "Discovery refresh started. Poll GET /discovery/{did} for results."
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: Route disabled when legacy flag is unset.
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /discovery/{userDid}:
+  /v1/publications/sidebar:
     get:
-      operationId: getDiscovery
-      summary: Get cached discovery results
+      operationId: getPublicationSidebar
+      summary: Unified subscribed/following publication sidebar projection
       description: |
-        **`ENABLE_LEGACY_CONTENT_API` must be `true`** or this handler is not wired.
+        Merges follow-graph discovery, graph subscriptions, Skyreader RSS rows,
+        orphan subscription hydration, folder prefs, and per-publication AppView scope keys.
 
-        Returns the cached list of standard.site publications discovered from
-        the given user's follow graph. The caller must be authenticated as the
-        user identified by `userDid`.
-      tags: [Discovery]
+        Use `phase=priority` for folders plus unfoldered/following publications (fast first paint),
+        then `phase=folderPublications` for folder contents (reuses a short-lived server discovery cache),
+        and fetch unread badges separately via `/v1/appview/unread-counts`.
+      tags: [Publications]
       parameters:
-        - name: userDid
-          in: path
-          required: true
+        - name: phase
+          in: query
+          required: false
           schema:
             type: string
-          description: The DID of the user whose discovery results to return.
-          example: "did:plc:abc123"
+            enum: [full, priority, folderPublications]
+          description: |
+            `priority` returns folder shells and top-level publications without folder contents.
+            `folderPublications` returns folder section publications (after a recent `priority` call).
+            Default `full` returns the complete sidebar in one response.
       responses:
         "200":
-          description: Cached discovery results.
+          description: Sidebar projection for the authenticated viewer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationSidebarResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/refresh:
+    post:
+      operationId: refreshPublicationSidebar
+      summary: Recompute publication sidebar projection
+      tags: [Publications]
+      responses:
+        "200":
+          description: Refreshed sidebar projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationSidebarResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/resolve:
+    post:
+      operationId: resolveAddPublication
+      summary: Resolve a link into a standard.site publication or RSS feed target
+      tags: [Publications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input:
+                  type: string
+      responses:
+        "200":
+          description: Resolver outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveAddPublicationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/folders:
+    post:
+      operationId: createPublicationFolder
+      summary: Create a folder on the viewer PDS (gateway write-through)
+      tags: [Publications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Folder created.
           content:
             application/json:
               schema:
                 type: object
-                required: [publications]
+                required: [uri, rkey]
                 properties:
-                  publications:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/DiscoveredPublication"
-                  lastRefreshedAt:
+                  uri:
                     type: string
-                    format: date-time
-                    description: When the discovery cache was last populated.
+                  rkey:
+                    type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
 
-  # ── Content ────────────────────────────────────────────────────────────────
-
-  /publications/{pubId}/entries:
-    get:
-      operationId: getPublicationEntries
-      summary: Get paginated entry list for a publication
-      description: |
-        **`ENABLE_LEGACY_CONTENT_API` must be `true`** or this handler is unavailable.
-
-        Returns entries for the given publication sorted by publish time descending.
-        Supports cursor-based pagination.
-      tags: [Content]
+  /v1/publications/folders/{rkey}:
+    put:
+      operationId: updatePublicationFolder
+      summary: Update a folder record
+      tags: [Publications]
       parameters:
-        - name: pubId
+        - name: rkey
           in: path
           required: true
           schema:
             type: string
-          description: URL-encoded at-uri or canonical URL of the publication.
+      responses:
+        "200":
+          description: Folder updated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deletePublicationFolder
+      summary: Delete a folder record
+      tags: [Publications]
+      parameters:
+        - name: rkey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Folder deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/prefs:
+    put:
+      operationId: upsertPublicationPrefs
+      summary: Upsert publication preferences
+      tags: [Publications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicationId]
+              properties:
+                publicationId:
+                  type: string
+                folderId:
+                  type: string
+                  nullable: true
+                sortOrder:
+                  type: integer
+                hidden:
+                  type: boolean
+                existingRkey:
+                  type: string
+      responses:
+        "200":
+          description: Preferences upserted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/subscriptions:
+    post:
+      operationId: createPublicationSubscription
+      summary: Subscribe to a standard.site publication
+      tags: [Publications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publication]
+              properties:
+                publication:
+                  type: string
+      responses:
+        "201":
+          description: Subscription created.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/publications/rss-subscriptions:
+    post:
+      operationId: createRssSubscription
+      summary: Subscribe to an RSS feed
+      tags: [Publications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [feedUrl]
+              properties:
+                feedUrl:
+                  type: string
+                title:
+                  type: string
+                siteUrl:
+                  type: string
+      responses:
+        "201":
+          description: RSS subscription created.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/reader/read-marks:
+    post:
+      operationId: upsertReaderReadMark
+      summary: Canonical read-state write on the viewer PDS
+      tags: [Reader]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectUri]
+              properties:
+                subjectUri:
+                  type: string
+                readAt:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Read mark upserted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: deleteReaderReadMark
+      summary: Mark entry unread on the viewer PDS
+      tags: [Reader]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectUri]
+              properties:
+                subjectUri:
+                  type: string
+      responses:
+        "200":
+          description: Read mark deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/reader/mark-all-read:
+    post:
+      operationId: markAllReadBySubjectUris
+      summary: Bulk mark entries read by subject URI list
+      tags: [Reader]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectUris]
+              properties:
+                subjectUris:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Bulk mark completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [marked]
+                properties:
+                  marked:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Thin AppView (GDPR-safe Level-1 read index) ───────────────────────────
+
+  /v1/appview/bootstrap-stream:
+    get:
+      operationId: getAppViewBootstrapStream
+      summary: Progressive NDJSON bootstrap for initial reader load
+      description: |
+        **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
+
+        Streams newline-delimited JSON events as sidebar projection, unread counts,
+        first-unread publication selection, first feed page, and folder rows complete.
+        Gateway forwards the AppView body without buffering when proxied.
+
+        Event kinds (one JSON object per line): `sidebarPriority`, `unreadCounts`,
+        `selectedPublication`, `entriesPage`, `sidebarFolders`, `warning`, `error`, `done`.
+      tags: [AppView]
+      responses:
+        "200":
+          description: NDJSON event stream.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited `BootstrapStreamEvent` JSON objects.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-cache`.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+
+  /v1/appview/entries:
+    get:
+      operationId: listAppViewEntries
+      summary: Paginated entry timeline from the thin AppView index
+      description: |
+        **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
+
+        Returns Level-1 list rows (title, publishedAt, summary, thumbnail refs) for
+        `standard.site` entry collections. Full entry bodies remain on the author PDS.
+        Unread filtering joins the viewer's mirrored `read_marks` replica.
+      tags: [AppView]
+      parameters:
+        - name: authorDid
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Author repo DID whose entries to list.
+        - name: publicationAtUri
+          in: query
+          schema:
+            type: string
+          description: Optional publication AT-URI for `site` field scoping.
+        - name: publicationScopeAtUris
+          in: query
+          schema:
+            type: string
+          description: Comma-separated sibling publication AT-URIs for scoped listing.
+        - name: publicationSiteUrls
+          in: query
+          schema:
+            type: string
+          description: Comma-separated HTTPS site URL keys for scoped listing.
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, unread, read]
+            default: all
         - name: cursor
           in: query
           schema:
             type: string
-          description: Pagination cursor from a previous response.
         - name: limit
           in: query
           schema:
             type: integer
-            minimum: 1
-            maximum: 100
             default: 50
-          description: Maximum number of entries to return.
+            maximum: 100
+          description: Page size for a single response, or the internal page size when `maxEntries` is set.
+        - name: maxEntries
+          in: query
+          schema:
+            type: integer
+            maximum: 500
+          description: |
+            When set, AppView aggregates multiple timeline pages server-side and returns up to
+            this many entries in one response. The client `cursor` is ignored. The response
+            `cursor` is present only when more entries remain beyond `maxEntries`.
       responses:
         "200":
-          description: Paginated entry list.
+          description: Entry list page.
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/CursorPage"
-                  - type: object
-                    required: [entries]
-                    properties:
-                      entries:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/EntryListItem"
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntryListItem"
+                  cursor:
+                    type: string
+                    nullable: true
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
+          description: Route disabled when thin AppView flag is unset.
 
-  /entries/{entryId}:
+  /v1/appview/read-marks:
+    post:
+      operationId: upsertAppViewReadMark
+      summary: Write-through read mark after PDS upsert
+      tags: [AppView]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectUri]
+              properties:
+                subjectUri:
+                  type: string
+                readAt:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Read mark upserted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+    delete:
+      operationId: deleteAppViewReadMark
+      summary: Write-through unread (delete read mark)
+      tags: [AppView]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectUri]
+              properties:
+                subjectUri:
+                  type: string
+      responses:
+        "200":
+          description: Read mark deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+
+  /v1/appview/enroll:
+    post:
+      operationId: enrollAppViewAuthors
+      summary: Backfill recent entries for followed author DIDs
+      tags: [AppView]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [authorDids]
+              properties:
+                authorDids:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 500
+      responses:
+        "200":
+          description: Backfill completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [indexed]
+                properties:
+                  indexed:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+
+  /v1/appview/entry:
     get:
-      operationId: getEntry
-      summary: Get a single entry with sanitized content
-      description: |
-        **`ENABLE_LEGACY_CONTENT_API` must be `true`** or this handler is unavailable.
-
-        Returns the full content for a single entry. Content is normalized to
-        safe HTML with scripts and unsafe attributes stripped.
-      tags: [Content]
+      operationId: getAppViewEntryDetail
+      summary: Entry detail from the AppView index
+      tags: [AppView]
       parameters:
         - name: entryId
-          in: path
+          in: query
           required: true
           schema:
             type: string
-          description: URL-encoded at-uri of the entry.
       responses:
         "200":
-          description: Entry detail.
+          description: Entry detail row.
           content:
             application/json:
               schema:
@@ -452,9 +913,209 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
+          description: Entry not found in index.
+
+  /v1/appview/unread-counts:
+    get:
+      operationId: getAppViewUnreadCounts
+      summary: Unread counts by publication or scope
+      tags: [AppView]
+      parameters:
+        - name: publicationIds
+          in: query
+          schema:
+            type: string
+          description: Comma-separated publication ids.
+        - name: authorDid
+          in: query
+          schema:
+            type: string
+        - name: publicationAtUri
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Unread count map.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [counts]
+                properties:
+                  counts:
+                    type: object
+                    additionalProperties:
+                      type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/appview/mark-all-read:
+    post:
+      operationId: markAllReadScoped
+      summary: Mark all unread entries read for a sidebar scope
+      tags: [AppView]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope:
+                  type: object
+                  required: [kind]
+                  properties:
+                    kind:
+                      type: string
+                      enum: [publication, folder, subscribed, following]
+                    publicationId:
+                      type: string
+                    folderRkey:
+                      type: string
+      responses:
+        "200":
+          description: Scoped mark-all-read completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [marked]
+                properties:
+                  marked:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/appview/privacy/purge:
+    delete:
+      operationId: purgeAppViewPrivacyData
+      summary: Delete all indexed read marks for the authenticated viewer
+      tags: [AppView]
+      responses:
+        "200":
+          description: Viewer data purged from the index.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Route disabled when thin AppView flag is unset.
+
+  # ── L@tr read-later proxy (Social Wire Gateway iOS proxy) ─────────────────
+
+  /v1/latr/saves:
+    get:
+      operationId: listLatrSaves
+      summary: List L@tr saved items with gateway enrichment
+      description: |
+        Proxies to the external L@tr Gateway for native iOS clients. Requires viewer OAuth DPoP on this host,
+        `X-Latr-Gateway-DPoP` bound to the upstream L@tr URL, and optional
+        `X-ATProto-Upstream-DPoP` for PDS listRecords write-through.
+        Server injects L@tr credentials from `LATR_IOS_PROXY_*` Fly/runtime secrets (distinct from web
+        Vercel `LATR_GATEWAY_*`); clients must not ship API keys.
+      tags: [Latr]
+      responses:
+        "200":
+          description: Saved item records with preview enrichment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
+    post:
+      operationId: createLatrSave
+      summary: Save a URL or native subject via L@tr Gateway
+      tags: [Latr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Save created.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
+
+  /v1/latr/saves/{rkey}/state:
+    patch:
+      operationId: patchLatrSaveState
+      summary: Archive or unarchive a saved item
+      tags: [Latr]
+      parameters:
+        - name: rkey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [archived, unread]
+      responses:
+        "200":
+          description: State updated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
+
+  /v1/latr/saves/{rkey}:
+    delete:
+      operationId: deleteLatrSave
+      summary: Delete a saved item
+      tags: [Latr]
+      parameters:
+        - name: rkey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
+
+  /v1/latr/og-preview:
+    get:
+      operationId: getLatrOgPreview
+      summary: Fetch OG preview metadata for a URL
+      tags: [Latr]
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Preview metadata.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
 
 tags:
   - name: Health
@@ -463,7 +1124,11 @@ tags:
     description: Discoverable client metadata for tunnel + hosted API origins
   - name: Sync
     description: Protected ATProto-backed reader accelerators
-  - name: Discovery
-    description: Follow graph scanning gated behind `ENABLE_LEGACY_CONTENT_API`
-  - name: Content
-    description: Entry feeds gated behind `ENABLE_LEGACY_CONTENT_API`
+  - name: Publications
+    description: Unified sidebar projection, resolver, and gateway write-through
+  - name: Reader
+    description: Canonical PDS read-state writes via gateway
+  - name: AppView
+    description: GDPR-safe Level-1 entry index gated behind `ENABLE_THIN_APPVIEW`
+  - name: Latr
+    description: Authenticated L@tr read-later iOS proxy (`LATR_IOS_PROXY_*` server credentials)

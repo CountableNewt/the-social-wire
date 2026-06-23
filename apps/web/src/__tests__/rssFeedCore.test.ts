@@ -7,6 +7,7 @@ import {
   rssEntryIdFromParts,
   rssEntryIdDecode,
   stableItemKeyFromRssItem,
+  dedupeEntryListItems,
 } from "@/lib/rssFeedCore";
 
 describe("rssFeedCore", () => {
@@ -31,6 +32,48 @@ describe("rssFeedCore", () => {
     expect(normalizedFeedUrlFromRssPublicationId(id)).toBe(u);
   });
 
+  it("prefers normalized link over opaque guid for stable keys", () => {
+    const key = stableItemKeyFromRssItem({
+      guid: "abc",
+      link: "http://example.net/article",
+    });
+    expect(key).toBe("link:https://example.net/article");
+  });
+
+  it("dedupes rss entries that share a canonical article link", () => {
+    const feed = "https://example.net/feed.xml";
+    const linkEntry = {
+      entryId: rssEntryIdFromParts(feed, "link:https://example.net/article"),
+      title: "Post",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const guidEntry = {
+      entryId: rssEntryIdFromParts(feed, "guid:abc"),
+      title: "Post",
+      summary: "https://example.net/article",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(dedupeEntryListItems([linkEntry, guidEntry])).toHaveLength(1);
+  });
+
+  it("dedupes article URLs that only differ by query params", () => {
+    const feed = "https://example.net/feed.xml";
+    const first = {
+      entryId: rssEntryIdFromParts(
+        feed,
+        "link:https://example.net/article?utm=1"
+      ),
+      title: "Post",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const second = {
+      entryId: rssEntryIdFromParts(feed, "link:https://example.net/article"),
+      title: "Post",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(dedupeEntryListItems([first, second])).toHaveLength(1);
+  });
+
   it("round-trips rss entry ids via stable keys", () => {
     const feed = "https://example.net/feed.xml";
     const key = stableItemKeyFromRssItem({
@@ -40,5 +83,34 @@ describe("rssFeedCore", () => {
     const eid = rssEntryIdFromParts(feed, key);
     const dec = rssEntryIdDecode(eid);
     expect(dec).toEqual({ feedUrl: feed, itemKey: key });
+  });
+
+  it("dedupes Verge Atom id rows against path-based link rows", () => {
+    const feed = "https://www.theverge.com/rss/index.xml";
+    const linkEntry = {
+      entryId: rssEntryIdFromParts(
+        feed,
+        "link:https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds"
+      ),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      publishedAt: "2026-05-23T18:41:11-04:00",
+    };
+    const guidEntry = {
+      entryId: rssEntryIdFromParts(
+        feed,
+        "guid:https://www.theverge.com/?p=936829"
+      ),
+      title: "Record Club is trying to be Letterboxd for music nerds",
+      publishedAt: "2026-05-23T18:41:11-04:00",
+    };
+    expect(dedupeEntryListItems([linkEntry, guidEntry])).toHaveLength(1);
+  });
+
+  it("uses post identity stable keys for Verge Atom items", () => {
+    const key = stableItemKeyFromRssItem({
+      guid: "https://www.theverge.com/?p=936829",
+      link: "https://www.theverge.com/entertainment/936829/record-club-letterboxd-for-music-nerds",
+    });
+    expect(key).toBe("post:www.theverge.com:936829");
   });
 });

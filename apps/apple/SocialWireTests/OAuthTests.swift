@@ -1,9 +1,12 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SocialWire
 
+@Suite("OAuth")
 @MainActor
-final class OAuthTests: XCTestCase {
-    func testAuthorizationRedirectURLUsesPARFollowOnShape() throws {
+struct OAuthTests {
+    @Test("authorization redirect URL uses PAR follow-on shape")
+    func authorizationRedirectURLUsesPARFollowOnShape() throws {
         let endpoint = URL(string: "https://entryway.example/oauth/authorize")!
         let url = try ATProtoOAuthService.authorizationRedirectURL(
             authorizationEndpoint: endpoint,
@@ -11,40 +14,73 @@ final class OAuthTests: XCTestCase {
         )
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-        XCTAssertEqual(query["client_id"], ATProtoOAuthConfig.clientID)
-        XCTAssertEqual(query["request_uri"], "urn:ietf:params:oauth:request_uri:bwc4JK-test")
-        XCTAssertNil(query["redirect_uri"])
-        XCTAssertNil(query["scope"])
+        #expect(query["client_id"] == ATProtoOAuthConfig.clientID)
+        #expect(query["request_uri"] == "urn:ietf:params:oauth:request_uri:bwc4JK-test")
+        #expect(query["redirect_uri"] == nil)
+        #expect(query["scope"] == nil)
     }
 
-    func testNativeRedirectURIUsesReversedHostSingleSlash() {
-        let pair = ATProtoOAuthConfig.nativeRedirectPair(forClientID: ATProtoOAuthConfig.defaultClientID)
-        XCTAssertEqual(pair.redirectURI, "app.thesocialwire:/oauth/callback")
-        XCTAssertFalse(pair.redirectURI.contains("://"))
-        XCTAssertEqual(pair.scheme, "app.thesocialwire")
+    @Test("OAuth redirects match reversed FQDN of client metadata URL")
+    func oauthRedirectsMatchReversedFqdnOfClientMetadataURL() {
+        let pair = ATProtoOAuthConfig.nativeRedirectPair(forClientID: ATProtoOAuthConfig.clientID)
+        #expect(ATProtoOAuthConfig.callbackURLScheme == pair.scheme)
+        #expect(ATProtoOAuthConfig.redirectURI == pair.redirectURI)
+        #expect(!ATProtoOAuthConfig.redirectURI.contains("://"))
     }
 
-    func testNativeURLSchemeReversesHostLabels() {
-        XCTAssertEqual(ATProtoOAuthConfig.nativeURLScheme(forHost: "thesocialwire.app"), "app.thesocialwire")
-        XCTAssertEqual(ATProtoOAuthConfig.nativeURLScheme(forHost: "app.example.com"), "com.example.app")
+    @Test("native redirect pairs for Swift API hosts use ATProto reversal")
+    func nativeRedirectPairsForSwiftApiHostsUseAtprotoReversal() {
+        let prod = ATProtoOAuthConfig.nativeRedirectPair(forClientID: "https://api.thesocialwire.app/ios-client-metadata.json")
+        #expect(prod.scheme == "app.thesocialwire.api")
+        #expect(prod.redirectURI == "app.thesocialwire.api:/oauth/callback")
+
+        let testing = ATProtoOAuthConfig.nativeRedirectPair(forClientID: "https://api.testing.thesocialwire.app/ios-client-metadata.json")
+        #expect(testing.scheme == "app.thesocialwire.testing.api")
+        #expect(testing.redirectURI == "app.thesocialwire.testing.api:/oauth/callback")
     }
 
-    func testPARRequestFieldsIncludeScopesAndLoginHint() {
+    @Test("native redirect pair for marketing host matches web metadata")
+    func nativeRedirectPairForMarketingHostMatchesWebMetadata() {
+        let pair = ATProtoOAuthConfig.nativeRedirectPair(forClientID: "https://thesocialwire.app/ios-client-metadata.json")
+        #expect(pair.scheme == "app.thesocialwire")
+        #expect(pair.redirectURI == "app.thesocialwire:/oauth/callback")
+    }
+
+    @Test("native URL scheme reverses host labels")
+    func nativeURLSchemeReversesHostLabels() {
+        #expect(ATProtoOAuthConfig.nativeURLScheme(forHost: "thesocialwire.app") == "app.thesocialwire")
+        #expect(ATProtoOAuthConfig.nativeURLScheme(forHost: "app.example.com") == "com.example.app")
+    }
+
+    @Test("PAR request fields include scopes and login hint")
+    func parRequestFieldsIncludeScopesAndLoginHint() {
         let fields = ATProtoOAuthService.parRequestFields(codeChallenge: "ch", state: "st", loginHint: "did:plc:test")
-        XCTAssertEqual(fields["response_type"], "code")
-        XCTAssertEqual(fields["client_id"], ATProtoOAuthConfig.clientID)
-        XCTAssertEqual(fields["code_challenge"], "ch")
-        XCTAssertEqual(fields["code_challenge_method"], "S256")
-        XCTAssertEqual(fields["redirect_uri"], ATProtoOAuthConfig.redirectURI)
-        XCTAssertEqual(fields["state"], "st")
-        XCTAssertEqual(fields["login_hint"], "did:plc:test")
-        XCTAssertTrue(fields["scope"]?.contains("repo:com.thesocialwire.entryReadState") == true)
+        #expect(fields["response_type"] == "code")
+        #expect(fields["client_id"] == ATProtoOAuthConfig.clientID)
+        #expect(fields["code_challenge"] == "ch")
+        #expect(fields["code_challenge_method"] == "S256")
+        #expect(fields["redirect_uri"] == ATProtoOAuthConfig.redirectURI)
+        #expect(fields["state"] == "st")
+        #expect(fields["login_hint"] == "did:plc:test")
+        #expect(fields["scope"]?.contains("repo:app.thesocialwire.entryReadState") == true)
     }
 
-    func testPKCEChallengeIsStableForVerifier() {
+    @Test("PKCE challenge is stable for verifier")
+    func pkceChallengeIsStableForVerifier() {
         let challenge = ATProtoOAuthService.codeChallenge(from: "abcdefghijklmnopqrstuvwxyz0123456789")
-        XCTAssertFalse(challenge.contains("="))
-        XCTAssertFalse(challenge.contains("+"))
-        XCTAssertFalse(challenge.contains("/"))
+        #expect(!challenge.contains("="))
+        #expect(!challenge.contains("+"))
+        #expect(!challenge.contains("/"))
+    }
+
+    @Test("default client uses testing API when debugging or beta flag")
+    func defaultClientUsesTestingApiWhenDebuggingOrBetaFlag() {
+        let id = ATProtoOAuthConfig.defaultClientID
+        #expect(id.hasSuffix("/ios-client-metadata.json"))
+        #if DEBUG || SOCIALWIRE_TESTING_API
+        #expect(id == "https://api.testing.thesocialwire.app/ios-client-metadata.json")
+        #else
+        #expect(id == "https://api.thesocialwire.app/ios-client-metadata.json")
+        #endif
     }
 }
