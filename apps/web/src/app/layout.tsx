@@ -23,22 +23,21 @@ const siteUrl = (() => {
 
 const lightInstallIcon = "/icons/social-wire-icon-light-512.png";
 const darkInstallIcon = "/icons/social-wire-icon-dark-512.png";
-const lightAppleTouchIcon = "/icons/social-wire-apple-touch-light.png";
-const darkAppleTouchIcon = "/icons/social-wire-apple-touch-dark.png";
+const appleTouchIcon = "/icons/social-wire-apple-touch.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "The Social Wire",
   description: "A reader for the standard.site publishing ecosystem",
   applicationName: "The Social Wire",
+  manifest: "/manifest-light.webmanifest",
   appleWebApp: {
     capable: true,
     title: "The Social Wire",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
       {
         url: lightInstallIcon,
         sizes: "512x512",
@@ -52,20 +51,11 @@ export const metadata: Metadata = {
         media: "(prefers-color-scheme: dark)",
       },
     ],
-    apple: [
-      {
-        url: lightAppleTouchIcon,
-        sizes: "180x180",
-        type: "image/png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: darkAppleTouchIcon,
-        sizes: "180x180",
-        type: "image/png",
-        media: "(prefers-color-scheme: dark)",
-      },
-    ],
+    apple: {
+      url: appleTouchIcon,
+      sizes: "180x180",
+      type: "image/png",
+    },
   },
   openGraph: {
     type: "website",
@@ -107,26 +97,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
-        <link
-          rel="manifest"
-          href="/manifest-light.webmanifest"
-          media="(prefers-color-scheme: light)"
-        />
-        <link
-          rel="manifest"
-          href="/manifest-dark.webmanifest"
-          media="(prefers-color-scheme: dark)"
-        />
-        <link
-          rel="apple-touch-icon"
-          href={lightAppleTouchIcon}
-          media="(prefers-color-scheme: light)"
-        />
-        <link
-          rel="apple-touch-icon"
-          href={darkAppleTouchIcon}
-          media="(prefers-color-scheme: dark)"
-        />
         <script
           id="dark-mode"
           dangerouslySetInnerHTML={{
