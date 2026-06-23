@@ -69,7 +69,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
   return (
     <article
       className={cn(
-        "flex min-h-0 w-full max-w-none flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+7.25rem)] flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+7.25rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
+        "flex min-h-0 w-full max-w-none flex-1 scroll-pb-[calc(env(safe-area-inset-bottom)+9rem)] flex-col px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+9rem)] sm:px-4 sm:pt-2 md:px-6 lg:px-8",
         showEmbed ? "md:pb-2" : "md:pb-8 lg:pb-10"
       )}
     >

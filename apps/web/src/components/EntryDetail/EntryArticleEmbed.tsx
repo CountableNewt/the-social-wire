@@ -42,7 +42,7 @@ function EmbedUnavailableMessage({
 }) {
   if (fallbackContent) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 max-md:scroll-pb-[calc(env(safe-area-inset-bottom)+7.25rem)] max-md:pb-[calc(env(safe-area-inset-bottom)+7.25rem)]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 max-md:scroll-pb-[calc(env(safe-area-inset-bottom)+9rem)] max-md:pb-[calc(env(safe-area-inset-bottom)+9rem)]">
         <div className="mb-5 rounded-xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
           <p>{message}</p>
           <a
