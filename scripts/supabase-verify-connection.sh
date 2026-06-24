@@ -46,7 +46,7 @@ echo "==> Supabase **${ENV_LABEL}** connection check (dry-run only)"
 
 if [ -n "$DATABASE_URL" ] && ! is_direct "$DATABASE_URL"; then
   echo "→ Using session pooler DATABASE_URL"
-  supabase db push --db-url "$DATABASE_URL" --dry-run --yes
+  supabase db push --db-url "$DATABASE_URL" --include-all --dry-run --yes
   echo "OK: pooler DATABASE_URL works."
   exit 0
 fi
@@ -68,5 +68,5 @@ fi
 echo "→ Using supabase link + DB_PASSWORD (pooler)"
 export SUPABASE_DB_PASSWORD="$DB_PASSWORD"
 supabase link --project-ref "$REF" --yes
-supabase db push --dry-run --yes
+supabase db push --include-all --dry-run --yes
 echo "OK: link + password works."
