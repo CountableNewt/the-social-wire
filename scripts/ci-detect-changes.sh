@@ -8,7 +8,14 @@ MATCH_ALL=0
 
 case "${GITHUB_EVENT_NAME:-}" in
   pull_request)
-    BASE="${GITHUB_EVENT_PULL_REQUEST_BASE_SHA:?}"
+    BASE="${GITHUB_EVENT_PULL_REQUEST_BASE_SHA:-}"
+    if [ -z "$BASE" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+      BASE="$(git merge-base "$HEAD" "origin/${GITHUB_BASE_REF}")"
+    fi
+    if [ -z "$BASE" ]; then
+      echo "Unable to determine pull request base SHA." >&2
+      exit 1
+    fi
     ;;
   push)
     BASE="${GITHUB_EVENT_BEFORE:-}"

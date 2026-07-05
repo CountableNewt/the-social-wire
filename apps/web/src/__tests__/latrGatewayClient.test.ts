@@ -10,14 +10,29 @@ import {
 import { LATR_GATEWAY_PROXY_PREFIX } from "@/lib/latrGatewayProxyPath";
 
 const ORIG_FETCH = globalThis.fetch;
+const ORIG_LOCATION_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "location"
+);
 
 afterEach(() => {
   resetLatrGatewayAuthRejectedForTests();
   globalThis.fetch = ORIG_FETCH;
+  if (ORIG_LOCATION_DESCRIPTOR) {
+    Object.defineProperty(globalThis, "location", ORIG_LOCATION_DESCRIPTOR);
+  } else {
+    delete (globalThis as { location?: Location }).location;
+  }
 });
 
 describe("latrGatewayFetch", () => {
-  it("calls the same-origin proxy without client credential headers", async () => {
+  it("calls the same-origin proxy and signs DPoP for that proxy URL", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: new URL("https://testing.thesocialwire.app/saved"),
+    });
+    let dpopClaims: Record<string, string | number> | undefined;
+
     const fetchMock = mock(async (url: string, init?: RequestInit) => {
       expect(url).toBe(`${LATR_GATEWAY_PROXY_PREFIX}/v1/latr/og-preview?url=https://example.com`);
       const headers = new Headers(init?.headers);
@@ -38,7 +53,10 @@ describe("latrGatewayFetch", () => {
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
           algorithms: ["ES256"],
-          createJwt: async () => "gateway-dpop-proof",
+          createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
+            dpopClaims = claims;
+            return "gateway-dpop-proof";
+          },
         },
         dpopNonces: {
           get: async () => undefined,
@@ -52,11 +70,22 @@ describe("latrGatewayFetch", () => {
       method: "GET",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dpopClaims?.htm).toBe("GET");
+    expect(dpopClaims?.htu).toBe(
+      "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/og-preview"
+    );
+    expect(dpopClaims?.ath).toBeTruthy();
   });
 
   it("retries once when the proxy returns a DPoP nonce challenge", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: new URL("https://testing.thesocialwire.app/saved"),
+    });
     let proxyCalls = 0;
     let nonceCounter = 0;
+    const gatewayNonces = new Map<string, string>();
+    const dpopClaims: Array<Record<string, string | number>> = [];
 
     const fetchMock = mock(async (...args: Parameters<typeof fetch>) => {
       const [url] = args;
@@ -88,13 +117,18 @@ describe("latrGatewayFetch", () => {
       fetchHandler: fetchMock as unknown as typeof fetch,
       server: {
         dpopNonces: {
-          get: async () => undefined,
-          set: async () => {},
+          get: async (origin: string) => gatewayNonces.get(origin),
+          set: async (origin: string, nonce: string) => {
+            gatewayNonces.set(origin, nonce);
+          },
         },
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
           algorithms: ["ES256"],
-          createJwt: async () => "gateway-dpop-proof",
+          createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
+            dpopClaims.push(claims);
+            return "gateway-dpop-proof";
+          },
         },
         serverMetadata: { dpop_signing_alg_values_supported: ["ES256"] },
       },
@@ -117,5 +151,15 @@ describe("latrGatewayFetch", () => {
     expect(saveCall).toBeDefined();
     const saveHeaders = new Headers(saveCall?.[1]?.headers);
     expect(saveHeaders.get(LATR_UPSTREAM_DPOP_HEADER)).toBeTruthy();
+    expect(gatewayNonces.get("https://testing.thesocialwire.app")).toBe(
+      "fresh-nonce"
+    );
+    const gatewayBoundClaims = dpopClaims.filter((claims) =>
+      String(claims.htu).includes("/api/latr-gateway/")
+    );
+    expect(gatewayBoundClaims[0]?.htu).toBe(
+      "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/saves"
+    );
+    expect(gatewayBoundClaims[1]?.nonce).toBe("fresh-nonce");
   });
 });

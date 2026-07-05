@@ -17,10 +17,10 @@ import {
   pdsXrpcMethodForGatewayRequest,
 } from "latr-packages/gateway-client";
 import { latrGatewayProxyPath } from "@/lib/latrGatewayProxyPath";
-import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 import {
   buildLatrGatewayUserAuthHeaders,
   captureGatewayDpopNonceFromResponse,
+  latrGatewayProxyAuthUrl,
 } from "@/lib/latrGatewayUserAuth";
 
 /** Legacy official first-party credential header (server proxy only). */
@@ -62,13 +62,13 @@ async function buildLatrGatewayProxyRequestHeaders(
   oauthSession: OAuthSession,
   method: string,
   gatewayPath: string,
-  gatewayUrl: string,
+  proxyAuthUrl: string,
   options: { dpopNonce?: string } = {}
 ): Promise<Record<string, string>> {
   const userAuth = await buildLatrGatewayUserAuthHeaders(
     oauthSession,
     method,
-    gatewayUrl,
+    proxyAuthUrl,
     options
   );
   const headers: Record<string, string> = {
@@ -100,14 +100,14 @@ export async function latrGatewayFetch(
   gatewayDpopNonce?: string
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
-  const gatewayUrl = `${latrGatewayBaseUrl()}${gatewayPath}`;
   const proxyUrl = latrGatewayProxyPath(gatewayPath);
+  const proxyAuthUrl = latrGatewayProxyAuthUrl(proxyUrl);
   const method = init?.method ?? "GET";
   const baseHeaders = await buildLatrGatewayProxyRequestHeaders(
     oauthSession,
     method,
     gatewayPathOnly(gatewayPath),
-    gatewayUrl,
+    proxyAuthUrl,
     gatewayDpopNonce ? { dpopNonce: gatewayDpopNonce } : {}
   );
 
@@ -119,7 +119,7 @@ export async function latrGatewayFetch(
     },
   });
 
-  await captureGatewayDpopNonceFromResponse(oauthSession, gatewayUrl, res);
+  await captureGatewayDpopNonceFromResponse(oauthSession, proxyAuthUrl, res);
 
   if (attempt === 0 && shouldRetryLatrGatewayDpopNonce(res)) {
     const retryNonce =

@@ -33,6 +33,18 @@ function gatewayOrigin(gatewayUrl: string): string {
   return new URL(gatewayUrl).origin;
 }
 
+export function latrGatewayProxyAuthUrl(proxyUrl: string): string {
+  if (/^https?:\/\//i.test(proxyUrl)) {
+    return proxyUrl;
+  }
+
+  const origin =
+    typeof globalThis.location?.origin === "string"
+      ? globalThis.location.origin
+      : "http://localhost";
+  return new URL(proxyUrl, origin).toString();
+}
+
 async function readCachedGatewayNonce(
   oauthSession: OAuthSession,
   gatewayUrl: string
@@ -69,19 +81,19 @@ export async function captureGatewayDpopNonceFromResponse(
   }
 }
 
-/** Mint Authorization + DPoP for the upstream gateway URL (not the same-origin proxy URL). */
+/** Mint Authorization + DPoP for the same-origin proxy URL the browser fetches. */
 export async function buildLatrGatewayUserAuthHeaders(
   oauthSession: OAuthSession,
   method: string,
-  gatewayUrl: string,
+  proxyUrl: string,
   options: { dpopNonce?: string } = {}
 ): Promise<Record<string, string>> {
   const tokenSet = await (oauthSession as SessionWithTokenSet).getTokenSet("auto");
   const authorization = `${tokenSet.token_type} ${tokenSet.access_token}`;
   const ath = await sha256Base64Url(tokenSet.access_token);
-  const htu = stripQueryAndFragment(gatewayUrl);
+  const htu = stripQueryAndFragment(proxyUrl);
   const nonce =
-    options.dpopNonce ?? (await readCachedGatewayNonce(oauthSession, gatewayUrl));
+    options.dpopNonce ?? (await readCachedGatewayNonce(oauthSession, proxyUrl));
 
   const key = oauthSession.server.dpopKey;
   const jwk = key.bareJwk;
