@@ -1261,20 +1261,9 @@ export class PDSClient {
 
     let rows: MergedLatrSave[];
     if (latrReadLaterUsesGateway()) {
-      try {
-        const items = await listLatrSavedItemsViaGateway(this.oauthSession, {
-          signal,
-        });
-        rows = mergeGatewayItemsWithExternalRecords(
-          items,
-          await this.listLatrSavedExternals(signal)
-        );
-      } catch {
-        rows = mergeExternalsAndItemsToHttpsRows(
-          await this.listLatrSavedExternals(signal),
-          await this.listLatrSavedItems(signal)
-        );
-      }
+      rows = mergedLatrSavesFromGatewayItems(
+        await listLatrSavedItemsViaGateway(this.oauthSession, { signal })
+      );
     } else {
       rows = mergeExternalsAndItemsToHttpsRows(
         await this.listLatrSavedExternals(signal),

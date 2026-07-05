@@ -73,7 +73,7 @@ export function isWeakLatrSaveTitle(
   return false;
 }
 
-/** True when OG backfill may improve titles and/or thumbnails. */
+/** True when OG backfill may improve saved-link display metadata. */
 export function needsLatrSaveOgBackfill(row: MergedLatrSave): boolean {
   const url = backfillUrlForLatrSave(row);
   if (!url) return false;
@@ -81,6 +81,9 @@ export function needsLatrSaveOgBackfill(row: MergedLatrSave): boolean {
   const title = row.title?.trim();
   if (!title) return true;
   if (!row.image?.trim()) return true;
+  if (!row.excerpt?.trim()) return true;
+  if (!row.site?.trim()) return true;
+  if (!row.author?.trim()) return true;
   return isWeakLatrSaveTitle(title, row.site, url);
 }
 
@@ -102,7 +105,7 @@ function parseOgPreviewResponse(
   const publishedAt = str(data.publishedAt);
   const language = str(data.language);
 
-  if (!title && !image && !excerpt && !site) return null;
+  if (!title && !image && !excerpt && !site && !author) return null;
 
   return {
     ...(title ? { title } : {}),

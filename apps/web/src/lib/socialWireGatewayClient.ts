@@ -5,6 +5,10 @@ import {
   createUpstreamDpopProof,
   pdsXrpcMethodForSocialWireGatewayRequest,
 } from "@/lib/latrGatewayUpstreamDpop";
+import {
+  buildLatrGatewayUserAuthHeaders,
+  captureGatewayDpopNonceFromResponse,
+} from "@/lib/latrGatewayUserAuth";
 
 export function gatewayBaseUrl(): string {
   return (
@@ -12,10 +16,38 @@ export function gatewayBaseUrl(): string {
   ).replace(/\/$/, "");
 }
 
+type OAuthSessionWithManualDpop = OAuthSession & {
+  getTokenSet?: unknown;
+  server?: {
+    dpopKey?: unknown;
+  };
+};
+
+function canManuallySignGatewayRequest(
+  oauthSession: OAuthSession
+): oauthSession is OAuthSession & {
+  getTokenSet: NonNullable<OAuthSessionWithManualDpop["getTokenSet"]>;
+  server: { dpopKey: NonNullable<OAuthSessionWithManualDpop["server"]>["dpopKey"] };
+} {
+  const candidate = oauthSession as OAuthSessionWithManualDpop;
+  return (
+    typeof candidate.getTokenSet === "function" &&
+    typeof candidate.server?.dpopKey === "object" &&
+    candidate.server.dpopKey !== null
+  );
+}
+
+function shouldRetryGatewayDpopNonce(res: Response): boolean {
+  if (res.status !== 401 && res.status !== 400) return false;
+  return Boolean(res.headers.get("DPoP-Nonce")?.trim());
+}
+
 export async function gatewayFetch(
   oauthSession: OAuthSession,
   path: string,
-  init?: RequestInit
+  init?: RequestInit,
+  attempt = 0,
+  gatewayDpopNonce?: string
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${gatewayBaseUrl()}${gatewayPath}`;
@@ -30,12 +62,53 @@ export async function gatewayFetch(
     );
   }
 
-  return oauthSession.fetchHandler(url, {
+  if (!canManuallySignGatewayRequest(oauthSession)) {
+    return oauthSession.fetchHandler(url, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...upstreamHeaders,
+        ...(init?.headers ?? {}),
+      },
+    });
+  }
+
+  const userAuthHeaders = await buildLatrGatewayUserAuthHeaders(
+    oauthSession,
+    method,
+    url,
+    gatewayDpopNonce ? { dpopNonce: gatewayDpopNonce } : {}
+  );
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  for (const [name, value] of Object.entries(upstreamHeaders)) {
+    headers.set(name, value);
+  }
+  for (const [name, value] of Object.entries(userAuthHeaders)) {
+    headers.set(name, value);
+  }
+
+  const res = await fetch(url, {
     ...init,
-    headers: {
-      Accept: "application/json",
-      ...upstreamHeaders,
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
+
+  await captureGatewayDpopNonceFromResponse(oauthSession, url, res);
+
+  if (attempt === 0 && shouldRetryGatewayDpopNonce(res)) {
+    const retryNonce =
+      res.headers.get("DPoP-Nonce")?.trim() ??
+      res.headers.get("dpop-nonce")?.trim();
+    return gatewayFetch(
+      oauthSession,
+      path,
+      init,
+      attempt + 1,
+      retryNonce
+    );
+  }
+
+  return res;
 }

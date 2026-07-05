@@ -12,19 +12,22 @@ import {
 } from "@/lib/latrGatewayCredentials";
 import { latrGatewayErrorMessage } from "@/lib/latrGatewayErrors";
 import {
-  createSaveUpstreamDpopProofPool,
   createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
+  refreshPdsDpopNonce,
 } from "latr-packages/gateway-client";
 import { latrGatewayProxyPath } from "@/lib/latrGatewayProxyPath";
-import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 import {
   buildLatrGatewayUserAuthHeaders,
   captureGatewayDpopNonceFromResponse,
+  latrGatewayProxyAuthUrl,
 } from "@/lib/latrGatewayUserAuth";
+import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
+import { COLLECTION_LATR_SAVED_ITEM } from "@/lib/latrCollections";
 
 /** Legacy official first-party credential header (server proxy only). */
 export const LATR_OFFICIAL_CLIENT_HEADER = "X-Latr-Official-Client";
+export const LATR_GATEWAY_DPOP_HEADER = "X-Latr-Gateway-DPoP";
 
 export {
   LATR_API_KEY_HEADER,
@@ -33,6 +36,10 @@ export {
 };
 
 export { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
+
+type SessionWithTokenInfo = OAuthSession & {
+  getTokenInfo(): Promise<{ aud: string }>;
+};
 
 function shouldRetryLatrGatewayDpopNonce(res: Response): boolean {
   if (res.status !== 401 && res.status !== 400) return false;
@@ -44,8 +51,35 @@ async function buildUpstreamDpopHeader(
   method: string,
   gatewayPath: string
 ): Promise<string | undefined> {
+  if (method === "GET" && gatewayPath === "/v1/latr/saves") {
+    const tokenInfo = await (oauthSession as SessionWithTokenInfo).getTokenInfo();
+    const pdsBase = tokenInfo.aud.replace(/\/$/, "");
+    const params = new URLSearchParams({
+      repo: oauthSession.did,
+      collection: COLLECTION_LATR_SAVED_ITEM,
+      limit: "100",
+    });
+    const { DPoP } = await buildLatrGatewayUserAuthHeaders(
+      oauthSession,
+      "GET",
+      `${pdsBase}/xrpc/com.atproto.repo.listRecords?${params}`,
+      {
+        dpopNonce: await refreshPdsDpopNonce(
+          oauthSession,
+          "com.atproto.repo.listRecords",
+          "GET"
+        ),
+      }
+    );
+    return DPoP;
+  }
+
   if (method === "POST" && gatewayPath === "/v1/latr/saves") {
-    return createSaveUpstreamDpopProofPool(oauthSession);
+    return createUpstreamDpopProof(
+      oauthSession,
+      "com.atproto.repo.putRecord",
+      "POST"
+    );
   }
 
   const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
@@ -62,18 +96,26 @@ async function buildLatrGatewayProxyRequestHeaders(
   oauthSession: OAuthSession,
   method: string,
   gatewayPath: string,
-  gatewayUrl: string,
+  proxyAuthUrl: string,
   options: { dpopNonce?: string } = {}
 ): Promise<Record<string, string>> {
-  const userAuth = await buildLatrGatewayUserAuthHeaders(
+  const proxyUserAuth = await buildLatrGatewayUserAuthHeaders(
     oauthSession,
     method,
-    gatewayUrl,
+    proxyAuthUrl,
+    { useCachedNonce: false }
+  );
+  const latrGatewayUserAuth = await buildLatrGatewayUserAuthHeaders(
+    oauthSession,
+    method,
+    `${latrGatewayBaseUrl()}${gatewayPath}`,
     options
   );
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...userAuth,
+    Authorization: proxyUserAuth.Authorization,
+    DPoP: proxyUserAuth.DPoP,
+    [LATR_GATEWAY_DPOP_HEADER]: latrGatewayUserAuth.DPoP,
   };
 
   const upstreamProof = await buildUpstreamDpopHeader(
@@ -100,14 +142,14 @@ export async function latrGatewayFetch(
   gatewayDpopNonce?: string
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
-  const gatewayUrl = `${latrGatewayBaseUrl()}${gatewayPath}`;
   const proxyUrl = latrGatewayProxyPath(gatewayPath);
+  const proxyAuthUrl = latrGatewayProxyAuthUrl(proxyUrl);
   const method = init?.method ?? "GET";
   const baseHeaders = await buildLatrGatewayProxyRequestHeaders(
     oauthSession,
     method,
     gatewayPathOnly(gatewayPath),
-    gatewayUrl,
+    proxyAuthUrl,
     gatewayDpopNonce ? { dpopNonce: gatewayDpopNonce } : {}
   );
 
@@ -119,7 +161,11 @@ export async function latrGatewayFetch(
     },
   });
 
-  await captureGatewayDpopNonceFromResponse(oauthSession, gatewayUrl, res);
+  await captureGatewayDpopNonceFromResponse(
+    oauthSession,
+    `${latrGatewayBaseUrl()}${gatewayPathOnly(gatewayPath)}`,
+    res
+  );
 
   if (attempt === 0 && shouldRetryLatrGatewayDpopNonce(res)) {
     const retryNonce =

@@ -54,12 +54,25 @@ describe("latrSaveMetadataBackfill", () => {
     ).toBe(true);
   });
 
-  it("treats enriched rows as complete", () => {
+  it("backfills rows that have title and image but are missing text metadata", () => {
     expect(
       isLatrSaveMetadataSparse({
         ...externalRow,
         title: "Example Article",
         image: "https://example.com/thumb.jpg",
+      })
+    ).toBe(true);
+  });
+
+  it("treats rows with full display metadata as complete", () => {
+    expect(
+      isLatrSaveMetadataSparse({
+        ...externalRow,
+        title: "Example Article",
+        image: "https://example.com/thumb.jpg",
+        excerpt: "Summary",
+        site: "Example",
+        author: "Jane",
       })
     ).toBe(false);
   });

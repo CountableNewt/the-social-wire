@@ -10,6 +10,10 @@ import {
 } from "@/lib/latrGatewayUrl";
 
 const LATR_OFFICIAL_CLIENT_HEADER = "X-Latr-Official-Client";
+export const LATR_GATEWAY_UPSTREAM_DPOP_HEADER = "X-Latr-Gateway-DPoP";
+export const LATR_FORWARDED_AUTHORIZATION_HEADER =
+  "X-Latr-Forwarded-Authorization";
+export const LATR_FORWARDED_DPOP_HEADER = "X-Latr-Forwarded-DPoP";
 
 function readServerHostname(): string | undefined {
   return (
@@ -111,6 +115,7 @@ export function buildLatrGatewayServerAuthHeaders(): Record<string, string> {
 export const LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS = [
   "authorization",
   "dpop",
+  LATR_GATEWAY_UPSTREAM_DPOP_HEADER,
   "x-atproto-upstream-dpop",
   "content-type",
   "accept",

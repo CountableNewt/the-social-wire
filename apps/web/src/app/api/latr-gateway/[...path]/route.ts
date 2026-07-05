@@ -5,8 +5,11 @@ import { getAppEnv } from "@/lib/appEnv";
 import {
   buildLatrGatewayServerAuthHeaders,
   hasLatrGatewayServerCredentials,
+  LATR_FORWARDED_AUTHORIZATION_HEADER,
+  LATR_FORWARDED_DPOP_HEADER,
   LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS,
   LATR_GATEWAY_PROXY_FORWARDED_RESPONSE_HEADERS,
+  LATR_GATEWAY_UPSTREAM_DPOP_HEADER,
   latrGatewayServerCredentialsHelpText,
   latrGatewayUpstreamBaseUrl,
 } from "@/lib/latrGatewayProxyServer";
@@ -14,6 +17,13 @@ import {
 export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
+
+function authorizationScheme(value: string | null): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return "missing";
+  const separator = trimmed.indexOf(" ");
+  return separator > 0 ? trimmed.slice(0, separator) : "present";
+}
 
 async function proxyLatrGateway(
   request: NextRequest,
@@ -36,11 +46,49 @@ async function proxyLatrGateway(
   const headers = new Headers();
   for (const name of LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
-    if (value) headers.set(name, value);
+    if (!value) continue;
+    if (name === "authorization") {
+      headers.set("Authorization", value);
+      headers.set(LATR_FORWARDED_AUTHORIZATION_HEADER, value);
+    } else if (name === "dpop") {
+      headers.set("DPoP", value);
+      headers.set(LATR_FORWARDED_DPOP_HEADER, value);
+    } else if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
+      headers.set(LATR_GATEWAY_UPSTREAM_DPOP_HEADER, value);
+    } else if (name === "x-atproto-upstream-dpop") {
+      headers.set("X-ATProto-Upstream-DPoP", value);
+    } else if (name === "content-type") {
+      headers.set("Content-Type", value);
+    } else if (name === "accept") {
+      headers.set("Accept", value);
+    } else {
+      headers.set(name, value);
+    }
   }
+  headers.set("X-Forwarded-Host", request.nextUrl.host);
+  headers.set("X-Forwarded-Proto", request.nextUrl.protocol.replace(":", ""));
+  headers.set("X-Original-URI", request.nextUrl.pathname + request.nextUrl.search);
   for (const [name, value] of Object.entries(buildLatrGatewayServerAuthHeaders())) {
     headers.set(name, value);
   }
+  const authDebug = {
+    inAuth: authorizationScheme(request.headers.get("authorization")),
+    inDpop: request.headers.has("dpop") ? "present" : "missing",
+    inLatrDpop: request.headers.has(LATR_GATEWAY_UPSTREAM_DPOP_HEADER)
+      ? "present"
+      : "missing",
+    inUpstreamDpop: request.headers.has("x-atproto-upstream-dpop")
+      ? "present"
+      : "missing",
+    outAuth: authorizationScheme(headers.get("Authorization")),
+    outDpop: headers.has("DPoP") ? "present" : "missing",
+    outUpstreamDpop: headers.has("X-ATProto-Upstream-DPoP")
+      ? "present"
+      : "missing",
+    outForwardedDpop: headers.has(LATR_FORWARDED_DPOP_HEADER)
+      ? "present"
+      : "missing",
+  };
 
   const body =
     request.method === "GET" || request.method === "HEAD"
@@ -69,6 +117,12 @@ async function proxyLatrGateway(
 
   const upstreamText = await upstream.text();
   if (upstream.status >= 400 && getAppEnv() !== "prod") {
+    responseHeaders.set(
+      "X-Latr-Proxy-Auth-Debug",
+      Object.entries(authDebug)
+        .map(([key, value]) => `${key}:${value}`)
+        .join(";")
+    );
     try {
       const upstreamError = (JSON.parse(upstreamText) as { error?: string }).error?.trim();
       if (upstreamError) {
