@@ -5,6 +5,8 @@ import { getAppEnv } from "@/lib/appEnv";
 import {
   buildLatrGatewayServerAuthHeaders,
   hasLatrGatewayServerCredentials,
+  LATR_FORWARDED_AUTHORIZATION_HEADER,
+  LATR_FORWARDED_DPOP_HEADER,
   LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS,
   LATR_GATEWAY_PROXY_FORWARDED_RESPONSE_HEADERS,
   LATR_GATEWAY_UPSTREAM_DPOP_HEADER,
@@ -47,8 +49,12 @@ async function proxyLatrGateway(
     if (!value) continue;
     if (name === "authorization") {
       headers.set("Authorization", value);
-    } else if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
+      headers.set(LATR_FORWARDED_AUTHORIZATION_HEADER, value);
+    } else if (name === "dpop") {
       headers.set("DPoP", value);
+      headers.set(LATR_FORWARDED_DPOP_HEADER, value);
+    } else if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
+      headers.set(LATR_GATEWAY_UPSTREAM_DPOP_HEADER, value);
     } else if (name === "x-atproto-upstream-dpop") {
       headers.set("X-ATProto-Upstream-DPoP", value);
     } else if (name === "content-type") {
@@ -59,6 +65,9 @@ async function proxyLatrGateway(
       headers.set(name, value);
     }
   }
+  headers.set("X-Forwarded-Host", request.nextUrl.host);
+  headers.set("X-Forwarded-Proto", request.nextUrl.protocol.replace(":", ""));
+  headers.set("X-Original-URI", request.nextUrl.pathname + request.nextUrl.search);
   for (const [name, value] of Object.entries(buildLatrGatewayServerAuthHeaders())) {
     headers.set(name, value);
   }
@@ -74,6 +83,9 @@ async function proxyLatrGateway(
     outAuth: authorizationScheme(headers.get("Authorization")),
     outDpop: headers.has("DPoP") ? "present" : "missing",
     outUpstreamDpop: headers.has("X-ATProto-Upstream-DPoP")
+      ? "present"
+      : "missing",
+    outForwardedDpop: headers.has(LATR_FORWARDED_DPOP_HEADER)
       ? "present"
       : "missing",
   };

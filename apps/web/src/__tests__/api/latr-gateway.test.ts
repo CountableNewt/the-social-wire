@@ -75,9 +75,22 @@ describe("GET /api/latr-gateway/[...path]", () => {
       "https://api.testing.latr.link/v1/latr/saves?limit=25"
     );
     expect(upstreamHeaders.get("Authorization")).toBe("Bearer user-token");
-    expect(upstreamHeaders.get("DPoP")).toBe("latr-gateway-proof");
-    expect(upstreamHeaders.get("X-Latr-Gateway-DPoP")).toBeNull();
+    expect(upstreamHeaders.get("DPoP")).toBe("same-origin-proof");
+    expect(upstreamHeaders.get("X-Latr-Forwarded-Authorization")).toBe(
+      "Bearer user-token"
+    );
+    expect(upstreamHeaders.get("X-Latr-Forwarded-DPoP")).toBe(
+      "same-origin-proof"
+    );
+    expect(upstreamHeaders.get("X-Latr-Gateway-DPoP")).toBe("latr-gateway-proof");
     expect(upstreamHeaders.get("X-ATProto-Upstream-DPoP")).toBe("pds-proof");
+    expect(upstreamHeaders.get("X-Forwarded-Host")).toBe(
+      "testing.thesocialwire.app"
+    );
+    expect(upstreamHeaders.get("X-Forwarded-Proto")).toBe("https");
+    expect(upstreamHeaders.get("X-Original-URI")).toBe(
+      "/api/latr-gateway/v1/latr/saves?limit=25"
+    );
     expect(upstreamHeaders.get("Accept")).toBe("application/json");
     expect(upstreamHeaders.get("Content-Type")).toBe("application/json");
     expect(upstreamHeaders.get("X-Latr-Official-Client")).toBe("official-secret");
@@ -107,6 +120,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
       {
         headers: {
           Authorization: "Bearer user-token",
+          DPoP: "same-origin-proof",
           "X-Latr-Gateway-DPoP": "latr-gateway-proof",
           "X-ATProto-Upstream-DPoP": "pds-proof",
         },
@@ -120,7 +134,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("X-Latr-Upstream-Error")).toBe("invalid_dpop");
     expect(res.headers.get("X-Latr-Proxy-Auth-Debug")).toBe(
-      "inAuth:Bearer;inDpop:missing;inLatrDpop:present;inUpstreamDpop:present;outAuth:Bearer;outDpop:present;outUpstreamDpop:present"
+      "inAuth:Bearer;inDpop:present;inLatrDpop:present;inUpstreamDpop:present;outAuth:Bearer;outDpop:present;outUpstreamDpop:present;outForwardedDpop:present"
     );
   });
 });
