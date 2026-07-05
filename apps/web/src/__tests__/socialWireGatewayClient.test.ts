@@ -67,9 +67,10 @@ describe("gatewayFetch", () => {
 
   it("retries once with the received DPoP nonce", async () => {
     const gatewayNonces = new Map<string, string>();
-    const dpopClaims: Array<Record<string, string | number>> = [];
+    const gatewayDpopHeaders: string[] = [];
     let calls = 0;
-    const fetchMock = mock(async () => {
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      gatewayDpopHeaders.push(new Headers(init?.headers).get("DPoP") ?? "");
       calls += 1;
       if (calls === 1) {
         return new Response(JSON.stringify({ error: "use_dpop_nonce" }), {
@@ -91,8 +92,9 @@ describe("gatewayFetch", () => {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
           algorithms: ["ES256"],
           createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
-            dpopClaims.push(claims);
-            return "gateway-dpop-proof";
+            return claims.nonce
+              ? `gateway-dpop-proof:${claims.nonce}`
+              : "gateway-dpop-proof";
           },
         },
         dpopNonces: {
@@ -113,7 +115,9 @@ describe("gatewayFetch", () => {
     expect(gatewayNonces.get("https://api.testing.thesocialwire.app")).toBe(
       "fresh-gateway-nonce"
     );
-    expect(dpopClaims[0]?.nonce).toBeUndefined();
-    expect(dpopClaims[1]?.nonce).toBe("fresh-gateway-nonce");
+    expect(gatewayDpopHeaders).toEqual([
+      "gateway-dpop-proof",
+      "gateway-dpop-proof:fresh-gateway-nonce",
+    ]);
   });
 });
