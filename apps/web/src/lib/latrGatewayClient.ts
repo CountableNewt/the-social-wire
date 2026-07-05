@@ -96,23 +96,26 @@ async function buildLatrGatewayProxyRequestHeaders(
   oauthSession: OAuthSession,
   method: string,
   gatewayPath: string,
-  _proxyAuthUrl: string,
+  proxyAuthUrl: string,
   options: { dpopNonce?: string } = {}
 ): Promise<Record<string, string>> {
-  const upstreamUserAuth = await buildLatrGatewayUserAuthHeaders(
+  const proxyUserAuth = await buildLatrGatewayUserAuthHeaders(
+    oauthSession,
+    method,
+    proxyAuthUrl,
+    { useCachedNonce: false }
+  );
+  const latrGatewayUserAuth = await buildLatrGatewayUserAuthHeaders(
     oauthSession,
     method,
     `${latrGatewayBaseUrl()}${gatewayPath}`,
-    {
-      ...options,
-      authorizationScheme: "Bearer",
-    }
+    options
   );
   const headers: Record<string, string> = {
     Accept: "application/json",
-    Authorization: upstreamUserAuth.Authorization,
-    DPoP: upstreamUserAuth.DPoP,
-    [LATR_GATEWAY_DPOP_HEADER]: upstreamUserAuth.DPoP,
+    Authorization: proxyUserAuth.Authorization,
+    DPoP: proxyUserAuth.DPoP,
+    [LATR_GATEWAY_DPOP_HEADER]: latrGatewayUserAuth.DPoP,
   };
 
   const upstreamProof = await buildUpstreamDpopHeader(
@@ -158,7 +161,6 @@ export async function latrGatewayFetch(
     },
   });
 
-  await captureGatewayDpopNonceFromResponse(oauthSession, proxyAuthUrl, res);
   await captureGatewayDpopNonceFromResponse(
     oauthSession,
     `${latrGatewayBaseUrl()}${gatewayPathOnly(gatewayPath)}`,

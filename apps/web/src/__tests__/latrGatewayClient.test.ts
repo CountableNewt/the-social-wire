@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("latrGatewayFetch", () => {
-  it("calls the same-origin proxy and signs DPoP for the upstream L@tr URL", async () => {
+  it("calls the same-origin proxy and splits proxy and upstream L@tr DPoP proofs", async () => {
     Object.defineProperty(globalThis, "location", {
       configurable: true,
       value: new URL("https://testing.thesocialwire.app/saved"),
@@ -37,8 +37,8 @@ describe("latrGatewayFetch", () => {
     const fetchMock = mock(async (url: string, init?: RequestInit) => {
       expect(url).toBe(`${LATR_GATEWAY_PROXY_PREFIX}/v1/latr/og-preview?url=https://example.com`);
       const headers = new Headers(init?.headers);
-      expect(headers.get("Authorization")).toBe("Bearer access-token");
-      expect(headers.get("DPoP")).toBe("latr-dpop-proof");
+      expect(headers.get("Authorization")).toBe("DPoP access-token");
+      expect(headers.get("DPoP")).toBe("same-origin-dpop-proof");
       expect(headers.get(LATR_GATEWAY_DPOP_HEADER)).toBe("latr-dpop-proof");
       expect(headers.get(LATR_CLIENT_ID_HEADER)).toBeNull();
       expect(headers.get(LATR_OFFICIAL_CLIENT_HEADER)).toBeNull();
@@ -76,9 +76,14 @@ describe("latrGatewayFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(dpopClaims[0]?.htm).toBe("GET");
     expect(dpopClaims[0]?.htu).toBe(
-      "https://api.testing.latr.link/v1/latr/og-preview"
+      "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/og-preview"
     );
     expect(dpopClaims[0]?.ath).toBeTruthy();
+    expect(dpopClaims[1]?.htm).toBe("GET");
+    expect(dpopClaims[1]?.htu).toBe(
+      "https://api.testing.latr.link/v1/latr/og-preview"
+    );
+    expect(dpopClaims[1]?.ath).toBeTruthy();
   });
 
   it("retries once when the proxy returns a DPoP nonce challenge", async () => {
@@ -155,9 +160,7 @@ describe("latrGatewayFetch", () => {
     expect(saveCall).toBeDefined();
     const saveHeaders = new Headers(saveCall?.[1]?.headers);
     expect(saveHeaders.get(LATR_UPSTREAM_DPOP_HEADER)).toBeTruthy();
-    expect(gatewayNonces.get("https://testing.thesocialwire.app")).toBe(
-      "fresh-nonce"
-    );
+    expect(gatewayNonces.get("https://testing.thesocialwire.app")).toBeUndefined();
     expect(gatewayNonces.get("https://api.testing.latr.link")).toBe(
       "fresh-nonce"
     );

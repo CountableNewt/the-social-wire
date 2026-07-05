@@ -90,6 +90,7 @@ export async function buildLatrGatewayUserAuthHeaders(
     authorizationScheme?: "Bearer" | "DPoP";
     dpopNonce?: string;
     includeQuery?: boolean;
+    useCachedNonce?: boolean;
   } = {}
 ): Promise<Record<string, string>> {
   const tokenSet = await (oauthSession as SessionWithTokenSet).getTokenSet("auto");
@@ -101,7 +102,10 @@ export async function buildLatrGatewayUserAuthHeaders(
     ? proxyUrl.split("#", 1)[0] ?? proxyUrl
     : stripQueryAndFragment(proxyUrl);
   const nonce =
-    options.dpopNonce ?? (await readCachedGatewayNonce(oauthSession, proxyUrl));
+    options.dpopNonce ??
+    (options.useCachedNonce === false
+      ? undefined
+      : await readCachedGatewayNonce(oauthSession, proxyUrl));
 
   const key = oauthSession.server.dpopKey;
   const jwk = key.bareJwk;
