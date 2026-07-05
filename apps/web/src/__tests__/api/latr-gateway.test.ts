@@ -86,4 +86,41 @@ describe("GET /api/latr-gateway/[...path]", () => {
     expect(res.headers.get("X-Latr-Client-Id")).toBeNull();
     expect(res.headers.get("X-Latr-API-Key")).toBeNull();
   });
+
+  it("emits non-prod auth forwarding diagnostics for upstream errors", async () => {
+    process.env.LATR_GATEWAY_CLIENT_CREDENTIAL = "the-social-wire-web=official-secret";
+    delete process.env.LATR_GATEWAY_CLIENT_ID;
+    delete process.env.LATR_GATEWAY_API_KEY;
+    delete process.env.LATR_GATEWAY_URL;
+    process.env.VERCEL_URL = "testing.thesocialwire.app";
+    process.env.NEXT_PUBLIC_APP_ENV = "test";
+
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({ error: "invalid_dpop" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as unknown as typeof fetch;
+
+    const req = new NextRequest(
+      "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/saves",
+      {
+        headers: {
+          Authorization: "DPoP user-token",
+          "X-Latr-Gateway-DPoP": "latr-gateway-proof",
+          "X-ATProto-Upstream-DPoP": "pds-proof",
+        },
+      }
+    );
+
+    const res = await GET(req, {
+      params: Promise.resolve({ path: ["v1", "latr", "saves"] }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("X-Latr-Upstream-Error")).toBe("invalid_dpop");
+    expect(res.headers.get("X-Latr-Proxy-Auth-Debug")).toBe(
+      "inAuth:DPoP;inDpop:missing;inLatrDpop:present;inUpstreamDpop:present;outAuth:DPoP;outDpop:present;outUpstreamDpop:present"
+    );
+  });
 });

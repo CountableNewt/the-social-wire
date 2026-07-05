@@ -16,6 +16,13 @@ export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
+function authorizationScheme(value: string | null): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return "missing";
+  const separator = trimmed.indexOf(" ");
+  return separator > 0 ? trimmed.slice(0, separator) : "present";
+}
+
 async function proxyLatrGateway(
   request: NextRequest,
   context: RouteContext
@@ -55,6 +62,21 @@ async function proxyLatrGateway(
   for (const [name, value] of Object.entries(buildLatrGatewayServerAuthHeaders())) {
     headers.set(name, value);
   }
+  const authDebug = {
+    inAuth: authorizationScheme(request.headers.get("authorization")),
+    inDpop: request.headers.has("dpop") ? "present" : "missing",
+    inLatrDpop: request.headers.has(LATR_GATEWAY_UPSTREAM_DPOP_HEADER)
+      ? "present"
+      : "missing",
+    inUpstreamDpop: request.headers.has("x-atproto-upstream-dpop")
+      ? "present"
+      : "missing",
+    outAuth: authorizationScheme(headers.get("Authorization")),
+    outDpop: headers.has("DPoP") ? "present" : "missing",
+    outUpstreamDpop: headers.has("X-ATProto-Upstream-DPoP")
+      ? "present"
+      : "missing",
+  };
 
   const body =
     request.method === "GET" || request.method === "HEAD"
@@ -83,6 +105,12 @@ async function proxyLatrGateway(
 
   const upstreamText = await upstream.text();
   if (upstream.status >= 400 && getAppEnv() !== "prod") {
+    responseHeaders.set(
+      "X-Latr-Proxy-Auth-Debug",
+      Object.entries(authDebug)
+        .map(([key, value]) => `${key}:${value}`)
+        .join(";")
+    );
     try {
       const upstreamError = (JSON.parse(upstreamText) as { error?: string }).error?.trim();
       if (upstreamError) {
