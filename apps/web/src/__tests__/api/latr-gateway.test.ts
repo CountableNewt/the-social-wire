@@ -58,6 +58,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
         headers: {
           Authorization: "DPoP user-token",
           DPoP: "same-origin-proof",
+          "X-Latr-Gateway-DPoP": "latr-gateway-proof",
           "X-ATProto-Upstream-DPoP": "pds-proof",
           Accept: "application/json",
           "Content-Type": "application/json",
@@ -74,7 +75,8 @@ describe("GET /api/latr-gateway/[...path]", () => {
       "https://api.testing.latr.link/v1/latr/saves?limit=25"
     );
     expect(upstreamHeaders.get("Authorization")).toBe("DPoP user-token");
-    expect(upstreamHeaders.get("DPoP")).toBe("same-origin-proof");
+    expect(upstreamHeaders.get("DPoP")).toBe("latr-gateway-proof");
+    expect(upstreamHeaders.get("X-Latr-Gateway-DPoP")).toBeNull();
     expect(upstreamHeaders.get("X-ATProto-Upstream-DPoP")).toBe("pds-proof");
     expect(upstreamHeaders.get("Accept")).toBe("application/json");
     expect(upstreamHeaders.get("Content-Type")).toBe("application/json");

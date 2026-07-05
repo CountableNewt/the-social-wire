@@ -7,6 +7,7 @@ import {
   hasLatrGatewayServerCredentials,
   LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS,
   LATR_GATEWAY_PROXY_FORWARDED_RESPONSE_HEADERS,
+  LATR_GATEWAY_UPSTREAM_DPOP_HEADER,
   latrGatewayServerCredentialsHelpText,
   latrGatewayUpstreamBaseUrl,
 } from "@/lib/latrGatewayProxyServer";
@@ -36,7 +37,12 @@ async function proxyLatrGateway(
   const headers = new Headers();
   for (const name of LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
-    if (value) headers.set(name, value);
+    if (!value) continue;
+    if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
+      headers.set("DPoP", value);
+    } else {
+      headers.set(name, value);
+    }
   }
   for (const [name, value] of Object.entries(buildLatrGatewayServerAuthHeaders())) {
     headers.set(name, value);

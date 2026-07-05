@@ -22,9 +22,11 @@ import {
   captureGatewayDpopNonceFromResponse,
   latrGatewayProxyAuthUrl,
 } from "@/lib/latrGatewayUserAuth";
+import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 
 /** Legacy official first-party credential header (server proxy only). */
 export const LATR_OFFICIAL_CLIENT_HEADER = "X-Latr-Official-Client";
+export const LATR_GATEWAY_DPOP_HEADER = "X-Latr-Gateway-DPoP";
 
 export {
   LATR_API_KEY_HEADER,
@@ -69,11 +71,18 @@ async function buildLatrGatewayProxyRequestHeaders(
     oauthSession,
     method,
     proxyAuthUrl,
+    {}
+  );
+  const upstreamUserAuth = await buildLatrGatewayUserAuthHeaders(
+    oauthSession,
+    method,
+    `${latrGatewayBaseUrl()}${gatewayPath}`,
     options
   );
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...userAuth,
+    [LATR_GATEWAY_DPOP_HEADER]: upstreamUserAuth.DPoP,
   };
 
   const upstreamProof = await buildUpstreamDpopHeader(

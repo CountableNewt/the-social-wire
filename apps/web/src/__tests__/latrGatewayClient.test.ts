@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 
 import { resetLatrGatewayAuthRejectedForTests } from "@/lib/latrGatewayCredentials";
 import {
+  LATR_GATEWAY_DPOP_HEADER,
   LATR_CLIENT_ID_HEADER,
   LATR_OFFICIAL_CLIENT_HEADER,
   LATR_UPSTREAM_DPOP_HEADER,
@@ -31,13 +32,14 @@ describe("latrGatewayFetch", () => {
       configurable: true,
       value: new URL("https://testing.thesocialwire.app/saved"),
     });
-    let dpopClaims: Record<string, string | number> | undefined;
+    const dpopClaims: Array<Record<string, string | number>> = [];
 
     const fetchMock = mock(async (url: string, init?: RequestInit) => {
       expect(url).toBe(`${LATR_GATEWAY_PROXY_PREFIX}/v1/latr/og-preview?url=https://example.com`);
       const headers = new Headers(init?.headers);
       expect(headers.get("Authorization")).toBe("DPoP access-token");
       expect(headers.get("DPoP")).toBe("gateway-dpop-proof");
+      expect(headers.get(LATR_GATEWAY_DPOP_HEADER)).toBe("gateway-dpop-proof");
       expect(headers.get(LATR_CLIENT_ID_HEADER)).toBeNull();
       expect(headers.get(LATR_OFFICIAL_CLIENT_HEADER)).toBeNull();
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -54,7 +56,7 @@ describe("latrGatewayFetch", () => {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
           algorithms: ["ES256"],
           createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
-            dpopClaims = claims;
+            dpopClaims.push(claims);
             return "gateway-dpop-proof";
           },
         },
@@ -70,11 +72,12 @@ describe("latrGatewayFetch", () => {
       method: "GET",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(dpopClaims?.htm).toBe("GET");
-    expect(dpopClaims?.htu).toBe(
+    expect(dpopClaims[0]?.htm).toBe("GET");
+    expect(dpopClaims[0]?.htu).toBe(
       "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/og-preview"
     );
-    expect(dpopClaims?.ath).toBeTruthy();
+    expect(dpopClaims[0]?.ath).toBeTruthy();
+    expect(dpopClaims[1]?.htu).toBe("https://api.testing.latr.link/v1/latr/og-preview");
   });
 
   it("retries once when the proxy returns a DPoP nonce challenge", async () => {
@@ -157,9 +160,14 @@ describe("latrGatewayFetch", () => {
     const gatewayBoundClaims = dpopClaims.filter((claims) =>
       String(claims.htu).includes("/api/latr-gateway/")
     );
+    const latrBoundClaims = dpopClaims.filter((claims) =>
+      String(claims.htu).startsWith("https://api.testing.latr.link/")
+    );
     expect(gatewayBoundClaims[0]?.htu).toBe(
       "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/saves"
     );
-    expect(gatewayBoundClaims[1]?.nonce).toBe("fresh-nonce");
+    expect(latrBoundClaims[0]?.htu).toBe("https://api.testing.latr.link/v1/latr/saves");
+    expect(latrBoundClaims[0]?.nonce).toBeUndefined();
+    expect(latrBoundClaims[1]?.nonce).toBe("fresh-nonce");
   });
 });
