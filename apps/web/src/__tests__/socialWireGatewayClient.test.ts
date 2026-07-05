@@ -29,10 +29,19 @@ describe("gatewayFetch", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const oauthSession = {
+      did: "did:plc:viewer",
       getTokenSet: async () => ({
         access_token: "access-token",
         token_type: "DPoP",
       }),
+      getTokenInfo: async () => ({
+        aud: "https://jellybaby.us-east.host.bsky.network",
+      }),
+      fetchHandler: async () =>
+        new Response(JSON.stringify({ records: [] }), {
+          status: 200,
+          headers: { "DPoP-Nonce": "fresh-pds-nonce" },
+        }),
       server: {
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
@@ -83,10 +92,19 @@ describe("gatewayFetch", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const oauthSession = {
+      did: "did:plc:viewer",
       getTokenSet: async () => ({
         access_token: "access-token",
         token_type: "DPoP",
       }),
+      getTokenInfo: async () => ({
+        aud: "https://jellybaby.us-east.host.bsky.network",
+      }),
+      fetchHandler: async () =>
+        new Response(JSON.stringify({ records: [] }), {
+          status: 200,
+          headers: { "DPoP-Nonce": "fresh-pds-nonce" },
+        }),
       server: {
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
