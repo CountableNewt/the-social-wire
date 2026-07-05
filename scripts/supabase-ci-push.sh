@@ -112,13 +112,12 @@ auth_failure_help() {
 push_via_database_url() {
   local url="$1"
   echo "::notice::db push → Supabase **${ENV_LABEL}** via session pooler DATABASE_URL"
-  if supabase db push --db-url "$url" --yes; then
+  if supabase db push --db-url "$url" --include-all --yes; then
     return 0
   fi
 
   echo '::error::db push via DATABASE_URL failed.' >&2
-  auth_failure_help false
-  echo '::error::Confirm port **5432** (Session mode), user **postgres.[project-ref]**, and URL-encoded password in the URI.' >&2
+  echo '::error::See the Supabase CLI error above for the concrete cause.' >&2
   exit 1
 }
 
@@ -139,8 +138,12 @@ push_via_link_and_password() {
   echo "::notice::db push → Supabase **${ENV_LABEL}** project ref ${REF} (link + password → pooler)"
   export SUPABASE_DB_PASSWORD="$db_pass"
   supabase link --project-ref "${REF}" --yes
-  if ! supabase db push --yes; then
-    auth_failure_help "$used_fallback"
+  if ! supabase db push --include-all --yes; then
+    echo '::error::db push via linked project failed.' >&2
+    if [ "$used_fallback" = "true" ]; then
+      echo "::error::Your $(env_secret_name DATABASE_URL) is still a direct db.* URL, so CI used the password fallback. Fix the pooler URI secret first." >&2
+    fi
+    echo '::error::See the Supabase CLI error above for the concrete cause.' >&2
     exit 1
   fi
 }
