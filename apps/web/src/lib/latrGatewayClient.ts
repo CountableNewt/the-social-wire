@@ -64,15 +64,9 @@ async function buildLatrGatewayProxyRequestHeaders(
   oauthSession: OAuthSession,
   method: string,
   gatewayPath: string,
-  proxyAuthUrl: string,
+  _proxyAuthUrl: string,
   options: { dpopNonce?: string } = {}
 ): Promise<Record<string, string>> {
-  const userAuth = await buildLatrGatewayUserAuthHeaders(
-    oauthSession,
-    method,
-    proxyAuthUrl,
-    {}
-  );
   const upstreamUserAuth = await buildLatrGatewayUserAuthHeaders(
     oauthSession,
     method,
@@ -81,7 +75,8 @@ async function buildLatrGatewayProxyRequestHeaders(
   );
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...userAuth,
+    Authorization: upstreamUserAuth.Authorization,
+    DPoP: upstreamUserAuth.DPoP,
     [LATR_GATEWAY_DPOP_HEADER]: upstreamUserAuth.DPoP,
   };
 
@@ -129,6 +124,11 @@ export async function latrGatewayFetch(
   });
 
   await captureGatewayDpopNonceFromResponse(oauthSession, proxyAuthUrl, res);
+  await captureGatewayDpopNonceFromResponse(
+    oauthSession,
+    `${latrGatewayBaseUrl()}${gatewayPathOnly(gatewayPath)}`,
+    res
+  );
 
   if (attempt === 0 && shouldRetryLatrGatewayDpopNonce(res)) {
     const retryNonce =
