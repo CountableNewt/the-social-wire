@@ -203,7 +203,7 @@ describe("latrGatewayFetch", () => {
           algorithms: ["ES256"],
           createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
             dpopClaims.push(claims);
-            return String(claims.htu).includes("/xrpc/com.atproto.repo.listRecords?")
+            return String(claims.htu).endsWith("/xrpc/com.atproto.repo.listRecords")
               ? "list-records-proof"
               : "latr-dpop-proof";
           },
@@ -219,12 +219,12 @@ describe("latrGatewayFetch", () => {
     await latrGatewayFetch(oauthSession, "/v1/latr/saves", { method: "GET" });
 
     const upstreamClaims = dpopClaims.find((claims) =>
-      String(claims.htu).includes("/xrpc/com.atproto.repo.listRecords?")
+      String(claims.htu).endsWith("/xrpc/com.atproto.repo.listRecords")
     );
     expect(upstreamClaims?.htm).toBe("GET");
-    expect(upstreamClaims?.htu).toContain("repo=did%3Aplc%3Aviewer");
-    expect(upstreamClaims?.htu).toContain("collection=link.latr.saved.item");
-    expect(upstreamClaims?.htu).toContain("limit=100");
+    expect(upstreamClaims?.htu).toBe(
+      "https://jellybaby.us-east.host.bsky.network/xrpc/com.atproto.repo.listRecords"
+    );
     expect(upstreamClaims?.nonce).toBe("pds-nonce");
   });
 });

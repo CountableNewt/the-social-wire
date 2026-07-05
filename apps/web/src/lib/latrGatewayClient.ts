@@ -69,7 +69,6 @@ async function buildUpstreamDpopHeader(
           "com.atproto.repo.listRecords",
           "GET"
         ),
-        includeQuery: true,
       }
     );
     return DPoP;

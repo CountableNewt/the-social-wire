@@ -38,8 +38,16 @@ async function proxyLatrGateway(
   for (const name of LATR_GATEWAY_PROXY_FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (!value) continue;
-    if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
+    if (name === "authorization") {
+      headers.set("Authorization", value);
+    } else if (name === LATR_GATEWAY_UPSTREAM_DPOP_HEADER) {
       headers.set("DPoP", value);
+    } else if (name === "x-atproto-upstream-dpop") {
+      headers.set("X-ATProto-Upstream-DPoP", value);
+    } else if (name === "content-type") {
+      headers.set("Content-Type", value);
+    } else if (name === "accept") {
+      headers.set("Accept", value);
     } else {
       headers.set(name, value);
     }
