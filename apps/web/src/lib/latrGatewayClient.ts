@@ -14,6 +14,7 @@ import { latrGatewayErrorMessage } from "@/lib/latrGatewayErrors";
 import {
   createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
+  refreshPdsDpopNonce,
 } from "latr-packages/gateway-client";
 import { latrGatewayProxyPath } from "@/lib/latrGatewayProxyPath";
 import {
@@ -62,7 +63,14 @@ async function buildUpstreamDpopHeader(
       oauthSession,
       "GET",
       `${pdsBase}/xrpc/com.atproto.repo.listRecords?${params}`,
-      { includeQuery: true }
+      {
+        dpopNonce: await refreshPdsDpopNonce(
+          oauthSession,
+          "com.atproto.repo.listRecords",
+          "GET"
+        ),
+        includeQuery: true,
+      }
     );
     return DPoP;
   }

@@ -192,6 +192,11 @@ describe("latrGatewayFetch", () => {
       getTokenInfo: async () => ({
         aud: "https://jellybaby.us-east.host.bsky.network",
       }),
+      fetchHandler: async () =>
+        new Response(JSON.stringify({ records: [] }), {
+          status: 200,
+          headers: { "DPoP-Nonce": "pds-nonce" },
+        }),
       server: {
         dpopKey: {
           bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
@@ -220,5 +225,6 @@ describe("latrGatewayFetch", () => {
     expect(upstreamClaims?.htu).toContain("repo=did%3Aplc%3Aviewer");
     expect(upstreamClaims?.htu).toContain("collection=link.latr.saved.item");
     expect(upstreamClaims?.htu).toContain("limit=100");
+    expect(upstreamClaims?.nonce).toBe("pds-nonce");
   });
 });
