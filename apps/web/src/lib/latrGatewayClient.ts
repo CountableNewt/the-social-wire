@@ -12,7 +12,6 @@ import {
 } from "@/lib/latrGatewayCredentials";
 import { latrGatewayErrorMessage } from "@/lib/latrGatewayErrors";
 import {
-  createSaveUpstreamDpopProofPool,
   createUpstreamDpopProof,
   pdsXrpcMethodForGatewayRequest,
 } from "latr-packages/gateway-client";
@@ -47,7 +46,11 @@ async function buildUpstreamDpopHeader(
   gatewayPath: string
 ): Promise<string | undefined> {
   if (method === "POST" && gatewayPath === "/v1/latr/saves") {
-    return createSaveUpstreamDpopProofPool(oauthSession);
+    return createUpstreamDpopProof(
+      oauthSession,
+      "com.atproto.repo.putRecord",
+      "POST"
+    );
   }
 
   const upstream = pdsXrpcMethodForGatewayRequest(method, gatewayPath);
