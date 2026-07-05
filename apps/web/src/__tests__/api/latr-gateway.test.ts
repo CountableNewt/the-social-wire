@@ -56,7 +56,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
       "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/saves?limit=25",
       {
         headers: {
-          Authorization: "DPoP user-token",
+          Authorization: "Bearer user-token",
           DPoP: "same-origin-proof",
           "X-Latr-Gateway-DPoP": "latr-gateway-proof",
           "X-ATProto-Upstream-DPoP": "pds-proof",
@@ -74,7 +74,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
     expect(String(upstreamUrl)).toBe(
       "https://api.testing.latr.link/v1/latr/saves?limit=25"
     );
-    expect(upstreamHeaders.get("Authorization")).toBe("DPoP user-token");
+    expect(upstreamHeaders.get("Authorization")).toBe("Bearer user-token");
     expect(upstreamHeaders.get("DPoP")).toBe("latr-gateway-proof");
     expect(upstreamHeaders.get("X-Latr-Gateway-DPoP")).toBeNull();
     expect(upstreamHeaders.get("X-ATProto-Upstream-DPoP")).toBe("pds-proof");
@@ -106,7 +106,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
       "https://testing.thesocialwire.app/api/latr-gateway/v1/latr/saves",
       {
         headers: {
-          Authorization: "DPoP user-token",
+          Authorization: "Bearer user-token",
           "X-Latr-Gateway-DPoP": "latr-gateway-proof",
           "X-ATProto-Upstream-DPoP": "pds-proof",
         },
@@ -120,7 +120,7 @@ describe("GET /api/latr-gateway/[...path]", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("X-Latr-Upstream-Error")).toBe("invalid_dpop");
     expect(res.headers.get("X-Latr-Proxy-Auth-Debug")).toBe(
-      "inAuth:DPoP;inDpop:missing;inLatrDpop:present;inUpstreamDpop:present;outAuth:DPoP;outDpop:present;outUpstreamDpop:present"
+      "inAuth:Bearer;inDpop:missing;inLatrDpop:present;inUpstreamDpop:present;outAuth:Bearer;outDpop:present;outUpstreamDpop:present"
     );
   });
 });

@@ -37,7 +37,7 @@ describe("latrGatewayFetch", () => {
     const fetchMock = mock(async (url: string, init?: RequestInit) => {
       expect(url).toBe(`${LATR_GATEWAY_PROXY_PREFIX}/v1/latr/og-preview?url=https://example.com`);
       const headers = new Headers(init?.headers);
-      expect(headers.get("Authorization")).toBe("DPoP access-token");
+      expect(headers.get("Authorization")).toBe("Bearer access-token");
       expect(headers.get("DPoP")).toBe("latr-dpop-proof");
       expect(headers.get(LATR_GATEWAY_DPOP_HEADER)).toBe("latr-dpop-proof");
       expect(headers.get(LATR_CLIENT_ID_HEADER)).toBeNull();

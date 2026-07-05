@@ -103,7 +103,10 @@ async function buildLatrGatewayProxyRequestHeaders(
     oauthSession,
     method,
     `${latrGatewayBaseUrl()}${gatewayPath}`,
-    options
+    {
+      ...options,
+      authorizationScheme: "Bearer",
+    }
   );
   const headers: Record<string, string> = {
     Accept: "application/json",
