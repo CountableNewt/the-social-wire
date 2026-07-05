@@ -168,4 +168,57 @@ describe("latrGatewayFetch", () => {
     expect(latrBoundClaims[0]?.nonce).toBeUndefined();
     expect(latrBoundClaims[1]?.nonce).toBe("fresh-nonce");
   });
+
+  it("signs GET saves upstream DPoP for the concrete listRecords URL", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: new URL("https://testing.thesocialwire.app/saved"),
+    });
+    const dpopClaims: Array<Record<string, string | number>> = [];
+
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get(LATR_UPSTREAM_DPOP_HEADER)).toBe("list-records-proof");
+      return new Response(JSON.stringify({ records: [] }), { status: 200 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const oauthSession = {
+      did: "did:plc:viewer",
+      getTokenSet: async () => ({
+        access_token: "access-token",
+        token_type: "DPoP",
+      }),
+      getTokenInfo: async () => ({
+        aud: "https://jellybaby.us-east.host.bsky.network",
+      }),
+      server: {
+        dpopKey: {
+          bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
+          algorithms: ["ES256"],
+          createJwt: async (_header: unknown, claims: Record<string, string | number>) => {
+            dpopClaims.push(claims);
+            return String(claims.htu).includes("/xrpc/com.atproto.repo.listRecords?")
+              ? "list-records-proof"
+              : "latr-dpop-proof";
+          },
+        },
+        dpopNonces: {
+          get: async () => undefined,
+          set: async () => {},
+        },
+        serverMetadata: { dpop_signing_alg_values_supported: ["ES256"] },
+      },
+    } as never;
+
+    await latrGatewayFetch(oauthSession, "/v1/latr/saves", { method: "GET" });
+
+    const upstreamClaims = dpopClaims.find((claims) =>
+      String(claims.htu).includes("/xrpc/com.atproto.repo.listRecords?")
+    );
+    expect(upstreamClaims?.htm).toBe("GET");
+    expect(upstreamClaims?.htu).toContain("repo=did%3Aplc%3Aviewer");
+    expect(upstreamClaims?.htu).toContain("collection=link.latr.saved.item");
+    expect(upstreamClaims?.htu).toContain("limit=100");
+  });
 });

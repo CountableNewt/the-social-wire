@@ -86,12 +86,14 @@ export async function buildLatrGatewayUserAuthHeaders(
   oauthSession: OAuthSession,
   method: string,
   proxyUrl: string,
-  options: { dpopNonce?: string } = {}
+  options: { dpopNonce?: string; includeQuery?: boolean } = {}
 ): Promise<Record<string, string>> {
   const tokenSet = await (oauthSession as SessionWithTokenSet).getTokenSet("auto");
   const authorization = `${tokenSet.token_type} ${tokenSet.access_token}`;
   const ath = await sha256Base64Url(tokenSet.access_token);
-  const htu = stripQueryAndFragment(proxyUrl);
+  const htu = options.includeQuery
+    ? proxyUrl.split("#", 1)[0] ?? proxyUrl
+    : stripQueryAndFragment(proxyUrl);
   const nonce =
     options.dpopNonce ?? (await readCachedGatewayNonce(oauthSession, proxyUrl));
 

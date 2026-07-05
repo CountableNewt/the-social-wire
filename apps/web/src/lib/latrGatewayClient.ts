@@ -22,6 +22,7 @@ import {
   latrGatewayProxyAuthUrl,
 } from "@/lib/latrGatewayUserAuth";
 import { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
+import { COLLECTION_LATR_SAVED_ITEM } from "@/lib/latrCollections";
 
 /** Legacy official first-party credential header (server proxy only). */
 export const LATR_OFFICIAL_CLIENT_HEADER = "X-Latr-Official-Client";
@@ -35,6 +36,10 @@ export {
 
 export { latrGatewayBaseUrl } from "@/lib/latrGatewayUrl";
 
+type SessionWithTokenInfo = OAuthSession & {
+  getTokenInfo(): Promise<{ aud: string }>;
+};
+
 function shouldRetryLatrGatewayDpopNonce(res: Response): boolean {
   if (res.status !== 401 && res.status !== 400) return false;
   return Boolean(res.headers.get("DPoP-Nonce")?.trim());
@@ -45,6 +50,23 @@ async function buildUpstreamDpopHeader(
   method: string,
   gatewayPath: string
 ): Promise<string | undefined> {
+  if (method === "GET" && gatewayPath === "/v1/latr/saves") {
+    const tokenInfo = await (oauthSession as SessionWithTokenInfo).getTokenInfo();
+    const pdsBase = tokenInfo.aud.replace(/\/$/, "");
+    const params = new URLSearchParams({
+      repo: oauthSession.did,
+      collection: COLLECTION_LATR_SAVED_ITEM,
+      limit: "100",
+    });
+    const { DPoP } = await buildLatrGatewayUserAuthHeaders(
+      oauthSession,
+      "GET",
+      `${pdsBase}/xrpc/com.atproto.repo.listRecords?${params}`,
+      { includeQuery: true }
+    );
+    return DPoP;
+  }
+
   if (method === "POST" && gatewayPath === "/v1/latr/saves") {
     return createUpstreamDpopProof(
       oauthSession,
