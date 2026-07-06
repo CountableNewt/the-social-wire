@@ -7,3 +7,5 @@ struct RepoRecord<Value: Codable & Sendable>: Codable, Identifiable, Sendable {
 
     var id: String { uri }
 }
+
+extension RepoRecord: Equatable where Value: Equatable {}
