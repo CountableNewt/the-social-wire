@@ -31,7 +31,7 @@ export function AddPublicationDialog() {
         render={
           <Button
             variant="ghost"
-            className={cn(SIDEBAR_GLASS_ROW_ACTION)}
+            className={cn(SIDEBAR_GLASS_ROW_ACTION, "px-2")}
           />
         }
       >

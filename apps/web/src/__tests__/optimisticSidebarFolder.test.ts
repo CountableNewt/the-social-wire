@@ -7,6 +7,7 @@ import {
   removeFolderFromSidebarProjection,
   removeOptimisticFolderFromProjection,
   replaceOptimisticFolderInProjection,
+  updateFolderInSidebarProjection,
 } from "@/lib/optimisticSidebarFolder";
 
 const publicationRow = {
@@ -130,6 +131,29 @@ describe("optimisticSidebarFolder", () => {
 
     expect(next?.folders).toEqual([]);
     expect(next?.folderSections).toBeUndefined();
+  });
+
+  test("updateFolderInSidebarProjection renames folders and clears icons", () => {
+    const projection: PublicationSidebarProjection = {
+      ...baseProjection,
+      folders: [
+        {
+          uri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+          rkey: "folder1",
+          value: { name: "Tech", icon: "code", iconImage: "https://example.com/icon.png" },
+        },
+      ],
+    };
+
+    const next = updateFolderInSidebarProjection(projection, "folder1", {
+      name: "Engineering",
+      icon: "",
+      iconImage: "",
+    });
+
+    expect(next?.folders[0]?.value.name).toBe("Engineering");
+    expect(next?.folders[0]?.value.icon).toBeUndefined();
+    expect(next?.folders[0]?.value.iconImage).toBeUndefined();
   });
 
   test("removeFolderFromSidebarProjection restores publications to Publications", () => {

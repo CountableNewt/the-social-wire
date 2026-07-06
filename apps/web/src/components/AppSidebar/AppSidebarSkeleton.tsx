@@ -8,7 +8,7 @@ export function AppSidebarSkeleton({ count }: { count: number }) {
     <>
       {Array.from({ length: count }).map((_, i) => (
         <SidebarMenuItem key={i}>
-          <Skeleton className="h-9 w-full rounded-lg" />
+          <Skeleton className="h-7 w-full rounded-lg" />
         </SidebarMenuItem>
       ))}
     </>

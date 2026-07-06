@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronRight, Folder } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
 import {
   SidebarMenuBadge,
@@ -24,6 +25,8 @@ import type {
 } from "@/lib/pdsClient";
 import { useDeleteFolder } from "@/hooks/useFolders";
 import { rkeyFromURI } from "@/lib/pdsClient";
+import { EditFolderDialog } from "./EditFolderDialog";
+import { FolderIconGlyph } from "./FolderIcon";
 
 export type FolderBranchDisplay = Pick<
   RepoRecord<FolderRecord>["value"],
@@ -69,6 +72,7 @@ export function FolderBranch({
   publicationsLoading = false,
 }: FolderBranchProps) {
   const deleteFolder = useDeleteFolder();
+  const [editOpen, setEditOpen] = useState(false);
   const folderRkey = rkeyFromURI(folderUri);
   const subId = `sidebar-folder-sub-${expandKey.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const folderUnread = sumUnreadForPublications(
@@ -77,126 +81,109 @@ export function FolderBranch({
   );
 
   return (
-    <SidebarMenuItem>
-      <SidebarReadBulkMenuWrap
-        publications={publications}
-        gatewayScopes={
-          folderRkey ? [{ kind: "folder", folderRkey }] : undefined
-        }
-        markAllReadConfirmation={
-          <>
-            This marks every cached article in the folder &quot;{folder.name}&quot; as read.
-            Entries that have not been loaded yet stay unchanged until you open them.
-          </>
-        }
-        destructiveAction={{
-          label: "Delete Folder",
-          confirmationTitle: "Delete Folder?",
-          confirmationDescription: (
+    <>
+      <SidebarMenuItem>
+        <SidebarReadBulkMenuWrap
+          publications={publications}
+          gatewayScopes={
+            folderRkey ? [{ kind: "folder", folderRkey }] : undefined
+          }
+          markAllReadConfirmation={
             <>
-              Delete &quot;{folder.name}&quot; and move its publications back to Publications.
-              This cannot be undone.
+              This marks every cached article in the folder &quot;{folder.name}&quot; as read.
+              Entries that have not been loaded yet stay unchanged until you open them.
             </>
-          ),
-          pending: deleteFolder.isPending,
-          onConfirm: () => {
-            deleteFolder.mutate(folderUri);
-          },
-        }}
-      >
-        <SidebarMenuButton
-          type="button"
-          isActive={isActive}
-          onClick={onToggleExpanded}
-          aria-expanded={expanded}
-          aria-controls={subId}
-          className={cn(
-            "gap-2",
-            folderUnread > 0 && "relative pr-8"
-          )}
+          }
+          menuActions={[
+            {
+              label: "Edit Folder",
+              onSelect: () => setEditOpen(true),
+            },
+          ]}
+          destructiveAction={{
+            label: "Delete Folder",
+            confirmationTitle: "Delete Folder?",
+            confirmationDescription: (
+              <>
+                Delete &quot;{folder.name}&quot; and move its publications back to Publications.
+                This cannot be undone.
+              </>
+            ),
+            pending: deleteFolder.isPending,
+            onConfirm: () => {
+              deleteFolder.mutate(folderUri);
+            },
+          }}
         >
-          <ChevronRight
+          <SidebarMenuButton
+            type="button"
+            isActive={isActive}
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            aria-controls={subId}
             className={cn(
-              "size-4 shrink-0 transition-transform",
-              expanded && "rotate-90"
+              "gap-2",
+              folderUnread > 0 && "relative pr-8"
             )}
-            aria-hidden
-          />
-          <FolderGlyph
-            icon={folder.icon}
-            iconImage={folder.iconImage}
-            name={folder.name}
-          />
-          <span className="min-w-0 flex-1 truncate text-left">{folder.name}</span>
-          {nameSuffix ? (
-            <span className="text-muted-foreground shrink-0 text-[10px] leading-none">
-              {nameSuffix}
-            </span>
-          ) : null}
-          {folderUnread > 0 ? (
-            <SidebarMenuBadge aria-label={`${folderUnread} unread`}>
-              {folderUnread}
-            </SidebarMenuBadge>
-          ) : null}
-        </SidebarMenuButton>
-      </SidebarReadBulkMenuWrap>
-      {expanded ? (
-        <SidebarMenuSub id={subId} aria-label={folder.name} className="mt-1.5">
-          {publicationsLoading && publications.length === 0 ? (
-            <SidebarSubMenuSkeletonRows count={2} />
-          ) : publications.length === 0 ? (
-            <SidebarMenuSubItem>
-              <span className="block min-w-0 break-words px-2 py-0.5 text-xs text-muted-foreground">
-                {emptyLabel}
+          >
+            <ChevronRight
+              className={cn(
+                "size-4 shrink-0 transition-transform",
+                expanded && "rotate-90"
+              )}
+              aria-hidden
+            />
+            <FolderIconGlyph
+              icon={folder.icon}
+              iconImage={folder.iconImage}
+              name={folder.name}
+            />
+            <span className="min-w-0 flex-1 truncate text-left">{folder.name}</span>
+            {nameSuffix ? (
+              <span className="text-muted-foreground shrink-0 text-[10px] leading-none">
+                {nameSuffix}
               </span>
-            </SidebarMenuSubItem>
-          ) : (
-            publications.map((pub) => (
-              <PublicationSubItem
-                key={pub.publicationId}
-                publication={pub}
-                unreadCount={publicationUnreadCounts.get(pub.publicationId) ?? 0}
-                isSelected={selectedPubId === pub.publicationId}
-                onSelect={onSelectPub}
-                folders={folders}
-                prefsMap={prefsMap}
-                sidebarTab={sidebarTab}
-              />
-            ))
-          )}
-        </SidebarMenuSub>
-      ) : null}
-    </SidebarMenuItem>
+            ) : null}
+            {folderUnread > 0 ? (
+              <SidebarMenuBadge aria-label={`${folderUnread} unread`}>
+                {folderUnread}
+              </SidebarMenuBadge>
+            ) : null}
+          </SidebarMenuButton>
+        </SidebarReadBulkMenuWrap>
+        {expanded ? (
+          <SidebarMenuSub id={subId} aria-label={folder.name} className="mt-0.5 pl-5">
+            {publicationsLoading && publications.length === 0 ? (
+              <SidebarSubMenuSkeletonRows count={2} />
+            ) : publications.length === 0 ? (
+              <SidebarMenuSubItem>
+                <span className="block min-w-0 break-words px-2 py-0.5 text-xs text-muted-foreground">
+                  {emptyLabel}
+                </span>
+              </SidebarMenuSubItem>
+            ) : (
+              publications.map((pub) => (
+                <PublicationSubItem
+                  key={pub.publicationId}
+                  publication={pub}
+                  unreadCount={publicationUnreadCounts.get(pub.publicationId) ?? 0}
+                  isSelected={selectedPubId === pub.publicationId}
+                  onSelect={onSelectPub}
+                  folders={folders}
+                  prefsMap={prefsMap}
+                  sidebarTab={sidebarTab}
+                />
+              ))
+            )}
+          </SidebarMenuSub>
+        ) : null}
+      </SidebarMenuItem>
+      <EditFolderDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        folderUri={folderUri}
+        folder={folder}
+      />
+    </>
   );
-}
-
-function FolderGlyph({
-  icon,
-  iconImage,
-  name,
-}: {
-  icon?: string;
-  iconImage?: string;
-  name: string;
-}) {
-  if (iconImage) {
-    return (
-      <>
-        {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary folder icon URLs */}
-        <img
-          src={iconImage}
-          alt={name}
-          className="h-4 w-4 rounded object-cover"
-        />
-      </>
-    );
-  }
-  if (icon) {
-    return (
-      <span className="text-sm leading-none" aria-hidden>
-        {icon}
-      </span>
-    );
-  }
-  return <Folder className="h-4 w-4 shrink-0" aria-hidden />;
 }

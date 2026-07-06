@@ -144,9 +144,15 @@ export function EntryRow({
 
   const rowButton = (
     <div className={cn("group/entry-row relative", articleListCardWrapperClassName)}>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onSelect(entry.entryId)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          onSelect(entry.entryId);
+        }}
         className={articleListCardButtonClassName({
           isSelected,
           subdued: readIndicatorsEnabled && isRead,
@@ -221,7 +227,7 @@ export function EntryRow({
           ) : null}
           <p className="mt-1 text-[11px] text-muted-foreground">{formattedDate}</p>
         </div>
-      </button>
+      </div>
     </div>
   );
 

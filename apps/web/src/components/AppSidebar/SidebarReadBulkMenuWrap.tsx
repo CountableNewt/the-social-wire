@@ -30,12 +30,19 @@ type SidebarDestructiveAction = {
   pending?: boolean;
 };
 
+type SidebarMenuAction = {
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+};
+
 type SidebarReadBulkMenuWrapProps = {
   publications: DiscoveredPublication[];
   /** Shown in the confirmation dialog body for Mark All As Read */
   markAllReadConfirmation: ReactNode;
   gatewayScopes?: GatewayMarkAllReadScope[];
   children: ReactNode;
+  menuActions?: SidebarMenuAction[];
   destructiveAction?: SidebarDestructiveAction;
 };
 
@@ -48,6 +55,7 @@ export function SidebarReadBulkMenuWrap({
   markAllReadConfirmation,
   gatewayScopes,
   children,
+  menuActions,
   destructiveAction,
 }: SidebarReadBulkMenuWrapProps) {
   const {
@@ -81,6 +89,21 @@ export function SidebarReadBulkMenuWrap({
           >
             Mark All As Unread
           </ContextMenuItem>
+          {menuActions?.length ? (
+            <>
+              <ContextMenuSeparator />
+              {menuActions.map((action) => (
+                <ContextMenuItem
+                  key={action.label}
+                  disabled={action.disabled}
+                  className="gap-2"
+                  onClick={action.onSelect}
+                >
+                  {action.label}
+                </ContextMenuItem>
+              ))}
+            </>
+          ) : null}
           {destructiveAction ? (
             <>
               <ContextMenuSeparator />
