@@ -41,37 +41,54 @@ const SidebarChromeContext = createContext<SidebarChromeContextValue | null>(
   null
 );
 
+const ANONYMOUS_EXPANDED_KEYS_KEY = "__anonymous__";
+
+function loadInitialPublicationTab(): PublicationTab {
+  return "subscribed";
+}
+
+function loadExpandedKeysForViewer(did: string): Set<string> {
+  return loadSidebarExpandedKeys(window.localStorage, did);
+}
+
 export function SidebarChromeProvider({ children }: { children: ReactNode }) {
   const [selectedFolderUri, setSelectedFolderUri] = useState<string | null>(null);
   const [articleListFilter, setArticleListFilter] =
     useState<ArticleListFilter>("all");
   const [publicationTab, setPublicationTabState] =
-    useState<PublicationTab>("subscribed");
-  const [sidebarExpandedKeys, setSidebarExpandedKeys] = useState(
-    defaultSidebarExpandedKeys
-  );
-  const [sidebarExpandedKeysDid, setSidebarExpandedKeysDid] = useState<
-    string | undefined
-  >(undefined);
+    useState<PublicationTab>(loadInitialPublicationTab);
+  const [sidebarExpandedKeysByViewer, setSidebarExpandedKeysByViewer] =
+    useState<Record<string, Set<string>>>({});
   const { session } = useAuth();
   const viewerDid = session?.did;
+  const sidebarExpandedKeysStateKey = viewerDid ?? ANONYMOUS_EXPANDED_KEYS_KEY;
+
+  const sidebarExpandedKeys = useMemo(
+    () =>
+      sidebarExpandedKeysByViewer[sidebarExpandedKeysStateKey] ??
+      defaultSidebarExpandedKeys(),
+    [sidebarExpandedKeysByViewer, sidebarExpandedKeysStateKey]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setPublicationTabState(loadSidebarPublicationTab(window.localStorage));
+    queueMicrotask(() => {
+      setPublicationTabState(loadSidebarPublicationTab(window.localStorage));
+    });
   }, []);
 
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      !viewerDid ||
-      viewerDid === sidebarExpandedKeysDid
-    ) {
-      return;
-    }
-    setSidebarExpandedKeysDid(viewerDid);
-    setSidebarExpandedKeys(loadSidebarExpandedKeys(window.localStorage, viewerDid));
-  }, [viewerDid, sidebarExpandedKeysDid]);
+    if (typeof window === "undefined" || !viewerDid) return;
+    queueMicrotask(() => {
+      setSidebarExpandedKeysByViewer((prev) => {
+        if (prev[viewerDid]) return prev;
+        return {
+          ...prev,
+          [viewerDid]: loadExpandedKeysForViewer(viewerDid),
+        };
+      });
+    });
+  }, [viewerDid]);
 
   const setPublicationTab = useCallback((tab: PublicationTab) => {
     setPublicationTabState(tab);
@@ -81,15 +98,10 @@ export function SidebarChromeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      !viewerDid ||
-      viewerDid !== sidebarExpandedKeysDid
-    ) {
-      return;
-    }
+    if (typeof window === "undefined" || !viewerDid) return;
+    if (!sidebarExpandedKeysByViewer[viewerDid]) return;
     saveSidebarExpandedKeys(window.localStorage, viewerDid, sidebarExpandedKeys);
-  }, [viewerDid, sidebarExpandedKeysDid, sidebarExpandedKeys]);
+  }, [viewerDid, sidebarExpandedKeysByViewer, sidebarExpandedKeys]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !viewerDid) return;
@@ -98,13 +110,14 @@ export function SidebarChromeProvider({ children }: { children: ReactNode }) {
       const detail = (event as CustomEvent<{ did: string; oldRkey: string; newRkey: string }>)
         .detail;
       if (!detail || detail.did !== viewerDid) return;
-      setSidebarExpandedKeys((prev) => {
+      setSidebarExpandedKeysByViewer((prev) => {
+        const current = prev[viewerDid] ?? defaultSidebarExpandedKeys();
         const oldKey = folderExpandKey(detail.oldRkey);
-        if (!prev.has(oldKey)) return prev;
-        const next = new Set(prev);
+        if (!current.has(oldKey)) return prev;
+        const next = new Set(current);
         next.delete(oldKey);
         next.add(folderExpandKey(detail.newRkey));
-        return next;
+        return { ...prev, [viewerDid]: next };
       });
     };
 
@@ -115,19 +128,23 @@ export function SidebarChromeProvider({ children }: { children: ReactNode }) {
   }, [viewerDid]);
 
   const toggleSidebarExpandedKey = useCallback((key: string) => {
-    setSidebarExpandedKeys((prev) => {
-      const next = new Set(prev);
+    setSidebarExpandedKeysByViewer((prev) => {
+      const current = prev[sidebarExpandedKeysStateKey] ?? sidebarExpandedKeys;
+      const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      return next;
+      return { ...prev, [sidebarExpandedKeysStateKey]: next };
     });
-  }, []);
+  }, [sidebarExpandedKeys, sidebarExpandedKeysStateKey]);
 
   const syncSidebarFolderExpandKeys = useCallback((folderUris: string[]) => {
-    setSidebarExpandedKeys((prev) =>
-      migrateLegacyFolderUriExpandKeys(prev, folderUris)
-    );
-  }, []);
+    setSidebarExpandedKeysByViewer((prev) => {
+      const current = prev[sidebarExpandedKeysStateKey] ?? sidebarExpandedKeys;
+      const next = migrateLegacyFolderUriExpandKeys(current, folderUris);
+      if (next === current) return prev;
+      return { ...prev, [sidebarExpandedKeysStateKey]: next };
+    });
+  }, [sidebarExpandedKeys, sidebarExpandedKeysStateKey]);
 
   const value = useMemo(
     (): SidebarChromeContextValue => ({

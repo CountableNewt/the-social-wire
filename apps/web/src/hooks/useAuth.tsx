@@ -125,12 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    if (dummyReaderDataEnabled) {
-      setSession({ did: DUMMY_VIEWER_DID });
-      setIsLoading(false);
-      return;
-    }
+    if (dummyReaderDataEnabled) return;
 
     if (pathnameIsOAuthCallbackRoute(window.location.pathname)) {
       return;

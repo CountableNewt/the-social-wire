@@ -39,7 +39,6 @@ import { useViewerProfile } from "@/hooks/useViewerProfile";
 import { rkeyFromURI } from "@/lib/pdsClient";
 import { type DiscoveredPublication, viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
 import { sumUnreadForPublications } from "@/lib/unreadCounts";
-import { cn } from "@/lib/utils";
 import {
   SIDEBAR_SEC_FOLDERS,
   SIDEBAR_SEC_PUBLICATIONS,
