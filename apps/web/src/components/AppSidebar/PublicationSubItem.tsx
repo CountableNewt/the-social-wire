@@ -47,11 +47,9 @@ import {
 import { useCachedBulkReadActions } from "@/hooks/useCachedBulkReadActions";
 import { standardSiteSubscriptionTargetFromDiscovery } from "@/lib/publicationSubscriptionMatch";
 import { isRssPublicationId } from "@/lib/rssFeedCore";
-import { isDevDebugUiEnabled } from "@/lib/appEnv";
-import { recordKindFromPublication } from "@/lib/recordKindDebug";
-import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { cn } from "@/lib/utils";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
+import { FolderIconGlyph } from "./FolderIcon";
 
 export type PublicationSidebarTab = "following" | "subscribed";
 
@@ -189,12 +187,6 @@ function PublicationSubItemInner({
     return match ? `In "${match.value.name}"` : "Move To Folder";
   }, [currentFolderId, folders]);
 
-  const recordKind = useMemo(
-    () => recordKindFromPublication(publication),
-    [publication]
-  );
-  const devRecordKindVisible = isDevDebugUiEnabled();
-
   return (
     <SidebarMenuSubItem>
       <ContextMenu onOpenChange={handleOpenChange}>
@@ -204,16 +196,11 @@ function PublicationSubItemInner({
             isActive={isSelected}
             render={<button type="button" />}
             onClick={() => onSelect(publication.publicationId)}
-            className={cn(
-              "relative min-w-0 flex-1 gap-2 pr-8",
-              devRecordKindVisible &&
-                "h-auto min-h-9 items-start overflow-visible py-1.5"
-            )}
+            className="relative min-w-0 flex-1 gap-2 pr-8"
           >
             <PublicationLeadingAvatar publication={publication} />
-            <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+            <div className="flex min-w-0 flex-1 items-center">
               <span className="w-full truncate">{publication.title}</span>
-              <DevRecordKindBadge info={recordKind} />
             </div>
             <SidebarMenuBadge
               className={cn(
@@ -272,10 +259,13 @@ function PublicationSubItemInner({
                     ) : (
                       <span className="size-4 shrink-0" aria-hidden />
                     )}
-                    <span className="truncate">
-                      {f.value.icon ? `${f.value.icon} ` : ""}
-                      {f.value.name}
-                    </span>
+                    <FolderIconGlyph
+                      icon={f.value.icon}
+                      iconImage={f.value.iconImage}
+                      name={f.value.name}
+                      className="size-4"
+                    />
+                    <span className="truncate">{f.value.name}</span>
                   </ContextMenuItem>
                 );
               })}

@@ -18,6 +18,10 @@ import {
   signIn as authSignIn,
   signOut as authSignOut,
 } from "@/lib/auth";
+import {
+  DUMMY_VIEWER_DID,
+  isDummyReaderDataEnabled,
+} from "@/lib/dummyReaderData";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,14 +77,18 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    dummyReaderDataEnabled ? { did: DUMMY_VIEWER_DID } : null
+  );
   const [oauthSessionReloadSeq, setOAuthSessionReloadSeq] = useState(0);
   const [isLoading, setIsLoading] = useState(
     () =>
+      !dummyReaderDataEnabled &&
       typeof window !== "undefined" &&
       pathnameIsOAuthCallbackRoute(window.location.pathname)
         ? false
-        : true
+        : !dummyReaderDataEnabled
   );
 
   // Store the OAuthSession in a ref — it manages its own token lifecycle
@@ -117,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (dummyReaderDataEnabled) return;
 
     if (pathnameIsOAuthCallbackRoute(window.location.pathname)) {
       return;
@@ -154,15 +163,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dummyReaderDataEnabled]);
 
   const handleSignIn = useCallback(async (handle: string) => {
+    if (dummyReaderDataEnabled) {
+      setSession({ did: DUMMY_VIEWER_DID });
+      setIsLoading(false);
+      return;
+    }
     await authSignIn(handle);
     // Browser redirects — no further code runs here.
-  }, []);
+  }, [dummyReaderDataEnabled]);
 
   const handleSignOut = useCallback(async () => {
     if (!session) return;
+
+    if (dummyReaderDataEnabled) {
+      setSession({ did: DUMMY_VIEWER_DID });
+      setIsLoading(false);
+      return;
+    }
 
     const did = session.did;
 
@@ -177,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     await authSignOut(did);
-  }, [bumpOAuthReloadSeq, session]);
+  }, [bumpOAuthReloadSeq, dummyReaderDataEnabled, session]);
 
   const applyOAuthSession = useCallback((oauthSession: OAuthSession) => {
     oauthSessionRef.current = oauthSession;

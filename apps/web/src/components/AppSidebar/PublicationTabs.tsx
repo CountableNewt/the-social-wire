@@ -1,9 +1,15 @@
 "use client";
 
-import { SidebarMenuItem, SIDEBAR_GLASS_SEGMENTED } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
+import { Rss, Users } from "lucide-react";
+
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import type { PublicationTab } from "./appSidebarConstants";
-import { PublicationTabButton } from "./PublicationTabButton";
 
 export function PublicationTabs({
   activeTab,
@@ -13,25 +19,34 @@ export function PublicationTabs({
   onTabChange: (tab: PublicationTab) => void;
 }) {
   return (
-    <SidebarMenuItem>
-      <div
-        className={cn(SIDEBAR_GLASS_SEGMENTED)}
-        role="tablist"
-        aria-label="Publication Source"
-      >
-        <PublicationTabButton
-          active={activeTab === "subscribed"}
-          onClick={() => onTabChange("subscribed")}
-        >
-          Subscribed
-        </PublicationTabButton>
-        <PublicationTabButton
-          active={activeTab === "following"}
-          onClick={() => onTabChange("following")}
-        >
-          Following
-        </PublicationTabButton>
-      </div>
-    </SidebarMenuItem>
+    <SidebarGroup className="pb-1 pt-1">
+      <SidebarGroupLabel>Feeds</SidebarGroupLabel>
+      <SidebarMenu className="gap-0.5" role="tablist" aria-label="Publication Source">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "subscribed"}
+            isActive={activeTab === "subscribed"}
+            onClick={() => onTabChange("subscribed")}
+          >
+            <Rss />
+            <span>Subscribed</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "following"}
+            isActive={activeTab === "following"}
+            onClick={() => onTabChange("following")}
+          >
+            <Users />
+            <span>Following</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
   );
 }

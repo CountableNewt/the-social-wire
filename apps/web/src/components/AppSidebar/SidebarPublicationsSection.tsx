@@ -6,7 +6,6 @@ import { AddPublicationDialog } from "./AddPublicationDialog";
 import { CollapsibleSidebarSubSection } from "./CollapsibleSidebarSubSection";
 import { PublicationMenuSubEntries } from "./PublicationMenuSubEntries";
 import type { PublicationSidebarTab } from "./PublicationSubItem";
-import { SIDEBAR_SEC_PUBLICATIONS } from "./appSidebarConstants";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type {
   FolderRecord,
@@ -20,10 +19,8 @@ export type SidebarPublicationsSectionProps = {
   publications: DiscoveredPublication[];
   publicationUnreadCounts: Map<string, number>;
   publicationsSectionUnread: number;
-  effectiveExpandedKeys: Set<string>;
   selectedPubId: string | null;
   onSelectPub: (pubId: string) => void;
-  onToggleSection: () => void;
   folders: RepoRecord<FolderRecord>[];
   prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
   sidebarTab: PublicationSidebarTab;
@@ -36,10 +33,8 @@ function SidebarPublicationsSectionInner({
   publications,
   publicationUnreadCounts,
   publicationsSectionUnread,
-  effectiveExpandedKeys,
   selectedPubId,
   onSelectPub,
-  onToggleSection,
   folders,
   prefsMap,
   sidebarTab,
@@ -56,8 +51,6 @@ function SidebarPublicationsSectionInner({
     <CollapsibleSidebarSubSection
       title="Publications"
       unreadCount={publicationsSectionUnread}
-      expanded={effectiveExpandedKeys.has(SIDEBAR_SEC_PUBLICATIONS)}
-      onToggle={onToggleSection}
       subAriaLabel={subAriaLabel}
       readBulkPublications={publications}
       readBulkMarkAllReadConfirmation={readBulkMarkAllReadConfirmation}

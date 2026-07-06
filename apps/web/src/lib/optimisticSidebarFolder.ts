@@ -161,6 +161,35 @@ export function replaceOptimisticFolderInProjection(
   };
 }
 
+export function updateFolderInSidebarProjection(
+  projection: PublicationSidebarProjection | undefined,
+  folderRkey: string,
+  updates: { name?: string; icon?: string; iconImage?: string; sortOrder?: number }
+): PublicationSidebarProjection | undefined {
+  if (!projection) return undefined;
+
+  const folders = projection.folders.map((folder) => {
+    if (folder.rkey !== folderRkey) return folder;
+    const value = { ...folder.value };
+    if (updates.name !== undefined) value.name = updates.name;
+    if (updates.sortOrder !== undefined) value.sortOrder = updates.sortOrder;
+    if (updates.icon !== undefined) {
+      if (updates.icon.trim()) value.icon = updates.icon;
+      else delete value.icon;
+    }
+    if (updates.iconImage !== undefined) {
+      if (updates.iconImage.trim()) value.iconImage = updates.iconImage;
+      else delete value.iconImage;
+    }
+    return { ...folder, value };
+  });
+
+  return {
+    ...projection,
+    folders,
+  };
+}
+
 export function removeOptimisticFolderFromProjection(
   projection: PublicationSidebarProjection | undefined,
   optimisticRkey: string

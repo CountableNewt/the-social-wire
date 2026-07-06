@@ -21,6 +21,11 @@ import {
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/hooks/usePublicationSidebarData";
 import { usePublicationSidebarProjection } from "@/hooks/usePublicationSidebarProjection";
 import {
+  dummyEntriesForPublication,
+  dummyEntryDetail,
+  isDummyReaderDataEnabled,
+} from "@/lib/dummyReaderData";
+import {
   appViewScopeFromProjection,
   type PublicationAppViewScope,
 } from "@/lib/publicationProjectionClient";
@@ -154,17 +159,25 @@ export function useEntries(
 ) {
   const { session, getOAuthSession } = useAuth();
   const queryClient = useQueryClient();
+  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const normalizedKey = publicationKey ? normalizeAtRepoParam(publicationKey) : null;
   const projection = usePublicationSidebarProjection(session?.did);
   const appViewScope = normalizedKey
     ? appViewScopeFromProjection(projection, normalizedKey)
     : undefined;
-  const scopePending = !!normalizedKey && !!session && !appViewScope;
+  const scopePending =
+    !dummyReaderDataEnabled && !!normalizedKey && !!session && !appViewScope;
 
   const query = useInfiniteQuery({
     queryKey: [...ENTRIES_QUERY_KEY(normalizedKey ?? ""), articleFilter] as const,
     queryFn: async ({ pageParam, signal }) => {
       if (!normalizedKey) return { entries: [], cursor: undefined };
+      if (dummyReaderDataEnabled) {
+        return {
+          entries: dummyEntriesForPublication(normalizedKey),
+          cursor: undefined,
+        };
+      }
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       return fetchEntriesInfinitePage({
@@ -179,7 +192,10 @@ export function useEntries(
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: entriesNextPageParam,
-    enabled: !!normalizedKey && !!session && !!appViewScope,
+    enabled:
+      !!normalizedKey &&
+      !!session &&
+      (dummyReaderDataEnabled || !!appViewScope),
     staleTime: ENTRIES_QUERY_STALE_MS,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
@@ -207,12 +223,16 @@ export function useEntries(
  */
 export function useEntry(entryId: string | null) {
   const { session, getOAuthSession } = useAuth();
+  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const normalizedId = entryId ? normalizeAtRepoParam(entryId) : null;
 
   return useQuery({
     queryKey: ENTRY_DETAIL_QUERY_KEY(normalizedId ?? ""),
     queryFn: async ({ signal }) => {
       if (!normalizedId) return null;
+      if (dummyReaderDataEnabled) {
+        return dummyEntryDetail(normalizedId);
+      }
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       if (!isThinAppViewEnabled()) {

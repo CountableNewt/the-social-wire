@@ -8,7 +8,7 @@ export function SidebarSubMenuSkeletonRows({ count = 2 }: { count?: number }) {
     <>
       {Array.from({ length: count }).map((_, index) => (
         <SidebarMenuSubItem key={index}>
-          <Skeleton className="mx-2 h-7 w-[calc(100%-1rem)]" />
+          <Skeleton className="mx-2 h-[30px] w-[calc(100%-1rem)]" />
         </SidebarMenuSubItem>
       ))}
     </>
