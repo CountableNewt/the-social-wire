@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateFolder } from "@/hooks/useFolders";
 import { cn } from "@/lib/utils";
+import { FolderIconPicker } from "../FolderIconPicker";
 import type { CreateFolderFormFieldsProps } from "./types";
 
 export function CreateFolderFormFields({
@@ -20,8 +21,9 @@ export function CreateFolderFormFields({
 }: CreateFolderFormFieldsProps) {
   const nameId = useId();
   const iconId = useId();
+  const iconLabelId = `${iconId}-label`;
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("");
+  const [icon, setIcon] = useState("folder");
   const [finishing, setFinishing] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const createFolder = useCreateFolder();
@@ -34,7 +36,7 @@ export function CreateFolderFormFields({
     try {
       const result = await createFolder.mutateAsync({
         name: name.trim(),
-        icon: icon.trim() || undefined,
+        icon: icon.trim() || "folder",
       });
       try {
         if (onCreated) await Promise.resolve(onCreated(result));
@@ -68,17 +70,12 @@ export function CreateFolderFormFields({
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor={iconId}>Icon (Optional)</Label>
-        <Input
-          id={iconId}
+        <Label id={iconLabelId}>Icon</Label>
+        <FolderIconPicker
+          labelledBy={iconLabelId}
           value={icon}
-          onChange={(e) => setIcon(e.target.value)}
-          placeholder="e.g. 💻"
-          maxLength={4}
+          onChange={setIcon}
         />
-        <p className="text-xs text-muted-foreground">
-          Enter an emoji. Leave blank to use the default folder icon.
-        </p>
       </div>
       {submitError ? (
         <p className="text-sm text-destructive" role="alert">

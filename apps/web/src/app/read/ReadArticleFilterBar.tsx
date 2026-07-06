@@ -35,9 +35,9 @@ export function ReadArticleFilterBar() {
     <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
       <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="min-w-0 flex-1 px-2 text-[11px] sm:flex-none"
+            className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-2 text-[11px] font-semibold text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground sm:flex-none"
             disabled={bulkDisabled}
             title={
               bulkDisabled
@@ -81,7 +81,7 @@ export function ReadArticleFilterBar() {
       <div
         role="tablist"
         aria-label="Articles filter"
-        className="flex shrink-0 rounded-2xl border border-border/80 bg-card/90 p-1 shadow-sm"
+        className="flex shrink-0 items-center gap-1"
       >
         <button
           type="button"
@@ -89,10 +89,10 @@ export function ReadArticleFilterBar() {
           id="read-shell-filter-all"
           aria-selected={articleListFilter === "all"}
           className={cn(
-            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-[background-color,box-shadow,color]",
+            "relative min-h-7 rounded-md px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:bg-muted/50 hover:text-foreground",
             articleListFilter === "all"
-              ? "bg-primary text-primary-foreground [box-shadow:var(--purple-glow-selected)]"
-              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground hover:[box-shadow:var(--purple-glow-hover)]"
+              ? "text-[var(--purple-foreground)] after:bg-primary"
+              : ""
           )}
           onClick={() => setArticleListFilter("all")}
         >
@@ -104,10 +104,10 @@ export function ReadArticleFilterBar() {
           id="read-shell-filter-unread"
           aria-selected={articleListFilter === "unread"}
           className={cn(
-            "min-h-7 rounded-xl px-3 py-1 text-[11px] font-semibold transition-[background-color,box-shadow,color]",
+            "relative min-h-7 rounded-md px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:bg-muted/50 hover:text-foreground",
             articleListFilter === "unread"
-              ? "bg-primary text-primary-foreground [box-shadow:var(--purple-glow-selected)]"
-              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground hover:[box-shadow:var(--purple-glow-hover)]"
+              ? "text-[var(--purple-foreground)] after:bg-primary"
+              : ""
           )}
           onClick={() => setArticleListFilter("unread")}
         >

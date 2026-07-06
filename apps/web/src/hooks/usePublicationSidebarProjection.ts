@@ -4,6 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
+import {
+  dummyPublicationSidebarProjection,
+  isDummyReaderDataEnabled,
+} from "@/lib/dummyReaderData";
 
 /**
  * Subscribes to the sidebar projection React Query cache (populated by bootstrap stream).
@@ -11,6 +15,7 @@ import type { PublicationSidebarProjection } from "@/lib/publicationProjectionCl
 export function usePublicationSidebarProjection(
   viewerDid: string | undefined
 ): PublicationSidebarProjection | undefined {
+  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const queryClient = useQueryClient();
   const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(viewerDid ?? "");
 
@@ -23,8 +28,9 @@ export function usePublicationSidebarProjection(
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: () =>
-      queryClient.getQueryData<PublicationSidebarProjection>(queryKey),
+      queryClient.getQueryData<PublicationSidebarProjection>(queryKey) ??
+      (dummyReaderDataEnabled ? dummyPublicationSidebarProjection : null),
   });
 
-  return data;
+  return data ?? undefined;
 }

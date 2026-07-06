@@ -19,7 +19,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarResizeHandle,
-  SIDEBAR_GLASS_ICON,
 } from "@/components/ui/sidebar";
 import { Avatar } from "@/components/shared/Avatar";
 import { SidebarFoldersSection } from "./SidebarFoldersSection";
@@ -257,15 +256,19 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
               height={24}
               className="shrink-0 rounded"
             />
-            <span className="truncate text-sm font-bold text-sidebar-foreground">The Social Wire</span>
-            <span className="inline-flex shrink-0 items-center rounded-full border border-[var(--purple-border)] bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-[var(--purple-foreground)]">
-              Beta
-            </span>
+            <div className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="truncate text-sm font-bold leading-tight text-sidebar-foreground">
+                The Social Wire
+              </span>
+              <span className="inline-flex shrink-0 items-center rounded-full border border-[var(--purple-border)] bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-[var(--purple-foreground)]">
+                Beta
+              </span>
+            </div>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
-            className={cn(SIDEBAR_GLASS_ICON, "size-8 shrink-0")}
+            className="size-8 shrink-0 rounded-md border-0 bg-transparent shadow-none hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
             onClick={() => refresh.mutate()}
             disabled={refresh.isPending}
             title="Refresh Publications"
@@ -277,11 +280,11 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="overflow-hidden">
-        <div className="shrink-0 border-b border-sidebar-border bg-sidebar/85 backdrop-blur-md">
-          <SidebarGroup>
+      <SidebarContent className="overflow-y-auto overflow-x-hidden">
+        <div className="shrink-0 bg-sidebar/85 backdrop-blur-md">
+          <SidebarGroup className="pb-1">
             <SidebarGroupLabel>Read Later</SidebarGroupLabel>
-            <SidebarMenu className="gap-1.5">
+            <SidebarMenu className="gap-0.5">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
@@ -306,18 +309,14 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          <SidebarGroup className="pt-0">
-            <SidebarMenu className="gap-1.5">
-              <PublicationTabs
-                activeTab={publicationTab}
-                onTabChange={setPublicationTab}
-              />
-            </SidebarMenu>
-          </SidebarGroup>
+          <PublicationTabs
+            activeTab={publicationTab}
+            onTabChange={setPublicationTab}
+          />
         </div>
-        <div className="no-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
-          <SidebarGroup className="px-2 pb-2 pt-4">
-            <SidebarMenu className="gap-4">
+        <div className="flex min-w-0 flex-col gap-0 group-data-[collapsible=icon]:overflow-hidden">
+          <SidebarGroup className="px-2 pb-2 pt-2">
+            <SidebarMenu className="gap-2">
               {publicationTab === "subscribed" ? (
                 <>
                   <SidebarFoldersSection
@@ -330,9 +329,6 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     selectedFolderUri={selectedFolderUri}
                     selectedPubId={selectedPubId}
                     onSelectPub={onSelectPub}
-                    onToggleSection={() =>
-                      toggleSidebarExpandedKey(SIDEBAR_SEC_FOLDERS)
-                    }
                     onToggleFolder={toggleSidebarExpandedKey}
                     prefsMap={prefsMap}
                     publicationUnreadCounts={publicationUnreadCounts}
@@ -342,12 +338,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                     publications={unfolderedPubs}
                     publicationUnreadCounts={publicationUnreadCounts}
                     publicationsSectionUnread={publicationsSectionUnread}
-                    effectiveExpandedKeys={effectiveExpandedKeys}
                     selectedPubId={selectedPubId}
                     onSelectPub={onSelectPub}
-                    onToggleSection={() =>
-                      toggleSidebarExpandedKey(SIDEBAR_SEC_PUBLICATIONS)
-                    }
                     folders={folders}
                     prefsMap={prefsMap}
                     sidebarTab="subscribed"
@@ -366,12 +358,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                   publications={followingTabPublications}
                   publicationUnreadCounts={publicationUnreadCounts}
                   publicationsSectionUnread={publicationsSectionUnread}
-                  effectiveExpandedKeys={effectiveExpandedKeys}
                   selectedPubId={selectedPubId}
                   onSelectPub={onSelectPub}
-                  onToggleSection={() =>
-                    toggleSidebarExpandedKey(SIDEBAR_SEC_PUBLICATIONS)
-                  }
                   folders={folders}
                   prefsMap={prefsMap}
                   sidebarTab="following"
@@ -391,12 +379,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="border-t bg-sidebar/85 px-2 py-3 backdrop-blur-md">
-        <SidebarMenu className="gap-2 px-2">
+      <SidebarFooter className="border-t bg-sidebar/85 px-2 py-2 backdrop-blur-md">
+        <SidebarMenu className="gap-0.5 px-1">
           {profileLoading ? (
             <SidebarMenuItem>
-              <div className="flex min-w-0 flex-1 items-start gap-3 px-2 py-1">
-                <Skeleton className="size-10 shrink-0 rounded-full" />
+              <div className="flex min-w-0 flex-1 items-start gap-2 px-1 py-1">
+                <Skeleton className="size-6 shrink-0 rounded-full" />
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
                   <Skeleton className="h-4 w-28" />
                   <Skeleton className="h-3 w-full max-w-[12rem]" />
@@ -409,12 +397,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                 tooltip="Your Profile & Publications"
                 isActive={pathname.startsWith("/me")}
                 render={<Link href="/me/publications" prefetch />}
-                className="h-auto min-h-0 items-start gap-3 overflow-visible py-2.5 whitespace-normal"
+                className="h-auto min-h-0 items-start gap-2 overflow-visible py-1.5 pl-1 whitespace-normal"
               >
                 <Avatar
                   src={profile?.avatar}
                   alt={profile?.displayName || profile?.handle || session?.did || "Account"}
-                  size={40}
+                  size={24}
                   className="shrink-0"
                 />
                 <div className="min-w-0 flex-1 py-px text-left">
@@ -425,7 +413,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                       "—"}
                   </p>
                   <p className="truncate text-[11px] leading-snug text-muted-foreground">
-                    {session?.did ?? ""}
+                    {profile?.handle ?? session?.did ?? ""}
                   </p>
                 </div>
               </SidebarMenuButton>

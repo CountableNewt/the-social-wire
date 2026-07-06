@@ -45,12 +45,8 @@ export function SidebarChromeProvider({ children }: { children: ReactNode }) {
   const [selectedFolderUri, setSelectedFolderUri] = useState<string | null>(null);
   const [articleListFilter, setArticleListFilter] =
     useState<ArticleListFilter>("all");
-  const [publicationTab, setPublicationTabState] = useState<PublicationTab>(
-    () => {
-      if (typeof window === "undefined") return "subscribed";
-      return loadSidebarPublicationTab(window.localStorage);
-    }
-  );
+  const [publicationTab, setPublicationTabState] =
+    useState<PublicationTab>("subscribed");
   const [sidebarExpandedKeys, setSidebarExpandedKeys] = useState(
     defaultSidebarExpandedKeys
   );
@@ -60,14 +56,22 @@ export function SidebarChromeProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const viewerDid = session?.did;
 
-  if (
-    typeof window !== "undefined" &&
-    viewerDid &&
-    viewerDid !== sidebarExpandedKeysDid
-  ) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPublicationTabState(loadSidebarPublicationTab(window.localStorage));
+  }, []);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !viewerDid ||
+      viewerDid === sidebarExpandedKeysDid
+    ) {
+      return;
+    }
     setSidebarExpandedKeysDid(viewerDid);
     setSidebarExpandedKeys(loadSidebarExpandedKeys(window.localStorage, viewerDid));
-  }
+  }, [viewerDid, sidebarExpandedKeysDid]);
 
   const setPublicationTab = useCallback((tab: PublicationTab) => {
     setPublicationTabState(tab);

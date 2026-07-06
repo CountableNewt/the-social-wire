@@ -35,6 +35,10 @@ import {
   unreadCountsMapFromProjection,
   type PublicationSidebarProjection,
 } from "@/lib/publicationProjectionClient";
+import {
+  dummyPublicationSidebarProjection,
+  isDummyReaderDataEnabled,
+} from "@/lib/dummyReaderData";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
 import {
   projectionToSidebarState,
@@ -72,6 +76,7 @@ const PublicationSidebarContext =
   createContext<PublicationSidebarContextValue | null>(null);
 
 export function PublicationSidebarProvider({ children }: { children: ReactNode }) {
+  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const qc = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -128,7 +133,17 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   const effectiveStreamProjection =
     did === streamOwnerDid ? streamProjection : undefined;
   const mergedProjection =
-    effectiveStreamProjection ?? cachedProjection ?? undefined;
+    dummyReaderDataEnabled
+      ? cachedProjection ?? dummyPublicationSidebarProjection
+      : effectiveStreamProjection ?? cachedProjection ?? undefined;
+
+  useEffect(() => {
+    if (!dummyReaderDataEnabled || !did) return;
+    const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+    if (!qc.getQueryData<PublicationSidebarProjection>(queryKey)) {
+      qc.setQueryData(queryKey, dummyPublicationSidebarProjection);
+    }
+  }, [did, dummyReaderDataEnabled, qc]);
 
   const runBootstrapStream = useCallback(
     async (controller: AbortController) => {
@@ -289,6 +304,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   );
 
   useEffect(() => {
+    if (dummyReaderDataEnabled) return;
     if (!session) return;
     const oauth = getOAuthSession();
     if (!oauth) return;
@@ -300,7 +316,13 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
       controller.abort();
       streamGenerationRef.current += 1;
     };
-  }, [session, oauthSessionReloadSeq, runBootstrapStream, getOAuthSession]);
+  }, [
+    dummyReaderDataEnabled,
+    session,
+    oauthSessionReloadSeq,
+    runBootstrapStream,
+    getOAuthSession,
+  ]);
 
   useEffect(() => {
     if (!mergedProjection) return;
@@ -314,7 +336,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
 
   const hasSidebarSnapshot = mergedProjection != null;
   const sidebarListsLoading =
-    !hasSidebarSnapshot && !isRestoring && sidebarFetching;
+    !dummyReaderDataEnabled && !hasSidebarSnapshot && !isRestoring && sidebarFetching;
 
   const projectionState = useMemo(() => {
     if (!mergedProjection) return null;
@@ -337,26 +359,30 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   const foldersListLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching,
+    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
     itemCount: folders.length,
   });
   const subscribedPublicationsLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching,
+    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
     itemCount: unfolderedPubs.length,
   });
   const followingPublicationsLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching,
+    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
     itemCount: followingTabPublications.length,
   });
   const folderPublicationsListLoading =
-    !hasSidebarSnapshot && !isRestoring && folderPublicationsLoading;
+    !dummyReaderDataEnabled &&
+    !hasSidebarSnapshot &&
+    !isRestoring &&
+    folderPublicationsLoading;
 
   const refresh = useMutation({
     mutationFn: async () => {
+      if (dummyReaderDataEnabled) return;
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       const projection = await refreshPublicationSidebar(oauth);
@@ -368,6 +394,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   });
 
   const refreshUnreadCountsFromAppViewImpl = useCallback(async () => {
+    if (dummyReaderDataEnabled) return;
     const oauth = getOAuthSession();
     if (!oauth || !did) return;
 
@@ -403,7 +430,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     } catch {
       /* best-effort cross-client sync */
     }
-  }, [did, getOAuthSession, qc]);
+  }, [did, dummyReaderDataEnabled, getOAuthSession, qc]);
 
   const refreshUnreadCountsFromAppView = useCallback(async () => {
     if (unreadRefreshDebounceRef.current != null) {

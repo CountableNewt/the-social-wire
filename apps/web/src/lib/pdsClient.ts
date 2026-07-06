@@ -567,6 +567,12 @@ export class PDSClient {
       ...(current.data.value as unknown as FolderRecord),
       ...updates,
     };
+    if (updates.icon !== undefined && !updates.icon.trim()) {
+      delete updated.icon;
+    }
+    if (updates.iconImage !== undefined && !updates.iconImage.trim()) {
+      delete updated.iconImage;
+    }
 
     await this.agent.api.com.atproto.repo.putRecord({
       repo: this.did,
