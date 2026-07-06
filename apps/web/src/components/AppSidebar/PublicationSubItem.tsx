@@ -49,6 +49,7 @@ import { standardSiteSubscriptionTargetFromDiscovery } from "@/lib/publicationSu
 import { isRssPublicationId } from "@/lib/rssFeedCore";
 import { cn } from "@/lib/utils";
 import { ControlledCreateFolderDialog } from "./NewFolderDialog";
+import { FolderIconGlyph } from "./FolderIcon";
 
 export type PublicationSidebarTab = "following" | "subscribed";
 
@@ -258,10 +259,13 @@ function PublicationSubItemInner({
                     ) : (
                       <span className="size-4 shrink-0" aria-hidden />
                     )}
-                    <span className="truncate">
-                      {f.value.icon ? `${f.value.icon} ` : ""}
-                      {f.value.name}
-                    </span>
+                    <FolderIconGlyph
+                      icon={f.value.icon}
+                      iconImage={f.value.iconImage}
+                      name={f.value.name}
+                      className="size-4"
+                    />
+                    <span className="truncate">{f.value.name}</span>
                   </ContextMenuItem>
                 );
               })}
