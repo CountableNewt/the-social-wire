@@ -344,11 +344,8 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   }, [mergedProjection]);
 
   const unreadCountsByPublicationId = useMemo(
-    () =>
-      unreadCountsMapFromProjection(
-        cachedProjection ?? mergedProjection ?? undefined
-      ),
-    [cachedProjection, mergedProjection]
+    () => unreadCountsMapFromProjection(mergedProjection ?? undefined),
+    [mergedProjection]
   );
 
   const folders = projectionState?.folders ?? [];

@@ -7,7 +7,7 @@ import { useEntriesCacheEpoch } from "@/hooks/useEntriesCacheEpoch";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import {
   effectivePublicationUnreadCount,
-  lookupUnreadCountInMap,
+  findUnreadCountInMap,
   sumUnreadForPublications,
 } from "@/lib/unreadCounts";
 
@@ -36,9 +36,10 @@ export function useSidebarUnreadController(
     void readEpoch;
     const map = new Map<string, number>();
     for (const pub of publications) {
-      const serverCount = unreadCountsByPublicationId
-        ? lookupUnreadCountInMap(unreadCountsByPublicationId, pub.publicationId)
-        : 0;
+      const knownServerCount = unreadCountsByPublicationId
+        ? findUnreadCountInMap(unreadCountsByPublicationId, pub.publicationId)
+        : undefined;
+      const serverCount = knownServerCount ?? 0;
       map.set(
         pub.publicationId,
         isEntryRead
@@ -47,7 +48,7 @@ export function useSidebarUnreadController(
               queryClient,
               pub.publicationId,
               isEntryRead,
-              { capRaiseToServerCount: true }
+              { capRaiseToServerCount: knownServerCount != null }
             )
           : serverCount
       );

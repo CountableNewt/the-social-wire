@@ -83,4 +83,34 @@ describe("useSidebarUnreadCounts", () => {
     rerender({ readEpoch: 1 });
     expect(result.current.get("did:plc:alice")).toBe(0);
   });
+
+  it("does not inflate known zero counts from cached entries", () => {
+    const queryClient = new QueryClient();
+    const entry: EntryListItem = {
+      entryId: "at://did:plc:alice/site.standard.document/1",
+      title: "One",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    };
+    queryClient.setQueryData([...ENTRIES_QUERY_KEY("did:plc:alice"), "all"], {
+      pages: [{ entries: [entry], cursor: undefined }],
+      pageParams: [undefined],
+    });
+
+    const unreadCountsByPublicationId = new Map([["did:plc:alice", 0]]);
+    const { result } = renderHook(
+      () =>
+        useSidebarUnreadController({
+          publications: [pub],
+          unreadCountsByPublicationId,
+          isEntryRead: () => false,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        ),
+      }
+    );
+
+    expect(result.current.get("did:plc:alice")).toBe(0);
+  });
 });

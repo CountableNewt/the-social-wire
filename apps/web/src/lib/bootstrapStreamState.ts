@@ -34,11 +34,7 @@ export function applyUnreadCountsEvent(
   if (options?.replacePublicationIds?.length) {
     for (const publicationId of options.replacePublicationIds) {
       const fresh = counts[publicationId] ?? 0;
-      if (fresh <= 0) {
-        delete unreadCountsByPublicationId[publicationId];
-      } else {
-        unreadCountsByPublicationId[publicationId] = fresh;
-      }
+      unreadCountsByPublicationId[publicationId] = Math.max(0, fresh);
     }
   }
 

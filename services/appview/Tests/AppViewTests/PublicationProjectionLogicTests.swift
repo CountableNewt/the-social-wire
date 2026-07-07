@@ -92,4 +92,14 @@ struct PublicationProjectionLogicTests {
     let pubId = PublicationProjectionLogic.rssPublicationId(from: feed)
     #expect(PublicationProjectionLogic.normalizedFeedUrlFromRssPublicationId(pubId) == feed)
   }
+
+  @Test("rss publication id preserves meaningful feed query")
+  func rssPublicationIdPreservesFeedQuery() {
+    let feed = "https://basicappleguy.com/basicappleblog?format=rss"
+    let normalized = PublicationProjectionLogic.normalizeRssFeedUrl(feed)
+    let pubId = PublicationProjectionLogic.rssPublicationId(from: normalized!)
+
+    #expect(normalized == feed)
+    #expect(PublicationProjectionLogic.normalizedFeedUrlFromRssPublicationId(pubId) == feed)
+  }
 }

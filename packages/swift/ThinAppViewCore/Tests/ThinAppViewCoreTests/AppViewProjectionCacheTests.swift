@@ -49,4 +49,17 @@ struct AppViewProjectionCacheTests {
     )
     #expect(deleted >= 1)
   }
+
+  @Test("publication site keys preserve RSS feed query")
+  func publicationSiteKeysPreserveRssFeedQuery() {
+    let feedUrl = "https://basicappleguy.com/basicappleblog?format=rss"
+    let keys = AppViewProjectionCacheScopeKeys.publicationSiteKeys(
+      publicationAtUri: nil,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [feedUrl]
+    )
+
+    #expect(keys.contains(feedUrl))
+    #expect(keys.contains("https://basicappleguy.com/basicappleblog"))
+  }
 }

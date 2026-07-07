@@ -162,6 +162,21 @@ describe("effectivePublicationUnreadCount", () => {
     ).toBe(1);
   });
 
+  it("does not raise a known zero AppView baseline from cached rows", () => {
+    const publicationId =
+      "at://did:plc:author/site.standard.publication/main";
+    const unreadId = "at://did:plc:author/site.standard.document/unread";
+    const queryClient = mockQueryClientWithEntries(publicationId, [
+      makeEntry(unreadId),
+    ]);
+
+    expect(
+      effectivePublicationUnreadCount(0, queryClient, publicationId, () => false, {
+        capRaiseToServerCount: true,
+      })
+    ).toBe(0);
+  });
+
   it("does not raise above server baseline when capRaiseToServerCount is set", () => {
     const publicationId = "rss:https://example.com/feed.xml";
     const queryClient = mockQueryClientWithEntries(

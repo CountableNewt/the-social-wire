@@ -19,6 +19,9 @@ enum ThinAppViewProjectionCacheWarmer {
     if keys.isEmpty {
       keys.insert(publicationId)
     }
+    if let normalized = RssFeedIdentity.normalizeFeedUrl(publicationId) {
+      keys.insert(normalized)
+    }
     if let normalized = RenderFieldExtractor.normalizePublicationSiteUrl(publicationId) {
       keys.insert(normalized)
     }

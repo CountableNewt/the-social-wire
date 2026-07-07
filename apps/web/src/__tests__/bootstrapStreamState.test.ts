@@ -79,4 +79,42 @@ describe("applySidebarFoldersEvent", () => {
       5
     );
   });
+
+  it("applies late folder unread count replacement after folder rows arrive", () => {
+    const withFolders = applySidebarFoldersEvent(minimalProjection(), {
+      folderSections: [
+        {
+          folderRkey: "folder1",
+          folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+          publications: [
+            {
+              ...minimalProjection().subscribedUnfoldered[0]!,
+              publicationId: "rss:https://example.com/folder-feed.xml",
+              unreadCount: undefined,
+            },
+          ],
+        },
+      ],
+      allPublicationRows: [
+        {
+          ...minimalProjection().subscribedUnfoldered[0]!,
+          publicationId: "rss:https://example.com/folder-feed.xml",
+          unreadCount: undefined,
+        },
+      ],
+    });
+
+    const counted = applyUnreadCountsEvent(
+      withFolders,
+      { "rss:https://example.com/folder-feed.xml": 7 },
+      { replacePublicationIds: ["rss:https://example.com/folder-feed.xml"] }
+    );
+
+    expect(
+      counted.unreadCountsByPublicationId?.[
+        "rss:https://example.com/folder-feed.xml"
+      ]
+    ).toBe(7);
+    expect(counted.folderSections?.[0]?.publications[0]?.unreadCount).toBe(7);
+  });
 });

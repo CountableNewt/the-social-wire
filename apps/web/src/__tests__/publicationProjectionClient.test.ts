@@ -80,6 +80,40 @@ describe("publicationProjectionClient", () => {
     expect(map.get("did:plc:alice")).toBe(1);
   });
 
+  test("unreadCountsMapFromProjection preserves explicit zero counts", () => {
+    const projection: PublicationSidebarProjection = {
+      viewerDid: "did:plc:viewer",
+      folders: [],
+      publicationPrefs: [],
+      allPublicationRows: [
+        {
+          publicationId: "did:plc:alice",
+          authorDid: "did:plc:alice",
+          authorHandle: "alice",
+          title: "Alice",
+          discoveredAt: "2026-01-01T00:00:00.000Z",
+          unreadCount: 4,
+          appViewScope: {
+            authorDid: "did:plc:alice",
+            publicationAtUri: null,
+            publicationScopeAtUris: [],
+            publicationSiteUrls: [],
+          },
+        },
+      ],
+      myPublications: [],
+      subscribedUnfoldered: [],
+      followingTabPublications: [],
+      enrollAuthorDids: [],
+      refreshedAt: "2026-01-01T00:00:00.000Z",
+      unreadCountsByPublicationId: { "did:plc:alice": 0 },
+    };
+
+    const map = unreadCountsMapFromProjection(projection);
+    expect(map.has("did:plc:alice")).toBe(true);
+    expect(map.get("did:plc:alice")).toBe(0);
+  });
+
   test("unreadCountsMapFromProjection includes folder section publications", () => {
     const projection: PublicationSidebarProjection = {
       viewerDid: "did:plc:viewer",
