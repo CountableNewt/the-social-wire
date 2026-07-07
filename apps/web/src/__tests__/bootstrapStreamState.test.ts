@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 
 import {
+  applySidebarPriorityEvent,
   applySidebarFoldersEvent,
   applyUnreadCountsEvent,
   writeStreamedEntriesPage,
@@ -42,6 +43,27 @@ function minimalProjection(
   };
 }
 
+function row(
+  publicationId: string,
+  title: string,
+  unreadCount?: number
+): PublicationSidebarProjection["allPublicationRows"][number] {
+  return {
+    publicationId,
+    authorDid: `did:plc:${publicationId}`,
+    authorHandle: title.toLowerCase().replace(/\s+/g, "-"),
+    title,
+    discoveredAt: "2026-01-01T00:00:00.000Z",
+    appViewScope: {
+      authorDid: `did:plc:${publicationId}`,
+      publicationAtUri: null,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+    },
+    ...(unreadCount !== undefined ? { unreadCount } : {}),
+  };
+}
+
 describe("writeStreamedEntriesPage", () => {
   it("normalizes publication ids for the entries query cache key", () => {
     const qc = new QueryClient();
@@ -60,6 +82,61 @@ describe("writeStreamedEntriesPage", () => {
 });
 
 describe("applySidebarFoldersEvent", () => {
+  it("keeps cached full sidebar shape when a warm priority chunk is sparse", () => {
+    const alpha = row("pub-a", "Alpha", 7);
+    const beta = row("pub-b", "Beta", 0);
+    const gamma = row("pub-c", "Gamma", 2);
+    const cached = minimalProjection({
+      allPublicationRows: [alpha, beta, gamma],
+      subscribedUnfoldered: [alpha, beta],
+      followingTabPublications: [gamma],
+      folderSections: [
+        {
+          folderRkey: "folder1",
+          folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+          publications: [beta, gamma],
+        },
+      ],
+      unreadCountsByPublicationId: {
+        "pub-a": 7,
+        "pub-b": 0,
+        "pub-c": 2,
+      },
+    });
+
+    const priority = minimalProjection({
+      refreshedAt: "2026-01-02T00:00:00.000Z",
+      allPublicationRows: [row("pub-a", "Alpha Updated")],
+      subscribedUnfoldered: [row("pub-a", "Alpha Updated")],
+      followingTabPublications: [],
+      folderSections: undefined,
+      unreadCountsByPublicationId: undefined,
+    });
+
+    const merged = applySidebarPriorityEvent(cached, priority);
+
+    expect(merged.allPublicationRows.map((item) => item.title)).toEqual([
+      "Alpha Updated",
+      "Beta",
+      "Gamma",
+    ]);
+    expect(merged.subscribedUnfoldered.map((item) => item.title)).toEqual([
+      "Alpha Updated",
+      "Beta",
+    ]);
+    expect(merged.followingTabPublications.map((item) => item.title)).toEqual([
+      "Gamma",
+    ]);
+    expect(
+      merged.folderSections?.[0]?.publications.map((item) => item.title)
+    ).toEqual(["Beta", "Gamma"]);
+    expect(merged.unreadCountsByPublicationId).toEqual({
+      "pub-a": 7,
+      "pub-b": 0,
+      "pub-c": 2,
+    });
+  });
+
   it("merges folder layout without overwriting unreadCounts from the prior unreadCounts event", () => {
     const base = applyUnreadCountsEvent(minimalProjection(), {
       "rss:https://example.com/feed.xml": 5,

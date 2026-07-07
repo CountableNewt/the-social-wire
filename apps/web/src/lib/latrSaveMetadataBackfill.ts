@@ -4,7 +4,7 @@ import { resolveNativeSavedSubjectPreview } from "@/lib/atprotoClient";
 import {
   isLatrGatewayAuthRejected,
 } from "@/lib/latrGatewayCredentials";
-import { latrGatewayJson } from "@/lib/latrGatewayClient";
+import { latrGatewayFetch, latrGatewayJson } from "@/lib/latrGatewayClient";
 import type { LatrSaveMetadata, MergedLatrSave } from "@/lib/pdsClient";
 
 function str(value: unknown): string | undefined {
@@ -14,6 +14,26 @@ function str(value: unknown): string | undefined {
 function latrGatewayMutationsEnabled(): boolean {
   const flag = process.env.NEXT_PUBLIC_LATR_READ_LATER_PROVIDER?.trim();
   return flag !== "pds-direct";
+}
+
+let ogPreviewAuthRejected = false;
+
+export function resetLatrOgPreviewAuthRejectedForTests(): void {
+  ogPreviewAuthRejected = false;
+}
+
+function isOgPreviewAuthRejectedResponse(
+  status: number,
+  body: { error?: unknown; message?: unknown }
+): boolean {
+  if (status !== 401 && status !== 403) return false;
+  const error = typeof body.error === "string" ? body.error.toLowerCase() : "";
+  const message =
+    typeof body.message === "string" ? body.message.toLowerCase() : "";
+  return (
+    error === "invalid_token" ||
+    message.includes("access token signature could not be verified")
+  );
 }
 
 /** HTTPS URL the Latr gateway can scrape for OG metadata. */
@@ -123,19 +143,30 @@ export async function fetchLatrOgPreview(
   oauthSession: OAuthSession,
   url: string
 ): Promise<LatrSaveMetadata | null> {
-  if (!latrGatewayMutationsEnabled() || isLatrGatewayAuthRejected()) {
+  if (
+    !latrGatewayMutationsEnabled() ||
+    isLatrGatewayAuthRejected() ||
+    ogPreviewAuthRejected
+  ) {
     return null;
   }
 
   const params = new URLSearchParams({ url: url.trim() });
   try {
-    const data = await withOgPreviewSlot(() =>
-      latrGatewayJson<Record<string, unknown>>(
+    const res = await withOgPreviewSlot(() =>
+      latrGatewayFetch(
         oauthSession,
         `/v1/latr/og-preview?${params}`,
         { method: "GET" }
       )
     );
+    const data = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      if (isOgPreviewAuthRejectedResponse(res.status, data)) {
+        ogPreviewAuthRejected = true;
+      }
+      return null;
+    }
     return parseOgPreviewResponse(data);
   } catch {
     return null;

@@ -14,11 +14,97 @@ import {
   type EntriesPage,
 } from "@/hooks/useEntries";
 
+type SidebarRow = PublicationSidebarProjection["allPublicationRows"][number];
+
 export function applySidebarPriorityEvent(
-  _current: PublicationSidebarProjection | undefined,
+  current: PublicationSidebarProjection | undefined,
   payload: PublicationSidebarProjection
 ): PublicationSidebarProjection {
-  return payload;
+  if (!current) return payload;
+
+  const priorityRowsById = new Map<string, SidebarRow>();
+  const addPriorityRow = (row: SidebarRow) => {
+    priorityRowsById.set(normalizeAtRepoParam(row.publicationId), row);
+  };
+
+  for (const row of payload.allPublicationRows) addPriorityRow(row);
+  for (const row of payload.myPublications) addPriorityRow(row);
+  for (const row of payload.subscribedUnfoldered) addPriorityRow(row);
+  for (const row of payload.followingTabPublications) addPriorityRow(row);
+  for (const section of payload.folderSections ?? []) {
+    for (const row of section.publications) addPriorityRow(row);
+  }
+
+  const mergeRow = (row: SidebarRow) => {
+    const priority = priorityRowsById.get(
+      normalizeAtRepoParam(row.publicationId)
+    );
+    if (!priority) return row;
+    return {
+      ...row,
+      ...priority,
+      unreadCount: priority.unreadCount ?? row.unreadCount,
+    };
+  };
+
+  const appendNewPriorityRows = (rows: SidebarRow[]) => {
+    const seen = new Set(
+      rows.map((row) => normalizeAtRepoParam(row.publicationId))
+    );
+    const merged = rows.map(mergeRow);
+    for (const row of payload.allPublicationRows) {
+      const key = normalizeAtRepoParam(row.publicationId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(row);
+    }
+    return merged;
+  };
+
+  const mergeList = (
+    currentRows: SidebarRow[],
+    priorityRows: SidebarRow[]
+  ) => {
+    const seen = new Set(
+      currentRows.map((row) => normalizeAtRepoParam(row.publicationId))
+    );
+    const merged = currentRows.map(mergeRow);
+    for (const row of priorityRows) {
+      const key = normalizeAtRepoParam(row.publicationId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(row);
+    }
+    return merged;
+  };
+
+  const unreadCountsByPublicationId = {
+    ...(current.unreadCountsByPublicationId ?? {}),
+    ...(payload.unreadCountsByPublicationId ?? {}),
+  };
+
+  return {
+    ...current,
+    refreshedAt: payload.refreshedAt,
+    allPublicationRows: appendNewPriorityRows(current.allPublicationRows),
+    myPublications: mergeList(current.myPublications, payload.myPublications),
+    subscribedUnfoldered: mergeList(
+      current.subscribedUnfoldered,
+      payload.subscribedUnfoldered
+    ),
+    followingTabPublications: mergeList(
+      current.followingTabPublications,
+      payload.followingTabPublications
+    ),
+    folderSections: current.folderSections?.map((section) => ({
+      ...section,
+      publications: section.publications.map(mergeRow),
+    })),
+    enrollAuthorDids: [
+      ...new Set([...current.enrollAuthorDids, ...payload.enrollAuthorDids]),
+    ],
+    unreadCountsByPublicationId,
+  };
 }
 
 export function applyUnreadCountsEvent(

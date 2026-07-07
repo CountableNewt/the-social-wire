@@ -75,6 +75,9 @@ type PublicationSidebarContextValue = {
 const PublicationSidebarContext =
   createContext<PublicationSidebarContextValue | null>(null);
 
+const RECENT_BOOTSTRAP_REUSE_MS = 30_000;
+const bootstrapCompletedAtByDid = new Map<string, number>();
+
 export function PublicationSidebarProvider({ children }: { children: ReactNode }) {
   const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
@@ -146,18 +149,37 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   }, [did, dummyReaderDataEnabled, qc]);
 
   const runBootstrapStream = useCallback(
-    async (controller: AbortController) => {
+    async (
+      controller: AbortController,
+      options: { force?: boolean } = {}
+    ) => {
       const oauth = getOAuthSession();
       if (!oauth || !did) return;
 
       resetBootstrapPerf();
+      const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
       const hadSidebarSnapshot = Boolean(
-        qc.getQueryData<PublicationSidebarProjection>(
-          PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
-        )
+        qc.getQueryData<PublicationSidebarProjection>(queryKey)
       );
       if (hadSidebarSnapshot) {
         markBootstrapPerf("cachedSidebarPaint");
+      }
+
+      const recentCompletedAt = bootstrapCompletedAtByDid.get(did);
+      if (
+        !options.force &&
+        hadSidebarSnapshot &&
+        recentCompletedAt != null &&
+        Date.now() - recentCompletedAt < RECENT_BOOTSTRAP_REUSE_MS
+      ) {
+        setSidebarFetching(false);
+        setFolderPublicationsLoading(false);
+        setBootstrapStreamComplete(true);
+        bootstrapCompletedAtRef.current = {
+          did,
+          completedAt: recentCompletedAt,
+        };
+        return;
       }
 
       const generation = ++streamGenerationRef.current;
@@ -234,6 +256,10 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
                   did,
                   completedAt: Date.now(),
                 };
+                bootstrapCompletedAtByDid.set(
+                  did,
+                  bootstrapCompletedAtRef.current.completedAt
+                );
                 if (pendingAutoSelectPublicationIdRef.current) {
                   setStreamSelectedPublicationId(
                     pendingAutoSelectPublicationIdRef.current
@@ -258,7 +284,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
               setStreamProjection((currentStream) => {
                 const baseline =
                   qc.getQueryData<PublicationSidebarProjection>(
-                    PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did)
+                    queryKey
                   ) ?? currentStream;
                 const applied = applyBootstrapStreamEvent({
                   projection: baseline,
@@ -269,7 +295,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
                 }
                 if (applied.projection) {
                   qc.setQueryData(
-                    PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
+                    queryKey,
                     applied.projection
                   );
                   if (event.kind === "done") {
@@ -386,7 +412,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
       qc.setQueryData(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did), projection);
       setStreamProjection(undefined);
       const controller = new AbortController();
-      await runBootstrapStream(controller);
+      await runBootstrapStream(controller, { force: true });
     },
   });
 
