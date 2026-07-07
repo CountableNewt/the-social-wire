@@ -57,8 +57,8 @@ export function countCachedReadEntries(
 
 export type EffectivePublicationUnreadCountOptions = {
   /**
-   * When true, a non-zero AppView baseline is never exceeded by partial first-page
-   * cache (sidebar prefetch). Local read marks can still lower the badge.
+   * When true, an AppView baseline is never exceeded by partial first-page cache
+   * (sidebar prefetch). Local read marks can still lower the badge.
    */
   capRaiseToServerCount?: boolean;
 };
@@ -79,10 +79,21 @@ export function effectivePublicationUnreadCount(
   const cachedUnread = countUnreadCachedEntries(cached, isEntryRead);
   const cachedRead = countCachedReadEntries(cached, isEntryRead);
   const reconciled = Math.max(cachedUnread, serverCount - cachedRead);
-  if (options?.capRaiseToServerCount && serverCount > 0) {
+  if (options?.capRaiseToServerCount) {
     return Math.min(reconciled, serverCount);
   }
   return reconciled;
+}
+
+export function findUnreadCountInMap(
+  publicationUnreadCounts: Map<string, number>,
+  publicationId: string
+): number | undefined {
+  const target = normalizeAtRepoParam(publicationId);
+  for (const [key, count] of publicationUnreadCounts) {
+    if (normalizeAtRepoParam(key) === target) return count;
+  }
+  return publicationUnreadCounts.get(publicationId);
 }
 
 /**
@@ -92,11 +103,7 @@ export function lookupUnreadCountInMap(
   publicationUnreadCounts: Map<string, number>,
   publicationId: string
 ): number {
-  const target = normalizeAtRepoParam(publicationId);
-  for (const [key, count] of publicationUnreadCounts) {
-    if (normalizeAtRepoParam(key) === target) return count;
-  }
-  return publicationUnreadCounts.get(publicationId) ?? 0;
+  return findUnreadCountInMap(publicationUnreadCounts, publicationId) ?? 0;
 }
 
 export function sumUnreadForPublications(

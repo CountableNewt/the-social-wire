@@ -52,6 +52,9 @@ public enum AppViewProjectionCacheScopeKeys {
       }
     }
     for url in publicationSiteUrls {
+      if let normalized = RssFeedIdentity.normalizeFeedUrl(url) {
+        keys.insert(normalized)
+      }
       if let normalized = RenderFieldExtractor.normalizePublicationSiteUrl(url) {
         keys.insert(normalized)
       }

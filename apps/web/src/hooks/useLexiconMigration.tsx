@@ -9,6 +9,9 @@ import {
 } from "@/lib/latrLexiconMigration";
 import { lexiconMigrationChanged } from "@/lib/pdsClient";
 
+const completedMigrationDids = new Set<string>();
+const inFlightMigrationDids = new Set<string>();
+
 /**
  * Runs one-time PDS lexicon migration after OAuth session restore.
  * Copies legacy `com.thesocialwire.*` rows to `app.thesocialwire.*` and deletes the old records.
@@ -26,8 +29,15 @@ export function LexiconMigrationRunner() {
     }
 
     const did = client.viewerDid;
-    if (migratedForDidRef.current === did) return;
+    if (
+      migratedForDidRef.current === did ||
+      completedMigrationDids.has(did) ||
+      inFlightMigrationDids.has(did)
+    ) {
+      return;
+    }
     migratedForDidRef.current = did;
+    inFlightMigrationDids.add(did);
 
     void (async () => {
       try {
@@ -43,9 +53,12 @@ export function LexiconMigrationRunner() {
             console.info("Migrated legacy L@tr lexicons", latrSummary);
           }
         }
+        completedMigrationDids.add(did);
       } catch (err) {
         console.warn("Legacy lexicon migration failed:", err);
         migratedForDidRef.current = null;
+      } finally {
+        inFlightMigrationDids.delete(did);
       }
     })();
   }, [client, getOAuthSession]);

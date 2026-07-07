@@ -109,12 +109,26 @@ public enum RenderFieldExtractor {
       return true
     }
 
+    let wantFeedUrls = Set(publicationSiteUrls.compactMap { RssFeedIdentity.normalizeFeedUrl($0) })
+    if !wantFeedUrls.isEmpty, let gotFeedUrl = RssFeedIdentity.normalizeFeedUrl(siteField) {
+      if wantFeedUrls.contains(gotFeedUrl) {
+        return true
+      }
+      if wantFeedUrls.contains(where: hasQueryString) {
+        return false
+      }
+    }
+
     let wantSiteUrls = Set(publicationSiteUrls.compactMap { normalizePublicationSiteUrl($0) })
     if let gotSite = normalizePublicationSiteUrl(siteField), wantSiteUrls.contains(gotSite) {
       return true
     }
 
     return false
+  }
+
+  private static func hasQueryString(_ raw: String) -> Bool {
+    URLComponents(string: raw)?.query?.isEmpty == false
   }
 
   /// Matches web `entryRecordMatchesPublication` site equivalence keys.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ export function EntryListVirtualPane({
   const parentRef = useRef<HTMLDivElement>(null);
   const loaderNodeRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const scrollTopRef = useRef(0);
   const fetchNextPageRef = useRef(fetchNextPage);
   fetchNextPageRef.current = fetchNextPage;
   const hasNextPageRef = useRef(hasNextPage);
@@ -98,6 +99,24 @@ export function EntryListVirtualPane({
   useEffect(() => {
     return () => disconnectLoaderObserver();
   }, [disconnectLoaderObserver]);
+
+  useEffect(() => {
+    const root = parentRef.current;
+    if (!root) return;
+
+    scrollTopRef.current = root.scrollTop;
+    const rememberScrollTop = () => {
+      scrollTopRef.current = root.scrollTop;
+    };
+    root.addEventListener("scroll", rememberScrollTop, { passive: true });
+    return () => root.removeEventListener("scroll", rememberScrollTop);
+  }, []);
+
+  useLayoutEffect(() => {
+    const root = parentRef.current;
+    if (!root) return;
+    root.scrollTop = scrollTopRef.current;
+  }, [visibleEntries]);
 
   useEffect(() => {
     const root = parentRef.current;

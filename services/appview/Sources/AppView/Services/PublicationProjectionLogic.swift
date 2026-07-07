@@ -228,26 +228,7 @@ enum PublicationProjectionLogic {
   }
 
   static func normalizeRssFeedUrl(_ raw: String) -> String? {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-    var href = trimmed
-    if !href.lowercased().hasPrefix("http://"), !href.lowercased().hasPrefix("https://") {
-      href = "https://\(href)"
-    }
-    guard var components = URLComponents(string: href),
-          let scheme = components.scheme?.lowercased(),
-          scheme == "http" || scheme == "https",
-          let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !host.isEmpty
-    else { return nil }
-    if scheme == "http" { components.scheme = "https" }
-    components.fragment = nil
-    components.user = nil
-    components.password = nil
-    guard let url = components.url else { return nil }
-    var out = url.absoluteString
-    if out.hasSuffix("/") { out.removeLast() }
-    return out
+    RssFeedIdentity.normalizeFeedUrl(raw)
   }
 
   static func skyreaderRows(from records: [(uri: String, value: PdsRecordJSON)]) -> [ProjectionDiscoveredRow] {

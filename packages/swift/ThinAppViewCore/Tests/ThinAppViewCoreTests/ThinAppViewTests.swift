@@ -304,4 +304,47 @@ struct SQLiteThinAppViewStoreTests {
     #expect(page.entries.count == 1)
     #expect(page.entries[0].title == "A")
   }
+
+  @Test("RSS publication scope preserves query-specific feed URL")
+  func rssPublicationSiteScopeWithQuery() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let now = Date()
+    let rssFeed = "https://basicappleguy.com/basicappleblog?format=rss"
+    let atomFeed = "https://basicappleguy.com/basicappleblog?format=atom"
+
+    for (feed, title) in [(rssFeed, "RSS"), (atomFeed, "Atom")] {
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: RssFeedIdentity.rssEntryId(normalizedFeedUrl: feed, stableItemKey: "guid:\(title)"),
+          cid: "rss:\(title)",
+          authorDid: RssFeedLexicons.rssAuthorDid,
+          collection: RssFeedLexicons.skyreaderFeedEntry,
+          createdAt: now,
+          indexedAt: now,
+          publicationSite: feed,
+          render: ContentRenderFields(title: title, publishedAt: ISO8601DateFormatter().string(from: now)),
+          expiresAt: now.addingTimeInterval(3600)
+        )
+      )
+    }
+
+    let page = try await store.listEntries(
+      viewerDid: "did:plc:viewer",
+      authorDid: RssFeedLexicons.rssAuthorDid,
+      publicationAtUri: nil,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [rssFeed],
+      filter: .all,
+      cursor: nil,
+      limit: 50
+    )
+
+    #expect(page.entries.map(\.title) == ["RSS"])
+  }
 }

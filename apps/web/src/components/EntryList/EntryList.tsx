@@ -80,13 +80,10 @@ export function EntryList({
     );
   }, [allEntries, effectiveFilter, isEntryRead]);
 
-  /** Unread: remount when membership changes (mark read removes a row). All: stable per pub + filter only. */
+  /** Remount only when the user changes publication/filter; data churn must not reset scroll. */
   const virtualPaneKey = useMemo(() => {
-    if (effectiveFilter === "unread") {
-      return `${pubId}:unread:${visibleEntries.map((e) => e.entryId).join("\x1e")}`;
-    }
     return `${pubId}:${effectiveFilter}`;
-  }, [pubId, effectiveFilter, visibleEntries]);
+  }, [pubId, effectiveFilter]);
 
   useEffect(() => {
     if (effectiveFilter !== "unread" || !readIndicatorsEnabled) return;

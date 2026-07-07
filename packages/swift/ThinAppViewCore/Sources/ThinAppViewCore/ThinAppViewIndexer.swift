@@ -176,6 +176,9 @@ public actor ThinAppViewIndexer {
     if let normalized = RenderFieldExtractor.normalizePublicationSiteUrl(publicationSite) {
       publicationIds.insert(normalized)
     }
+    if let normalized = RssFeedIdentity.normalizeFeedUrl(publicationSite) {
+      publicationIds.insert(normalized)
+    }
     for publicationId in publicationIds {
       try? await projectionCache.invalidateFirstPageForAllViewers(publicationId: publicationId)
     }

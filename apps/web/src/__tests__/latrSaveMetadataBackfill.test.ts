@@ -1,13 +1,31 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 
 import {
   backfillUrlForLatrSave,
+  fetchLatrOgPreview,
   isLatrSaveMetadataSparse,
   isWeakLatrSaveTitle,
   mergeLatrSaveBackfillMetadata,
   needsLatrSaveOgBackfill,
+  resetLatrOgPreviewAuthRejectedForTests,
 } from "@/lib/latrSaveMetadataBackfill";
 import type { MergedLatrSave } from "@/lib/pdsClient";
+
+const ORIG_FETCH = globalThis.fetch;
+const ORIG_LOCATION_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "location"
+);
+
+afterEach(() => {
+  resetLatrOgPreviewAuthRejectedForTests();
+  globalThis.fetch = ORIG_FETCH;
+  if (ORIG_LOCATION_DESCRIPTOR) {
+    Object.defineProperty(globalThis, "location", ORIG_LOCATION_DESCRIPTOR);
+  } else {
+    delete (globalThis as { location?: Location }).location;
+  }
+});
 
 describe("latrSaveMetadataBackfill", () => {
   const externalRow: MergedLatrSave = {
@@ -150,5 +168,50 @@ describe("latrSaveMetadataBackfill", () => {
     expect(merged.excerpt).toBe("Preview excerpt");
     expect(merged.image).toBe("https://existing/thumb.jpg");
     expect(merged.site).toBe("Example");
+  });
+
+  it("skips later OG preview requests after the gateway rejects auth", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: new URL("https://testing.thesocialwire.app/saved"),
+    });
+
+    const fetchMock = mock(async () =>
+      new Response(
+        JSON.stringify({
+          error: "invalid_token",
+          message: "Access token signature could not be verified for this route",
+        }),
+        { status: 401 }
+      )
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const oauthSession = {
+      getTokenSet: async () => ({
+        access_token: "access-token",
+        token_type: "DPoP",
+      }),
+      server: {
+        dpopKey: {
+          bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
+          algorithms: ["ES256"],
+          createJwt: async () => "dpop-proof",
+        },
+        dpopNonces: {
+          get: async () => undefined,
+          set: async () => {},
+        },
+        serverMetadata: { dpop_signing_alg_values_supported: ["ES256"] },
+      },
+    } as never;
+
+    expect(
+      await fetchLatrOgPreview(oauthSession, "https://example.com/a")
+    ).toBeNull();
+    expect(
+      await fetchLatrOgPreview(oauthSession, "https://example.com/b")
+    ).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

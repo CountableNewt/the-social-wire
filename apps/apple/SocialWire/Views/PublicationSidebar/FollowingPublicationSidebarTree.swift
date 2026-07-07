@@ -19,7 +19,7 @@ struct FollowingPublicationSidebarTree: View {
                 }
             } else {
                 ForEach(appModel.followingTabPublications) { publication in
-                    publicationRow(publication)
+                    publicationRow(publication, tree: tree)
                 }
             }
         } header: {
@@ -33,7 +33,10 @@ struct FollowingPublicationSidebarTree: View {
         }
     }
 
-    private func publicationRow(_ publication: DiscoveredPublication) -> some View {
+    private func publicationRow(
+        _ publication: DiscoveredPublication,
+        tree: SidebarTreeViewModel
+    ) -> some View {
         Button {
             appModel.selectedSidebar = .publication(publication.publicationId)
             onPublicationTap?(publication)

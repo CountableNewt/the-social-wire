@@ -308,7 +308,7 @@ export function unreadCountsMapFromProjection(
   if (!projection) return map;
 
   const applyCount = (publicationId: string, count: number | undefined) => {
-    if (count == null || count <= 0) return;
+    if (count == null || count < 0) return;
     map.set(publicationId, count);
   };
 

@@ -69,10 +69,10 @@ describe("bootstrapStreamState", () => {
       replacePublicationIds: ["pub-a"],
     });
     expect(refreshed.subscribedUnfoldered[0]?.unreadCount).toBe(0);
-    expect(refreshed.unreadCountsByPublicationId?.["pub-a"]).toBeUndefined();
+    expect(refreshed.unreadCountsByPublicationId?.["pub-a"]).toBe(0);
   });
 
-  it("replaces projection on sidebarPriority", () => {
+  it("uses the priority projection on cold sidebarPriority", () => {
     const next = applySidebarPriorityEvent(undefined, baseProjection());
     expect(next.subscribedUnfoldered).toHaveLength(1);
   });
