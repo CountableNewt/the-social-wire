@@ -4,7 +4,7 @@
 
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { describe, it, expect, afterEach, mock } from "bun:test";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { useDiscovery, useRefreshDiscovery } from "@/hooks/usePublications";
@@ -89,9 +89,7 @@ describe("useRefreshDiscovery", () => {
       wrapper: makeWrapper(),
     });
 
-    await act(async () => {
-      await result.current.mutateAsync();
-    });
+    await result.current.mutateAsync();
 
     expect(discoveryCallCount).toBe(1);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -105,13 +103,7 @@ describe("useRefreshDiscovery", () => {
       wrapper: makeWrapper(),
     });
 
-    await act(async () => {
-      try {
-        await result.current.mutateAsync();
-      } catch {
-        // expected
-      }
-    });
+    await expect(result.current.mutateAsync()).rejects.toThrow("Discovery failed");
 
     await waitFor(() => expect(result.current.isError).toBe(true));
   });

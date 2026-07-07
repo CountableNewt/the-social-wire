@@ -18,6 +18,12 @@ struct ListsView: View {
                     HStack {
                         Label(source.rawValue, systemImage: source.systemImage)
                         Spacer(minLength: 8)
+                        if source == .readLater {
+                            SidebarCountLabel(
+                                count: appModel.savedLinks.count,
+                                accessibilityDescription: "saved links"
+                            )
+                        }
                         if appModel.readerListSource == source {
                             Image(systemName: "checkmark")
                                 .foregroundStyle(Color.accentColor)

@@ -36,6 +36,7 @@ import { useReadState } from "@/contexts/ReadStateContext";
 import { useSidebarChrome } from "@/contexts/SidebarChromeContext";
 import { useReadSidebarScopeOptional } from "@/contexts/ReadSidebarScopeContext";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
+import { useLatrMergedHttpsSaves } from "@/hooks/useLatrSaved";
 import { rkeyFromURI } from "@/lib/pdsClient";
 import { type DiscoveredPublication, viewerOwnsDiscoveredPublication } from "@/lib/atprotoClient";
 import { sumUnreadForPublications } from "@/lib/unreadCounts";
@@ -45,6 +46,7 @@ import {
 } from "./appSidebarConstants";
 import { folderExpandKey } from "@/lib/sidebarExpandedKeysStorage";
 import { PublicationTabs } from "./PublicationTabs";
+import { ReadLaterSidebarBadge } from "./ReadLaterSidebarBadge";
 
 interface AppSidebarProps {
   selectedPubId: string | null;
@@ -66,6 +68,7 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     syncSidebarFolderExpandKeys,
   } = useSidebarChrome();
   const { isEntryRead, readEpoch } = useReadState();
+  const { data: savedLinks = [] } = useLatrMergedHttpsSaves("active");
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -290,9 +293,11 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
                   tooltip="Read Later Links"
                   isActive={pathname.startsWith("/saved")}
                   onClick={() => router.push("/saved")}
+                  className={savedLinks.length > 0 ? "relative pr-8" : undefined}
                 >
                   <Bookmark />
                   <span>Saved</span>
+                  <ReadLaterSidebarBadge count={savedLinks.length} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

@@ -24,7 +24,7 @@ struct SubscribedPublicationSidebarTree: View {
                 }
             } else {
                 ForEach(appModel.folders) { folder in
-                    folderSection(folder)
+                    folderSection(folder, tree: tree)
                 }
                 Button {
                     showingNewFolder = true
@@ -50,7 +50,7 @@ struct SubscribedPublicationSidebarTree: View {
                 }
             } else {
                 ForEach(appModel.subscribedUnfolderedPublications) { publication in
-                    publicationRow(publication)
+                    publicationRow(publication, tree: tree)
                 }
                 Button {
                     showingAddPublication = true
@@ -92,7 +92,10 @@ struct SubscribedPublicationSidebarTree: View {
     }
 
     @ViewBuilder
-    private func folderSection(_ folder: RepoRecord<FolderRecord>) -> some View {
+    private func folderSection(
+        _ folder: RepoRecord<FolderRecord>,
+        tree: SidebarTreeViewModel
+    ) -> some View {
         let folderRkey = rkey(from: folder.uri)
         let pubs = appModel.publications(in: folder)
         let isExpanded = appModel.sidebarExpandedFolderRkeys.contains(folderRkey)
@@ -127,7 +130,7 @@ struct SubscribedPublicationSidebarTree: View {
                 }
             } else {
                 ForEach(pubs) { publication in
-                    publicationRow(publication)
+                    publicationRow(publication, tree: tree)
                 }
                 if pubs.isEmpty {
                     Text("No publications in this folder.")
@@ -139,7 +142,10 @@ struct SubscribedPublicationSidebarTree: View {
         }
     }
 
-    private func publicationRow(_ publication: DiscoveredPublication) -> some View {
+    private func publicationRow(
+        _ publication: DiscoveredPublication,
+        tree: SidebarTreeViewModel
+    ) -> some View {
         Button {
             appModel.selectedSidebar = .publication(publication.publicationId)
             onPublicationTap?(publication)

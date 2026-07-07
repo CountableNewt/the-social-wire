@@ -189,12 +189,12 @@ enum PublicationUnreadCountLookup {
         publicationIds: [String]
     ) -> [String] {
         guard let coordinator else { return [] }
-        var cacheKeys = Set<String>()
+        var expandedCacheKeys = Set<String>()
         for publicationId in publicationIds {
             for key in cacheKeys(for: publicationId) {
-                cacheKeys.insert(key)
+                expandedCacheKeys.insert(key)
             }
         }
-        return coordinator.distinctCachedEntryIds(publicationIds: Array(cacheKeys))
+        return coordinator.distinctCachedEntryIds(publicationIds: Array(expandedCacheKeys))
     }
 }
