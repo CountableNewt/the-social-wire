@@ -79,8 +79,25 @@ const RECENT_BOOTSTRAP_REUSE_MS = 30_000;
 const bootstrapCompletedAtByDid = new Map<string, number>();
 
 export function PublicationSidebarProvider({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const did = auth.session?.did ?? "";
+
+  return (
+    <PublicationSidebarProviderInner key={did} auth={auth}>
+      {children}
+    </PublicationSidebarProviderInner>
+  );
+}
+
+function PublicationSidebarProviderInner({
+  auth,
+  children,
+}: {
+  auth: ReturnType<typeof useAuth>;
+  children: ReactNode;
+}) {
   const dummyReaderDataEnabled = isDummyReaderDataEnabled();
-  const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
+  const { session, getOAuthSession, oauthSessionReloadSeq } = auth;
   const qc = useQueryClient();
   const isRestoring = useIsRestoring();
   const did = session?.did ?? "";
@@ -122,25 +139,11 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   const [streamProjection, setStreamProjection] = useState<
     PublicationSidebarProjection | undefined
   >(undefined);
-  const [streamOwnerDid, setStreamOwnerDid] = useState(did);
 
-  if (did !== streamOwnerDid) {
-    setStreamOwnerDid(did);
-    setStreamProjection(undefined);
-    setStreamSelectedPublicationId(null);
-    setSidebarFetching(false);
-    setBootstrapStreamComplete(false);
-    setFolderPublicationsLoading(false);
-    setProjectionError(null);
-    streamSawSidebarSectionRef.current = false;
-  }
-
-  const effectiveStreamProjection =
-    did === streamOwnerDid ? streamProjection : undefined;
   const mergedProjection =
     dummyReaderDataEnabled
       ? cachedProjection ?? dummyPublicationSidebarProjection
-      : effectiveStreamProjection ?? cachedProjection ?? undefined;
+      : streamProjection ?? cachedProjection ?? undefined;
 
   useEffect(() => {
     if (!dummyReaderDataEnabled || !did) return;
