@@ -458,13 +458,16 @@ function PublicationSidebarProviderInner({
     if (publicationIds.length === 0) return;
 
     try {
-      const counts = await fetchAppViewUnreadCounts(oauth, publicationIds);
+      const countSnapshot = await fetchAppViewUnreadCounts(oauth, publicationIds);
       qc.setQueryData<PublicationSidebarProjection>(
         PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did),
         (current) =>
           current
-            ? applyUnreadCountsEvent(current, counts, {
+            ? applyUnreadCountsEvent(current, countSnapshot.counts, {
                 replacePublicationIds: publicationIds,
+                generation: countSnapshot.generation,
+                accuracy: countSnapshot.accuracy,
+                countedAt: countSnapshot.countedAt,
               })
             : current
       );

@@ -24,5 +24,7 @@ docs {
   legacy `sidebarFolders` → `done`.
 
   New clients should prefer `sidebarSection` payloads over monolithic `sidebarFolders`.
+  `unreadCounts` events include `generation`, `accuracy`, and `countedAt`.
+  `sidebarSection` events may include `sectionGeneration`.
   Each line is a `BootstrapStreamEvent` with a `kind` field. Requires `ENABLE_THIN_APPVIEW=true`.
 }

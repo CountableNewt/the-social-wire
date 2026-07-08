@@ -49,25 +49,8 @@ struct AppViewExtendedRoutes {
       let body = try await request.decode(as: ScopedMarkAllReadRequest.self, context: context)
       let sidebar = try await projectionService.sidebar(auth: auth)
       let rows = Self.rows(for: body.scope, sidebar: sidebar)
-      var marked = 0
-      for row in rows {
-        let unread = try await readService.listEntries(
-          auth: auth,
-          authorDid: row.appViewScope.authorDid,
-          publicationAtUri: row.appViewScope.publicationAtUri,
-          publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
-          publicationSiteUrls: row.appViewScope.publicationSiteUrls,
-          filter: .unread,
-          cursor: nil,
-          limit: 500
-        )
-        for entry in unread.entries {
-          try await readService.upsertReadMark(auth: auth, subjectUri: entry.entryId, readAt: Date())
-          marked += 1
-        }
-      }
-      await projectionService.invalidateViewerCaches(viewerDid: auth.did)
-      return MarkAllReadResponse(marked: marked)
+      let result = try await readService.markAllRead(auth: auth, rows: rows)
+      return MarkAllReadResponse(marked: result.marked)
     }
   }
 
@@ -144,6 +127,21 @@ public struct AppViewUnreadCountsResponse: Codable, Sendable, ResponseEncodable 
 
 public struct AppViewUnreadCountsByPublicationResponse: Codable, Sendable, ResponseEncodable {
   public let counts: [String: Int]
+  public let generation: Int64?
+  public let accuracy: String?
+  public let countedAt: Date?
+
+  public init(
+    counts: [String: Int],
+    generation: Int64? = nil,
+    accuracy: String? = nil,
+    countedAt: Date? = nil
+  ) {
+    self.counts = counts
+    self.generation = generation
+    self.accuracy = accuracy
+    self.countedAt = countedAt
+  }
 }
 
 struct ScopedMarkAllReadRequest: Codable, Sendable {

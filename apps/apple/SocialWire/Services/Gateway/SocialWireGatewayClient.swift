@@ -254,21 +254,32 @@ final class SocialWireGatewayClient {
         return dto.toEntryDetail()
     }
 
-    func fetchAppViewUnreadCounts(publicationIds: [String]) async throws -> [String: Int] {
-        guard !publicationIds.isEmpty else { return [:] }
+    func fetchAppViewUnreadCounts(publicationIds: [String]) async throws -> AppViewUnreadCountsResponse {
+        guard !publicationIds.isEmpty else {
+            return AppViewUnreadCountsResponse(
+                counts: [:],
+                generation: nil,
+                accuracy: nil,
+                countedAt: nil
+            )
+        }
         let result = try await authorizedGET(
             path: "/v1/appview/unread-counts",
             query: ["publicationIds": publicationIds.joined(separator: ",")],
             ifNoneMatch: nil
         )
         if result.statusCode == 404 {
-            return [:]
+            return AppViewUnreadCountsResponse(
+                counts: [:],
+                generation: nil,
+                accuracy: nil,
+                countedAt: nil
+            )
         }
         guard (200 ..< 300).contains(result.statusCode) else {
             throw SocialWireError.badResponse("AppView unread counts failed (\(result.statusCode)).")
         }
-        let decoded = try JSONDecoder().decode(AppViewUnreadCountsResponse.self, from: result.body)
-        return decoded.counts ?? [:]
+        return try JSONDecoder().decode(AppViewUnreadCountsResponse.self, from: result.body)
     }
 
     func upsertReadMark(subjectUri: String, readAt: Date) async throws {

@@ -43,7 +43,10 @@ function latrSavesQueryKey(state: LatrSaveListState) {
   return state === "archived" ? LATR_ARCHIVED_QUERY_KEY : LATR_SAVED_QUERY_KEY;
 }
 
-export function useLatrMergedHttpsSaves(state: LatrSaveListState = "active") {
+export function useLatrMergedHttpsSaves(
+  state: LatrSaveListState = "active",
+  options?: { enabled?: boolean }
+) {
   const client = usePDSClient();
   return useQuery({
     queryKey: latrSavesQueryKey(state),
@@ -51,7 +54,7 @@ export function useLatrMergedHttpsSaves(state: LatrSaveListState = "active") {
       if (!client) return [];
       return client.listMergedLatrSaves({ state, signal });
     },
-    enabled: !!client,
+    enabled: !!client && (options?.enabled ?? true),
     staleTime: 15_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

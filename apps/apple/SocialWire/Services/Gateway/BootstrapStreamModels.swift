@@ -28,6 +28,9 @@ struct BootstrapStreamEventDTO: Codable, Sendable {
 struct BootstrapUnreadCountsPayloadDTO: Codable, Sendable {
     let counts: [String: Int]
     let replacePublicationIds: [String]?
+    let generation: Int64?
+    let accuracy: String?
+    let countedAt: String?
 }
 
 struct BootstrapSelectedPublicationPayloadDTO: Codable, Sendable {
@@ -53,6 +56,7 @@ struct BootstrapSidebarSectionPayloadDTO: Codable, Sendable {
     let unreadCounts: [String: Int]?
     let replacePublicationIds: [String]?
     let refreshedAt: String
+    let sectionGeneration: Int64?
 }
 
 struct BootstrapMessagePayloadDTO: Codable, Sendable {

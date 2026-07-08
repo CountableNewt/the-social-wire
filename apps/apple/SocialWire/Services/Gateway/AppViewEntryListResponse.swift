@@ -64,4 +64,7 @@ struct AppViewEntryDetailDTO: Decodable, Sendable {
 
 struct AppViewUnreadCountsResponse: Codable, Sendable {
     let counts: [String: Int]?
+    let generation: Int64?
+    let accuracy: String?
+    let countedAt: String?
 }

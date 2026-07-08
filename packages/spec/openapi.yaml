@@ -733,7 +733,11 @@ paths:
         `sidebarFolders` during the migration.
 
         `sidebarSection` payload:
-        `{ sectionKey, folderRkey?, folderUri?, publications, unreadCounts?, replacePublicationIds?, refreshedAt }`.
+        `{ sectionKey, folderRkey?, folderUri?, publications, unreadCounts?, replacePublicationIds?, refreshedAt, sectionGeneration? }`.
+
+        `unreadCounts` payload:
+        `{ counts, replacePublicationIds?, generation?, accuracy?, countedAt? }`. Clients should apply
+        newer generations only; `exact` counts may replace same-generation `estimated` counts.
       tags: [AppView]
       responses:
         "200":
@@ -958,7 +962,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Unread count map.
+          description: Unread count snapshot.
           content:
             application/json:
               schema:
@@ -969,6 +973,15 @@ paths:
                     type: object
                     additionalProperties:
                       type: integer
+                  generation:
+                    type: integer
+                    format: int64
+                  accuracy:
+                    type: string
+                    enum: [estimated, exact]
+                  countedAt:
+                    type: string
+                    format: date-time
         "401":
           $ref: "#/components/responses/Unauthorized"
 

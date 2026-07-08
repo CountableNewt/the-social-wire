@@ -67,6 +67,70 @@ public struct ReadMarkRow: Sendable {
   public let createdAt: Date
 }
 
+public enum AppViewUnreadCounterAccuracy: String, Codable, Sendable, Equatable {
+  case estimated
+  case exact
+}
+
+public struct AppViewPublicationScope: Sendable, Equatable {
+  public let viewerDid: String
+  public let publicationId: String
+  public let authorDid: String
+  public let publicationAtUri: String?
+  public let publicationScopeAtUris: [String]
+  public let publicationSiteUrls: [String]
+  public let scopeKeys: [String]
+  public let sectionKeys: [String]
+  public let updatedAt: Date
+
+  public init(
+    viewerDid: String,
+    publicationId: String,
+    authorDid: String,
+    publicationAtUri: String?,
+    publicationScopeAtUris: [String],
+    publicationSiteUrls: [String],
+    scopeKeys: [String],
+    sectionKeys: [String],
+    updatedAt: Date
+  ) {
+    self.viewerDid = viewerDid
+    self.publicationId = publicationId
+    self.authorDid = authorDid
+    self.publicationAtUri = publicationAtUri
+    self.publicationScopeAtUris = publicationScopeAtUris
+    self.publicationSiteUrls = publicationSiteUrls
+    self.scopeKeys = scopeKeys
+    self.sectionKeys = sectionKeys
+    self.updatedAt = updatedAt
+  }
+}
+
+public struct AppViewUnreadCounter: Codable, Sendable, Equatable {
+  public let publicationId: String
+  public let unreadCount: Int
+  public let generation: Int64
+  public let accuracy: AppViewUnreadCounterAccuracy
+  public let dirty: Bool
+  public let countedAt: Date
+
+  public init(
+    publicationId: String,
+    unreadCount: Int,
+    generation: Int64,
+    accuracy: AppViewUnreadCounterAccuracy,
+    dirty: Bool,
+    countedAt: Date
+  ) {
+    self.publicationId = publicationId
+    self.unreadCount = max(0, unreadCount)
+    self.generation = generation
+    self.accuracy = accuracy
+    self.dirty = dirty
+    self.countedAt = countedAt
+  }
+}
+
 public enum EntryListFilter: String, Sendable {
   case all
   case unread

@@ -7,6 +7,7 @@ import {
   mergeSidebarProjections,
   publicationIdsFromProjection,
   type PublicationSidebarProjection,
+  type UnreadCountsAccuracy,
 } from "@/lib/publicationProjectionClient";
 import {
   ENTRIES_QUERY_KEY,
@@ -19,6 +20,12 @@ type SidebarSectionPayload = Extract<
   ParsedBootstrapStreamEvent,
   { kind: "sidebarSection" }
 >["payload"];
+type UnreadCountsEventOptions = {
+  replacePublicationIds?: readonly string[];
+  generation?: number;
+  accuracy?: UnreadCountsAccuracy;
+  countedAt?: string;
+};
 
 function normalizedPublicationId(publicationId: string): string {
   return normalizeAtRepoParam(publicationId);
@@ -31,6 +38,34 @@ function countForPublicationId(
   const exact = counts[publicationId];
   if (exact != null) return exact;
   return counts[normalizedPublicationId(publicationId)];
+}
+
+function countAccuracyRank(accuracy: UnreadCountsAccuracy | undefined): number {
+  if (accuracy === "exact") return 2;
+  if (accuracy === "estimated") return 1;
+  return 0;
+}
+
+function shouldApplyUnreadCountsEvent(
+  projection: PublicationSidebarProjection,
+  options: UnreadCountsEventOptions | undefined
+): boolean {
+  const incomingGeneration = options?.generation;
+  if (incomingGeneration == null) return true;
+
+  const currentGeneration = projection.unreadCountsGeneration;
+  if (currentGeneration != null && incomingGeneration < currentGeneration) {
+    return false;
+  }
+
+  if (currentGeneration === incomingGeneration) {
+    return (
+      countAccuracyRank(options?.accuracy) >=
+      countAccuracyRank(projection.unreadCountsAccuracy)
+    );
+  }
+
+  return true;
 }
 
 export function applySidebarPriorityEvent(
@@ -127,8 +162,12 @@ export function applySidebarPriorityEvent(
 export function applyUnreadCountsEvent(
   projection: PublicationSidebarProjection,
   counts: Record<string, number>,
-  options?: { replacePublicationIds?: readonly string[] }
+  options?: UnreadCountsEventOptions
 ): PublicationSidebarProjection {
+  if (!shouldApplyUnreadCountsEvent(projection, options)) {
+    return projection;
+  }
+
   const unreadCountsByPublicationId = {
     ...(projection.unreadCountsByPublicationId ?? {}),
     ...counts,
@@ -169,6 +208,12 @@ export function applyUnreadCountsEvent(
 
   return {
     ...projection,
+    unreadCountsGeneration:
+      options?.generation ?? projection.unreadCountsGeneration,
+    unreadCountsAccuracy:
+      options?.accuracy ?? projection.unreadCountsAccuracy,
+    unreadCountsCountedAt:
+      options?.countedAt ?? projection.unreadCountsCountedAt,
     unreadCountsByPublicationId,
     allPublicationRows: applyRows(projection.allPublicationRows),
     myPublications: applyRows(projection.myPublications),
@@ -234,6 +279,16 @@ export function applySidebarSectionEvent(
   projection: PublicationSidebarProjection,
   payload: SidebarSectionPayload
 ): PublicationSidebarProjection {
+  const existingSectionGeneration =
+    projection.sidebarSectionGenerations?.[payload.sectionKey];
+  if (
+    payload.sectionGeneration != null &&
+    existingSectionGeneration != null &&
+    payload.sectionGeneration < existingSectionGeneration
+  ) {
+    return projection;
+  }
+
   const existingRowsById = new Map<string, SidebarRow>();
   for (const row of projection.allPublicationRows) {
     existingRowsById.set(normalizedPublicationId(row.publicationId), row);
@@ -302,6 +357,13 @@ export function applySidebarSectionEvent(
     refreshedAt: payload.refreshedAt,
     allPublicationRows,
     folderSections,
+    sidebarSectionGenerations:
+      payload.sectionGeneration == null
+        ? projection.sidebarSectionGenerations
+        : {
+            ...(projection.sidebarSectionGenerations ?? {}),
+            [payload.sectionKey]: payload.sectionGeneration,
+          },
   };
 
   if (!payload.unreadCounts) return nextProjection;
@@ -386,6 +448,9 @@ export function applyBootstrapStreamEvent(args: {
             replacePublicationIds:
               args.event.payload.replacePublicationIds ??
               publicationIdsFromProjection(projection),
+            generation: args.event.payload.generation,
+            accuracy: args.event.payload.accuracy,
+            countedAt: args.event.payload.countedAt,
           }
         );
       }

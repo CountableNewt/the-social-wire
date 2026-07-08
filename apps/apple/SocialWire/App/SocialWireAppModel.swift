@@ -57,6 +57,10 @@ final class SocialWireAppModel {
     private var sidebarScopesByPublicationId: [String: PublicationAppViewScopeDTO] = [:]
     /// Server unread counts keyed by publication id (sidebar projection + optional refresh).
     private var unreadCountsByPublicationId: [String: Int] = [:]
+    private var unreadCountsGeneration: Int64?
+    private var unreadCountsAccuracy: String?
+    private var unreadCountsCountedAt: String?
+    private var sidebarSectionGenerations: [String: Int64] = [:]
     /// Cached sidebar section unread totals (recomputed when counts or folder membership change).
     private(set) var foldersSectionUnreadCount = 0
     private(set) var subscribedUnfolderedSectionUnreadCount = 0
@@ -364,7 +368,44 @@ final class SocialWireAppModel {
     )
   }
 
+  private func unreadAccuracyRank(_ accuracy: String?) -> Int {
+    switch accuracy {
+    case "exact": 2
+    case "estimated": 1
+    default: 0
+    }
+  }
+
+  private func shouldApplyUnreadCountsSnapshot(generation: Int64?, accuracy: String?) -> Bool {
+    guard let generation else { return true }
+    if let current = unreadCountsGeneration, generation < current {
+      return false
+    }
+    if unreadCountsGeneration == generation {
+      return unreadAccuracyRank(accuracy) >= unreadAccuracyRank(unreadCountsAccuracy)
+    }
+    return true
+  }
+
+  private func applyUnreadCountMetadata(
+    generation: Int64?,
+    accuracy: String?,
+    countedAt: String?
+  ) {
+    unreadCountsGeneration = generation ?? unreadCountsGeneration
+    unreadCountsAccuracy = accuracy ?? unreadCountsAccuracy
+    unreadCountsCountedAt = countedAt ?? unreadCountsCountedAt
+  }
+
+  private func markUnreadCountsOptimistic() {
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    unreadCountsGeneration = max(now, (unreadCountsGeneration ?? 0) + 1)
+    unreadCountsAccuracy = "estimated"
+    unreadCountsCountedAt = DateFormatters.string(from: Date())
+  }
+
   private func adjustUnreadCount(publicationId: String, delta: Int) {
+    markUnreadCountsOptimistic()
     sidebarUnread.adjustCount(publicationId: publicationId, delta: delta)
     unreadCountsByPublicationId = sidebarUnread.unreadCountsByPublicationId
     cachedPriorityProjection = sidebarUnread.cachedPriorityProjection
@@ -382,6 +423,7 @@ final class SocialWireAppModel {
       coordinator: readerCacheCoordinator
     ) {
       sidebarUnread.bumpReadRevision()
+      markUnreadCountsOptimistic()
       rebuildSidebarTreeViewModel()
       return
     }
@@ -423,19 +465,39 @@ final class SocialWireAppModel {
 
     private func applyStreamUnreadCounts(
         _ counts: [String: Int],
-        replacePublicationIds: [String]? = nil
+        replacePublicationIds: [String]? = nil,
+        generation: Int64? = nil,
+        accuracy: String? = nil,
+        countedAt: String? = nil
     ) {
         applyFetchedUnreadCounts(
             counts,
-            publicationIds: replacePublicationIds ?? sidebarPublicationIds()
+            publicationIds: replacePublicationIds ?? sidebarPublicationIds(),
+            generation: generation,
+            accuracy: accuracy,
+            countedAt: countedAt
         )
     }
 
-    private func applyFetchedUnreadCounts(_ counts: [String: Int], publicationIds: [String]) {
+    private func applyFetchedUnreadCounts(
+        _ counts: [String: Int],
+        publicationIds: [String],
+        generation: Int64? = nil,
+        accuracy: String? = nil,
+        countedAt: String? = nil
+    ) {
+        guard shouldApplyUnreadCountsSnapshot(generation: generation, accuracy: accuracy) else {
+            return
+        }
         sidebarUnread.cachedPriorityProjection = cachedPriorityProjection
         sidebarUnread.applyFetchedCounts(counts, publicationIds: publicationIds)
         unreadCountsByPublicationId = sidebarUnread.unreadCountsByPublicationId
         cachedPriorityProjection = sidebarUnread.cachedPriorityProjection
+        applyUnreadCountMetadata(
+            generation: generation,
+            accuracy: accuracy,
+            countedAt: countedAt
+        )
         refreshSidebarUnreadSumCaches()
     }
 
@@ -475,6 +537,10 @@ final class SocialWireAppModel {
         publicationPrefs = [:]
         sidebarScopesByPublicationId = [:]
         unreadCountsByPublicationId = [:]
+        unreadCountsGeneration = nil
+        unreadCountsAccuracy = nil
+        unreadCountsCountedAt = nil
+        sidebarSectionGenerations = [:]
         foldersSectionUnreadCount = 0
         subscribedUnfolderedSectionUnreadCount = 0
         folderUnreadCountsByRkey = [:]
@@ -754,7 +820,13 @@ final class SocialWireAppModel {
             }
         case .unreadCounts:
             guard let payload = event.unreadCounts else { return }
-            applyStreamUnreadCounts(payload.counts, replacePublicationIds: payload.replacePublicationIds)
+            applyStreamUnreadCounts(
+                payload.counts,
+                replacePublicationIds: payload.replacePublicationIds,
+                generation: payload.generation,
+                accuracy: payload.accuracy,
+                countedAt: payload.countedAt
+            )
             logBootstrapPhase("unreadCounts", startedAt: streamStarted)
         case .sidebarSection:
             guard let payload = event.sidebarSection else { return }
@@ -916,6 +988,16 @@ final class SocialWireAppModel {
     }
 
     private func mergeSidebarSection(_ payload: BootstrapSidebarSectionPayloadDTO) {
+        if let generation = payload.sectionGeneration,
+           let current = sidebarSectionGenerations[payload.sectionKey],
+           generation < current
+        {
+            return
+        }
+        if let generation = payload.sectionGeneration {
+            sidebarSectionGenerations[payload.sectionKey] = generation
+        }
+
         guard let folderRkey = payload.folderRkey,
               let folderUri = payload.folderUri
         else { return }
@@ -1144,8 +1226,14 @@ final class SocialWireAppModel {
         let ids = publicationIds ?? gatewayAllPublicationRows.map(\.publicationId)
         guard !ids.isEmpty else { return }
         do {
-            let counts = try await gateway.fetchAppViewUnreadCounts(publicationIds: ids)
-            applyFetchedUnreadCounts(counts, publicationIds: ids)
+            let snapshot = try await gateway.fetchAppViewUnreadCounts(publicationIds: ids)
+            applyFetchedUnreadCounts(
+                snapshot.counts ?? [:],
+                publicationIds: ids,
+                generation: snapshot.generation,
+                accuracy: snapshot.accuracy,
+                countedAt: snapshot.countedAt
+            )
         } catch {
             markAppViewUnavailableIfNeeded(error)
         }
@@ -2110,6 +2198,8 @@ final class SocialWireAppModel {
     }
 
     private func clearUnreadCounts(for publications: [DiscoveredPublication]) {
+        guard !publications.isEmpty else { return }
+        markUnreadCountsOptimistic()
         for publication in publications {
             PublicationUnreadCountLookup.remove(
                 for: publication.publicationId,

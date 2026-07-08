@@ -19,6 +19,15 @@ actor PublicationProjectionService {
   private static let appViewScopeCacheTTL: TimeInterval = 5 * 60
   private static let discoveryCacheTTL: TimeInterval = 10 * 60
 
+  struct UnreadCounterSnapshot: Sendable {
+    let counts: [String: Int]
+    let generation: Int64
+    let accuracy: AppViewUnreadCounterAccuracy
+    let countedAt: Date
+    let dirty: Bool
+    let missingPublicationIds: [String]
+  }
+
   init(
     httpClient: HTTPClient,
     plcURL: String,
@@ -311,6 +320,84 @@ actor PublicationProjectionService {
     return (try? await thinStore.countUnreadEntriesBatch(viewerDid: viewerDid, scopes: scopes)) ?? [:]
   }
 
+  func unreadCounterSnapshot(
+    for rows: [SidebarPublicationRow],
+    viewerDid: String
+  ) async -> UnreadCounterSnapshot {
+    let publicationIds = rows.map(\.publicationId)
+    guard !publicationIds.isEmpty else {
+      let now = Date()
+      return UnreadCounterSnapshot(
+        counts: [:],
+        generation: AppViewUnreadCounterSupport.generation(for: now),
+        accuracy: .exact,
+        countedAt: now,
+        dirty: false,
+        missingPublicationIds: []
+      )
+    }
+    let counters = (try? await thinStore.fetchUnreadCounters(
+      viewerDid: viewerDid,
+      publicationIds: publicationIds
+    )) ?? []
+    let byId = Dictionary(uniqueKeysWithValues: counters.map { ($0.publicationId, $0) })
+    var counts: [String: Int] = [:]
+    var missing: [String] = []
+    var generation: Int64 = 0
+    var countedAt = Date.distantPast
+    var dirty = false
+    var allExact = true
+    for publicationId in publicationIds {
+      guard let counter = byId[publicationId] else {
+        counts[publicationId] = 0
+        missing.append(publicationId)
+        dirty = true
+        allExact = false
+        continue
+      }
+      counts[publicationId] = counter.unreadCount
+      generation = max(generation, counter.generation)
+      countedAt = max(countedAt, counter.countedAt)
+      dirty = dirty || counter.dirty
+      allExact = allExact && counter.accuracy == .exact && !counter.dirty
+    }
+    let now = Date()
+    if generation == 0 { generation = AppViewUnreadCounterSupport.generation(for: now) }
+    if countedAt == Date.distantPast { countedAt = now }
+    return UnreadCounterSnapshot(
+      counts: counts,
+      generation: generation,
+      accuracy: allExact ? .exact : .estimated,
+      countedAt: countedAt,
+      dirty: dirty,
+      missingPublicationIds: missing
+    )
+  }
+
+  func refreshUnreadCounterSnapshot(
+    for rows: [SidebarPublicationRow],
+    viewerDid: String
+  ) async -> UnreadCounterSnapshot {
+    guard !rows.isEmpty else {
+      return await unreadCounterSnapshot(for: rows, viewerDid: viewerDid)
+    }
+    let scopes = unreadScopes(from: rows)
+    _ = try? await thinStore.refreshUnreadCounters(viewerDid: viewerDid, scopes: scopes)
+    return await unreadCounterSnapshot(for: rows, viewerDid: viewerDid)
+  }
+
+  private func unreadScopes(from rows: [SidebarPublicationRow]) -> [PublicationUnreadScope] {
+    rows.map {
+      PublicationUnreadScope(
+        publicationId: $0.publicationId,
+        authorDid: $0.appViewScope.authorDid,
+        publicationAtUri: $0.appViewScope.publicationAtUri,
+        publicationScopeAtUris: $0.appViewScope.publicationScopeAtUris,
+        publicationSiteUrls: $0.appViewScope.publicationSiteUrls
+      )
+    }
+  }
+
   private func buildSidebarResponse(
     context: SidebarDiscoveryContext,
     auth: AuthContext,
@@ -341,6 +428,7 @@ actor PublicationProjectionService {
 
     let rowCache = sidebarRowCacheByViewer[context.viewerDid] ?? sidebarRowById
 
+    let response: PublicationSidebarResponse
     switch phase {
     case .folderPublications:
       let folderSections = buildFolderSections(
@@ -349,7 +437,7 @@ actor PublicationProjectionService {
         includePublications: true
       )
       let folderPublicationRows = folderSections.flatMap(\.publications)
-      return PublicationSidebarResponse(
+      response = PublicationSidebarResponse(
         viewerDid: context.viewerDid,
         folders: [],
         publicationPrefs: [],
@@ -375,7 +463,7 @@ actor PublicationProjectionService {
       let totalUnread = (myRows + unfolderedRows + followingRows + folderSections.flatMap(\.publications))
         .compactMap(\.unreadCount)
         .reduce(0, +)
-      return PublicationSidebarResponse(
+      response = PublicationSidebarResponse(
         viewerDid: context.viewerDid,
         folders: context.folders,
         publicationPrefs: context.prefs,
@@ -398,7 +486,7 @@ actor PublicationProjectionService {
         sidebarRowById: rowCache,
         includePublications: true
       )
-      return PublicationSidebarResponse(
+      response = PublicationSidebarResponse(
         viewerDid: context.viewerDid,
         folders: context.folders,
         publicationPrefs: context.prefs,
@@ -412,6 +500,8 @@ actor PublicationProjectionService {
         refreshedAt: refreshedAt
       )
     }
+    try? await storePublicationScopes(from: response, replaceAll: phase == .full)
+    return response
   }
 
   private func priorityDiscoveredRows(from context: SidebarDiscoveryContext) -> [ProjectionDiscoveredRow] {
@@ -457,6 +547,66 @@ actor PublicationProjectionService {
         publications: sectionRows,
         unreadCount: sectionRows.compactMap(\.unreadCount).reduce(0, +)
       )
+    }
+  }
+
+  private func storePublicationScopes(
+    from response: PublicationSidebarResponse,
+    replaceAll: Bool
+  ) async throws {
+    var sectionKeysByPublicationId: [String: Set<String>] = [:]
+    let addSectionKey = { (publicationId: String, sectionKey: String, map: inout [String: Set<String>]) in
+      _ = map[publicationId, default: []].insert(sectionKey)
+    }
+
+    for row in response.myPublications {
+      addSectionKey(row.publicationId, "my", &sectionKeysByPublicationId)
+    }
+    for row in response.subscribedUnfoldered {
+      addSectionKey(row.publicationId, "subscribed:unfoldered", &sectionKeysByPublicationId)
+    }
+    for row in response.followingTabPublications {
+      addSectionKey(row.publicationId, "following", &sectionKeysByPublicationId)
+    }
+    for section in response.folderSections {
+      for row in section.publications {
+        addSectionKey(row.publicationId, "folder:\(section.folderRkey)", &sectionKeysByPublicationId)
+      }
+    }
+    for row in response.allPublicationRows where sectionKeysByPublicationId[row.publicationId] == nil {
+      addSectionKey(row.publicationId, "all", &sectionKeysByPublicationId)
+    }
+
+    var rowsById: [String: SidebarPublicationRow] = [:]
+    for row in response.allPublicationRows
+      + response.myPublications
+      + response.subscribedUnfoldered
+      + response.followingTabPublications
+      + response.folderSections.flatMap(\.publications)
+    {
+      rowsById[row.publicationId] = row
+    }
+
+    let now = Date()
+    let scopes = rowsById.values.map { row in
+      AppViewUnreadCounterSupport.publicationScope(
+        viewerDid: response.viewerDid,
+        publicationId: row.publicationId,
+        authorDid: row.appViewScope.authorDid,
+        publicationAtUri: row.appViewScope.publicationAtUri,
+        publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+        publicationSiteUrls: row.appViewScope.publicationSiteUrls,
+        sectionKeys: Array(sectionKeysByPublicationId[row.publicationId] ?? []),
+        updatedAt: now
+      )
+    }
+    if replaceAll {
+      try await thinStore.replacePublicationScopes(
+        viewerDid: response.viewerDid,
+        scopes: scopes
+      )
+    } else {
+      try await thinStore.upsertPublicationScopes(scopes)
     }
   }
 

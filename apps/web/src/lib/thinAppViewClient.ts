@@ -2,7 +2,10 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
-import type { PublicationAppViewScope } from "@/lib/publicationProjectionClient";
+import type {
+  PublicationAppViewScope,
+  UnreadCountsAccuracy,
+} from "@/lib/publicationProjectionClient";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 
@@ -13,6 +16,13 @@ export function isThinAppViewEnabled(): boolean {
 export type AppViewEntriesPage = {
   entries: EntryListItem[];
   cursor?: string;
+};
+
+export type AppViewUnreadCountsResponse = {
+  counts: Record<string, number>;
+  generation?: number;
+  accuracy?: UnreadCountsAccuracy;
+  countedAt?: string;
 };
 
 export async function listEntriesFromAppView(args: {
@@ -152,8 +162,8 @@ export async function fetchAppViewUnreadCounts(
   oauthSession: OAuthSession,
   publicationIds: string[],
   signal?: AbortSignal
-): Promise<Record<string, number>> {
-  if (publicationIds.length === 0) return {};
+): Promise<AppViewUnreadCountsResponse> {
+  if (publicationIds.length === 0) return { counts: {} };
   const params = new URLSearchParams({
     publicationIds: publicationIds.join(","),
   });
@@ -163,15 +173,23 @@ export async function fetchAppViewUnreadCounts(
     { method: "GET", signal }
   );
   if (res.status === 404) {
-    return {};
+    return { counts: {} };
   }
   if (!res.ok) {
     throw new Error(`Thin AppView unread counts failed (${res.status})`);
   }
   const json = (await res.json()) as {
     counts?: Record<string, number>;
+    generation?: number;
+    accuracy?: UnreadCountsAccuracy;
+    countedAt?: string;
   };
-  return json.counts ?? {};
+  return {
+    counts: json.counts ?? {},
+    generation: json.generation,
+    accuracy: json.accuracy,
+    countedAt: json.countedAt,
+  };
 }
 
 export async function writeThroughReadMark(

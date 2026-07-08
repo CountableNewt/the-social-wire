@@ -61,6 +61,39 @@ public protocol ThinAppViewStore: Actor {
     scopes: [PublicationUnreadScope]
   ) async throws -> [String: Int]
 
+  func upsertPublicationScopes(_ scopes: [AppViewPublicationScope]) async throws
+
+  func replacePublicationScopes(
+    viewerDid: String,
+    scopes: [AppViewPublicationScope]
+  ) async throws
+
+  func fetchUnreadCounters(
+    viewerDid: String,
+    publicationIds: [String]?
+  ) async throws -> [AppViewUnreadCounter]
+
+  func refreshUnreadCounters(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [AppViewUnreadCounter]
+
+  func incrementUnreadCountersForContentItem(_ item: IndexedContentItem) async throws
+
+  func markUnreadCountersDirtyForContent(authorDid: String, publicationSite: String?) async throws
+
+  func adjustUnreadCountersForReadState(
+    viewerDid: String,
+    subjectUri: String,
+    delta: Int
+  ) async throws
+
+  func markAllReadCounters(
+    viewerDid: String,
+    publicationIds: [String],
+    readAt: Date
+  ) async throws -> [AppViewUnreadCounter]
+
   func deleteExpiredContent(before: Date) async throws -> Int
   func deleteExpiredReadMarks(before: Date) async throws -> Int
 

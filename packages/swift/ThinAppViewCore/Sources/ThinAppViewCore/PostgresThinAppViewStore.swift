@@ -603,6 +603,243 @@ public init(pool: PostgresClient, logger: Logger) {
     )
   }
 
+  public func upsertPublicationScopes(_ scopes: [AppViewPublicationScope]) async throws {
+    guard !scopes.isEmpty else { return }
+    for scope in scopes {
+      let publicationScopeAtUrisJSON = try Self.jsonString(scope.publicationScopeAtUris)
+      let publicationSiteUrlsJSON = try Self.jsonString(scope.publicationSiteUrls)
+      let scopeKeysJSON = try Self.jsonString(scope.scopeKeys)
+      let sectionKeysJSON = try Self.jsonString(scope.sectionKeys)
+      try await pool.query(
+        """
+        INSERT INTO appview_publication_scopes
+          (viewer_did, publication_id, author_did, publication_at_uri,
+           publication_scope_at_uris, publication_site_urls, scope_keys,
+           section_keys, updated_at)
+        VALUES
+          (\(scope.viewerDid), \(scope.publicationId), \(scope.authorDid), \(scope.publicationAtUri),
+           \(publicationScopeAtUrisJSON)::jsonb, \(publicationSiteUrlsJSON)::jsonb,
+           \(scopeKeysJSON)::jsonb, \(sectionKeysJSON)::jsonb, \(scope.updatedAt))
+        ON CONFLICT (viewer_did, publication_id)
+        DO UPDATE SET
+          author_did = EXCLUDED.author_did,
+          publication_at_uri = EXCLUDED.publication_at_uri,
+          publication_scope_at_uris = EXCLUDED.publication_scope_at_uris,
+          publication_site_urls = EXCLUDED.publication_site_urls,
+          scope_keys = EXCLUDED.scope_keys,
+          section_keys = EXCLUDED.section_keys,
+          updated_at = EXCLUDED.updated_at
+        """,
+        logger: logger
+      )
+    }
+  }
+
+  public func replacePublicationScopes(
+    viewerDid: String,
+    scopes: [AppViewPublicationScope]
+  ) async throws {
+    try await pool.query(
+      "DELETE FROM appview_publication_scopes WHERE viewer_did = \(viewerDid)",
+      logger: logger
+    )
+    try await upsertPublicationScopes(scopes)
+  }
+
+  public func fetchUnreadCounters(
+    viewerDid: String,
+    publicationIds: [String]?
+  ) async throws -> [AppViewUnreadCounter] {
+    let rows: PostgresRowSequence
+    if let publicationIds, !publicationIds.isEmpty {
+      rows = try await pool.query(
+        """
+        SELECT publication_id, unread_count, generation, accuracy, dirty, counted_at
+        FROM appview_unread_counters
+        WHERE viewer_did = \(viewerDid)
+          AND publication_id = ANY(\(publicationIds))
+        """,
+        logger: logger
+      )
+    } else {
+      rows = try await pool.query(
+        """
+        SELECT publication_id, unread_count, generation, accuracy, dirty, counted_at
+        FROM appview_unread_counters
+        WHERE viewer_did = \(viewerDid)
+        """,
+        logger: logger
+      )
+    }
+    var counters: [AppViewUnreadCounter] = []
+    for try await row in rows {
+      if let counter = try Self.unreadCounter(from: row) {
+        counters.append(counter)
+      }
+    }
+    return counters
+  }
+
+  public func refreshUnreadCounters(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [AppViewUnreadCounter] {
+    guard !scopes.isEmpty else { return [] }
+    let exactCounts = try await countUnreadEntriesBatch(viewerDid: viewerDid, scopes: scopes)
+    let floors = try await readFloors(viewerDid: viewerDid, publicationIds: scopes.map(\.publicationId))
+    let countedAt = Date()
+    let generation = AppViewUnreadCounterSupport.generation(for: countedAt)
+    var counters: [AppViewUnreadCounter] = []
+
+    for scope in scopes {
+      let count: Int
+      if let floor = floors[scope.publicationId] {
+        count = try await countUnreadEntriesAfterFloor(
+          viewerDid: viewerDid,
+          scope: scope,
+          readFloorAt: floor
+        )
+      } else {
+        count = exactCounts[scope.publicationId] ?? 0
+      }
+      let counter = AppViewUnreadCounter(
+        publicationId: scope.publicationId,
+        unreadCount: count,
+        generation: generation,
+        accuracy: .exact,
+        dirty: false,
+        countedAt: countedAt
+      )
+      try await upsertUnreadCounter(counter, viewerDid: viewerDid)
+      counters.append(counter)
+    }
+    return counters
+  }
+
+  public func incrementUnreadCountersForContentItem(_ item: IndexedContentItem) async throws {
+    let scopes = try await publicationScopes(authorDid: item.authorDid, viewerDid: nil)
+      .filter {
+        AppViewUnreadCounterSupport.contentMatchesScope(
+          authorDid: item.authorDid,
+          publicationSite: item.publicationSite,
+          scope: $0
+        )
+      }
+    guard !scopes.isEmpty else { return }
+    let generation = AppViewUnreadCounterSupport.generation()
+    let countedAt = Date()
+    for scope in scopes {
+      if let floor = try await readFloor(viewerDid: scope.viewerDid, publicationId: scope.publicationId),
+         item.createdAt <= floor
+      {
+        continue
+      }
+      let alreadyRead = try await hasReadMark(viewerDid: scope.viewerDid, subjectUri: item.uri)
+      guard !alreadyRead else { continue }
+      try await adjustUnreadCounter(
+        viewerDid: scope.viewerDid,
+        publicationId: scope.publicationId,
+        delta: 1,
+        generation: generation,
+        countedAt: countedAt
+      )
+    }
+  }
+
+  public func markUnreadCountersDirtyForContent(authorDid: String, publicationSite: String?) async throws {
+    let scopes = try await publicationScopes(authorDid: authorDid, viewerDid: nil)
+      .filter {
+        AppViewUnreadCounterSupport.contentMatchesScope(
+          authorDid: authorDid,
+          publicationSite: publicationSite,
+          scope: $0
+        )
+      }
+    guard !scopes.isEmpty else { return }
+    let generation = AppViewUnreadCounterSupport.generation()
+    let countedAt = Date()
+    for scope in scopes {
+      try await markUnreadCounterDirty(
+        viewerDid: scope.viewerDid,
+        publicationId: scope.publicationId,
+        generation: generation,
+        countedAt: countedAt
+      )
+    }
+  }
+
+  public func adjustUnreadCountersForReadState(
+    viewerDid: String,
+    subjectUri: String,
+    delta: Int
+  ) async throws {
+    guard delta != 0 else { return }
+    guard let content = try await contentCounterFields(uri: subjectUri) else { return }
+    let scopes = try await publicationScopes(authorDid: content.authorDid, viewerDid: viewerDid)
+      .filter {
+        AppViewUnreadCounterSupport.contentMatchesScope(
+          authorDid: content.authorDid,
+          publicationSite: content.publicationSite,
+          scope: $0
+        )
+      }
+    guard !scopes.isEmpty else { return }
+    let generation = AppViewUnreadCounterSupport.generation()
+    let countedAt = Date()
+    for scope in scopes {
+      if let floor = try await readFloor(viewerDid: viewerDid, publicationId: scope.publicationId),
+         content.createdAt <= floor
+      {
+        continue
+      }
+      try await adjustUnreadCounter(
+        viewerDid: viewerDid,
+        publicationId: scope.publicationId,
+        delta: delta,
+        generation: generation,
+        countedAt: countedAt
+      )
+    }
+  }
+
+  public func markAllReadCounters(
+    viewerDid: String,
+    publicationIds: [String],
+    readAt: Date
+  ) async throws -> [AppViewUnreadCounter] {
+    let uniqueIds = Array(Set(publicationIds)).sorted()
+    guard !uniqueIds.isEmpty else { return [] }
+    let generation = AppViewUnreadCounterSupport.generation(for: readAt)
+    var counters: [AppViewUnreadCounter] = []
+    for publicationId in uniqueIds {
+      try await pool.query(
+        """
+        INSERT INTO appview_publication_read_floors
+          (viewer_did, publication_id, read_floor_at, generation, updated_at)
+        VALUES
+          (\(viewerDid), \(publicationId), \(readAt), \(generation), \(readAt))
+        ON CONFLICT (viewer_did, publication_id)
+        DO UPDATE SET
+          read_floor_at = EXCLUDED.read_floor_at,
+          generation = EXCLUDED.generation,
+          updated_at = EXCLUDED.updated_at
+        """,
+        logger: logger
+      )
+      let counter = AppViewUnreadCounter(
+        publicationId: publicationId,
+        unreadCount: 0,
+        generation: generation,
+        accuracy: .estimated,
+        dirty: true,
+        countedAt: readAt
+      )
+      try await upsertUnreadCounter(counter, viewerDid: viewerDid)
+      counters.append(counter)
+    }
+    return counters
+  }
+
   public func deleteExpiredContent(before: Date) async throws -> Int {
     let rows = try await pool.query(
       "DELETE FROM content_items WHERE expires_at <= \(before) RETURNING uri",
@@ -735,5 +972,284 @@ public init(pool: PostgresClient, logger: Logger) {
       """,
       logger: logger
     )
+  }
+
+  private func publicationScopes(
+    authorDid: String,
+    viewerDid: String?
+  ) async throws -> [AppViewPublicationScope] {
+    let rows: PostgresRowSequence
+    if let viewerDid {
+      rows = try await pool.query(
+        """
+        SELECT viewer_did, publication_id, author_did, publication_at_uri,
+               publication_scope_at_uris::text, publication_site_urls::text,
+               scope_keys::text, section_keys::text, updated_at
+        FROM appview_publication_scopes
+        WHERE author_did = \(authorDid)
+          AND viewer_did = \(viewerDid)
+        """,
+        logger: logger
+      )
+    } else {
+      rows = try await pool.query(
+        """
+        SELECT viewer_did, publication_id, author_did, publication_at_uri,
+               publication_scope_at_uris::text, publication_site_urls::text,
+               scope_keys::text, section_keys::text, updated_at
+        FROM appview_publication_scopes
+        WHERE author_did = \(authorDid)
+        """,
+        logger: logger
+      )
+    }
+    var scopes: [AppViewPublicationScope] = []
+    for try await row in rows {
+      if let scope = try Self.publicationScope(from: row) {
+        scopes.append(scope)
+      }
+    }
+    return scopes
+  }
+
+  private func readFloors(
+    viewerDid: String,
+    publicationIds: [String]
+  ) async throws -> [String: Date] {
+    let uniqueIds = Array(Set(publicationIds)).sorted()
+    guard !uniqueIds.isEmpty else { return [:] }
+    let rows = try await pool.query(
+      """
+      SELECT publication_id, read_floor_at
+      FROM appview_publication_read_floors
+      WHERE viewer_did = \(viewerDid)
+        AND publication_id = ANY(\(uniqueIds))
+      """,
+      logger: logger
+    )
+    var floors: [String: Date] = [:]
+    for try await row in rows {
+      let (publicationId, readFloorAt): (String, Date) = try row.decode((String, Date).self)
+      floors[publicationId] = readFloorAt
+    }
+    return floors
+  }
+
+  private func readFloor(viewerDid: String, publicationId: String) async throws -> Date? {
+    let rows = try await pool.query(
+      """
+      SELECT read_floor_at
+      FROM appview_publication_read_floors
+      WHERE viewer_did = \(viewerDid)
+        AND publication_id = \(publicationId)
+      LIMIT 1
+      """,
+      logger: logger
+    )
+    for try await row in rows {
+      return try row.decode(Date.self)
+    }
+    return nil
+  }
+
+  private func countUnreadEntriesAfterFloor(
+    viewerDid: String,
+    scope: PublicationUnreadScope,
+    readFloorAt: Date
+  ) async throws -> Int {
+    let now = Date()
+    let scoped = ThinAppViewQuerySupport.requiresPublicationSiteFilter(
+      publicationAtUri: scope.publicationAtUri,
+      publicationScopeAtUris: scope.publicationScopeAtUris,
+      publicationSiteUrls: scope.publicationSiteUrls
+    )
+    let siteKeys = AppViewProjectionCacheScopeKeys.publicationSiteKeys(
+      publicationAtUri: scope.publicationAtUri,
+      publicationScopeAtUris: scope.publicationScopeAtUris,
+      publicationSiteUrls: scope.publicationSiteUrls
+    )
+    if scoped, !siteKeys.isEmpty {
+      let rows = try await pool.query(
+        """
+        SELECT COUNT(*)::int
+        FROM content_items ci
+        LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
+        WHERE ci.author_did = \(scope.authorDid)
+          AND ci.expires_at > \(now)
+          AND ci.created_at > \(readFloorAt)
+          AND ci.publication_site = ANY(\(siteKeys))
+          AND rm.subject_uri IS NULL
+        """,
+        logger: logger
+      )
+      for try await row in rows {
+        return try row.decode(Int.self)
+      }
+      return 0
+    }
+
+    let rows = try await pool.query(
+      """
+      SELECT ci.publication_site
+      FROM content_items ci
+      LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
+      WHERE ci.author_did = \(scope.authorDid)
+        AND ci.expires_at > \(now)
+        AND ci.created_at > \(readFloorAt)
+        AND rm.subject_uri IS NULL
+      """,
+      logger: logger
+    )
+    var siteFields: [String?] = []
+    for try await row in rows {
+      let site: String? = try row.decode(String?.self)
+      siteFields.append(site)
+    }
+    return scoped
+      ? ThinAppViewQuerySupport.countMatchingPublicationSites(
+        siteFields: siteFields,
+        publicationAtUri: scope.publicationAtUri,
+        publicationScopeAtUris: scope.publicationScopeAtUris,
+        publicationSiteUrls: scope.publicationSiteUrls
+      )
+      : siteFields.count
+  }
+
+  private func contentCounterFields(
+    uri: String
+  ) async throws -> (authorDid: String, publicationSite: String?, createdAt: Date)? {
+    let rows = try await pool.query(
+      """
+      SELECT author_did, publication_site, created_at
+      FROM content_items
+      WHERE uri = \(uri)
+      LIMIT 1
+      """,
+      logger: logger
+    )
+    for try await row in rows {
+      return try row.decode((String, String?, Date).self)
+    }
+    return nil
+  }
+
+  private func upsertUnreadCounter(
+    _ counter: AppViewUnreadCounter,
+    viewerDid: String
+  ) async throws {
+    try await pool.query(
+      """
+      INSERT INTO appview_unread_counters
+        (viewer_did, publication_id, unread_count, generation, accuracy, dirty, counted_at)
+      VALUES
+        (\(viewerDid), \(counter.publicationId), \(counter.unreadCount), \(counter.generation), \(counter.accuracy.rawValue), \(counter.dirty), \(counter.countedAt))
+      ON CONFLICT (viewer_did, publication_id)
+      DO UPDATE SET
+        unread_count = EXCLUDED.unread_count,
+        generation = EXCLUDED.generation,
+        accuracy = EXCLUDED.accuracy,
+        dirty = EXCLUDED.dirty,
+        counted_at = EXCLUDED.counted_at
+      """,
+      logger: logger
+    )
+  }
+
+  private func adjustUnreadCounter(
+    viewerDid: String,
+    publicationId: String,
+    delta: Int,
+    generation: Int64,
+    countedAt: Date
+  ) async throws {
+    let current = try await fetchUnreadCounters(
+      viewerDid: viewerDid,
+      publicationIds: [publicationId]
+    ).first?.unreadCount ?? 0
+    let counter = AppViewUnreadCounter(
+      publicationId: publicationId,
+      unreadCount: max(0, current + delta),
+      generation: generation,
+      accuracy: .estimated,
+      dirty: true,
+      countedAt: countedAt
+    )
+    try await upsertUnreadCounter(counter, viewerDid: viewerDid)
+  }
+
+  private func markUnreadCounterDirty(
+    viewerDid: String,
+    publicationId: String,
+    generation: Int64,
+    countedAt: Date
+  ) async throws {
+    let current = try await fetchUnreadCounters(
+      viewerDid: viewerDid,
+      publicationIds: [publicationId]
+    ).first?.unreadCount ?? 0
+    let counter = AppViewUnreadCounter(
+      publicationId: publicationId,
+      unreadCount: current,
+      generation: generation,
+      accuracy: .estimated,
+      dirty: true,
+      countedAt: countedAt
+    )
+    try await upsertUnreadCounter(counter, viewerDid: viewerDid)
+  }
+
+  private static func publicationScope(from row: PostgresRow) throws -> AppViewPublicationScope? {
+    let (
+      viewerDid,
+      publicationId,
+      authorDid,
+      publicationAtUri,
+      publicationScopeAtUrisJSON,
+      publicationSiteUrlsJSON,
+      scopeKeysJSON,
+      sectionKeysJSON,
+      updatedAt
+    ) = try row.decode((String, String, String, String?, String, String, String, String, Date).self)
+    return AppViewPublicationScope(
+      viewerDid: viewerDid,
+      publicationId: publicationId,
+      authorDid: authorDid,
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: try stringArray(fromJSON: publicationScopeAtUrisJSON),
+      publicationSiteUrls: try stringArray(fromJSON: publicationSiteUrlsJSON),
+      scopeKeys: try stringArray(fromJSON: scopeKeysJSON),
+      sectionKeys: try stringArray(fromJSON: sectionKeysJSON),
+      updatedAt: updatedAt
+    )
+  }
+
+  private static func unreadCounter(from row: PostgresRow) throws -> AppViewUnreadCounter? {
+    let (publicationId, unreadCount, generation, accuracyRaw, dirty, countedAt) = try row.decode(
+      (String, Int, Int64, String, Bool, Date).self
+    )
+    guard let accuracy = AppViewUnreadCounterAccuracy(rawValue: accuracyRaw) else { return nil }
+    return AppViewUnreadCounter(
+      publicationId: publicationId,
+      unreadCount: unreadCount,
+      generation: generation,
+      accuracy: accuracy,
+      dirty: dirty,
+      countedAt: countedAt
+    )
+  }
+
+  private static func jsonString(_ values: [String]) throws -> String {
+    let data = try JSONEncoder().encode(values)
+    guard let string = String(data: data, encoding: .utf8) else {
+      throw ThinAppViewStoreError.encodingFailed
+    }
+    return string
+  }
+
+  private static func stringArray(fromJSON raw: String) throws -> [String] {
+    guard let data = raw.data(using: .utf8) else {
+      throw ThinAppViewStoreError.encodingFailed
+    }
+    return try JSONDecoder().decode([String].self, from: data)
   }
 }

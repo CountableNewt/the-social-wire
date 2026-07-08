@@ -21,7 +21,9 @@ docs {
 
   Returns `application/x-ndjson` — one JSON object per line, in order:
   `sidebarPriority`, `unreadCounts`, optional `selectedPublication`, optional `entriesPage`,
-  `sidebarFolders`, optional `warning`/`error`, then `done`.
+  repeated `sidebarSection` slices, legacy `sidebarFolders`, optional `warning`/`error`, then `done`.
+  `unreadCounts` events include `generation`, `accuracy`, and `countedAt`; `sidebarSection`
+  events may include `sectionGeneration`.
 
   Requires `ENABLE_THIN_APPVIEW=true` on AppView and `APPVIEW_BASE_URL` on the gateway.
 }

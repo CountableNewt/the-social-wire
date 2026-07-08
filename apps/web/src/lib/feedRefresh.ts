@@ -57,13 +57,18 @@ export async function refreshPublicationUnreadCount(args: {
 }): Promise<void> {
   const { queryClient, viewerDid, publicationId, oauthSession } = args;
   try {
-    const counts = await fetchAppViewUnreadCounts(oauthSession, [publicationId]);
+    const countSnapshot = await fetchAppViewUnreadCounts(oauthSession, [
+      publicationId,
+    ]);
     queryClient.setQueryData<PublicationSidebarProjection>(
       PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(viewerDid),
       (current) =>
         current
-          ? applyUnreadCountsEvent(current, counts, {
+          ? applyUnreadCountsEvent(current, countSnapshot.counts, {
               replacePublicationIds: [publicationId],
+              generation: countSnapshot.generation,
+              accuracy: countSnapshot.accuracy,
+              countedAt: countSnapshot.countedAt,
             })
           : current
     );

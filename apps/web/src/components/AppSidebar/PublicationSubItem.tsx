@@ -1,6 +1,13 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
 import {
   BookmarkPlus,
   BookmarkX,
@@ -73,6 +80,8 @@ interface PublicationSubItemProps {
   folders: RepoRecord<FolderRecord>[];
   prefsMap: Map<string, RepoRecord<PublicationPrefsRecord>>;
   sidebarTab: PublicationSidebarTab;
+  className?: string;
+  style?: CSSProperties;
 }
 
 function PublicationSubItemInner({
@@ -83,44 +92,11 @@ function PublicationSubItemInner({
   folders,
   prefsMap,
   sidebarTab,
+  className,
+  style,
 }: PublicationSubItemProps) {
   const { trigger, isSupported } = useWebHaptics();
-  const setFolder = useSetPublicationFolder();
-  const subscribe = useSubscribeToPublication();
-  const unsubscribe = useUnsubscribePublication();
-  const refreshSkyreaderIcon = useRefreshSkyreaderSubscriptionIcon();
-  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
-  const [unsubscribeDialogOpen, setUnsubscribeDialogOpen] = useState(false);
-  const [markAllReadDialogOpen, setMarkAllReadDialogOpen] = useState(false);
-
-  const bulkPublicationList = useMemo(() => [publication], [publication]);
-  const {
-    bulkDisabled,
-    applyMarkAllRead,
-    applyMarkAllUnread,
-  } = useCachedBulkReadActions(bulkPublicationList, {
-    gatewayScopes: [
-      { kind: "publication", publicationId: publication.publicationId },
-    ],
-  });
-
-  const prefs = prefsMap.get(publication.publicationId);
-  const currentFolderId = prefs?.value.folderId ?? null;
-
-  const subscribeTarget = useMemo(
-    () => standardSiteSubscriptionTargetFromDiscovery(publication),
-    [publication]
-  );
-
-  const canRefreshSkyreaderFavicon =
-    Boolean(publication.subscriptionPublicationId) &&
-    isRssPublicationId(publication.publicationId);
-
-  const busy =
-    setFolder.isPending ||
-    subscribe.isPending ||
-    unsubscribe.isPending ||
-    refreshSkyreaderIcon.isPending;
+  const [actionsMounted, setActionsMounted] = useState(false);
 
   const hapticLight = useCallback(() => {
     if (isSupported) void trigger("light");
@@ -130,67 +106,42 @@ function PublicationSubItemInner({
     if (isSupported) void trigger("success");
   }, [isSupported, trigger]);
 
+  const activateActions = useCallback(() => {
+    setActionsMounted(true);
+  }, []);
+
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (open) hapticLight();
+      if (!open) return;
+      activateActions();
+      hapticLight();
     },
-    [hapticLight]
+    [activateActions, hapticLight]
   );
 
-  const assignFolder = useCallback(
-    async (folderId: string | null) => {
-      try {
-        await setFolder.mutateAsync({
-          publicationId: publication.publicationId,
-          folderId,
-          existingRkey: prefs ? rkeyFromURI(prefs.uri) : undefined,
-        });
-        hapticSuccess();
-      } catch (e) {
-        notifyMutationFailure("Could not move publication", e);
+  const handleTriggerKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        activateActions();
       }
     },
-    [setFolder, publication.publicationId, prefs, hapticSuccess]
+    [activateActions]
   );
 
-  const handleSubscribe = useCallback(async () => {
-    try {
-      await subscribe.mutateAsync({ publication });
-      hapticSuccess();
-    } catch (e) {
-      notifyMutationFailure("Could not subscribe", e);
-    }
-  }, [subscribe, publication, hapticSuccess]);
-
-  const confirmUnsubscribe = useCallback(async () => {
-    try {
-      await unsubscribe.mutateAsync({ publication });
-      setUnsubscribeDialogOpen(false);
-      hapticSuccess();
-    } catch (e) {
-      notifyMutationFailure("Could not unsubscribe", e);
-    }
-  }, [unsubscribe, publication, hapticSuccess]);
-
-  const handleRefreshSkyreaderFavicon = useCallback(async () => {
-    try {
-      await refreshSkyreaderIcon.mutateAsync({ publication });
-      hapticSuccess();
-    } catch (e) {
-      notifyMutationFailure("Could not refresh favicon", e);
-    }
-  }, [refreshSkyreaderIcon, publication, hapticSuccess]);
-
-  const folderSubmenuLabel = useMemo(() => {
-    if (!currentFolderId) return "Move To Folder";
-    const match = folders.find((f) => rkeyFromURI(f.uri) === currentFolderId);
-    return match ? `In "${match.value.name}"` : "Move To Folder";
-  }, [currentFolderId, folders]);
-
   return (
-    <SidebarMenuSubItem>
+    <SidebarMenuSubItem
+      className={cn(
+        "[content-visibility:auto] [contain-intrinsic-size:30px]",
+        className
+      )}
+      style={style}
+    >
       <ContextMenu onOpenChange={handleOpenChange}>
-        <ContextMenuTrigger className="flex min-w-0 w-full data-popup-open:bg-sidebar-accent">
+        <ContextMenuTrigger
+          className="flex min-w-0 w-full data-popup-open:bg-sidebar-accent"
+          onContextMenu={activateActions}
+          onKeyDown={handleTriggerKeyDown}
+        >
           <SidebarMenuSubButton
             size="md"
             isActive={isSelected}
@@ -216,7 +167,119 @@ function PublicationSubItemInner({
             </SidebarMenuBadge>
           </SidebarMenuSubButton>
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-[11rem]">
+        {actionsMounted ? (
+          <PublicationSubItemActions
+            publication={publication}
+            folders={folders}
+            prefsMap={prefsMap}
+            sidebarTab={sidebarTab}
+            onHapticSuccess={hapticSuccess}
+          />
+        ) : null}
+      </ContextMenu>
+    </SidebarMenuSubItem>
+  );
+}
+
+function PublicationSubItemActions({
+  publication,
+  folders,
+  prefsMap,
+  sidebarTab,
+  onHapticSuccess,
+}: Pick<
+  PublicationSubItemProps,
+  "publication" | "folders" | "prefsMap" | "sidebarTab"
+> & {
+  onHapticSuccess: () => void;
+}) {
+  const setFolder = useSetPublicationFolder();
+  const subscribe = useSubscribeToPublication();
+  const unsubscribe = useUnsubscribePublication();
+  const refreshSkyreaderIcon = useRefreshSkyreaderSubscriptionIcon();
+  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
+  const [unsubscribeDialogOpen, setUnsubscribeDialogOpen] = useState(false);
+  const [markAllReadDialogOpen, setMarkAllReadDialogOpen] = useState(false);
+
+  const bulkPublicationList = useMemo(() => [publication], [publication]);
+  const { bulkDisabled, applyMarkAllRead, applyMarkAllUnread } =
+    useCachedBulkReadActions(bulkPublicationList, {
+      gatewayScopes: [
+        { kind: "publication", publicationId: publication.publicationId },
+      ],
+    });
+
+  const prefs = prefsMap.get(publication.publicationId);
+  const currentFolderId = prefs?.value.folderId ?? null;
+
+  const subscribeTarget = useMemo(
+    () => standardSiteSubscriptionTargetFromDiscovery(publication),
+    [publication]
+  );
+
+  const canRefreshSkyreaderFavicon =
+    Boolean(publication.subscriptionPublicationId) &&
+    isRssPublicationId(publication.publicationId);
+
+  const busy =
+    setFolder.isPending ||
+    subscribe.isPending ||
+    unsubscribe.isPending ||
+    refreshSkyreaderIcon.isPending;
+
+  const assignFolder = useCallback(
+    async (folderId: string | null) => {
+      try {
+        await setFolder.mutateAsync({
+          publicationId: publication.publicationId,
+          folderId,
+          existingRkey: prefs ? rkeyFromURI(prefs.uri) : undefined,
+        });
+        onHapticSuccess();
+      } catch (e) {
+        notifyMutationFailure("Could not move publication", e);
+      }
+    },
+    [setFolder, publication.publicationId, prefs, onHapticSuccess]
+  );
+
+  const handleSubscribe = useCallback(async () => {
+    try {
+      await subscribe.mutateAsync({ publication });
+      onHapticSuccess();
+    } catch (e) {
+      notifyMutationFailure("Could not subscribe", e);
+    }
+  }, [subscribe, publication, onHapticSuccess]);
+
+  const confirmUnsubscribe = useCallback(async () => {
+    try {
+      await unsubscribe.mutateAsync({ publication });
+      setUnsubscribeDialogOpen(false);
+      onHapticSuccess();
+    } catch (e) {
+      notifyMutationFailure("Could not unsubscribe", e);
+    }
+  }, [unsubscribe, publication, onHapticSuccess]);
+
+  const handleRefreshSkyreaderFavicon = useCallback(async () => {
+    try {
+      await refreshSkyreaderIcon.mutateAsync({ publication });
+      onHapticSuccess();
+    } catch (e) {
+      notifyMutationFailure("Could not refresh favicon", e);
+    }
+  }, [refreshSkyreaderIcon, publication, onHapticSuccess]);
+
+  const folderSubmenuLabel = useMemo(() => {
+    if (!currentFolderId) return "Move To Folder";
+    const match = folders.find((f) => rkeyFromURI(f.uri) === currentFolderId);
+    return match ? `In "${match.value.name}"` : "Move To Folder";
+  }, [currentFolderId, folders]);
+
+  return (
+    <>
+      <ContextMenuContent className="min-w-[11rem]">
           <ContextMenuItem
             disabled={busy}
             className="gap-2"
@@ -280,13 +343,13 @@ function PublicationSubItemInner({
             Mark All As Read
           </ContextMenuItem>
           <ContextMenuItem
-            disabled={busy || bulkDisabled}
-            className="gap-2"
-            onClick={() => {
-              applyMarkAllUnread();
-              hapticSuccess();
-            }}
-          >
+                disabled={busy || bulkDisabled}
+                className="gap-2"
+                onClick={() => {
+                  applyMarkAllUnread();
+                  onHapticSuccess();
+                }}
+              >
             Mark All As Unread
           </ContextMenuItem>
           {sidebarTab === "following" ? (
@@ -335,7 +398,6 @@ function PublicationSubItemInner({
             </>
           ) : null}
         </ContextMenuContent>
-      </ContextMenu>
       <ControlledCreateFolderDialog
         open={newFolderDialogOpen}
         onOpenChange={setNewFolderDialogOpen}
@@ -400,7 +462,7 @@ function PublicationSubItemInner({
               onClick={() => {
                 applyMarkAllRead();
                 setMarkAllReadDialogOpen(false);
-                hapticSuccess();
+                onHapticSuccess();
               }}
             >
               Mark All As Read
@@ -408,7 +470,7 @@ function PublicationSubItemInner({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </SidebarMenuSubItem>
+    </>
   );
 }
 
@@ -429,6 +491,8 @@ function publicationSubItemPropsEqual(
     prev.isSelected === next.isSelected &&
     prev.onSelect === next.onSelect &&
     prev.sidebarTab === next.sidebarTab &&
+    prev.className === next.className &&
+    prev.style === next.style &&
     prevPub.publicationId === nextPub.publicationId &&
     prevPub.subscriptionPublicationId === nextPub.subscriptionPublicationId &&
     prevPub.authorDid === nextPub.authorDid &&

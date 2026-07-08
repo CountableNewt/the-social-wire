@@ -68,7 +68,6 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     syncSidebarFolderExpandKeys,
   } = useSidebarChrome();
   const { isEntryRead, readEpoch } = useReadState();
-  const { data: savedLinks = [] } = useLatrMergedHttpsSaves("active");
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -103,8 +102,12 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
     bootstrapStreamComplete,
   } = useSidebarBootstrap();
   const folderPublicationsLoading = folderPublicationsListLoading;
+  const secondaryReaderSyncEnabled = hasSidebarSnapshot && bootstrapStreamComplete;
+  const { data: savedLinks = [] } = useLatrMergedHttpsSaves("active", {
+    enabled: secondaryReaderSyncEnabled,
+  });
 
-  useCrossClientReadSync();
+  useCrossClientReadSync(secondaryReaderSyncEnabled);
 
   usePrefetchSidebarPublicationEntries(
     allPublicationRows,

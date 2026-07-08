@@ -25,6 +25,8 @@ export type PublicationFolderSection = {
   publications: SidebarPublicationRow[];
 };
 
+export type UnreadCountsAccuracy = "estimated" | "exact" | (string & {});
+
 export type PublicationSidebarProjection = {
   viewerDid: string;
   folders: Array<{ uri: string; rkey: string; value: Record<string, unknown> }>;
@@ -42,6 +44,10 @@ export type PublicationSidebarProjection = {
   enrollAuthorDids: string[];
   refreshedAt: string;
   unreadCountsByPublicationId?: Record<string, number>;
+  unreadCountsGeneration?: number;
+  unreadCountsAccuracy?: UnreadCountsAccuracy;
+  unreadCountsCountedAt?: string;
+  sidebarSectionGenerations?: Record<string, number>;
 };
 
 export type ResolveAddPublicationPayload =
