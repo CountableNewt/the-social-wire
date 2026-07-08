@@ -43,6 +43,16 @@ public init(path dbPath: String, logger: Logger) throws {
       """)
 
     try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_content_items_author_expires
+        ON content_items (author_did, expires_at);
+      """)
+
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_content_items_author_site_expires
+        ON content_items (author_did, publication_site, expires_at);
+      """)
+
+    try db.execute(sql: """
       CREATE TABLE IF NOT EXISTS read_marks (
         viewer_did TEXT NOT NULL,
         subject_uri TEXT NOT NULL,
@@ -54,6 +64,39 @@ public init(path dbPath: String, logger: Logger) throws {
     try db.execute(sql: """
       CREATE INDEX IF NOT EXISTS idx_read_marks_viewer_created
         ON read_marks (viewer_did, created_at DESC);
+      """)
+
+    try db.execute(sql: """
+      CREATE TABLE IF NOT EXISTS appview_ingestion_checkpoints (
+        source TEXT NOT NULL,
+        repo_did TEXT NOT NULL,
+        collection TEXT NOT NULL,
+        cursor TEXT,
+        event_time TEXT,
+        observed_at TEXT NOT NULL,
+        PRIMARY KEY (source, repo_did, collection)
+      );
+      """)
+
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_appview_ingestion_checkpoints_observed
+        ON appview_ingestion_checkpoints (observed_at);
+      """)
+
+    try db.execute(sql: """
+      CREATE TABLE IF NOT EXISTS rss_feed_fetch_metadata (
+        feed_url TEXT PRIMARY KEY,
+        etag TEXT,
+        last_modified TEXT,
+        last_poll_at TEXT,
+        backoff_until TEXT,
+        consecutive_error_count INTEGER NOT NULL DEFAULT 0
+      );
+      """)
+
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_rss_feed_fetch_metadata_backoff
+        ON rss_feed_fetch_metadata (backoff_until);
       """)
   }
 
@@ -333,16 +376,36 @@ public init(path dbPath: String, logger: Logger) throws {
     nowIso: String
   ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
     try await db.read { db in
+      let joinClause: String
+      switch filter {
+      case .all:
+        joinClause = ""
+      case .unread:
+        joinClause = """
+
+          LEFT JOIN read_marks rm
+            ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
+        """
+      case .read:
+        joinClause = """
+
+          INNER JOIN read_marks rm
+            ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
+        """
+      }
       var sql = """
         SELECT ci.uri, ci.render_json, ci.created_at, ci.publication_site
         FROM content_items ci
-        LEFT JOIN read_marks rm
-          ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
+        \(joinClause)
         WHERE ci.author_did = ?
           AND ci.expires_at > ?
         """
 
-      var args: [DatabaseValueConvertible?] = [viewerDid, authorDid, nowIso]
+      var args: [DatabaseValueConvertible?] = []
+      if filter != .all {
+        args.append(viewerDid)
+      }
+      args.append(contentsOf: [authorDid, nowIso])
 
       switch filter {
       case .all:
@@ -350,7 +413,7 @@ public init(path dbPath: String, logger: Logger) throws {
       case .unread:
         sql += " AND rm.subject_uri IS NULL"
       case .read:
-        sql += " AND rm.subject_uri IS NOT NULL"
+        break
       }
 
       if let decoded = cursor {
@@ -441,31 +504,36 @@ public init(path dbPath: String, logger: Logger) throws {
     let nowIso = Self.isoString(from: Date())
     let placeholders = authorDids.map { _ in "?" }.joined(separator: ", ")
 
-    let unreadSiteFieldsByAuthor: [String: [String?]] = try await db.read { db in
-      var grouped: [String: [String?]] = Dictionary(uniqueKeysWithValues: authorDids.map { ($0, []) })
+    let unreadSiteCountsByAuthor: [String: [UnreadSiteCount]] = try await db.read { db in
+      var grouped: [String: [UnreadSiteCount]] = Dictionary(
+        uniqueKeysWithValues: authorDids.map { ($0, []) }
+      )
       let rows = try Row.fetchAll(
         db,
         sql: """
-          SELECT ci.author_did, ci.publication_site
+          SELECT ci.author_did, ci.publication_site, COUNT(*) AS unread_count
           FROM content_items ci
           LEFT JOIN read_marks rm
             ON rm.viewer_did = ? AND rm.subject_uri = ci.uri
           WHERE ci.author_did IN (\(placeholders))
             AND ci.expires_at > ?
             AND rm.subject_uri IS NULL
+          GROUP BY ci.author_did, ci.publication_site
           """,
         arguments: StatementArguments([viewerDid] + authorDids + [nowIso])
       )
       for row in rows {
         let authorDid: String = row["author_did"]
-        grouped[authorDid, default: []].append(row["publication_site"] as String?)
+        grouped[authorDid, default: []].append(
+          UnreadSiteCount(site: row["publication_site"] as String?, count: row["unread_count"])
+        )
       }
       return grouped
     }
 
     return ThinAppViewQuerySupport.batchUnreadCounts(
       scopes: scopes,
-      unreadSiteFieldsByAuthor: unreadSiteFieldsByAuthor
+      unreadSiteCountsByAuthor: unreadSiteCountsByAuthor
     )
   }
 
@@ -488,6 +556,39 @@ public init(path dbPath: String, logger: Logger) throws {
         arguments: [beforeIso]
       )
       return db.changesCount
+    }
+  }
+
+  public func recordIngestionCheckpoint(
+    source: String,
+    repoDid: String,
+    collection: String,
+    cursor: String?,
+    eventTime: Date?,
+    observedAt: Date
+  ) async throws {
+    let eventTimeIso = eventTime.map { Self.isoString(from: $0) }
+    let observedAtIso = Self.isoString(from: observedAt)
+    try await db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO appview_ingestion_checkpoints
+            (source, repo_did, collection, cursor, event_time, observed_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (source, repo_did, collection) DO UPDATE SET
+            cursor = excluded.cursor,
+            event_time = excluded.event_time,
+            observed_at = excluded.observed_at
+          """,
+        arguments: [
+          source,
+          repoDid,
+          collection,
+          cursor,
+          eventTimeIso,
+          observedAtIso,
+        ]
+      )
     }
   }
 
@@ -529,6 +630,57 @@ public init(path dbPath: String, logger: Logger) throws {
         arguments: [RssFeedLexicons.rssAuthorDid, nowIso, capped]
       )
       return rows.compactMap { $0["publication_site"] as String? }
+    }
+  }
+
+  public func fetchRssFeedMetadata(normalizedFeedUrl: String) async throws -> RssFeedFetchMetadata? {
+    try await db.read { db in
+      guard let row = try Row.fetchOne(
+        db,
+        sql: """
+          SELECT etag, last_modified, last_poll_at, backoff_until, consecutive_error_count
+          FROM rss_feed_fetch_metadata
+          WHERE feed_url = ?
+          LIMIT 1
+          """,
+        arguments: [normalizedFeedUrl]
+      ) else {
+        return nil
+      }
+      return RssFeedFetchMetadata(
+        normalizedFeedUrl: normalizedFeedUrl,
+        etag: row["etag"] as String?,
+        lastModified: row["last_modified"] as String?,
+        lastPollAt: (row["last_poll_at"] as String?).flatMap(Self.date(fromIso:)),
+        backoffUntil: (row["backoff_until"] as String?).flatMap(Self.date(fromIso:)),
+        consecutiveErrorCount: row["consecutive_error_count"]
+      )
+    }
+  }
+
+  public func storeRssFeedMetadata(_ metadata: RssFeedFetchMetadata) async throws {
+    try await db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO rss_feed_fetch_metadata
+            (feed_url, etag, last_modified, last_poll_at, backoff_until, consecutive_error_count)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (feed_url) DO UPDATE SET
+            etag = excluded.etag,
+            last_modified = excluded.last_modified,
+            last_poll_at = excluded.last_poll_at,
+            backoff_until = excluded.backoff_until,
+            consecutive_error_count = excluded.consecutive_error_count
+          """,
+        arguments: [
+          metadata.normalizedFeedUrl,
+          metadata.etag,
+          metadata.lastModified,
+          metadata.lastPollAt.map { Self.isoString(from: $0) },
+          metadata.backoffUntil.map { Self.isoString(from: $0) },
+          metadata.consecutiveErrorCount,
+        ]
+      )
     }
   }
 

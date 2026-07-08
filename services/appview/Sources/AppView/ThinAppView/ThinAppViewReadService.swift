@@ -27,7 +27,8 @@ actor ThinAppViewReadService {
   ) async throws -> AppViewEntryListResponse? {
     guard let projectionCache else { return nil }
     guard
-      let json = try await projectionCache.cachedFirstPageJSON(
+      let json = try await cachedFirstPageJSON(
+        projectionCache: projectionCache,
         viewerDid: auth.did,
         publicationId: publicationId
       ),
@@ -92,7 +93,8 @@ actor ThinAppViewReadService {
         publicationSiteUrls: publicationSiteUrls,
         authorDid: authorDid
       ),
-         let json = try await projectionCache.cachedFirstPageJSON(
+         let json = try await cachedFirstPageJSON(
+           projectionCache: projectionCache,
            viewerDid: auth.did,
            publicationId: publicationId
          ),
@@ -128,7 +130,7 @@ actor ThinAppViewReadService {
     {
       let expiresAt = Date().addingTimeInterval(AppViewProjectionCacheTTL.firstPageSeconds)
       try? await projectionCache.storeFirstPageJSON(
-        viewerDid: auth.did,
+        viewerDid: AppViewProjectionCacheViewerKeys.sharedFirstPage,
         publicationId: publicationId,
         jsonBody: json,
         expiresAt: expiresAt
@@ -200,7 +202,6 @@ actor ThinAppViewReadService {
   func purge(auth: AuthContext) async throws {
     try await store.purgeReadMarks(viewerDid: auth.did)
     try await projectionCache?.invalidateUnreadCounts(viewerDid: auth.did, publicationId: nil)
-    try await projectionCache?.invalidateFirstPage(viewerDid: auth.did, publicationId: nil)
     logger.info("Purged thin AppView read marks", metadata: ["did": .string(auth.did)])
   }
 
@@ -252,7 +253,7 @@ actor ThinAppViewReadService {
             publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
             publicationSiteUrls: row.appViewScope.publicationSiteUrls
           )
-          guard let unreadCount, unreadCount > 0 else { return nil }
+          guard let unreadCount else { return nil }
           return (publicationId, unreadCount)
         }
       }
@@ -280,9 +281,7 @@ actor ThinAppViewReadService {
             publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
             publicationSiteUrls: row.appViewScope.publicationSiteUrls
           )
-          if unreadCount > 0 {
-            counts[publicationId] = unreadCount
-          }
+          counts[publicationId] = unreadCount
         }
       }
     }
@@ -322,7 +321,23 @@ actor ThinAppViewReadService {
 
   private func invalidateReadStateCaches(viewerDid: String) async throws {
     try await projectionCache?.invalidateUnreadCounts(viewerDid: viewerDid, publicationId: nil)
-    try await projectionCache?.invalidateFirstPage(viewerDid: viewerDid, publicationId: nil)
+  }
+
+  private func cachedFirstPageJSON(
+    projectionCache: any AppViewProjectionCacheStore,
+    viewerDid: String,
+    publicationId: String
+  ) async throws -> String? {
+    if let viewerJSON = try await projectionCache.cachedFirstPageJSON(
+      viewerDid: viewerDid,
+      publicationId: publicationId
+    ) {
+      return viewerJSON
+    }
+    return try await projectionCache.cachedFirstPageJSON(
+      viewerDid: AppViewProjectionCacheViewerKeys.sharedFirstPage,
+      publicationId: publicationId
+    )
   }
 
   private func primaryPublicationId(

@@ -126,14 +126,14 @@ public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
         arguments: [viewerDid, Self.isoString(from: Date())]
       )
       var counts: [String: Int] = [:]
+      var sawRow = false
       for row in rows {
+        sawRow = true
         let publicationId: String = row["publication_id"]
         let unreadCount: Int = row["unread_count"]
-        if unreadCount > 0 {
-          counts[publicationId] = unreadCount
-        }
+        counts[publicationId] = max(0, unreadCount)
       }
-      return counts.isEmpty ? nil : counts
+      return sawRow ? counts : nil
     }
   }
 
@@ -145,7 +145,7 @@ public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
     let cachedAt = Self.isoString(from: Date())
     let expires = Self.isoString(from: expiresAt)
     try await db.write { db in
-      for (publicationId, unreadCount) in counts where unreadCount > 0 {
+      for (publicationId, unreadCount) in counts {
         try db.execute(
           sql: """
             INSERT INTO unread_counts_cache
@@ -156,7 +156,7 @@ public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
               cached_at = excluded.cached_at,
               expires_at = excluded.expires_at
             """,
-          arguments: [viewerDid, publicationId, unreadCount, cachedAt, expires]
+          arguments: [viewerDid, publicationId, max(0, unreadCount), cachedAt, expires]
         )
       }
     }

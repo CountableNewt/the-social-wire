@@ -24,6 +24,11 @@ struct EntryListScanRow {
   let publicationSite: String?
 }
 
+struct UnreadSiteCount {
+  let site: String?
+  let count: Int
+}
+
 public enum ThinAppViewQuerySupport {
   static func scanBatchSize(pageLimit: Int, scoped: Bool) -> Int {
     scoped ? max(100, pageLimit + 1) : pageLimit + 1
@@ -227,6 +232,32 @@ public enum ThinAppViewQuerySupport {
     )
   }
 
+  static func unreadCountForScope(
+    unreadSiteCounts: [UnreadSiteCount],
+    publicationAtUri: String?,
+    publicationScopeAtUris: [String],
+    publicationSiteUrls: [String]
+  ) -> Int {
+    let scoped = requiresPublicationSiteFilter(
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls
+    )
+    if !scoped {
+      return unreadSiteCounts.reduce(0) { $0 + $1.count }
+    }
+    return unreadSiteCounts.reduce(into: 0) { total, row in
+      if publicationSiteMatches(
+        siteField: row.site,
+        publicationAtUri: publicationAtUri,
+        publicationScopeAtUris: publicationScopeAtUris,
+        publicationSiteUrls: publicationSiteUrls
+      ) {
+        total += row.count
+      }
+    }
+  }
+
   static func batchUnreadCounts(
     scopes: [PublicationUnreadScope],
     unreadSiteFieldsByAuthor: [String: [String?]]
@@ -243,6 +274,23 @@ public enum ThinAppViewQuerySupport {
       if count > 0 {
         counts[scope.publicationId] = count
       }
+    }
+    return counts
+  }
+
+  static func batchUnreadCounts(
+    scopes: [PublicationUnreadScope],
+    unreadSiteCountsByAuthor: [String: [UnreadSiteCount]]
+  ) -> [String: Int] {
+    var counts: [String: Int] = [:]
+    for scope in scopes {
+      let siteCounts = unreadSiteCountsByAuthor[scope.authorDid] ?? []
+      counts[scope.publicationId] = unreadCountForScope(
+        unreadSiteCounts: siteCounts,
+        publicationAtUri: scope.publicationAtUri,
+        publicationScopeAtUris: scope.publicationScopeAtUris,
+        publicationSiteUrls: scope.publicationSiteUrls
+      )
     }
     return counts
   }

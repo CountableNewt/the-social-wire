@@ -11,8 +11,54 @@ struct BootstrapStreamNDJSONTests {
     #expect(data.last == 0x0A)
 
     let line = String(decoding: data.dropLast(), as: UTF8.self)
-    let decoded = try JSONDecoder().decode(AppViewBootstrapStreamEvent.self, from: Data(line.utf8))
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decoded = try decoder.decode(AppViewBootstrapStreamEvent.self, from: Data(line.utf8))
     #expect(decoded.kind == .selectedPublication)
     #expect(decoded.selectedPublication?.publicationId == "pub-a")
+  }
+
+  @Test("sidebarSection round-trips with zero unread replacement")
+  func sidebarSectionRoundTrips() throws {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let row = SidebarPublicationRow(
+      publicationId: "pub-a",
+      subscriptionPublicationId: nil,
+      authorDid: "did:plc:alice",
+      authorHandle: "alice.example",
+      title: "Alice",
+      iconUrl: nil,
+      avatarUrl: nil,
+      discoveredAt: now,
+      appViewScope: PublicationAppViewScope(
+        authorDid: "did:plc:alice",
+        publicationAtUri: nil,
+        publicationScopeAtUris: [],
+        publicationSiteUrls: []
+      ),
+      unreadCount: 3
+    )
+    let event = AppViewBootstrapStreamEvent.sidebarSection(
+      AppViewBootstrapSidebarSectionPayload(
+        sectionKey: "folder:news",
+        folderRkey: "news",
+        folderUri: "at://did:plc:viewer/app.thesocialwire.folder/news",
+        publications: [row],
+        unreadCounts: ["pub-a": 0],
+        replacePublicationIds: ["pub-a"],
+        refreshedAt: now
+      )
+    )
+
+    let data = try AppViewBootstrapStreamNDJSON.encodeLine(event)
+    let line = String(decoding: data.dropLast(), as: UTF8.self)
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decoded = try decoder.decode(AppViewBootstrapStreamEvent.self, from: Data(line.utf8))
+
+    #expect(decoded.kind == .sidebarSection)
+    #expect(decoded.sidebarSection?.sectionKey == "folder:news")
+    #expect(decoded.sidebarSection?.unreadCounts?["pub-a"] == 0)
+    #expect(decoded.sidebarSection?.replacePublicationIds == ["pub-a"])
   }
 }

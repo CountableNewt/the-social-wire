@@ -79,8 +79,25 @@ const RECENT_BOOTSTRAP_REUSE_MS = 30_000;
 const bootstrapCompletedAtByDid = new Map<string, number>();
 
 export function PublicationSidebarProvider({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const did = auth.session?.did ?? "";
+
+  return (
+    <PublicationSidebarProviderInner key={did} auth={auth}>
+      {children}
+    </PublicationSidebarProviderInner>
+  );
+}
+
+function PublicationSidebarProviderInner({
+  auth,
+  children,
+}: {
+  auth: ReturnType<typeof useAuth>;
+  children: ReactNode;
+}) {
   const dummyReaderDataEnabled = isDummyReaderDataEnabled();
-  const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
+  const { session, getOAuthSession, oauthSessionReloadSeq } = auth;
   const qc = useQueryClient();
   const isRestoring = useIsRestoring();
   const did = session?.did ?? "";
@@ -94,6 +111,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     useState(false);
   const [projectionError, setProjectionError] = useState<Error | null>(null);
   const streamGenerationRef = useRef(0);
+  const streamSawSidebarSectionRef = useRef(false);
   const pendingAutoSelectPublicationIdRef = useRef<string | null>(null);
   const bootstrapFeedPublicationIdRef = useRef<string | null>(null);
   const bootstrapCompletedAtRef = useRef<{
@@ -121,24 +139,11 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
   const [streamProjection, setStreamProjection] = useState<
     PublicationSidebarProjection | undefined
   >(undefined);
-  const [streamOwnerDid, setStreamOwnerDid] = useState(did);
 
-  if (did !== streamOwnerDid) {
-    setStreamOwnerDid(did);
-    setStreamProjection(undefined);
-    setStreamSelectedPublicationId(null);
-    setSidebarFetching(false);
-    setBootstrapStreamComplete(false);
-    setFolderPublicationsLoading(false);
-    setProjectionError(null);
-  }
-
-  const effectiveStreamProjection =
-    did === streamOwnerDid ? streamProjection : undefined;
   const mergedProjection =
     dummyReaderDataEnabled
       ? cachedProjection ?? dummyPublicationSidebarProjection
-      : effectiveStreamProjection ?? cachedProjection ?? undefined;
+      : streamProjection ?? cachedProjection ?? undefined;
 
   useEffect(() => {
     if (!dummyReaderDataEnabled || !did) return;
@@ -183,6 +188,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
       }
 
       const generation = ++streamGenerationRef.current;
+      streamSawSidebarSectionRef.current = false;
       pendingAutoSelectPublicationIdRef.current = null;
       bootstrapFeedPublicationIdRef.current = null;
 
@@ -206,6 +212,10 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
               if (event.kind === "unreadCounts") {
                 markBootstrapPerf("unreadCounts");
               }
+              if (event.kind === "sidebarSection") {
+                streamSawSidebarSectionRef.current = true;
+                markBootstrapPerf("sidebarSection");
+              }
               if (event.kind === "entriesPage") {
                 markBootstrapPerf("entriesPage");
               }
@@ -218,6 +228,9 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
 
               if (event.kind === "sidebarPriority" && !hadSidebarSnapshot) {
                 setFolderPublicationsLoading(true);
+              }
+              if (event.kind === "sidebarSection") {
+                setFolderPublicationsLoading(false);
               }
               if (event.kind === "sidebarFolders") {
                 setFolderPublicationsLoading(false);
@@ -281,7 +294,12 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
                 }
               }
 
+              const skipLegacySidebarFolders =
+                event.kind === "sidebarFolders" &&
+                streamSawSidebarSectionRef.current;
+
               setStreamProjection((currentStream) => {
+                if (skipLegacySidebarFolders) return currentStream;
                 const baseline =
                   qc.getQueryData<PublicationSidebarProjection>(
                     queryKey

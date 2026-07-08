@@ -62,6 +62,10 @@ actor FirehoseSubscriber {
     let cid = (commit["cid"] as? String) ?? ""
     let recordObject = commit["record"] ?? [:]
     let recordJSON = (try? JSONSerialization.data(withJSONObject: recordObject)) ?? Data("{}".utf8)
+    let eventTime = Self.eventTime(from: json)
+    let cursor = (commit["rev"] as? String)
+      ?? Self.stringValue(json["time_us"])
+      ?? Self.stringValue(json["seq"])
 
     try await indexer.handleCommit(
       repoDid: did,
@@ -69,8 +73,40 @@ actor FirehoseSubscriber {
       rkey: rkey,
       cid: cid,
       recordJSON: recordJSON,
-      operation: operation
+      operation: operation,
+      ingestionSource: "jetstream",
+      cursor: cursor,
+      eventTime: eventTime
     )
+  }
+
+  private static func eventTime(from json: [String: Any]) -> Date? {
+    if let raw = json["time"] as? String {
+      let fractional = ISO8601DateFormatter()
+      fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      if let date = fractional.date(from: raw) { return date }
+      if let date = ISO8601DateFormatter().date(from: raw) { return date }
+    }
+    if let number = json["time_us"] as? NSNumber {
+      return Date(timeIntervalSince1970: number.doubleValue / 1_000_000)
+    }
+    if let int = json["time_us"] as? Int {
+      return Date(timeIntervalSince1970: Double(int) / 1_000_000)
+    }
+    return nil
+  }
+
+  private static func stringValue(_ value: Any?) -> String? {
+    switch value {
+    case let raw as String:
+      return raw
+    case let raw as NSNumber:
+      return raw.stringValue
+    case let raw as Int:
+      return String(raw)
+    default:
+      return nil
+    }
   }
 }
 

@@ -25,14 +25,68 @@ public struct ThinAppViewRssIngestion: Sendable {
   public func ingestFeed(normalizedFeedUrl: String) async throws -> Int {
     guard RssFeedIdentity.isFetchableFeedUrl(normalizedFeedUrl) else { return 0 }
 
+    let metadata = try? await store.fetchRssFeedMetadata(normalizedFeedUrl: normalizedFeedUrl)
+    let polledAt = Date()
+    if let backoffUntil = metadata?.backoffUntil, backoffUntil > polledAt {
+      return 0
+    }
+
     var request = HTTPClientRequest(url: normalizedFeedUrl)
     request.headers.add(name: "Accept", value: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*")
     request.headers.add(name: "User-Agent", value: "the-social-wire/thin-appview")
+    if let etag = metadata?.etag {
+      request.headers.add(name: "If-None-Match", value: etag)
+    }
+    if let lastModified = metadata?.lastModified {
+      request.headers.add(name: "If-Modified-Since", value: lastModified)
+    }
 
-    let response = try await httpClient.execute(request, timeout: .seconds(20))
-    guard [200, 403, 406, 415].contains(response.status.code) else { return 0 }
+    let response: HTTPClientResponse
+    do {
+      response = try await httpClient.execute(request, timeout: .seconds(20))
+    } catch {
+      await recordFetchFailure(
+        normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata,
+        polledAt: polledAt
+      )
+      return 0
+    }
 
-    let body = try await response.body.collect(upTo: 2 * 1024 * 1024)
+    let responseEtag = sanitizedHeader(response.headers.first(name: "ETag"))
+    let responseLastModified = sanitizedHeader(response.headers.first(name: "Last-Modified"))
+
+    if response.status.code == 304 {
+      await recordFetchSuccess(
+        normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata,
+        polledAt: polledAt,
+        etag: responseEtag,
+        lastModified: responseLastModified
+      )
+      return 0
+    }
+
+    guard [200, 403, 406, 415].contains(response.status.code) else {
+      await recordFetchFailure(
+        normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata,
+        polledAt: polledAt
+      )
+      return 0
+    }
+
+    let body: ByteBuffer
+    do {
+      body = try await response.body.collect(upTo: 2 * 1024 * 1024)
+    } catch {
+      await recordFetchFailure(
+        normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata,
+        polledAt: polledAt
+      )
+      return 0
+    }
     let feed = RssFeedParser(data: Data(buffer: body), feedURL: normalizedFeedUrl).parse()
     let capped = Array(feed.items.prefix(config.maxRssItemsPerFeed))
     let now = Date()
@@ -89,6 +143,13 @@ public struct ThinAppViewRssIngestion: Sendable {
     }
 
     try await cleanupDuplicatePublicationSiteRows(normalizedFeedUrl: normalizedFeedUrl)
+    await recordFetchSuccess(
+      normalizedFeedUrl: normalizedFeedUrl,
+      previous: metadata,
+      polledAt: polledAt,
+      etag: responseEtag,
+      lastModified: responseLastModified
+    )
 
     if indexed > 0 {
       logger.info(
@@ -146,6 +207,53 @@ public struct ThinAppViewRssIngestion: Sendable {
       contentHTML: item.contentHTML,
       summary: item.summary
     )
+  }
+
+  private func recordFetchSuccess(
+    normalizedFeedUrl: String,
+    previous: RssFeedFetchMetadata?,
+    polledAt: Date,
+    etag: String?,
+    lastModified: String?
+  ) async {
+    let metadata = RssFeedFetchMetadata(
+      normalizedFeedUrl: normalizedFeedUrl,
+      etag: etag ?? previous?.etag,
+      lastModified: lastModified ?? previous?.lastModified,
+      lastPollAt: polledAt,
+      backoffUntil: nil,
+      consecutiveErrorCount: 0
+    )
+    try? await store.storeRssFeedMetadata(metadata)
+  }
+
+  private func recordFetchFailure(
+    normalizedFeedUrl: String,
+    previous: RssFeedFetchMetadata?,
+    polledAt: Date
+  ) async {
+    let errorCount = min((previous?.consecutiveErrorCount ?? 0) + 1, 8)
+    let backoffUntil = polledAt.addingTimeInterval(Self.backoffSeconds(errorCount: errorCount))
+    let metadata = RssFeedFetchMetadata(
+      normalizedFeedUrl: normalizedFeedUrl,
+      etag: previous?.etag,
+      lastModified: previous?.lastModified,
+      lastPollAt: polledAt,
+      backoffUntil: backoffUntil,
+      consecutiveErrorCount: errorCount
+    )
+    try? await store.storeRssFeedMetadata(metadata)
+  }
+
+  private static func backoffSeconds(errorCount: Int) -> TimeInterval {
+    min(6 * 60 * 60, 5 * 60 * pow(2, Double(max(0, errorCount - 1))))
+  }
+
+  private func sanitizedHeader(_ raw: String?) -> String? {
+    guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+      return nil
+    }
+    return value
   }
 
   private func cleanupDuplicatePublicationSiteRows(normalizedFeedUrl: String) async throws {

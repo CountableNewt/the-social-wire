@@ -301,7 +301,6 @@ public init(pool: PostgresClient, logger: Logger) {
         """
         SELECT ci.uri, ci.render_json::text, ci.created_at, ci.publication_site
         FROM content_items ci
-        LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid)
           AND ci.expires_at > \(now)
           AND ci.publication_site = ANY(\(siteKeys))
@@ -344,7 +343,6 @@ public init(pool: PostgresClient, logger: Logger) {
         """
         SELECT ci.uri, ci.render_json::text, ci.created_at, ci.publication_site
         FROM content_items ci
-        LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid)
           AND ci.expires_at > \(now)
           AND ci.publication_site = ANY(\(siteKeys))
@@ -412,7 +410,6 @@ public init(pool: PostgresClient, logger: Logger) {
         """
         SELECT ci.uri, ci.render_json::text, ci.created_at, ci.publication_site
         FROM content_items ci
-        LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
         ORDER BY ci.created_at DESC, ci.uri DESC
         LIMIT \(limit)
@@ -448,7 +445,6 @@ public init(pool: PostgresClient, logger: Logger) {
         """
         SELECT ci.uri, ci.render_json::text, ci.created_at, ci.publication_site
         FROM content_items ci
-        LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now)
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
@@ -580,27 +576,30 @@ public init(pool: PostgresClient, logger: Logger) {
     let now = Date()
     let rows = try await pool.query(
       """
-      SELECT ci.author_did, ci.publication_site
+      SELECT ci.author_did, ci.publication_site, COUNT(*)::int
       FROM content_items ci
       LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
       WHERE ci.author_did = ANY(\(authorDids))
         AND ci.expires_at > \(now)
         AND rm.subject_uri IS NULL
+      GROUP BY ci.author_did, ci.publication_site
       """,
       logger: logger
     )
 
-    var unreadSiteFieldsByAuthor: [String: [String?]] = Dictionary(
+    var unreadSiteCountsByAuthor: [String: [UnreadSiteCount]] = Dictionary(
       uniqueKeysWithValues: authorDids.map { ($0, []) }
     )
     for try await row in rows {
-      let (authorDid, site): (String, String?) = try row.decode((String, String?).self)
-      unreadSiteFieldsByAuthor[authorDid, default: []].append(site)
+      let (authorDid, site, count): (String, String?, Int) = try row.decode((String, String?, Int).self)
+      unreadSiteCountsByAuthor[authorDid, default: []].append(
+        UnreadSiteCount(site: site, count: count)
+      )
     }
 
     return ThinAppViewQuerySupport.batchUnreadCounts(
       scopes: scopes,
-      unreadSiteFieldsByAuthor: unreadSiteFieldsByAuthor
+      unreadSiteCountsByAuthor: unreadSiteCountsByAuthor
     )
   }
 
@@ -622,6 +621,30 @@ public init(pool: PostgresClient, logger: Logger) {
     var count = 0
     for try await _ in rows { count += 1 }
     return count
+  }
+
+  public func recordIngestionCheckpoint(
+    source: String,
+    repoDid: String,
+    collection: String,
+    cursor: String?,
+    eventTime: Date?,
+    observedAt: Date
+  ) async throws {
+    try await pool.query(
+      """
+      INSERT INTO appview_ingestion_checkpoints
+        (source, repo_did, collection, cursor, event_time, observed_at)
+      VALUES
+        (\(source), \(repoDid), \(collection), \(cursor), \(eventTime), \(observedAt))
+      ON CONFLICT (source, repo_did, collection)
+      DO UPDATE SET
+        cursor = EXCLUDED.cursor,
+        event_time = EXCLUDED.event_time,
+        observed_at = EXCLUDED.observed_at
+      """,
+      logger: logger
+    )
   }
 
   public func listAuthorDidsForProactiveBackfill(limit: Int) async throws -> [String] {
@@ -667,5 +690,50 @@ public init(pool: PostgresClient, logger: Logger) {
       sites.append(site)
     }
     return sites
+  }
+
+  public func fetchRssFeedMetadata(normalizedFeedUrl: String) async throws -> RssFeedFetchMetadata? {
+    let rows = try await pool.query(
+      """
+      SELECT etag, last_modified, last_poll_at, backoff_until, consecutive_error_count
+      FROM rss_feed_fetch_metadata
+      WHERE feed_url = \(normalizedFeedUrl)
+      LIMIT 1
+      """,
+      logger: logger
+    )
+    for try await row in rows {
+      let (etag, lastModified, lastPollAt, backoffUntil, consecutiveErrorCount) = try row.decode(
+        (String?, String?, Date?, Date?, Int).self
+      )
+      return RssFeedFetchMetadata(
+        normalizedFeedUrl: normalizedFeedUrl,
+        etag: etag,
+        lastModified: lastModified,
+        lastPollAt: lastPollAt,
+        backoffUntil: backoffUntil,
+        consecutiveErrorCount: consecutiveErrorCount
+      )
+    }
+    return nil
+  }
+
+  public func storeRssFeedMetadata(_ metadata: RssFeedFetchMetadata) async throws {
+    try await pool.query(
+      """
+      INSERT INTO rss_feed_fetch_metadata
+        (feed_url, etag, last_modified, last_poll_at, backoff_until, consecutive_error_count)
+      VALUES
+        (\(metadata.normalizedFeedUrl), \(metadata.etag), \(metadata.lastModified), \(metadata.lastPollAt), \(metadata.backoffUntil), \(metadata.consecutiveErrorCount))
+      ON CONFLICT (feed_url)
+      DO UPDATE SET
+        etag = EXCLUDED.etag,
+        last_modified = EXCLUDED.last_modified,
+        last_poll_at = EXCLUDED.last_poll_at,
+        backoff_until = EXCLUDED.backoff_until,
+        consecutive_error_count = EXCLUDED.consecutive_error_count
+      """,
+      logger: logger
+    )
   }
 }

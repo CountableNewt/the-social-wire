@@ -15,6 +15,23 @@ import {
 } from "@/hooks/useEntries";
 
 type SidebarRow = PublicationSidebarProjection["allPublicationRows"][number];
+type SidebarSectionPayload = Extract<
+  ParsedBootstrapStreamEvent,
+  { kind: "sidebarSection" }
+>["payload"];
+
+function normalizedPublicationId(publicationId: string): string {
+  return normalizeAtRepoParam(publicationId);
+}
+
+function countForPublicationId(
+  counts: Record<string, number>,
+  publicationId: string
+): number | undefined {
+  const exact = counts[publicationId];
+  if (exact != null) return exact;
+  return counts[normalizedPublicationId(publicationId)];
+}
 
 export function applySidebarPriorityEvent(
   current: PublicationSidebarProjection | undefined,
@@ -117,9 +134,12 @@ export function applyUnreadCountsEvent(
     ...counts,
   };
 
-  if (options?.replacePublicationIds?.length) {
-    for (const publicationId of options.replacePublicationIds) {
-      const fresh = counts[publicationId] ?? 0;
+  const replacePublicationIds = options?.replacePublicationIds ?? [];
+  const replaceSet = new Set(replacePublicationIds.map(normalizedPublicationId));
+
+  if (replacePublicationIds.length) {
+    for (const publicationId of replacePublicationIds) {
+      const fresh = countForPublicationId(counts, publicationId) ?? 0;
       unreadCountsByPublicationId[publicationId] = Math.max(0, fresh);
     }
   }
@@ -127,27 +147,167 @@ export function applyUnreadCountsEvent(
   const applyRow = (
     row: PublicationSidebarProjection["allPublicationRows"][number]
   ) => {
-    if (options?.replacePublicationIds?.includes(row.publicationId)) {
-      const count = counts[row.publicationId] ?? 0;
-      return { ...row, unreadCount: count > 0 ? count : 0 };
+    if (replaceSet.has(normalizedPublicationId(row.publicationId))) {
+      const count = countForPublicationId(counts, row.publicationId) ?? 0;
+      const unreadCount = count > 0 ? count : 0;
+      return row.unreadCount === unreadCount ? row : { ...row, unreadCount };
     }
-    const count = counts[row.publicationId];
+    const count = countForPublicationId(counts, row.publicationId);
     if (count == null) return row;
-    return { ...row, unreadCount: count };
+    return row.unreadCount === count ? row : { ...row, unreadCount: count };
+  };
+
+  const applyRows = (rows: SidebarRow[]) => {
+    let changed = false;
+    const next = rows.map((row) => {
+      const updated = applyRow(row);
+      if (updated !== row) changed = true;
+      return updated;
+    });
+    return changed ? next : rows;
   };
 
   return {
     ...projection,
     unreadCountsByPublicationId,
-    allPublicationRows: projection.allPublicationRows.map(applyRow),
-    myPublications: projection.myPublications.map(applyRow),
-    subscribedUnfoldered: projection.subscribedUnfoldered.map(applyRow),
-    followingTabPublications: projection.followingTabPublications.map(applyRow),
-    folderSections: projection.folderSections?.map((section) => ({
-      ...section,
-      publications: section.publications.map(applyRow),
-    })),
+    allPublicationRows: applyRows(projection.allPublicationRows),
+    myPublications: applyRows(projection.myPublications),
+    subscribedUnfoldered: applyRows(projection.subscribedUnfoldered),
+    followingTabPublications: applyRows(projection.followingTabPublications),
+    folderSections: projection.folderSections?.map((section) => {
+      const publications = applyRows(section.publications);
+      return publications === section.publications
+        ? section
+        : { ...section, publications };
+    }),
   };
+}
+
+function mergeSectionRow(
+  incoming: SidebarRow,
+  existing: SidebarRow | undefined,
+  unreadCounts: Record<string, number> | undefined
+): SidebarRow {
+  const unreadCount =
+    unreadCounts == null
+      ? incoming.unreadCount ?? existing?.unreadCount
+      : Math.max(0, countForPublicationId(unreadCounts, incoming.publicationId) ?? 0);
+
+  const merged: SidebarRow = {
+    ...(existing ?? incoming),
+    ...incoming,
+    unreadCount,
+  };
+
+  if (
+    existing &&
+    existing === incoming &&
+    existing.unreadCount === merged.unreadCount
+  ) {
+    return existing;
+  }
+  if (
+    existing &&
+    existing.publicationId === merged.publicationId &&
+    existing.title === merged.title &&
+    existing.iconUrl === merged.iconUrl &&
+    existing.avatarUrl === merged.avatarUrl &&
+    existing.unreadCount === merged.unreadCount
+  ) {
+    return existing;
+  }
+  return merged;
+}
+
+function sectionMatchesPayload(
+  section: NonNullable<PublicationSidebarProjection["folderSections"]>[number],
+  payload: SidebarSectionPayload
+): boolean {
+  return (
+    (!!payload.folderRkey && section.folderRkey === payload.folderRkey) ||
+    (!!payload.folderUri && section.folderUri === payload.folderUri) ||
+    `folder:${section.folderRkey}` === payload.sectionKey
+  );
+}
+
+export function applySidebarSectionEvent(
+  projection: PublicationSidebarProjection,
+  payload: SidebarSectionPayload
+): PublicationSidebarProjection {
+  const existingRowsById = new Map<string, SidebarRow>();
+  for (const row of projection.allPublicationRows) {
+    existingRowsById.set(normalizedPublicationId(row.publicationId), row);
+  }
+  for (const section of projection.folderSections ?? []) {
+    for (const row of section.publications) {
+      existingRowsById.set(normalizedPublicationId(row.publicationId), row);
+    }
+  }
+
+  const incomingRowsById = new Map<string, SidebarRow>();
+  for (const row of payload.publications) {
+    const key = normalizedPublicationId(row.publicationId);
+    incomingRowsById.set(
+      key,
+      mergeSectionRow(row, existingRowsById.get(key), payload.unreadCounts)
+    );
+  }
+
+  const replaceIds = payload.replacePublicationIds?.length
+    ? payload.replacePublicationIds
+    : payload.publications.map((row) => row.publicationId);
+  const replaceSet = new Set(replaceIds.map(normalizedPublicationId));
+
+  const allPublicationRows = projection.allPublicationRows.map((row) => {
+    const key = normalizedPublicationId(row.publicationId);
+    if (!replaceSet.has(key)) return row;
+    return incomingRowsById.get(key) ?? row;
+  });
+  const seenAllRows = new Set(allPublicationRows.map((row) => normalizedPublicationId(row.publicationId)));
+  for (const row of incomingRowsById.values()) {
+    const key = normalizedPublicationId(row.publicationId);
+    if (seenAllRows.has(key)) continue;
+    seenAllRows.add(key);
+    allPublicationRows.push(row);
+  }
+
+  let foundSection = false;
+  const folderSections = (projection.folderSections ?? []).map((section) => {
+    if (!sectionMatchesPayload(section, payload)) return section;
+    foundSection = true;
+    return {
+      ...section,
+      folderRkey: payload.folderRkey ?? section.folderRkey,
+      folderUri: payload.folderUri ?? section.folderUri,
+      publications: payload.publications.map((row) => {
+        const key = normalizedPublicationId(row.publicationId);
+        return incomingRowsById.get(key) ?? row;
+      }),
+    };
+  });
+
+  if (!foundSection && payload.folderRkey && payload.folderUri) {
+    folderSections.push({
+      folderRkey: payload.folderRkey,
+      folderUri: payload.folderUri,
+      publications: payload.publications.map((row) => {
+        const key = normalizedPublicationId(row.publicationId);
+        return incomingRowsById.get(key) ?? row;
+      }),
+    });
+  }
+
+  const nextProjection: PublicationSidebarProjection = {
+    ...projection,
+    refreshedAt: payload.refreshedAt,
+    allPublicationRows,
+    folderSections,
+  };
+
+  if (!payload.unreadCounts) return nextProjection;
+  return applyUnreadCountsEvent(nextProjection, payload.unreadCounts, {
+    replacePublicationIds: replaceIds,
+  });
 }
 
 export function applySidebarFoldersEvent(
@@ -211,6 +371,11 @@ export function applyBootstrapStreamEvent(args: {
   switch (args.event.kind) {
     case "sidebarPriority":
       projection = applySidebarPriorityEvent(projection, args.event.payload);
+      break;
+    case "sidebarSection":
+      if (projection) {
+        projection = applySidebarSectionEvent(projection, args.event.payload);
+      }
       break;
     case "unreadCounts":
       if (projection) {

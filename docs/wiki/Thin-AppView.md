@@ -35,7 +35,7 @@ Fly gateway — OAuth/DPoP, PDS write-through, unbuffered AppView proxy
         └── iOS (SOCIALWIRE_USE_THIN_APPVIEW)
 ```
 
-**Initial reader load:** authenticated NDJSON **`GET /v1/appview/bootstrap-stream`** (gateway proxies AppView without buffering) — progressive sidebar slices, unread counts, first-unread selection, first feed page. Repeat visits paint persisted cache while the stream refreshes.
+**Initial reader load:** authenticated NDJSON **`GET /v1/appview/bootstrap-stream`** (gateway proxies AppView without buffering) — progressive sidebar priority, per-folder `sidebarSection` slices, unread counts, first-unread selection, first feed page. Repeat visits paint persisted cache while the stream refreshes.
 
 **Consistency:** PDS first for read marks; clients dual-write to AppView after PDS upsert/delete. Firehose, enrollment, and proactive backfill reconcile drift.
 

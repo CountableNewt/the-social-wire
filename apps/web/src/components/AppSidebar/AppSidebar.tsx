@@ -109,7 +109,8 @@ export function AppSidebar({ selectedPubId, onSelectPub }: AppSidebarProps) {
   usePrefetchSidebarPublicationEntries(
     allPublicationRows,
     hasSidebarSnapshot && !!session && bootstrapStreamComplete,
-    selectedPubId ?? streamSelectedPublicationId
+    selectedPubId ?? streamSelectedPublicationId,
+    unreadCountsByPublicationId
   );
 
   const autoSelectRef = useRef<string | null>(null);

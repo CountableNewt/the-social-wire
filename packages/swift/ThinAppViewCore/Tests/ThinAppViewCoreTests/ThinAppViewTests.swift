@@ -160,6 +160,137 @@ struct SQLiteThinAppViewStoreTests {
       publicationSiteUrls: []
     )
     #expect(unreadCount == 1)
+
+    let all = try await store.listEntries(
+      viewerDid: "did:plc:viewer",
+      authorDid: "did:plc:author",
+      publicationAtUri: nil,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+      filter: .all,
+      cursor: nil,
+      limit: 10
+    )
+    #expect(all.entries.count == 2)
+  }
+
+  @Test("batch unread counts aggregate by author and publication scope")
+  func batchUnreadCountsAggregateScopes() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let now = Date()
+    let pubA = "at://did:plc:author/site.standard.publication/a"
+    let pubB = "at://did:plc:author/site.standard.publication/b"
+    let feedA = "https://a.example.com/feed.xml"
+    let feedB = "https://b.example.com/feed.xml"
+
+    for (index, site) in [pubA, pubA, pubB].enumerated() {
+      let uri = "at://did:plc:author/site.standard.document/\(index)"
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: uri,
+          cid: "bafy\(index)",
+          authorDid: "did:plc:author",
+          collection: "site.standard.document",
+          createdAt: now.addingTimeInterval(TimeInterval(-index)),
+          indexedAt: now,
+          publicationSite: site,
+          render: ContentRenderFields(title: "Standard \(index)", publishedAt: ISO8601DateFormatter().string(from: now)),
+          expiresAt: now.addingTimeInterval(3600)
+        )
+      )
+      if index == 0 {
+        try await store.upsertReadMark(
+          viewerDid: "did:plc:viewer",
+          subjectUri: uri,
+          createdAt: now
+        )
+      }
+    }
+
+    for (feed, title) in [(feedA, "Feed A"), (feedB, "Feed B")] {
+      let uri = RssFeedIdentity.rssEntryId(normalizedFeedUrl: feed, stableItemKey: "guid:\(title)")
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: uri,
+          cid: "rss:\(title)",
+          authorDid: RssFeedLexicons.rssAuthorDid,
+          collection: RssFeedLexicons.skyreaderFeedEntry,
+          createdAt: now,
+          indexedAt: now,
+          publicationSite: feed,
+          render: ContentRenderFields(title: title, publishedAt: ISO8601DateFormatter().string(from: now)),
+          expiresAt: now.addingTimeInterval(3600)
+        )
+      )
+      if feed == feedB {
+        try await store.upsertReadMark(
+          viewerDid: "did:plc:viewer",
+          subjectUri: uri,
+          createdAt: now
+        )
+      }
+    }
+
+    let counts = try await store.countUnreadEntriesBatch(
+      viewerDid: "did:plc:viewer",
+      scopes: [
+        PublicationUnreadScope(
+          publicationId: "author-all",
+          authorDid: "did:plc:author",
+          publicationAtUri: nil,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: []
+        ),
+        PublicationUnreadScope(
+          publicationId: "pub-a",
+          authorDid: "did:plc:author",
+          publicationAtUri: pubA,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: []
+        ),
+        PublicationUnreadScope(
+          publicationId: "pub-b",
+          authorDid: "did:plc:author",
+          publicationAtUri: pubB,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: []
+        ),
+        PublicationUnreadScope(
+          publicationId: "pub-empty",
+          authorDid: "did:plc:author",
+          publicationAtUri: "at://did:plc:author/site.standard.publication/empty",
+          publicationScopeAtUris: [],
+          publicationSiteUrls: []
+        ),
+        PublicationUnreadScope(
+          publicationId: "rss-a",
+          authorDid: RssFeedLexicons.rssAuthorDid,
+          publicationAtUri: nil,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: [feedA]
+        ),
+        PublicationUnreadScope(
+          publicationId: "rss-b",
+          authorDid: RssFeedLexicons.rssAuthorDid,
+          publicationAtUri: nil,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: [feedB]
+        ),
+      ]
+    )
+
+    #expect(counts["author-all"] == 2)
+    #expect(counts["pub-a"] == 1)
+    #expect(counts["pub-b"] == 1)
+    #expect(counts["pub-empty"] == 0)
+    #expect(counts["rss-a"] == 1)
+    #expect(counts["rss-b"] == 0)
   }
 
   @Test("fetches a single indexed entry by URI")

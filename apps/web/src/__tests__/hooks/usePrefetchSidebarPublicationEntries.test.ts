@@ -41,4 +41,26 @@ describe("orderPublicationIdsForPrefetch", () => {
 
     expect(ordered).toEqual(["at://did:plc:alice/site.standard.publication/a"]);
   });
+
+  it("prioritizes selected and top unread publications without enqueueing the full sidebar", () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `pub-${index + 1}`);
+    const unreadCounts = new Map([
+      ["pub-6", 10],
+      ["pub-3", 4],
+      ["pub-9", 7],
+    ]);
+
+    const ordered = orderPublicationIdsForPrefetch(ids, "pub-4", unreadCounts);
+
+    expect(ordered).toEqual([
+      "pub-4",
+      "pub-6",
+      "pub-9",
+      "pub-3",
+      "pub-1",
+      "pub-2",
+      "pub-5",
+      "pub-7",
+    ]);
+  });
 });

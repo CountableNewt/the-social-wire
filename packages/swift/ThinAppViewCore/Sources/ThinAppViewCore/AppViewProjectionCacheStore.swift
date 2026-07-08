@@ -3,7 +3,11 @@ import Foundation
 public enum AppViewProjectionCacheTTL {
   public static let sidebarSeconds: TimeInterval = 5 * 60
   public static let unreadCountsSeconds: TimeInterval = 2 * 60
-  public static let firstPageSeconds: TimeInterval = 60
+  public static let firstPageSeconds: TimeInterval = 5 * 60
+}
+
+public enum AppViewProjectionCacheViewerKeys {
+  public static let sharedFirstPage = "__shared_first_page__"
 }
 
 public protocol AppViewProjectionCacheStore: Actor {

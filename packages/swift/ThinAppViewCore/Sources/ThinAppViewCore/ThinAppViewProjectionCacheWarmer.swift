@@ -27,6 +27,10 @@ enum ThinAppViewProjectionCacheWarmer {
     }
     for key in keys {
       try? await projectionCache.invalidateFirstPage(viewerDid: viewerDid, publicationId: key)
+      try? await projectionCache.invalidateFirstPage(
+        viewerDid: AppViewProjectionCacheViewerKeys.sharedFirstPage,
+        publicationId: key
+      )
     }
   }
 
@@ -65,7 +69,7 @@ enum ThinAppViewProjectionCacheWarmer {
 
     let expiresAt = Date().addingTimeInterval(AppViewProjectionCacheTTL.firstPageSeconds)
     try? await projectionCache.storeFirstPageJSON(
-      viewerDid: viewerDid,
+      viewerDid: AppViewProjectionCacheViewerKeys.sharedFirstPage,
       publicationId: publicationId,
       jsonBody: json,
       expiresAt: expiresAt

@@ -20,22 +20,53 @@ const BULK_PREFETCH_DELAY_MS = 8_000;
 /** Max parallel first-page prefetches per batch (avoids flooding the network). */
 const PREFETCH_CONCURRENCY = 2;
 
+/** Bound background prefetch to likely next taps instead of the full sidebar. */
+const MAX_BACKGROUND_PREFETCH_PUBLICATIONS = 8;
+
 /** Default article filter used by {@link useEntries} when opening a publication feed. */
 const PREFETCH_ARTICLE_FILTER = "all" as const;
 
 /** Selected publication first, then the rest in stable sidebar order. */
 export function orderPublicationIdsForPrefetch(
   publicationIds: string[],
-  selectedPublicationId: string | null
+  selectedPublicationId: string | null,
+  unreadCountsByPublicationId?: ReadonlyMap<string, number>
 ): string[] {
   const unique = [
     ...new Set(publicationIds.map((id) => normalizeAtRepoParam(id))),
   ];
-  if (!selectedPublicationId) return unique;
+  const unreadCount = (publicationId: string) =>
+    unreadCountsByPublicationId?.get(publicationId) ??
+    unreadCountsByPublicationId?.get(normalizeAtRepoParam(publicationId)) ??
+    0;
 
-  const selected = normalizeAtRepoParam(selectedPublicationId);
-  if (!unique.includes(selected)) return unique;
-  return [selected, ...unique.filter((id) => id !== selected)];
+  const selected = selectedPublicationId
+    ? normalizeAtRepoParam(selectedPublicationId)
+    : null;
+  const selectedPart = selected && unique.includes(selected) ? [selected] : [];
+  const remaining = unique.filter((id) => id !== selected);
+  const unreadPart = remaining
+    .filter((id) => unreadCount(id) > 0)
+    .sort((a, b) => unreadCount(b) - unreadCount(a));
+  const unreadSet = new Set(unreadPart);
+  const visiblePart = remaining.filter((id) => !unreadSet.has(id));
+
+  return [...selectedPart, ...unreadPart, ...visiblePart].slice(
+    0,
+    MAX_BACKGROUND_PREFETCH_PUBLICATIONS
+  );
+}
+
+function waitForBackgroundPrefetchWindow(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(() => resolve(), { timeout: 4_000 });
+        return;
+      }
+      resolve();
+    }, delayMs);
+  });
 }
 
 async function prefetchPublicationFirstPage(args: {
@@ -77,7 +108,8 @@ async function prefetchPublicationFirstPage(args: {
 export function usePrefetchSidebarPublicationEntries(
   publications: DiscoveredPublication[],
   enabled: boolean,
-  selectedPublicationId: string | null
+  selectedPublicationId: string | null,
+  unreadCountsByPublicationId?: ReadonlyMap<string, number>
 ) {
   const queryClient = useQueryClient();
   const { session, getOAuthSession } = useAuth();
@@ -135,14 +167,13 @@ export function usePrefetchSidebarPublicationEntries(
       const oauth = getOAuthSession();
       if (!oauth) return;
 
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, BULK_PREFETCH_DELAY_MS);
-      });
+      await waitForBackgroundPrefetchWindow(BULK_PREFETCH_DELAY_MS);
       if (cancelled) return;
 
       const orderedIds = orderPublicationIdsForPrefetch(
         sidebarPublicationIds,
-        null
+        selectedPublicationId,
+        unreadCountsByPublicationId
       );
 
       for (let i = 0; i < orderedIds.length; i += PREFETCH_CONCURRENCY) {
@@ -168,5 +199,14 @@ export function usePrefetchSidebarPublicationEntries(
     return () => {
       cancelled = true;
     };
-  }, [enabled, session, idsKey, queryClient, getOAuthSession, sidebarPublicationIds]);
+  }, [
+    enabled,
+    session,
+    idsKey,
+    queryClient,
+    getOAuthSession,
+    sidebarPublicationIds,
+    selectedPublicationId,
+    unreadCountsByPublicationId,
+  ]);
 }

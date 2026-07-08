@@ -15,6 +15,10 @@ struct ProjectionDiscoveredRow: Sendable, Equatable {
   var discoveredAt: Date
 }
 
+struct GraphSubscriptionProjection: Sendable, Equatable {
+  var publication: String?
+}
+
 // MARK: - Subscription matching (mirror web `publicationSubscriptionMatch.ts`)
 
 enum PublicationProjectionLogic {
@@ -129,10 +133,10 @@ enum PublicationProjectionLogic {
     return Array(keys)
   }
 
-  static func subscriptionPublicationKeys(from subscriptions: [[String: Any]]) -> Set<String> {
+  static func subscriptionPublicationKeys(from subscriptions: [GraphSubscriptionProjection]) -> Set<String> {
     var keys = Set<String>()
-    for value in subscriptions {
-      if let pub = value["publication"] as? String {
+    for subscription in subscriptions {
+      if let pub = subscription.publication {
         addPublicationSubscriptionLookupKeys(into: &keys, value: pub)
       }
     }
@@ -279,7 +283,7 @@ enum PublicationProjectionLogic {
   }
 
   static func orphanGraphSubscriptionUris(
-    subscriptions: [[String: Any]],
+    subscriptions: [GraphSubscriptionProjection],
     existingRows: [ProjectionDiscoveredRow]
   ) -> [String] {
     var existingKeys = Set<String>()
@@ -290,8 +294,8 @@ enum PublicationProjectionLogic {
     }
 
     var uris = Set<String>()
-    for value in subscriptions {
-      guard let raw = (value["publication"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+    for subscription in subscriptions {
+      guard let raw = subscription.publication?.trimmingCharacters(in: .whitespacesAndNewlines),
             !raw.isEmpty
       else { continue }
       let normalized = normalizeAtRepoParam(raw)

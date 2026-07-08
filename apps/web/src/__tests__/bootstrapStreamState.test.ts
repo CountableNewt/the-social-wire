@@ -4,6 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import {
   applySidebarPriorityEvent,
   applySidebarFoldersEvent,
+  applySidebarSectionEvent,
   applyUnreadCountsEvent,
   writeStreamedEntriesPage,
 } from "@/lib/bootstrapStreamState";
@@ -193,5 +194,50 @@ describe("applySidebarFoldersEvent", () => {
       ]
     ).toBe(7);
     expect(counted.folderSections?.[0]?.publications[0]?.unreadCount).toBe(7);
+  });
+
+  it("applies a sidebarSection without replacing unrelated folder sections", () => {
+    const alpha = row("pub-a", "Alpha", 1);
+    const beta = row("pub-b", "Beta", 2);
+    const gamma = row("pub-c", "Gamma", 3);
+    const untouchedSection = {
+      folderRkey: "folder2",
+      folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder2",
+      publications: [gamma],
+    };
+    const base = minimalProjection({
+      allPublicationRows: [alpha, beta, gamma],
+      folderSections: [
+        {
+          folderRkey: "folder1",
+          folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+          publications: [alpha],
+        },
+        untouchedSection,
+      ],
+      unreadCountsByPublicationId: {
+        "pub-a": 1,
+        "pub-b": 2,
+        "pub-c": 3,
+      },
+    });
+
+    const merged = applySidebarSectionEvent(base, {
+      sectionKey: "folder:folder1",
+      folderRkey: "folder1",
+      folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+      publications: [row("pub-b", "Beta Updated")],
+      unreadCounts: { "pub-b": 0 },
+      replacePublicationIds: ["pub-b"],
+      refreshedAt: "2026-01-03T00:00:00.000Z",
+    });
+
+    expect(merged.folderSections?.[1]).toBe(untouchedSection);
+    expect(merged.folderSections?.[0]?.publications.map((item) => item.title)).toEqual([
+      "Beta Updated",
+    ]);
+    expect(merged.unreadCountsByPublicationId?.["pub-b"]).toBe(0);
+    expect(merged.folderSections?.[0]?.publications[0]?.unreadCount).toBe(0);
+    expect(merged.allPublicationRows.find((item) => item.publicationId === "pub-a")).toBe(alpha);
   });
 });

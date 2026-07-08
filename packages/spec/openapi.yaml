@@ -722,12 +722,18 @@ paths:
       description: |
         **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
 
-        Streams newline-delimited JSON events as sidebar projection, unread counts,
-        first-unread publication selection, first feed page, and folder rows complete.
+        Streams newline-delimited JSON events as sidebar projection, per-section sidebar
+        slices, unread counts, first-unread publication selection, first feed page, and
+        legacy folder rows complete.
         Gateway forwards the AppView body without buffering when proxied.
 
-        Event kinds (one JSON object per line): `sidebarPriority`, `unreadCounts`,
-        `selectedPublication`, `entriesPage`, `sidebarFolders`, `warning`, `error`, `done`.
+        Event kinds (one JSON object per line): `sidebarPriority`, `sidebarSection`,
+        `unreadCounts`, `selectedPublication`, `entriesPage`, `sidebarFolders`, `warning`,
+        `error`, `done`. New clients should prefer `sidebarSection` over monolithic
+        `sidebarFolders` during the migration.
+
+        `sidebarSection` payload:
+        `{ sectionKey, folderRkey?, folderUri?, publications, unreadCounts?, replacePublicationIds?, refreshedAt }`.
       tags: [AppView]
       responses:
         "200":

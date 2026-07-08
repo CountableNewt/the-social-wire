@@ -3,6 +3,7 @@ import type { PublicationSidebarProjection } from "@/lib/publicationProjectionCl
 
 export type BootstrapStreamEventKind =
   | "sidebarPriority"
+  | "sidebarSection"
   | "unreadCounts"
   | "selectedPublication"
   | "entriesPage"
@@ -14,6 +15,15 @@ export type BootstrapStreamEventKind =
 export type BootstrapStreamEvent = {
   kind: BootstrapStreamEventKind;
   sidebarPriority?: PublicationSidebarProjection;
+  sidebarSection?: {
+    sectionKey: string;
+    folderRkey?: string;
+    folderUri?: string;
+    publications: PublicationSidebarProjection["allPublicationRows"];
+    unreadCounts?: Record<string, number>;
+    replacePublicationIds?: string[];
+    refreshedAt: string;
+  };
   unreadCounts?: { counts: Record<string, number>; replacePublicationIds?: string[] };
   selectedPublication?: { publicationId: string };
   entriesPage?: {
@@ -32,6 +42,18 @@ export type BootstrapStreamEvent = {
 
 export type ParsedBootstrapStreamEvent =
   | { kind: "sidebarPriority"; payload: PublicationSidebarProjection }
+  | {
+      kind: "sidebarSection";
+      payload: {
+        sectionKey: string;
+        folderRkey?: string;
+        folderUri?: string;
+        publications: PublicationSidebarProjection["allPublicationRows"];
+        unreadCounts?: Record<string, number>;
+        replacePublicationIds?: string[];
+        refreshedAt: string;
+      };
+    }
   | { kind: "unreadCounts"; payload: { counts: Record<string, number>; replacePublicationIds?: string[] } }
   | { kind: "selectedPublication"; payload: { publicationId: string } }
   | {
@@ -60,6 +82,9 @@ export function parseBootstrapStreamEvent(
     case "sidebarPriority":
       if (!raw.sidebarPriority) return null;
       return { kind: "sidebarPriority", payload: raw.sidebarPriority };
+    case "sidebarSection":
+      if (!raw.sidebarSection) return null;
+      return { kind: "sidebarSection", payload: raw.sidebarSection };
     case "unreadCounts":
       if (!raw.unreadCounts) return null;
       return { kind: "unreadCounts", payload: raw.unreadCounts };
