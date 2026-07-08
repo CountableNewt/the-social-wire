@@ -7,13 +7,13 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { AuthProvider } from "@/hooks/useAuth";
 import { LexiconMigrationRunner } from "@/hooks/useLexiconMigration";
+import { createIndexedDbQueryPersister } from "@/lib/indexedDbQueryPersister";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 import { shouldPersistSidebarProjection } from "@/lib/sidebarProjectionPersist";
 
-/** localStorage key for dehydrated React Query cache (discovery + bounded entry lists). */
+/** IndexedDB key for dehydrated React Query cache (discovery + bounded entry lists). */
 const QUERY_PERSIST_KEY = "the-social-wire.react-query.v1";
 
 /** Drop persisted payload older than this (ms). */
@@ -55,16 +55,6 @@ function shouldDehydrateQuery(query: Query): boolean {
   );
 }
 
-function getBrowserStorage(): Storage | undefined {
-  if (typeof window === "undefined") return undefined;
-
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -79,8 +69,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   const [persister] = useState(() =>
-    createSyncStoragePersister({
-      storage: getBrowserStorage(),
+    createIndexedDbQueryPersister({
+      dbName: "the-social-wire-cache",
+      storeName: "react-query",
       key: QUERY_PERSIST_KEY,
       /** Discovery + entry streams: throttle persist writes. */
       throttleTime: 2000,

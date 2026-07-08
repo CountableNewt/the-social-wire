@@ -103,14 +103,13 @@ actor PublicationProjectionService {
   ) async throws -> SidebarDiscoveryContext {
     let viewerDid = auth.did
 
-    let folders = try await loadFolders(auth: auth)
-    let prefs = try await loadPublicationPrefs(auth: auth)
-    let subscriptionValues = try await loadGraphSubscriptions(auth: auth)
-    let skyreaderRecords = try await loadSkyreaderSubscriptions(auth: auth)
-
-    let discovered: [ProjectionDiscoveredRow]
-    if includeFollowDiscovery {
-      discovered = await PublicationFollowDiscovery.discover(
+    async let foldersTask = loadFolders(auth: auth)
+    async let prefsTask = loadPublicationPrefs(auth: auth)
+    async let subscriptionValuesTask = loadGraphSubscriptions(auth: auth)
+    async let skyreaderRecordsTask = loadSkyreaderSubscriptions(auth: auth)
+    async let discoveredTask: [ProjectionDiscoveredRow] = {
+      guard includeFollowDiscovery else { return [] }
+      return await PublicationFollowDiscovery.discover(
         viewerDid: viewerDid,
         auth: auth,
         repo: repo,
@@ -118,9 +117,13 @@ actor PublicationProjectionService {
         plcURL: plcURL,
         logger: logger
       )
-    } else {
-      discovered = []
-    }
+    }()
+
+    let folders = try await foldersTask
+    let prefs = try await prefsTask
+    let subscriptionValues = try await subscriptionValuesTask
+    let skyreaderRecords = try await skyreaderRecordsTask
+    let discovered = await discoveredTask
 
     let rssRows = PublicationProjectionLogic.skyreaderRows(from: skyreaderRecords)
     let subscriptionKeys = PublicationProjectionLogic.subscriptionPublicationKeys(from: subscriptionValues)
@@ -493,14 +496,18 @@ actor PublicationProjectionService {
     }
   }
 
-  private func loadGraphSubscriptions(auth: AuthContext) async throws -> [[String: Any]] {
+  private func loadGraphSubscriptions(auth: AuthContext) async throws -> [GraphSubscriptionProjection] {
     let records = try await repo.listAllRecords(
       auth: auth,
       repo: auth.did,
       collection: PublicationLexicons.graphSubscription,
       maxPages: 20
     )
-    return records.map(\.value.values)
+    return records.map { record in
+      GraphSubscriptionProjection(
+        publication: record.value.values["publication"] as? String
+      )
+    }
   }
 
   private func loadSkyreaderSubscriptions(auth: AuthContext) async throws -> [(uri: String, value: PdsRecordJSON)] {

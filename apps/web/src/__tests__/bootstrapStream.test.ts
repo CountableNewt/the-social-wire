@@ -54,6 +54,18 @@ describe("bootstrapStreamClient", () => {
     expect(events[0]?.kind).toBe("sidebarPriority");
     expect(events[1]?.kind).toBe("done");
   });
+
+  it("parses sidebarSection NDJSON events", () => {
+    const events = parseNdjsonLinesForTest(
+      '{"kind":"sidebarSection","sidebarSection":{"sectionKey":"folder:news","folderRkey":"news","folderUri":"at://did:plc:viewer/app.thesocialwire.folder/news","publications":[],"unreadCounts":{"pub-a":0},"replacePublicationIds":["pub-a"],"refreshedAt":"2026-01-01T00:00:00.000Z"}}\n'
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe("sidebarSection");
+    if (events[0]?.kind === "sidebarSection") {
+      expect(events[0].payload.unreadCounts?.["pub-a"]).toBe(0);
+      expect(events[0].payload.replacePublicationIds).toEqual(["pub-a"]);
+    }
+  });
 });
 
 describe("bootstrapStreamState", () => {

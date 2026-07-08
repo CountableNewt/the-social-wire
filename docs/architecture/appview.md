@@ -49,7 +49,7 @@ Fly gateway — OAuth, proxy (no buffering on bootstrap-stream)
 
 ## Initial load
 
-Authenticated **`GET /v1/appview/bootstrap-stream`** returns NDJSON events as sidebar priority rows, unread counts, first-unread publication selection, first feed page, and folder sections complete. Web and iOS consume the same contract. Cache-first repeat visits paint persisted projection cache while the stream refreshes.
+Authenticated **`GET /v1/appview/bootstrap-stream`** returns NDJSON events as sidebar priority rows, per-folder `sidebarSection` slices, unread counts, first-unread publication selection, first feed page, and a legacy `sidebarFolders` payload for older clients. Web and iOS consume the same contract. Cache-first repeat visits paint persisted projection cache while the stream refreshes.
 
 ## Consistency model
 

@@ -67,6 +67,7 @@ struct BootstrapStreamService {
       var selectedId: String?
       var selectedRow: SidebarPublicationRow?
       var selectedEnrollTask: Task<Void, Never>?
+      var emittedSelectedEntries = false
 
       try await withThrowingTaskGroup(of: SidebarBootstrapChunk.self) { group in
         group.addTask {
@@ -111,9 +112,33 @@ struct BootstrapStreamService {
             selectedEnrollTask = selectedRow.map { row in
               Task { await self.enrollAuthorForBootstrap(auth: auth, row: row) }
             }
+            if let selectedId, let selectedRow {
+              emittedSelectedEntries = true
+              try await writeEvent(.selectedPublication(publicationId: selectedId), writer: &writer)
+              let entriesStarted = Date()
+              try await writeBootstrapEntriesPage(
+                auth: auth,
+                publicationId: selectedId,
+                row: selectedRow,
+                enrollTask: selectedEnrollTask,
+                writer: &writer
+              )
+              BootstrapStreamTimings.logPhase(
+                logger,
+                phase: "entriesPage",
+                startedAt: entriesStarted,
+                viewerDid: auth.did
+              )
+            }
 
           case .folders(let payload):
             folders = payload
+            try await writeSidebarSections(
+              payload,
+              unreadCounts: nil,
+              refreshedAt: refreshedAt,
+              writer: &writer
+            )
             try await writeEvent(.sidebarFolders(payload), writer: &writer)
             BootstrapStreamTimings.logPhase(
               logger,
@@ -141,6 +166,12 @@ struct BootstrapStreamService {
           viewerDid: auth.did
         )
         let folderPublicationIds = folderUnreadRows.map(\.publicationId)
+        try await writeSidebarSections(
+          folders,
+          unreadCounts: folderUnreadCounts,
+          refreshedAt: refreshedAt,
+          writer: &writer
+        )
         try await writeEvent(
           .unreadCounts(folderUnreadCounts, replacePublicationIds: folderPublicationIds),
           writer: &writer
@@ -154,7 +185,7 @@ struct BootstrapStreamService {
         )
       }
 
-      if let selectedId, let selectedRow {
+      if !emittedSelectedEntries, let selectedId, let selectedRow {
         try await writeEvent(.selectedPublication(publicationId: selectedId), writer: &writer)
         let entriesStarted = Date()
         try await writeBootstrapEntriesPage(
@@ -266,6 +297,12 @@ struct BootstrapStreamService {
     }
 
     if let folders = snapshot.folderPayload {
+      try await writeSidebarSections(
+        folders,
+        unreadCounts: cachedUnreadCounts,
+        refreshedAt: refreshedAt,
+        writer: &writer
+      )
       try await writeEvent(.sidebarFolders(folders), writer: &writer)
     }
 
@@ -291,6 +328,14 @@ struct BootstrapStreamService {
     if let freshUnreadCountsTask {
       let freshUnreadCounts = await freshUnreadCountsTask.value
       await storeCachedUnreadCounts(freshUnreadCounts, viewerDid: auth.did)
+      if let folders = snapshot.folderPayload {
+        try await writeSidebarSections(
+          folders,
+          unreadCounts: freshUnreadCounts,
+          refreshedAt: refreshedAt,
+          writer: &writer
+        )
+      }
       try await writeEvent(
         .unreadCounts(freshUnreadCounts, replacePublicationIds: unreadPublicationIds),
         writer: &writer
@@ -528,6 +573,39 @@ struct BootstrapStreamService {
       cursor: page.cursor
     )
     try await writeEvent(.entriesPage(payload), writer: &writer)
+  }
+
+  private func writeSidebarSections(
+    _ payload: AppViewBootstrapSidebarFoldersPayload,
+    unreadCounts: [String: Int]?,
+    refreshedAt: Date,
+    writer: inout any ResponseBodyWriter
+  ) async throws {
+    for section in payload.folderSections {
+      let publicationIds = section.publications.map(\.publicationId)
+      let sectionCounts: [String: Int]?
+      if let unreadCounts {
+        sectionCounts = Dictionary(
+          uniqueKeysWithValues: publicationIds.map { ($0, unreadCounts[$0] ?? 0) }
+        )
+      } else {
+        sectionCounts = nil
+      }
+      try await writeEvent(
+        .sidebarSection(
+          AppViewBootstrapSidebarSectionPayload(
+            sectionKey: "folder:\(section.folderRkey)",
+            folderRkey: section.folderRkey,
+            folderUri: section.folderUri,
+            publications: section.publications,
+            unreadCounts: sectionCounts,
+            replacePublicationIds: unreadCounts == nil ? nil : publicationIds,
+            refreshedAt: refreshedAt
+          )
+        ),
+        writer: &writer
+      )
+    }
   }
 
   /// Returns true when enroll finished without waiting (used to pick live vs cached bootstrap page 1).

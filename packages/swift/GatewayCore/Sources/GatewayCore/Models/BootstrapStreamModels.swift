@@ -5,6 +5,7 @@ public enum AppViewBootstrapStreamEventKind: String, Codable, Sendable {
   case unreadCounts
   case selectedPublication
   case entriesPage
+  case sidebarSection
   case sidebarFolders
   case warning
   case error
@@ -79,6 +80,34 @@ public struct AppViewBootstrapSidebarFoldersPayload: Codable, Sendable, Equatabl
   }
 }
 
+public struct AppViewBootstrapSidebarSectionPayload: Codable, Sendable, Equatable {
+  public let sectionKey: String
+  public let folderRkey: String?
+  public let folderUri: String?
+  public let publications: [SidebarPublicationRow]
+  public let unreadCounts: [String: Int]?
+  public let replacePublicationIds: [String]?
+  public let refreshedAt: Date
+
+  public init(
+    sectionKey: String,
+    folderRkey: String? = nil,
+    folderUri: String? = nil,
+    publications: [SidebarPublicationRow],
+    unreadCounts: [String: Int]? = nil,
+    replacePublicationIds: [String]? = nil,
+    refreshedAt: Date
+  ) {
+    self.sectionKey = sectionKey
+    self.folderRkey = folderRkey
+    self.folderUri = folderUri
+    self.publications = publications
+    self.unreadCounts = unreadCounts
+    self.replacePublicationIds = replacePublicationIds
+    self.refreshedAt = refreshedAt
+  }
+}
+
 public struct AppViewBootstrapMessagePayload: Codable, Sendable, Equatable {
   public let message: String
 
@@ -101,6 +130,7 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
   public let unreadCounts: AppViewBootstrapUnreadCountsPayload?
   public let selectedPublication: AppViewBootstrapSelectedPublicationPayload?
   public let entriesPage: AppViewBootstrapEntriesPagePayload?
+  public let sidebarSection: AppViewBootstrapSidebarSectionPayload?
   public let sidebarFolders: AppViewBootstrapSidebarFoldersPayload?
   public let warning: AppViewBootstrapMessagePayload?
   public let error: AppViewBootstrapMessagePayload?
@@ -112,6 +142,7 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
     unreadCounts: AppViewBootstrapUnreadCountsPayload? = nil,
     selectedPublication: AppViewBootstrapSelectedPublicationPayload? = nil,
     entriesPage: AppViewBootstrapEntriesPagePayload? = nil,
+    sidebarSection: AppViewBootstrapSidebarSectionPayload? = nil,
     sidebarFolders: AppViewBootstrapSidebarFoldersPayload? = nil,
     warning: AppViewBootstrapMessagePayload? = nil,
     error: AppViewBootstrapMessagePayload? = nil,
@@ -122,6 +153,7 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
     self.unreadCounts = unreadCounts
     self.selectedPublication = selectedPublication
     self.entriesPage = entriesPage
+    self.sidebarSection = sidebarSection
     self.sidebarFolders = sidebarFolders
     self.warning = warning
     self.error = error
@@ -148,6 +180,10 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
 
   public static func entriesPage(_ payload: AppViewBootstrapEntriesPagePayload) -> Self {
     Self(kind: .entriesPage, entriesPage: payload)
+  }
+
+  public static func sidebarSection(_ payload: AppViewBootstrapSidebarSectionPayload) -> Self {
+    Self(kind: .sidebarSection, sidebarSection: payload)
   }
 
   public static func sidebarFolders(_ payload: AppViewBootstrapSidebarFoldersPayload) -> Self {

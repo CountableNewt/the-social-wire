@@ -14,6 +14,18 @@ struct BootstrapStreamNDJSONTests {
         #expect(events[1].kind == .done)
     }
 
+    @Test func parsesSidebarSectionPayload() {
+        let json = """
+        {"kind":"sidebarSection","sidebarSection":{"sectionKey":"folder:news","folderRkey":"news","folderUri":"at://did:plc:viewer/app.thesocialwire.folder/news","publications":[],"unreadCounts":{"pub-a":0},"replacePublicationIds":["pub-a"],"refreshedAt":"2026-01-01T00:00:00.000Z"}}
+        """
+        let events = BootstrapStreamNDJSON.parseLines(json)
+        #expect(events.count == 1)
+        #expect(events[0].kind == .sidebarSection)
+        #expect(events[0].sidebarSection?.sectionKey == "folder:news")
+        #expect(events[0].sidebarSection?.unreadCounts?["pub-a"] == 0)
+        #expect(events[0].sidebarSection?.replacePublicationIds == ["pub-a"])
+    }
+
     @Test func firstUnreadUsesPriorityOrder() {
         let subscribed = SidebarPublicationRowDTO(
             publicationId: "pub-sub",

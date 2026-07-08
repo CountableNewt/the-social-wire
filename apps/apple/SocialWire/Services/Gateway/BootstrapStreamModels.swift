@@ -2,6 +2,7 @@ import Foundation
 
 enum BootstrapStreamEventKind: String, Codable, Sendable {
     case sidebarPriority
+    case sidebarSection
     case unreadCounts
     case selectedPublication
     case entriesPage
@@ -14,6 +15,7 @@ enum BootstrapStreamEventKind: String, Codable, Sendable {
 struct BootstrapStreamEventDTO: Codable, Sendable {
     let kind: BootstrapStreamEventKind
     let sidebarPriority: PublicationSidebarResponseDTO?
+    let sidebarSection: BootstrapSidebarSectionPayloadDTO?
     let unreadCounts: BootstrapUnreadCountsPayloadDTO?
     let selectedPublication: BootstrapSelectedPublicationPayloadDTO?
     let entriesPage: BootstrapEntriesPagePayloadDTO?
@@ -41,6 +43,16 @@ struct BootstrapEntriesPagePayloadDTO: Codable, Sendable {
 struct BootstrapSidebarFoldersPayloadDTO: Codable, Sendable {
     let folderSections: [PublicationFolderSectionDTO]
     let allPublicationRows: [SidebarPublicationRowDTO]
+}
+
+struct BootstrapSidebarSectionPayloadDTO: Codable, Sendable {
+    let sectionKey: String
+    let folderRkey: String?
+    let folderUri: String?
+    let publications: [SidebarPublicationRowDTO]
+    let unreadCounts: [String: Int]?
+    let replacePublicationIds: [String]?
+    let refreshedAt: String
 }
 
 struct BootstrapMessagePayloadDTO: Codable, Sendable {

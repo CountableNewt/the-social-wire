@@ -310,7 +310,7 @@ struct ThinAppViewIndexerTests {
     )
 
     let cached = try await projectionCache.cachedFirstPageJSON(
-      viewerDid: "did:plc:viewer",
+      viewerDid: AppViewProjectionCacheViewerKeys.sharedFirstPage,
       publicationId: publicationId
     )
     #expect(cached?.contains("RSS Item") == true)

@@ -80,6 +80,7 @@ final class SocialWireAppModel {
     private let sidebarProjection = SidebarProjectionStore()
     private let sidebarUnread = SidebarUnreadController()
     private let bootstrapCoordinator = BootstrapStreamCoordinator()
+    private var bootstrapSawSidebarSection = false
     private var bootstrapCompletedAt: Date?
     private(set) var sidebarTreeViewModel = SidebarTreeViewModel(
         folders: [],
@@ -673,6 +674,7 @@ final class SocialWireAppModel {
         isLoading = true
         sidebarFetching = true
         folderPublicationsLoading = !hasSidebarSnapshot
+        bootstrapSawSidebarSection = false
         rebuildSidebarTreeViewModel()
 
         restoreCachedSidebarSnapshot(viewerDid: viewerDID)
@@ -709,6 +711,7 @@ final class SocialWireAppModel {
 
     private func refreshPublicationSidebarFromBootstrapStream(viewerDID: String) async throws {
         bootstrapCoordinator.reset()
+        bootstrapSawSidebarSection = false
         let streamStarted = Date()
 
         try await gateway.consumeBootstrapStream { [weak self] event in
@@ -753,6 +756,15 @@ final class SocialWireAppModel {
             guard let payload = event.unreadCounts else { return }
             applyStreamUnreadCounts(payload.counts, replacePublicationIds: payload.replacePublicationIds)
             logBootstrapPhase("unreadCounts", startedAt: streamStarted)
+        case .sidebarSection:
+            guard let payload = event.sidebarSection else { return }
+            bootstrapSawSidebarSection = true
+            mergeSidebarSection(payload)
+            folderPublicationsLoading = false
+            logBootstrapPhase("sidebarSection", startedAt: streamStarted)
+            bootstrapCoordinator.schedulePendingSelection { [weak self] in
+                await self?.applyPendingStreamedBootstrapSelectionIfNeeded()
+            }
         case .selectedPublication:
             bootstrapCoordinator.pendingStreamSelectedPublicationId =
                 event.selectedPublication?.publicationId
@@ -768,6 +780,11 @@ final class SocialWireAppModel {
             }
         case .sidebarFolders:
             guard let payload = event.sidebarFolders else { return }
+            guard !bootstrapSawSidebarSection else {
+                folderPublicationsLoading = false
+                logBootstrapPhase("sidebarFoldersSkipped", startedAt: streamStarted)
+                return
+            }
             mergeFolderPublications(from: PublicationSidebarResponseDTO(
                 viewerDid: viewerDID ?? "",
                 folders: nil,
@@ -895,6 +912,121 @@ final class SocialWireAppModel {
         }
 
         prefetchPublicationAvatarImages(folderRows)
+        refreshSidebarUnreadSumCaches()
+    }
+
+    private func mergeSidebarSection(_ payload: BootstrapSidebarSectionPayloadDTO) {
+        guard let folderRkey = payload.folderRkey,
+              let folderUri = payload.folderUri
+        else { return }
+
+        let replacePublicationIds = payload.replacePublicationIds ?? payload.publications.map(\.publicationId)
+        let sectionRows = payload.publications.map { row in
+            guard let counts = payload.unreadCounts else { return row }
+            let count = PublicationUnreadCountLookup.lookup(in: counts, publicationId: row.publicationId)
+            return row.withUnreadCount(max(0, count))
+        }
+
+        for row in sectionRows {
+            sidebarScopesByPublicationId[row.publicationId] = row.appViewScope
+        }
+
+        let discoveredRows = sectionRows.map { $0.toDiscoveredPublication() }
+        gatewayAllPublicationRows = upsertingDiscoveredPublications(
+            into: gatewayAllPublicationRows,
+            rows: discoveredRows
+        )
+        gatewayFolderMap[folderRkey] = discoveredRows
+
+        let section = PublicationFolderSectionDTO(
+            folderRkey: folderRkey,
+            folderUri: folderUri,
+            publications: sectionRows
+        )
+        cachedFolderSections = replacingFolderSection(
+            in: cachedFolderSections ?? [],
+            with: section
+        )
+        cachedFolderRows = upsertingSidebarRows(
+            into: cachedFolderRows ?? [],
+            rows: sectionRows
+        )
+
+        if let counts = payload.unreadCounts {
+            applySectionUnreadCounts(counts, publicationIds: replacePublicationIds)
+        } else {
+            refreshSidebarUnreadSumCaches()
+        }
+
+        prefetchPublicationAvatarImages(discoveredRows)
+    }
+
+    private func applySectionUnreadCounts(_ counts: [String: Int], publicationIds: [String]) {
+        var map = unreadCountsByPublicationId
+        for publicationId in publicationIds {
+            let count = PublicationUnreadCountLookup.lookup(in: counts, publicationId: publicationId)
+            PublicationUnreadCountLookup.store(max(0, count), for: publicationId, in: &map)
+        }
+        unreadCountsByPublicationId = map
+        sidebarUnread.unreadCountsByPublicationId = map
+        if let projection = cachedPriorityProjection {
+            cachedPriorityProjection = PublicationProjectionMapping.applyingUnreadCounts(
+                to: projection,
+                counts: counts,
+                replacePublicationIds: publicationIds
+            )
+            sidebarUnread.cachedPriorityProjection = cachedPriorityProjection
+        }
+        refreshSidebarUnreadSumCaches()
+    }
+
+    private func replacingFolderSection(
+        in sections: [PublicationFolderSectionDTO],
+        with section: PublicationFolderSectionDTO
+    ) -> [PublicationFolderSectionDTO] {
+        var next = sections
+        if let index = next.firstIndex(where: {
+            $0.folderRkey == section.folderRkey || $0.folderUri == section.folderUri
+        }) {
+            next[index] = section
+        } else {
+            next.append(section)
+        }
+        return next
+    }
+
+    private func upsertingDiscoveredPublications(
+        into existing: [DiscoveredPublication],
+        rows: [DiscoveredPublication]
+    ) -> [DiscoveredPublication] {
+        var next = existing
+        for row in rows {
+            if let index = next.firstIndex(where: {
+                PublicationUnreadCountLookup.publicationIdsMatch($0.publicationId, row.publicationId)
+            }) {
+                next[index] = row
+            } else {
+                next.append(row)
+            }
+        }
+        return next
+    }
+
+    private func upsertingSidebarRows(
+        into existing: [SidebarPublicationRowDTO],
+        rows: [SidebarPublicationRowDTO]
+    ) -> [SidebarPublicationRowDTO] {
+        var next = existing
+        for row in rows {
+            if let index = next.firstIndex(where: {
+                PublicationUnreadCountLookup.publicationIdsMatch($0.publicationId, row.publicationId)
+            }) {
+                next[index] = row
+            } else {
+                next.append(row)
+            }
+        }
+        return next
     }
 
     private func applyGatewaySidebarProjection(_ projection: PublicationSidebarResponseDTO) {

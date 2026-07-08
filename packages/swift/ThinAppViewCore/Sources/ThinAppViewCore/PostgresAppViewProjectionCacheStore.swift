@@ -66,13 +66,13 @@ public actor PostgresAppViewProjectionCacheStore: AppViewProjectionCacheStore {
       logger: logger
     )
     var counts: [String: Int] = [:]
+    var sawRow = false
     for try await row in rows {
+      sawRow = true
       let (publicationId, unreadCount) = try row.decode((String, Int).self)
-      if unreadCount > 0 {
-        counts[publicationId] = unreadCount
-      }
+      counts[publicationId] = max(0, unreadCount)
     }
-    return counts.isEmpty ? nil : counts
+    return sawRow ? counts : nil
   }
 
   public func storeUnreadCounts(
@@ -81,13 +81,14 @@ public actor PostgresAppViewProjectionCacheStore: AppViewProjectionCacheStore {
     expiresAt: Date
   ) async throws {
     let cachedAt = Date()
-    for (publicationId, unreadCount) in counts where unreadCount > 0 {
+    for (publicationId, unreadCount) in counts {
+      let cachedUnreadCount = max(0, unreadCount)
       try await pool.query(
         """
         INSERT INTO unread_counts_cache
           (viewer_did, publication_id, unread_count, cached_at, expires_at)
         VALUES
-          (\(viewerDid), \(publicationId), \(unreadCount), \(cachedAt), \(expiresAt))
+          (\(viewerDid), \(publicationId), \(cachedUnreadCount), \(cachedAt), \(expiresAt))
         ON CONFLICT (viewer_did, publication_id)
         DO UPDATE SET
           unread_count = EXCLUDED.unread_count,

@@ -38,8 +38,22 @@ public actor ThinAppViewIndexer {
     cid: String,
     recordJSON: Data,
     operation: String,
-    pdsBase: String? = nil
+    pdsBase: String? = nil,
+    ingestionSource: String? = nil,
+    cursor: String? = nil,
+    eventTime: Date? = nil
   ) async throws {
+    if let ingestionSource {
+      try? await store.recordIngestionCheckpoint(
+        source: ingestionSource,
+        repoDid: repoDid,
+        collection: collection,
+        cursor: cursor,
+        eventTime: eventTime,
+        observedAt: Date()
+      )
+    }
+
     let record = (try JSONSerialization.jsonObject(with: recordJSON) as? [String: Any]) ?? [:]
 
     if collection == RssFeedLexicons.skyreaderFeedSubscription {
@@ -178,6 +192,7 @@ public actor ThinAppViewIndexer {
     }
     if let normalized = RssFeedIdentity.normalizeFeedUrl(publicationSite) {
       publicationIds.insert(normalized)
+      publicationIds.insert(RssFeedIdentity.rssPublicationId(from: normalized))
     }
     for publicationId in publicationIds {
       try? await projectionCache.invalidateFirstPageForAllViewers(publicationId: publicationId)
@@ -193,12 +208,14 @@ public actor ThinAppViewIndexer {
     guard let subjectUri = record["subjectUri"] as? String else { return }
     if operation == "delete" {
       try await store.deleteReadMark(viewerDid: repoDid, subjectUri: subjectUri)
+      try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
       return
     }
 
     let readAtRaw = (record["readAt"] as? String) ?? (record["updatedAt"] as? String)
     let readAt = readAtRaw.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
     try await store.upsertReadMark(viewerDid: repoDid, subjectUri: subjectUri, createdAt: readAt)
+    try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
     _ = rkey
   }
 

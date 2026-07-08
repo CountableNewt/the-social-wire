@@ -20,7 +20,9 @@ docs {
   Progressive NDJSON bootstrap for signed-in reader load.
 
   Event order: `sidebarPriority` → `unreadCounts` → optional `selectedPublication` →
-  optional `entriesPage` (first unread publication) → `sidebarFolders` → `done`.
+  optional `entriesPage` (first unread publication) → repeated `sidebarSection` slices →
+  legacy `sidebarFolders` → `done`.
 
+  New clients should prefer `sidebarSection` payloads over monolithic `sidebarFolders`.
   Each line is a `BootstrapStreamEvent` with a `kind` field. Requires `ENABLE_THIN_APPVIEW=true`.
 }

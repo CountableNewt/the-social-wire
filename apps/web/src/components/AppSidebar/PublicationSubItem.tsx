@@ -412,7 +412,40 @@ function PublicationSubItemInner({
   );
 }
 
-export const PublicationSubItem = memo(PublicationSubItemInner);
+function folderSignature(folders: RepoRecord<FolderRecord>[]): string {
+  return folders
+    .map((folder) => `${rkeyFromURI(folder.uri)}:${folder.value.name ?? ""}`)
+    .join("|");
+}
+
+function publicationSubItemPropsEqual(
+  prev: PublicationSubItemProps,
+  next: PublicationSubItemProps
+): boolean {
+  const prevPub = prev.publication;
+  const nextPub = next.publication;
+  return (
+    prev.unreadCount === next.unreadCount &&
+    prev.isSelected === next.isSelected &&
+    prev.onSelect === next.onSelect &&
+    prev.sidebarTab === next.sidebarTab &&
+    prevPub.publicationId === nextPub.publicationId &&
+    prevPub.subscriptionPublicationId === nextPub.subscriptionPublicationId &&
+    prevPub.authorDid === nextPub.authorDid &&
+    prevPub.authorHandle === nextPub.authorHandle &&
+    prevPub.title === nextPub.title &&
+    prevPub.iconUrl === nextPub.iconUrl &&
+    prevPub.avatarUrl === nextPub.avatarUrl &&
+    prev.prefsMap.get(prevPub.publicationId)?.value.folderId ===
+      next.prefsMap.get(nextPub.publicationId)?.value.folderId &&
+    folderSignature(prev.folders) === folderSignature(next.folders)
+  );
+}
+
+export const PublicationSubItem = memo(
+  PublicationSubItemInner,
+  publicationSubItemPropsEqual
+);
 
 function PublicationLeadingAvatar({
   publication,

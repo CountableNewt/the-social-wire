@@ -94,6 +94,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     useState(false);
   const [projectionError, setProjectionError] = useState<Error | null>(null);
   const streamGenerationRef = useRef(0);
+  const streamSawSidebarSectionRef = useRef(false);
   const pendingAutoSelectPublicationIdRef = useRef<string | null>(null);
   const bootstrapFeedPublicationIdRef = useRef<string | null>(null);
   const bootstrapCompletedAtRef = useRef<{
@@ -131,6 +132,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
     setBootstrapStreamComplete(false);
     setFolderPublicationsLoading(false);
     setProjectionError(null);
+    streamSawSidebarSectionRef.current = false;
   }
 
   const effectiveStreamProjection =
@@ -183,6 +185,7 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
       }
 
       const generation = ++streamGenerationRef.current;
+      streamSawSidebarSectionRef.current = false;
       pendingAutoSelectPublicationIdRef.current = null;
       bootstrapFeedPublicationIdRef.current = null;
 
@@ -206,6 +209,10 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
               if (event.kind === "unreadCounts") {
                 markBootstrapPerf("unreadCounts");
               }
+              if (event.kind === "sidebarSection") {
+                streamSawSidebarSectionRef.current = true;
+                markBootstrapPerf("sidebarSection");
+              }
               if (event.kind === "entriesPage") {
                 markBootstrapPerf("entriesPage");
               }
@@ -218,6 +225,9 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
 
               if (event.kind === "sidebarPriority" && !hadSidebarSnapshot) {
                 setFolderPublicationsLoading(true);
+              }
+              if (event.kind === "sidebarSection") {
+                setFolderPublicationsLoading(false);
               }
               if (event.kind === "sidebarFolders") {
                 setFolderPublicationsLoading(false);
@@ -281,7 +291,12 @@ export function PublicationSidebarProvider({ children }: { children: ReactNode }
                 }
               }
 
+              const skipLegacySidebarFolders =
+                event.kind === "sidebarFolders" &&
+                streamSawSidebarSectionRef.current;
+
               setStreamProjection((currentStream) => {
+                if (skipLegacySidebarFolders) return currentStream;
                 const baseline =
                   qc.getQueryData<PublicationSidebarProjection>(
                     queryKey
