@@ -15,17 +15,14 @@ import {
   LEGACY_COLLECTION_FOLDER,
   LEGACY_COLLECTION_PUB_PREFS,
   LEGACY_COLLECTION_PREFERENCES,
-  LEGACY_COLLECTION_ENTRY_READ_STATE,
   COLLECTION_STANDARD_SITE_SUBSCRIPTION,
   COLLECTION_LATR_SAVED_EXTERNAL,
   COLLECTION_LATR_SAVED_ITEM,
-  COLLECTION_ENTRY_READ_STATE,
   COLLECTION_SKYREADER_FEED_SUBSCRIPTION,
   mergeExternalsAndItemsToHttpsRows,
   mergeGatewayItemsWithExternalRecords,
   mergedLatrSavesFromGatewayItems,
   filterMergedLatrSavesByState,
-  entryReadStateRkeyFromSubjectUri,
   type LatrSavedExternalRecord,
   type LatrSavedItemRecord,
   PSEUDO_FOLDER_MY_URI,
@@ -74,12 +71,6 @@ describe("collection constants", () => {
     expect(LEGACY_COLLECTION_PREFERENCES).toBe("com.thesocialwire.preferences");
   });
 
-  it("legacy entryReadState collection ID is preserved for migration", () => {
-    expect(LEGACY_COLLECTION_ENTRY_READ_STATE).toBe(
-      "com.thesocialwire.entryReadState"
-    );
-  });
-
   it("standard.site subscription collection ID matches lexicon", () => {
     expect(COLLECTION_STANDARD_SITE_SUBSCRIPTION).toBe(
       "site.standard.graph.subscription"
@@ -89,12 +80,6 @@ describe("collection constants", () => {
   it("Skyreader subscription collection mirrors upstream lexicon", () => {
     expect(COLLECTION_SKYREADER_FEED_SUBSCRIPTION).toBe(
       "app.skyreader.feed.subscription"
-    );
-  });
-
-  it("entryReadState collection ID matches lexicon", () => {
-    expect(COLLECTION_ENTRY_READ_STATE).toBe(
-      "app.thesocialwire.entryReadState"
     );
   });
 
@@ -351,15 +336,5 @@ describe("mergeGatewayItemsWithExternalRecords", () => {
     if (rows[0].kind !== "external") throw new Error("Expected external row");
     expect(rows[0].url).toBe("https://example.com/foo");
     expect(rows[0].title).toBe("Preview title");
-  });
-});
-
-describe("entryReadStateRkeyFromSubjectUri", () => {
-  it("is stable for a given entry URI", async () => {
-    const uri = "at://did:plc:alice/site.standard.document/entry1";
-    const a = await entryReadStateRkeyFromSubjectUri(uri);
-    const b = await entryReadStateRkeyFromSubjectUri(uri);
-    expect(a).toBe(b);
-    expect(a.length).toBeGreaterThan(10);
   });
 });

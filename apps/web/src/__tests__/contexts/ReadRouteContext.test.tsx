@@ -6,20 +6,10 @@ import React from "react";
 import { ReadRouteProvider, useReadRoute } from "@/contexts/ReadRouteContext";
 import { READ_STATE_STORAGE_KEY } from "@/lib/entryReadStateStorage";
 
-const putEntryReadState = mock(async () => {});
-const deleteEntryReadState = mock(async () => {});
-
 mock.module("@/hooks/useAuth", () => ({
   useAuth: () => ({
     session: { did: "did:plc:viewer" },
-  }),
-}));
-
-mock.module("@/hooks/usePDSClient", () => ({
-  usePDSClient: () => ({
-    putEntryReadState,
-    deleteEntryReadState,
-    listEntryReadStateMap: async () => ({}),
+    getOAuthSession: () => null,
   }),
 }));
 

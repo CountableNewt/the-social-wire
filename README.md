@@ -17,7 +17,7 @@ User's ATProto PDS      Social Wire gateway (optional)
   app.thesocialwire.*     /v1/sync, /v1/appview/*
   site.standard.*         Thin AppView index (EU ams)
        │
-       └── Author PDS — entry bodies + canonical read state
+       └── Author PDS — entry bodies
 ```
 
 ## Monorepo Structure
@@ -99,9 +99,9 @@ cd packages/swift/ThinAppViewCore && swift test
 
 ## Architecture Principles
 
-- **Protocol-first**: user data lives on the user's own ATProto PDS as published records, not in our database
-- **PDS-canonical reads**: entry detail and read-state writes target the user's and authors' PDS repos
-- **Optional Thin AppView**: when enabled, the gateway indexes Level-1 list rows + read marks in EU Postgres for faster timelines and server-side unread filtering (see [docs/architecture/appview.md](docs/architecture/appview.md))
+- **Protocol-first where data is portable**: folders, publication preferences, subscriptions, and read-later records live on the user's own ATProto PDS
+- **AppView-owned read state**: feed read/unread state is local-first in clients and synchronized to Social Wire AppView for counters and unread filtering
+- **Optional Thin AppView**: when enabled, the gateway indexes Level-1 list rows and AppView read marks in EU Postgres for faster timelines and server-side unread filtering (see [docs/architecture/appview.md](docs/architecture/appview.md))
 - **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
 

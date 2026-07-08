@@ -15,10 +15,22 @@ public enum AppViewBootstrapStreamEventKind: String, Codable, Sendable {
 public struct AppViewBootstrapUnreadCountsPayload: Codable, Sendable, Equatable {
   public let counts: [String: Int]
   public let replacePublicationIds: [String]?
+  public let generation: Int64?
+  public let accuracy: String?
+  public let countedAt: Date?
 
-  public init(counts: [String: Int], replacePublicationIds: [String]? = nil) {
+  public init(
+    counts: [String: Int],
+    replacePublicationIds: [String]? = nil,
+    generation: Int64? = nil,
+    accuracy: String? = nil,
+    countedAt: Date? = nil
+  ) {
     self.counts = counts
     self.replacePublicationIds = replacePublicationIds
+    self.generation = generation
+    self.accuracy = accuracy
+    self.countedAt = countedAt
   }
 }
 
@@ -87,6 +99,7 @@ public struct AppViewBootstrapSidebarSectionPayload: Codable, Sendable, Equatabl
   public let publications: [SidebarPublicationRow]
   public let unreadCounts: [String: Int]?
   public let replacePublicationIds: [String]?
+  public let sectionGeneration: Int64?
   public let refreshedAt: Date
 
   public init(
@@ -96,6 +109,7 @@ public struct AppViewBootstrapSidebarSectionPayload: Codable, Sendable, Equatabl
     publications: [SidebarPublicationRow],
     unreadCounts: [String: Int]? = nil,
     replacePublicationIds: [String]? = nil,
+    sectionGeneration: Int64? = nil,
     refreshedAt: Date
   ) {
     self.sectionKey = sectionKey
@@ -104,6 +118,7 @@ public struct AppViewBootstrapSidebarSectionPayload: Codable, Sendable, Equatabl
     self.publications = publications
     self.unreadCounts = unreadCounts
     self.replacePublicationIds = replacePublicationIds
+    self.sectionGeneration = sectionGeneration
     self.refreshedAt = refreshedAt
   }
 }
@@ -166,11 +181,20 @@ public struct AppViewBootstrapStreamEvent: Codable, Sendable {
 
   public static func unreadCounts(
     _ counts: [String: Int],
-    replacePublicationIds: [String]? = nil
+    replacePublicationIds: [String]? = nil,
+    generation: Int64? = nil,
+    accuracy: String? = nil,
+    countedAt: Date? = nil
   ) -> Self {
     Self(
       kind: .unreadCounts,
-      unreadCounts: .init(counts: counts, replacePublicationIds: replacePublicationIds)
+      unreadCounts: .init(
+        counts: counts,
+        replacePublicationIds: replacePublicationIds,
+        generation: generation,
+        accuracy: accuracy,
+        countedAt: countedAt
+      )
     )
   }
 

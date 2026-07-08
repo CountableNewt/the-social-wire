@@ -14,7 +14,7 @@ struct BootstrapStreamService {
   let logger: Logger
 
   private enum SidebarBootstrapChunk: Sendable {
-    case unreadCounts([String: Int])
+    case unreadCounts(PublicationProjectionService.UnreadCounterSnapshot)
     case folders(AppViewBootstrapSidebarFoldersPayload)
   }
 
@@ -68,11 +68,13 @@ struct BootstrapStreamService {
       var selectedRow: SidebarPublicationRow?
       var selectedEnrollTask: Task<Void, Never>?
       var emittedSelectedEntries = false
+      var priorityExactCountsTask: Task<PublicationProjectionService.UnreadCounterSnapshot, Never>?
+      var folderExactCountsTask: Task<PublicationProjectionService.UnreadCounterSnapshot, Never>?
 
       try await withThrowingTaskGroup(of: SidebarBootstrapChunk.self) { group in
         group.addTask {
           .unreadCounts(
-            await projectionService.freshUnreadCountsMap(
+            await projectionService.unreadCounterSnapshot(
               for: unreadRows,
               viewerDid: auth.did
             )
@@ -89,15 +91,37 @@ struct BootstrapStreamService {
 
         for try await chunk in group {
           switch chunk {
-          case .unreadCounts(let counts):
+          case .unreadCounts(let snapshot):
+            let counts = snapshot.counts
             unreadCounts = counts
-            try await writeEvent(.unreadCounts(counts), writer: &writer)
+            let unreadPublicationIds = unreadRows.map(\.publicationId)
+            try await writeEvent(
+              .unreadCounts(
+                counts,
+                replacePublicationIds: unreadPublicationIds,
+                generation: snapshot.generation,
+                accuracy: snapshot.accuracy.rawValue,
+                countedAt: snapshot.countedAt
+              ),
+              writer: &writer
+            )
+            if snapshot.dirty || !snapshot.missingPublicationIds.isEmpty {
+              priorityExactCountsTask = Task {
+                await self.projectionService.refreshUnreadCounterSnapshot(
+                  for: unreadRows,
+                  viewerDid: auth.did
+                )
+              }
+            }
             BootstrapStreamTimings.logPhase(
               logger,
               phase: "unreadCounts",
               startedAt: unreadStarted,
               viewerDid: auth.did,
-              extra: ["publicationCount": "\(counts.count)"]
+              extra: [
+                "publicationCount": "\(counts.count)",
+                "accuracy": snapshot.accuracy.rawValue,
+              ]
             )
 
             selectedId = BootstrapStreamSelection.firstUnreadPublicationId(
@@ -161,27 +185,39 @@ struct BootstrapStreamService {
       var folderUnreadCounts: [String: Int] = [:]
       if !folderUnreadRows.isEmpty {
         let folderUnreadStarted = Date()
-        folderUnreadCounts = await projectionService.freshUnreadCountsMap(
+        let folderSnapshot = await projectionService.unreadCounterSnapshot(
           for: folderUnreadRows,
           viewerDid: auth.did
         )
+        folderUnreadCounts = folderSnapshot.counts
         let folderPublicationIds = folderUnreadRows.map(\.publicationId)
-        try await writeSidebarSections(
-          folders,
-          unreadCounts: folderUnreadCounts,
-          refreshedAt: refreshedAt,
-          writer: &writer
-        )
         try await writeEvent(
-          .unreadCounts(folderUnreadCounts, replacePublicationIds: folderPublicationIds),
+          .unreadCounts(
+            folderUnreadCounts,
+            replacePublicationIds: folderPublicationIds,
+            generation: folderSnapshot.generation,
+            accuracy: folderSnapshot.accuracy.rawValue,
+            countedAt: folderSnapshot.countedAt
+          ),
           writer: &writer
         )
+        if folderSnapshot.dirty || !folderSnapshot.missingPublicationIds.isEmpty {
+          folderExactCountsTask = Task {
+            await self.projectionService.refreshUnreadCounterSnapshot(
+              for: folderUnreadRows,
+              viewerDid: auth.did
+            )
+          }
+        }
         BootstrapStreamTimings.logPhase(
           logger,
           phase: "folderUnreadCounts",
           startedAt: folderUnreadStarted,
           viewerDid: auth.did,
-          extra: ["publicationCount": "\(folderUnreadCounts.count)"]
+          extra: [
+            "publicationCount": "\(folderUnreadCounts.count)",
+            "accuracy": folderSnapshot.accuracy.rawValue,
+          ]
         )
       }
 
@@ -208,6 +244,34 @@ struct BootstrapStreamService {
           row: selectedRow,
           priorityAuthorDids: BootstrapStreamSelection.priorityAuthorDids(from: priority.response),
           skipAuthorEnroll: selectedEnrollTask != nil
+        )
+      }
+
+      if let priorityExactCountsTask {
+        let exact = await priorityExactCountsTask.value
+        try await writeEvent(
+          .unreadCounts(
+            exact.counts,
+            replacePublicationIds: unreadRows.map(\.publicationId),
+            generation: exact.generation,
+            accuracy: exact.accuracy.rawValue,
+            countedAt: exact.countedAt
+          ),
+          writer: &writer
+        )
+      }
+
+      if let folderExactCountsTask {
+        let exact = await folderExactCountsTask.value
+        try await writeEvent(
+          .unreadCounts(
+            exact.counts,
+            replacePublicationIds: folderUnreadRows.map(\.publicationId),
+            generation: exact.generation,
+            accuracy: exact.accuracy.rawValue,
+            countedAt: exact.countedAt
+          ),
+          writer: &writer
         )
       }
 
@@ -277,29 +341,37 @@ struct BootstrapStreamService {
 
     let unreadRows = Self.cachedBootstrapUnreadRows(from: snapshot)
     let unreadPublicationIds = unreadRows.map(\.publicationId)
-    let cachedUnreadCounts = await cachedBootstrapUnreadCounts(viewerDid: auth.did)
-    let unreadCounts: [String: Int]
-    let freshUnreadCountsTask: Task<[String: Int], Never>?
-    if let cachedUnreadCounts {
-      unreadCounts = cachedUnreadCounts
-      freshUnreadCountsTask = Task {
-        await self.projectionService.freshUnreadCountsMap(for: unreadRows, viewerDid: auth.did)
+    let counterSnapshot = await projectionService.unreadCounterSnapshot(
+      for: unreadRows,
+      viewerDid: auth.did
+    )
+    let unreadCounts = counterSnapshot.counts
+    let exactUnreadCountsTask: Task<PublicationProjectionService.UnreadCounterSnapshot, Never>?
+    if counterSnapshot.dirty || !counterSnapshot.missingPublicationIds.isEmpty {
+      exactUnreadCountsTask = Task {
+        await self.projectionService.refreshUnreadCounterSnapshot(
+          for: unreadRows,
+          viewerDid: auth.did
+        )
       }
-      try await writeEvent(.unreadCounts(unreadCounts), writer: &writer)
     } else {
-      unreadCounts = await projectionService.freshUnreadCountsMap(for: unreadRows, viewerDid: auth.did)
-      freshUnreadCountsTask = nil
-      await storeCachedUnreadCounts(unreadCounts, viewerDid: auth.did)
-      try await writeEvent(
-        .unreadCounts(unreadCounts, replacePublicationIds: unreadPublicationIds),
-        writer: &writer
-      )
+      exactUnreadCountsTask = nil
     }
+    try await writeEvent(
+      .unreadCounts(
+        unreadCounts,
+        replacePublicationIds: unreadPublicationIds,
+        generation: counterSnapshot.generation,
+        accuracy: counterSnapshot.accuracy.rawValue,
+        countedAt: counterSnapshot.countedAt
+      ),
+      writer: &writer
+    )
 
     if let folders = snapshot.folderPayload {
       try await writeSidebarSections(
         folders,
-        unreadCounts: cachedUnreadCounts,
+        unreadCounts: nil,
         refreshedAt: refreshedAt,
         writer: &writer
       )
@@ -325,19 +397,16 @@ struct BootstrapStreamService {
       )
     }
 
-    if let freshUnreadCountsTask {
-      let freshUnreadCounts = await freshUnreadCountsTask.value
-      await storeCachedUnreadCounts(freshUnreadCounts, viewerDid: auth.did)
-      if let folders = snapshot.folderPayload {
-        try await writeSidebarSections(
-          folders,
-          unreadCounts: freshUnreadCounts,
-          refreshedAt: refreshedAt,
-          writer: &writer
-        )
-      }
+    if let exactUnreadCountsTask {
+      let exact = await exactUnreadCountsTask.value
       try await writeEvent(
-        .unreadCounts(freshUnreadCounts, replacePublicationIds: unreadPublicationIds),
+        .unreadCounts(
+          exact.counts,
+          replacePublicationIds: unreadPublicationIds,
+          generation: exact.generation,
+          accuracy: exact.accuracy.rawValue,
+          countedAt: exact.countedAt
+        ),
         writer: &writer
       )
     }
@@ -581,6 +650,7 @@ struct BootstrapStreamService {
     refreshedAt: Date,
     writer: inout any ResponseBodyWriter
   ) async throws {
+    let sectionGeneration = AppViewUnreadCounterSupport.generation(for: refreshedAt)
     for section in payload.folderSections {
       let publicationIds = section.publications.map(\.publicationId)
       let sectionCounts: [String: Int]?
@@ -600,6 +670,7 @@ struct BootstrapStreamService {
             publications: section.publications,
             unreadCounts: sectionCounts,
             replacePublicationIds: unreadCounts == nil ? nil : publicationIds,
+            sectionGeneration: sectionGeneration,
             refreshedAt: refreshedAt
           )
         ),

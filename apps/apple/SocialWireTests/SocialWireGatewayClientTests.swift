@@ -142,13 +142,16 @@ struct SocialWireGatewayClientTests {
         #expect(entry.embedUrl == "https://example.com/a")
     }
 
-    @Test("AppViewUnreadCountsResponse decodes counts")
+    @Test("AppViewUnreadCountsResponse decodes count metadata")
     func appViewUnreadCountsResponseDecodesCounts() throws {
         let data = Data("""
-        {"counts":{"at://did/site.standard.publication/p1":2}}
+        {"counts":{"at://did/site.standard.publication/p1":2},"generation":42,"accuracy":"exact","countedAt":"2026-01-01T00:00:00.000Z"}
         """.utf8)
         let decoded = try JSONDecoder().decode(AppViewUnreadCountsResponse.self, from: data)
         #expect(decoded.counts?["at://did/site.standard.publication/p1"] == 2)
+        #expect(decoded.generation == 42)
+        #expect(decoded.accuracy == "exact")
+        #expect(decoded.countedAt == "2026-01-01T00:00:00.000Z")
     }
 
     @Test("GatewayMarkAllReadResponseDTO decodes marked count")

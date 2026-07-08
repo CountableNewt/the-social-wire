@@ -23,6 +23,12 @@ function applyDeltaToCount(current: number | undefined, delta: number): number {
   return clampUnreadCount((current ?? 0) + delta);
 }
 
+function optimisticUnreadCountsGeneration(
+  projection: PublicationSidebarProjection
+): number {
+  return Math.max(Date.now(), (projection.unreadCountsGeneration ?? 0) + 1);
+}
+
 export function countCachedUnreadForPublication(
   queryClient: QueryClient,
   publicationId: string,
@@ -142,6 +148,9 @@ export function applyPublicationUnreadCountDelta(
         ...old,
         ...patchProjectionPublicationRows(old, normalizedPublicationId, delta),
         unreadCountsByPublicationId,
+        unreadCountsGeneration: optimisticUnreadCountsGeneration(old),
+        unreadCountsAccuracy: "estimated",
+        unreadCountsCountedAt: new Date().toISOString(),
       };
     }
   );

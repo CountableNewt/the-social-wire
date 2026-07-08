@@ -11,12 +11,10 @@ final class PDSRecordService {
     nonisolated static let latrSavedItem = "link.latr.saved.item"
     nonisolated static let legacyLatrSavedExternal = "com.latr.saved.external"
     nonisolated static let legacyLatrSavedItem = "com.latr.saved.item"
-    nonisolated static let entryReadState = "app.thesocialwire.entryReadState"
 
     nonisolated static let legacyFolder = "com.thesocialwire.folder"
     nonisolated static let legacyPublicationPrefs = "com.thesocialwire.publicationPrefs"
     nonisolated static let legacyPreferences = "com.thesocialwire.preferences"
-    nonisolated static let legacyEntryReadState = "com.thesocialwire.entryReadState"
 
     nonisolated private static let preferencesRKey = "self"
 
@@ -87,70 +85,6 @@ final class PDSRecordService {
             sourceType: "rss"
         )
         try await xrpc.createRecord(collection: Self.skyreaderFeedSubscription, record: record)
-    }
-
-    func listEntryReadStates() async throws -> [String: Date] {
-        var out: [String: Date] = [:]
-        for collection in [Self.entryReadState, Self.legacyEntryReadState] {
-            try await mergeEntryReadStates(from: collection, into: &out)
-        }
-        return out
-    }
-
-    func markRead(subjectURI: String, readAt: Date = Date()) async throws {
-        let canonicalRkey = DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI)
-        let now = DateFormatters.string(from: readAt)
-        let record = EntryReadStateRecord(
-            type: Self.entryReadState,
-            subjectUri: subjectURI,
-            readAt: now,
-            updatedAt: DateFormatters.string()
-        )
-        try await xrpc.putRecord(collection: Self.entryReadState, rkey: canonicalRkey, record: record)
-        await deleteLegacyEntryReadStateKeys(subjectURI: subjectURI, keepRkey: canonicalRkey)
-    }
-
-    func markUnread(subjectURI: String) async throws {
-        await deleteLegacyEntryReadStateKeys(subjectURI: subjectURI, keepRkey: nil)
-        try await xrpc.deleteRecord(
-            collection: Self.entryReadState,
-            rkey: DeterministicKeys.entryReadStateRKey(subjectURI: subjectURI)
-        )
-    }
-
-    private func mergeEntryReadStates(
-        from collection: String,
-        into out: inout [String: Date]
-    ) async throws {
-        var cursor: String?
-        repeat {
-            let page: ListRecordsResponse<EntryReadStateRecord> = try await xrpc.listRecords(
-                repo: "",
-                collection: collection,
-                limit: 100,
-                cursor: cursor,
-                authorized: true
-            )
-            for record in page.records {
-                let subjectURI = record.value.subjectUri.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !subjectURI.isEmpty,
-                      let date = DateFormatters.date(from: record.value.readAt)
-                else { continue }
-                let existing = out[subjectURI]
-                out[subjectURI] = min(existing ?? date, date)
-            }
-            cursor = page.cursor
-        } while cursor != nil
-    }
-
-    private func deleteLegacyEntryReadStateKeys(subjectURI: String, keepRkey: String?) async {
-        let legacyRkeys = [
-            DeterministicKeys.legacyHexEntryReadStateRKey(subjectURI: subjectURI),
-            DeterministicKeys.legacyIOSLatrItemRKey(subjectURI: subjectURI),
-        ]
-        for legacyRkey in legacyRkeys where legacyRkey != keepRkey {
-            try? await xrpc.deleteRecord(collection: Self.entryReadState, rkey: legacyRkey)
-        }
     }
 
     func getPreferences() async throws -> RepoRecord<PreferencesRecord>? {

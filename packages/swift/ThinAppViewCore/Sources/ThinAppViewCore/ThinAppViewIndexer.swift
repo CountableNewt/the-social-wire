@@ -74,17 +74,16 @@ public actor ThinAppViewIndexer {
       return
     }
 
-    if ThinAppViewConfig.readStateCollection == collection {
-      try await handleReadStateCommit(repoDid: repoDid, rkey: rkey, record: record, operation: operation)
-      return
-    }
-
     guard ThinAppViewConfig.contentCollections.contains(collection) else { return }
 
     let uri = RenderFieldExtractor.buildEntryUri(did: repoDid, collection: collection, rkey: rkey)
     if operation == "delete" {
       let publicationSite = RenderFieldExtractor.publicationSiteField(from: record)
       try await store.deleteContentItem(uri: uri)
+      try? await store.markUnreadCountersDirtyForContent(
+        authorDid: repoDid,
+        publicationSite: publicationSite
+      )
       await invalidateFirstPageCaches(for: publicationSite)
       return
     }
@@ -113,7 +112,16 @@ public actor ThinAppViewIndexer {
       render: render,
       expiresAt: now.addingTimeInterval(config.contentRetentionSeconds)
     )
+    let itemAlreadyIndexed = try await store.fetchContentItem(uri: uri) != nil
     try await store.upsertContentItem(item)
+    if itemAlreadyIndexed {
+      try? await store.markUnreadCountersDirtyForContent(
+        authorDid: repoDid,
+        publicationSite: item.publicationSite
+      )
+    } else {
+      try? await store.incrementUnreadCountersForContentItem(item)
+    }
     await invalidateFirstPageCaches(for: item.publicationSite)
   }
 
@@ -197,26 +205,6 @@ public actor ThinAppViewIndexer {
     for publicationId in publicationIds {
       try? await projectionCache.invalidateFirstPageForAllViewers(publicationId: publicationId)
     }
-  }
-
-  private func handleReadStateCommit(
-    repoDid: String,
-    rkey: String,
-    record: [String: Any],
-    operation: String
-  ) async throws {
-    guard let subjectUri = record["subjectUri"] as? String else { return }
-    if operation == "delete" {
-      try await store.deleteReadMark(viewerDid: repoDid, subjectUri: subjectUri)
-      try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
-      return
-    }
-
-    let readAtRaw = (record["readAt"] as? String) ?? (record["updatedAt"] as? String)
-    let readAt = readAtRaw.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-    try await store.upsertReadMark(viewerDid: repoDid, subjectUri: subjectUri, createdAt: readAt)
-    try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
-    _ = rkey
   }
 
   private func resolvePdsBase(for repoDid: String) async -> String? {

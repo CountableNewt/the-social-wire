@@ -9,7 +9,7 @@ Social Wire uses two distinct “AppView” concepts:
 | **Bluesky App View** (`public.api.bsky.app`) | Public social graph reads (`getProfile`, `getFollows`, …) | Unchanged — clients call it directly |
 | **Thin AppView** (`/v1/appview/*` on **`services/appview`**, proxied by **`services/gateway`**) | GDPR-safe Level-1 entry timelines, sidebar projection, server-side unread filtering | Implemented behind feature flags |
 
-The thin AppView is **not** a Bluesky proxy. It is Social Wire’s own index of `standard.site` entry collections plus a derived `read_marks` replica for unread queries. Full entry bodies and canonical read writes remain on each user’s PDS (`app.thesocialwire.entryReadState`).
+The thin AppView is **not** a Bluesky proxy. It is Social Wire’s own index of `standard.site` entry collections plus AppView-owned `read_marks` for unread queries. Full entry bodies remain on each author’s PDS; feed read/unread state is local-first in clients and synchronized to Social Wire AppView, not written as ATProto repo records.
 
 ## Distributed services
 
@@ -30,7 +30,6 @@ Relay / Jetstream (subscribeRepos)
         ▼
 Fly appview-worker
   • upsert content_items (title, publishedAt, summary, thumbnail ref)
-  • mirror entryReadState → read_marks
   • proactive PDS backfill for subscribed authors
   • TTL cleanup
         │
@@ -53,9 +52,9 @@ Authenticated **`GET /v1/appview/bootstrap-stream`** returns NDJSON events as si
 
 ## Consistency model
 
-- **Writes:** PDS first, then best-effort write-through to the index (`POST/DELETE /v1/appview/read-marks`).
+- **Writes:** clients update local read state immediately, then write AppView read marks (`POST/DELETE /v1/appview/read-marks`) or scoped read floors (`POST /v1/appview/mark-all-read`).
 - **Ingestion:** Firehose + enrollment backfill (`POST /v1/appview/enroll`) + worker proactive backfill.
-- **Unread UI:** Local optimistic read state remains primary; the index enables server-side unread pagination and sidebar badges merged with local/PDS read state.
+- **Unread UI:** Local optimistic read state remains primary for instant row state; AppView enables server-side unread pagination and sidebar badges.
 
 ## Privacy & retention
 

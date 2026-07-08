@@ -3,10 +3,6 @@ import Foundation
 
 /// Deterministic ATProto record keys aligned with upstream L@tr (`latr-kit` / `latr-packages`).
 enum DeterministicKeys {
-    static func entryReadStateRKey(subjectURI: String) -> String {
-        digestKey(for: subjectURI)
-    }
-
     static func latrFingerprint(normalizedURL: String) -> String {
         let digest = SHA256.hash(data: Data(normalizedURL.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
@@ -35,12 +31,6 @@ enum DeterministicKeys {
     /// Legacy Social Wire iOS keys: lowercase 52-char base32 prefix.
     static func legacyIOSLatrItemRKey(subjectURI: String) -> String {
         legacyIOSDigestKey(for: subjectURI)
-    }
-
-    /// Legacy Social Wire iOS / gateway hex read-state keys before base32 parity.
-    static func legacyHexEntryReadStateRKey(subjectURI: String) -> String {
-        let digest = SHA256.hash(data: Data(subjectURI.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func digestKey(for text: String) -> String {

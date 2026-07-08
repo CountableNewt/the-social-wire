@@ -57,7 +57,7 @@ struct ProfileView: View {
                         showPurgeIndexedDataConfirm = true
                     }
                 } footer: {
-                    Text("Removes your read marks from the Social Wire index. Your PDS records are unchanged.")
+                    Text("Removes your AppView read marks from the Social Wire index.")
                 }
             }
         }
@@ -71,7 +71,7 @@ struct ProfileView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This deletes indexed read marks for your account on the gateway. It does not remove records on your PDS.")
+            Text("This deletes AppView read marks for your account on the gateway.")
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)

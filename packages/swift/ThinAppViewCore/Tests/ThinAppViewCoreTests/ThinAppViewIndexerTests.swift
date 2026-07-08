@@ -107,48 +107,6 @@ struct ThinAppViewIndexerTests {
     #expect(all.entries.first?.title == "Indexed Article")
   }
 
-  @Test("indexes read state commit into read_marks")
-  func indexesReadState() async throws {
-    let dbPath =
-      FileManager.default.temporaryDirectory
-        .appendingPathComponent("sw-read-\(UUID().uuidString).sqlite")
-        .path
-    defer { try? FileManager.default.removeItem(atPath: dbPath) }
-
-    let logger = Logger(label: "indexer.test")
-    let store = try SQLiteThinAppViewStore(path: dbPath, logger: logger)
-    let config = ThinAppViewConfig.fromEnvironment(["ENABLE_THIN_APPVIEW": "true"])
-    let indexer = ThinAppViewIndexer(store: store, config: config, logger: logger)
-
-    let subject = "at://did:plc:author/site.standard.document/abc"
-    let record: [String: Any] = [
-      "subjectUri": subject,
-      "readAt": "2026-05-19T12:00:00.000Z",
-    ]
-    let recordJSON = try JSONSerialization.data(withJSONObject: record)
-
-    try await indexer.handleCommit(
-      repoDid: "did:plc:viewer",
-      collection: ThinAppViewConfig.readStateCollection,
-      rkey: "key1",
-      cid: "bafyread",
-      recordJSON: recordJSON,
-      operation: "create"
-    )
-
-    let unread = try await store.listEntries(
-      viewerDid: "did:plc:viewer",
-      authorDid: "did:plc:author",
-      publicationAtUri: nil,
-      publicationScopeAtUris: [],
-      publicationSiteUrls: [],
-      filter: .unread,
-      cursor: nil,
-      limit: 10
-    )
-    #expect(unread.entries.isEmpty)
-  }
-
   @Test("delete operation removes content item")
   func deletesContent() async throws {
     let dbPath =

@@ -141,21 +141,28 @@ describe("thinAppViewClient", () => {
     expect(fetchHandler).toHaveBeenCalledTimes(1);
   });
 
-  it("fetchAppViewUnreadCounts returns counts map", async () => {
+  it("fetchAppViewUnreadCounts returns count snapshot metadata", async () => {
     const fetchHandler = mock(async (url: string) => {
       expect(url).toContain("/v1/appview/unread-counts?");
       expect(url).toContain("publicationIds=");
       return new Response(
-        JSON.stringify({ counts: { "did:plc:alice": 2 } }),
+        JSON.stringify({
+          counts: { "did:plc:alice": 2 },
+          generation: 42,
+          accuracy: "exact",
+          countedAt: "2026-01-01T00:00:00.000Z",
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     });
 
     const { fetchAppViewUnreadCounts } = await import("@/lib/thinAppViewClient");
-    const counts = await fetchAppViewUnreadCounts(
+    const snapshot = await fetchAppViewUnreadCounts(
       { fetchHandler } as never,
       ["did:plc:alice"]
     );
-    expect(counts["did:plc:alice"]).toBe(2);
+    expect(snapshot.counts["did:plc:alice"]).toBe(2);
+    expect(snapshot.generation).toBe(42);
+    expect(snapshot.accuracy).toBe("exact");
   });
 });

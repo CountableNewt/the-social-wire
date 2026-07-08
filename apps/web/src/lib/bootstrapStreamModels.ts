@@ -1,5 +1,8 @@
 import type { EntryListItem } from "@/lib/atprotoClient";
-import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
+import type {
+  PublicationSidebarProjection,
+  UnreadCountsAccuracy,
+} from "@/lib/publicationProjectionClient";
 
 export type BootstrapStreamEventKind =
   | "sidebarPriority"
@@ -23,8 +26,15 @@ export type BootstrapStreamEvent = {
     unreadCounts?: Record<string, number>;
     replacePublicationIds?: string[];
     refreshedAt: string;
+    sectionGeneration?: number;
   };
-  unreadCounts?: { counts: Record<string, number>; replacePublicationIds?: string[] };
+  unreadCounts?: {
+    counts: Record<string, number>;
+    replacePublicationIds?: string[];
+    generation?: number;
+    accuracy?: UnreadCountsAccuracy;
+    countedAt?: string;
+  };
   selectedPublication?: { publicationId: string };
   entriesPage?: {
     publicationId: string;
@@ -52,9 +62,19 @@ export type ParsedBootstrapStreamEvent =
         unreadCounts?: Record<string, number>;
         replacePublicationIds?: string[];
         refreshedAt: string;
+        sectionGeneration?: number;
       };
     }
-  | { kind: "unreadCounts"; payload: { counts: Record<string, number>; replacePublicationIds?: string[] } }
+  | {
+      kind: "unreadCounts";
+      payload: {
+        counts: Record<string, number>;
+        replacePublicationIds?: string[];
+        generation?: number;
+        accuracy?: UnreadCountsAccuracy;
+        countedAt?: string;
+      };
+    }
   | { kind: "selectedPublication"; payload: { publicationId: string } }
   | {
       kind: "entriesPage";

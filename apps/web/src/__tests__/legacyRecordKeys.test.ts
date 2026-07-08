@@ -1,8 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
-  legacyHexEntryReadStateRkey,
   legacyIOSLatrExternalRkey,
-  isLegacyHexReadStateRkey,
   isLegacyLatrExternalRkey,
 } from "@/lib/legacyRecordKeys";
 
@@ -14,13 +12,4 @@ describe("legacyRecordKeys", () => {
     expect(legacy).toBe("mmstqkiendt2hhaggi6j4oxjr4yqolleds5tp2rxsf7vno7lku4q");
   });
 
-  it("detects legacy hex read-state rkeys", async () => {
-    const legacy = await legacyHexEntryReadStateRkey(
-      "at://did:plc:alice/site.standard.document/abc123"
-    );
-    expect(isLegacyHexReadStateRkey(legacy)).toBe(true);
-    expect(legacy).toBe(
-      "4bca04db28cfeb6827628e97f791f16e439f2d3f6294edc5560fb9a097dc686f"
-    );
-  });
 });

@@ -104,6 +104,19 @@ actor ThinAppViewReadService {
       }
     }
 
+    let publicationId = primaryPublicationId(
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls,
+      authorDid: authorDid
+    )
+    let readFloorAt: Date?
+    if filter == .unread, let publicationId {
+      readFloorAt = try await store.readFloor(viewerDid: auth.did, publicationId: publicationId)
+    } else {
+      readFloorAt = nil
+    }
+
     let page = try await store.listEntries(
       viewerDid: auth.did,
       authorDid: authorDid,
@@ -112,7 +125,8 @@ actor ThinAppViewReadService {
       publicationSiteUrls: publicationSiteUrls,
       filter: filter,
       cursor: cursor,
-      limit: limit
+      limit: limit,
+      readFloorAt: readFloorAt
     )
 
     if cursor == nil,
@@ -186,16 +200,32 @@ actor ThinAppViewReadService {
   }
 
   func upsertReadMark(auth: AuthContext, subjectUri: String, readAt: Date?) async throws {
+    let alreadyRead = try? await store.hasReadMark(viewerDid: auth.did, subjectUri: subjectUri)
     try await store.upsertReadMark(
       viewerDid: auth.did,
       subjectUri: subjectUri,
       createdAt: readAt ?? Date()
     )
+    if alreadyRead != true {
+      try? await store.adjustUnreadCountersForReadState(
+        viewerDid: auth.did,
+        subjectUri: subjectUri,
+        delta: -1
+      )
+    }
     try await invalidateReadStateCaches(viewerDid: auth.did)
   }
 
   func deleteReadMark(auth: AuthContext, subjectUri: String) async throws {
+    let wasRead = try? await store.hasReadMark(viewerDid: auth.did, subjectUri: subjectUri)
     try await store.deleteReadMark(viewerDid: auth.did, subjectUri: subjectUri)
+    if wasRead == true {
+      try? await store.adjustUnreadCountersForReadState(
+        viewerDid: auth.did,
+        subjectUri: subjectUri,
+        delta: 1
+      )
+    }
     try await invalidateReadStateCaches(viewerDid: auth.did)
   }
 
@@ -241,30 +271,9 @@ actor ThinAppViewReadService {
     }
     let resolvedRows = rowsById
 
-    var counts: [String: Int] = [:]
-    await withTaskGroup(of: (String, Int)?.self) { group in
-      for publicationId in publicationIds {
-        group.addTask {
-          guard let row = resolvedRows[publicationId] else { return nil }
-          let unreadCount = try? await self.store.countUnreadEntries(
-            viewerDid: auth.did,
-            authorDid: row.appViewScope.authorDid,
-            publicationAtUri: row.appViewScope.publicationAtUri,
-            publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
-            publicationSiteUrls: row.appViewScope.publicationSiteUrls
-          )
-          guard let unreadCount else { return nil }
-          return (publicationId, unreadCount)
-        }
-      }
-      for await result in group {
-        if let (publicationId, count) = result {
-          counts[publicationId] = count
-        }
-      }
-    }
+    var rowsForCounters = publicationIds.compactMap { resolvedRows[$0] }
 
-    if counts.count < publicationIds.filter({ resolvedRows[$0] != nil }).count {
+    if rowsForCounters.count < publicationIds.count {
       let missingIds = publicationIds.filter { resolvedRows[$0] == nil }
       if !missingIds.isEmpty {
         let sidebar = try await projectionService.sidebar(auth: auth, phase: .full)
@@ -274,28 +283,57 @@ actor ThinAppViewReadService {
           }) else {
             continue
           }
-          let unreadCount = try await store.countUnreadEntries(
-            viewerDid: auth.did,
-            authorDid: row.appViewScope.authorDid,
-            publicationAtUri: row.appViewScope.publicationAtUri,
-            publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
-            publicationSiteUrls: row.appViewScope.publicationSiteUrls
-          )
-          counts[publicationId] = unreadCount
+          rowsById[publicationId] = row
         }
+        rowsForCounters = publicationIds.compactMap { rowsById[$0] }
       }
     }
 
-    if let projectionCache, !counts.isEmpty {
+    var snapshot = await projectionService.unreadCounterSnapshot(
+      for: rowsForCounters,
+      viewerDid: auth.did
+    )
+    if snapshot.dirty || !snapshot.missingPublicationIds.isEmpty {
+      snapshot = await projectionService.refreshUnreadCounterSnapshot(
+        for: rowsForCounters,
+        viewerDid: auth.did
+      )
+    }
+
+    if let projectionCache, !snapshot.counts.isEmpty {
       let expiresAt = Date().addingTimeInterval(AppViewProjectionCacheTTL.unreadCountsSeconds)
       try? await projectionCache.storeUnreadCounts(
         viewerDid: auth.did,
-        counts: counts,
+        counts: snapshot.counts,
         expiresAt: expiresAt
       )
     }
 
-    return AppViewUnreadCountsByPublicationResponse(counts: counts)
+    return AppViewUnreadCountsByPublicationResponse(
+      counts: snapshot.counts,
+      generation: snapshot.generation,
+      accuracy: snapshot.accuracy.rawValue,
+      countedAt: snapshot.countedAt
+    )
+  }
+
+  func markAllRead(
+    auth: AuthContext,
+    rows: [SidebarPublicationRow]
+  ) async throws -> (counters: [AppViewUnreadCounter], marked: Int) {
+    let publicationIds = rows.map(\.publicationId)
+    let existing = (try? await store.fetchUnreadCounters(
+      viewerDid: auth.did,
+      publicationIds: publicationIds
+    )) ?? []
+    let marked = existing.reduce(0) { $0 + $1.unreadCount }
+    let counters = try await store.markAllReadCounters(
+      viewerDid: auth.did,
+      publicationIds: publicationIds,
+      readAt: Date()
+    )
+    try await projectionCache?.invalidateUnreadCounts(viewerDid: auth.did, publicationId: nil)
+    return (counters, marked)
   }
 
   func unreadCounts(

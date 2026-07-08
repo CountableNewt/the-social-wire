@@ -174,6 +174,64 @@ struct SQLiteThinAppViewStoreTests {
     #expect(all.entries.count == 2)
   }
 
+  @Test("unread listing excludes entries at or below mark-all-read floor")
+  func unreadFilterRespectsReadFloor() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let floor = ISO8601DateFormatter().date(from: "2026-05-20T12:00:00.000Z") ?? Date()
+    let publicationId = "at://did:plc:author/site.standard.publication/main"
+    let olderUri = "at://did:plc:author/site.standard.document/older"
+    let newerUri = "at://did:plc:author/site.standard.document/newer"
+
+    for (uri, createdAt, title) in [
+      (olderUri, floor.addingTimeInterval(-60), "Older"),
+      (newerUri, floor.addingTimeInterval(60), "Newer"),
+    ] {
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: uri,
+          cid: "bafy-\(title)",
+          authorDid: "did:plc:author",
+          collection: "site.standard.document",
+          createdAt: createdAt,
+          indexedAt: floor,
+          publicationSite: publicationId,
+          render: ContentRenderFields(title: title, publishedAt: ISO8601DateFormatter().string(from: createdAt)),
+          expiresAt: floor.addingTimeInterval(3600)
+        )
+      )
+    }
+
+    _ = try await store.markAllReadCounters(
+      viewerDid: "did:plc:viewer",
+      publicationIds: [publicationId],
+      readAt: floor
+    )
+    let readFloorAt = try await store.readFloor(
+      viewerDid: "did:plc:viewer",
+      publicationId: publicationId
+    )
+
+    let unread = try await store.listEntries(
+      viewerDid: "did:plc:viewer",
+      authorDid: "did:plc:author",
+      publicationAtUri: publicationId,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+      filter: .unread,
+      cursor: nil,
+      limit: 10,
+      readFloorAt: readFloorAt
+    )
+
+    #expect(unread.entries.map(\.entryId) == [newerUri])
+  }
+
   @Test("batch unread counts aggregate by author and publication scope")
   func batchUnreadCountsAggregateScopes() async throws {
     let dbPath =
@@ -291,6 +349,156 @@ struct SQLiteThinAppViewStoreTests {
     #expect(counts["pub-empty"] == 0)
     #expect(counts["rss-a"] == 1)
     #expect(counts["rss-b"] == 0)
+  }
+
+  @Test("materialized unread counters update from ingest read state and read floors")
+  func materializedUnreadCountersLifecycle() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let now = Date()
+    let viewerDid = "did:plc:viewer"
+    let authorDid = "did:plc:author"
+    let publicationId = "at://did:plc:author/site.standard.publication/main"
+    let entryId = "at://did:plc:author/site.standard.document/one"
+    let scope = AppViewUnreadCounterSupport.publicationScope(
+      viewerDid: viewerDid,
+      publicationId: publicationId,
+      authorDid: authorDid,
+      publicationAtUri: publicationId,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+      sectionKeys: ["folder:main"],
+      updatedAt: now
+    )
+    try await store.upsertPublicationScopes([scope])
+
+    let item = IndexedContentItem(
+      uri: entryId,
+      cid: "bafyone",
+      authorDid: authorDid,
+      collection: "site.standard.document",
+      createdAt: now,
+      indexedAt: now,
+      publicationSite: publicationId,
+      render: ContentRenderFields(title: "One", publishedAt: ISO8601DateFormatter().string(from: now)),
+      expiresAt: now.addingTimeInterval(3600)
+    )
+    try await store.upsertContentItem(item)
+    try await store.incrementUnreadCountersForContentItem(item)
+
+    #expect(try await store.fetchUnreadCounters(viewerDid: viewerDid, publicationIds: [publicationId]).first?.unreadCount == 1)
+
+    try await store.upsertReadMark(viewerDid: viewerDid, subjectUri: entryId, createdAt: now)
+    try await store.adjustUnreadCountersForReadState(viewerDid: viewerDid, subjectUri: entryId, delta: -1)
+    #expect(try await store.fetchUnreadCounters(viewerDid: viewerDid, publicationIds: [publicationId]).first?.unreadCount == 0)
+
+    try await store.deleteReadMark(viewerDid: viewerDid, subjectUri: entryId)
+    try await store.adjustUnreadCountersForReadState(viewerDid: viewerDid, subjectUri: entryId, delta: 1)
+    #expect(try await store.fetchUnreadCounters(viewerDid: viewerDid, publicationIds: [publicationId]).first?.unreadCount == 1)
+
+    _ = try await store.markAllReadCounters(
+      viewerDid: viewerDid,
+      publicationIds: [publicationId],
+      readAt: now.addingTimeInterval(60)
+    )
+    #expect(try await store.fetchUnreadCounters(viewerDid: viewerDid, publicationIds: [publicationId]).first?.unreadCount == 0)
+
+    let oldBackfill = IndexedContentItem(
+      uri: "at://did:plc:author/site.standard.document/old",
+      cid: "bafyold",
+      authorDid: authorDid,
+      collection: "site.standard.document",
+      createdAt: now.addingTimeInterval(-60),
+      indexedAt: now,
+      publicationSite: publicationId,
+      render: ContentRenderFields(title: "Old", publishedAt: ISO8601DateFormatter().string(from: now)),
+      expiresAt: now.addingTimeInterval(3600)
+    )
+    try await store.upsertContentItem(oldBackfill)
+    try await store.incrementUnreadCountersForContentItem(oldBackfill)
+    #expect(try await store.fetchUnreadCounters(viewerDid: viewerDid, publicationIds: [publicationId]).first?.unreadCount == 0)
+
+    let reconciled = try await store.refreshUnreadCounters(
+      viewerDid: viewerDid,
+      scopes: [
+        PublicationUnreadScope(
+          publicationId: publicationId,
+          authorDid: authorDid,
+          publicationAtUri: publicationId,
+          publicationScopeAtUris: [],
+          publicationSiteUrls: []
+        ),
+      ]
+    )
+    #expect(reconciled.first?.unreadCount == 0)
+    #expect(reconciled.first?.accuracy == .exact)
+  }
+
+  @Test("indexer content upsert increments materialized counters once")
+  func indexerContentUpsertIncrementsCountersOnce() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let now = Date()
+    let viewerDid = "did:plc:viewer"
+    let authorDid = "did:plc:author"
+    let publicationId = "at://did:plc:author/site.standard.publication/main"
+    try await store.upsertPublicationScopes([
+      AppViewUnreadCounterSupport.publicationScope(
+        viewerDid: viewerDid,
+        publicationId: publicationId,
+        authorDid: authorDid,
+        publicationAtUri: publicationId,
+        publicationScopeAtUris: [],
+        publicationSiteUrls: [],
+        sectionKeys: ["folder:main"],
+        updatedAt: now
+      ),
+    ])
+
+    let indexer = ThinAppViewIndexer(
+      store: store,
+      config: ThinAppViewConfig.fromEnvironment([:]),
+      logger: Logger(label: "indexer.test")
+    )
+    let record = try JSONSerialization.data(withJSONObject: [
+      "title": "One",
+      "publishedAt": ISO8601DateFormatter().string(from: now),
+      "site": publicationId,
+    ])
+
+    try await indexer.handleCommit(
+      repoDid: authorDid,
+      collection: "site.standard.document",
+      rkey: "one",
+      cid: "bafyone",
+      recordJSON: record,
+      operation: "create"
+    )
+    try await indexer.handleCommit(
+      repoDid: authorDid,
+      collection: "site.standard.document",
+      rkey: "one",
+      cid: "bafyone-updated",
+      recordJSON: record,
+      operation: "update"
+    )
+
+    let counter = try await store.fetchUnreadCounters(
+      viewerDid: viewerDid,
+      publicationIds: [publicationId]
+    ).first
+    #expect(counter?.unreadCount == 1)
+    #expect(counter?.dirty == true)
   }
 
   @Test("fetches a single indexed entry by URI")

@@ -639,80 +639,6 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /v1/reader/read-marks:
-    post:
-      operationId: upsertReaderReadMark
-      summary: Canonical read-state write on the viewer PDS
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUri]
-              properties:
-                subjectUri:
-                  type: string
-                readAt:
-                  type: string
-                  format: date-time
-      responses:
-        "200":
-          description: Read mark upserted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-    delete:
-      operationId: deleteReaderReadMark
-      summary: Mark entry unread on the viewer PDS
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUri]
-              properties:
-                subjectUri:
-                  type: string
-      responses:
-        "200":
-          description: Read mark deleted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
-  /v1/reader/mark-all-read:
-    post:
-      operationId: markAllReadBySubjectUris
-      summary: Bulk mark entries read by subject URI list
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUris]
-              properties:
-                subjectUris:
-                  type: array
-                  items:
-                    type: string
-      responses:
-        "200":
-          description: Bulk mark completed.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [marked]
-                properties:
-                  marked:
-                    type: integer
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
   # ── Thin AppView (GDPR-safe Level-1 read index) ───────────────────────────
 
   /v1/appview/bootstrap-stream:
@@ -733,7 +659,11 @@ paths:
         `sidebarFolders` during the migration.
 
         `sidebarSection` payload:
-        `{ sectionKey, folderRkey?, folderUri?, publications, unreadCounts?, replacePublicationIds?, refreshedAt }`.
+        `{ sectionKey, folderRkey?, folderUri?, publications, unreadCounts?, replacePublicationIds?, refreshedAt, sectionGeneration? }`.
+
+        `unreadCounts` payload:
+        `{ counts, replacePublicationIds?, generation?, accuracy?, countedAt? }`. Clients should apply
+        newer generations only; `exact` counts may replace same-generation `estimated` counts.
       tags: [AppView]
       responses:
         "200":
@@ -958,7 +888,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Unread count map.
+          description: Unread count snapshot.
           content:
             application/json:
               schema:
@@ -969,6 +899,15 @@ paths:
                     type: object
                     additionalProperties:
                       type: integer
+                  generation:
+                    type: integer
+                    format: int64
+                  accuracy:
+                    type: string
+                    enum: [estimated, exact]
+                  countedAt:
+                    type: string
+                    format: date-time
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -1148,8 +1087,6 @@ tags:
     description: Protected ATProto-backed reader accelerators
   - name: Publications
     description: Unified sidebar projection, resolver, and gateway write-through
-  - name: Reader
-    description: Canonical PDS read-state writes via gateway
   - name: AppView
     description: GDPR-safe Level-1 entry index gated behind `ENABLE_THIN_APPVIEW`
   - name: Latr

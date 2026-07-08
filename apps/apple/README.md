@@ -58,7 +58,7 @@ Add **`SOCIALWIRE_USE_THIN_APPVIEW`** to the target's **Active Compilation Condi
 | Behaviour | Implementation |
 |-----------|----------------|
 | Entry lists | `SocialWireGatewayClient.fetchAppViewEntries` |
-| Mark read / unread | PDS first, then write-through to gateway |
+| Mark read / unread | AppView read-mark routes with local optimistic state |
 | After discovery | `gateway.enrollAuthors` (fire-and-forget) |
 | Privacy | Profile → **Purge Indexed Data** → `DELETE /v1/appview/privacy/purge` |
 

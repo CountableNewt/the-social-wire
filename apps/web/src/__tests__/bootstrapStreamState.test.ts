@@ -240,4 +240,31 @@ describe("applySidebarFoldersEvent", () => {
     expect(merged.folderSections?.[0]?.publications[0]?.unreadCount).toBe(0);
     expect(merged.allPublicationRows.find((item) => item.publicationId === "pub-a")).toBe(alpha);
   });
+
+  it("ignores older sidebarSection generations", () => {
+    const alpha = row("pub-a", "Alpha", 1);
+    const base = minimalProjection({
+      allPublicationRows: [alpha],
+      folderSections: [
+        {
+          folderRkey: "folder1",
+          folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+          publications: [alpha],
+        },
+      ],
+      sidebarSectionGenerations: { "folder:folder1": 10 },
+    });
+
+    const merged = applySidebarSectionEvent(base, {
+      sectionKey: "folder:folder1",
+      folderRkey: "folder1",
+      folderUri: "at://did:plc:viewer/app.thesocialwire.folder/folder1",
+      publications: [row("pub-a", "Stale Alpha")],
+      refreshedAt: "2026-01-03T00:00:00.000Z",
+      sectionGeneration: 9,
+    });
+
+    expect(merged).toBe(base);
+    expect(merged.folderSections?.[0]?.publications[0]?.title).toBe("Alpha");
+  });
 });

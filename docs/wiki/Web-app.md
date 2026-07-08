@@ -17,8 +17,8 @@ Includes ATProto OAuth (hosted vs loopback dev), PDS vs Bluesky App View usage, 
 | Folders, prefs, subscriptions | Gateway write-through → viewer PDS (`socialWireGatewayClient`) |
 | Entry **lists** | `GET /v1/appview/entries` via `useEntries` / `thinAppViewClient` |
 | Entry **detail** | Author PDS `getRecord` (always PDS-direct) |
-| Read state | Dual-write: viewer PDS + AppView read marks; local `the-social-wire.read-state.v1` for optimistic UI |
-| Mark all read | `POST /v1/appview/mark-all-read` (scoped) + PDS bulk write |
+| Read state | Local `the-social-wire.read-state.v1` for optimistic UI + AppView read marks |
+| Mark all read | `POST /v1/appview/mark-all-read` (scoped read floor/counter update) |
 
 ## Thin AppView (optional)
 
@@ -38,11 +38,11 @@ NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.thesocialwire.app
 | `lib/feedRefresh.ts` | Merge first-page refresh without invalidating pagination |
 | `lib/thinAppViewClient.ts` | AppView entries, unread counts, read marks, enroll |
 | `lib/publicationProjectionClient.ts` | Sidebar JSON client |
-| `lib/pdsClient.ts` | PDS XRPC + read-state sync |
+| `lib/pdsClient.ts` | PDS XRPC for folders, preferences, subscriptions, and read-later records |
 
 **Proactive feed refresh:** while a publication is open and the tab is visible, the client periodically refetches the first feed page and merges new rows (post-bootstrap enroll runs once; ongoing polls skip enroll).
 
-Local optimistic read state remains primary for UI; the index enables server-side unread pagination and sidebar badges merged with local/PDS read state.
+Local optimistic read state remains primary for UI; AppView enables server-side unread pagination and sidebar badges.
 
 See [[Thin-AppView]].
 

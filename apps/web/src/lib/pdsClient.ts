@@ -16,16 +16,9 @@ import {
 import { listLatrSavedItemsViaGateway } from "@/lib/latrGatewaySaves";
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import {
-  isThinAppViewEnabled,
-  writeThroughReadMark,
-  writeThroughReadMarkDelete,
-} from "@/lib/thinAppViewClient";
-import {
   parseAtUri,
   PUBLICATION_RECORD_COLLECTIONS,
 } from "@/lib/atprotoClient";
-import type { EntryReadStateV1 } from "@/lib/entryReadStateStorage";
-import { pickEarlierReadAt } from "@/lib/entryReadStateStorage";
 import {
   latrExternalRkeyFromNormalizedUrl,
   latrFingerprintFromNormalizedUrl,
@@ -33,9 +26,7 @@ import {
   normalizeLatrHttpsUrl,
 } from "@/lib/latrSavedUrls";
 import {
-  legacyHexEntryReadStateRkey,
   legacyIOSLatrExternalRkey,
-  legacyIOSLatrItemRkey,
 } from "@/lib/legacyRecordKeys";
 
 // ── Lexicon collection IDs ────────────────────────────────────────────────────
@@ -65,10 +56,6 @@ export {
   LEGACY_COLLECTION_LATR_SAVED_EXTERNAL,
   LEGACY_COLLECTION_LATR_SAVED_ITEM,
 } from "@/lib/latrCollections";
-/** Per-entry feed read positions (subject AT-URI + read timestamps). */
-export const COLLECTION_ENTRY_READ_STATE = "app.thesocialwire.entryReadState";
-export const LEGACY_COLLECTION_ENTRY_READ_STATE =
-  "com.thesocialwire.entryReadState";
 export const PREFERENCES_RKEY = "self";
 
 export const LEGACY_LEXICON_COLLECTIONS: ReadonlyArray<{
@@ -78,10 +65,6 @@ export const LEGACY_LEXICON_COLLECTIONS: ReadonlyArray<{
   { legacy: LEGACY_COLLECTION_FOLDER, current: COLLECTION_FOLDER },
   { legacy: LEGACY_COLLECTION_PUB_PREFS, current: COLLECTION_PUB_PREFS },
   { legacy: LEGACY_COLLECTION_PREFERENCES, current: COLLECTION_PREFERENCES },
-  {
-    legacy: LEGACY_COLLECTION_ENTRY_READ_STATE,
-    current: COLLECTION_ENTRY_READ_STATE,
-  },
 ];
 
 /** Sidebar pseudo-folder URI (not a real `app.thesocialwire.folder` record). */
@@ -199,14 +182,6 @@ export interface LatrSaveMetadata {
   publishedAt?: string;
   language?: string;
   linkedWebUrl?: string;
-}
-
-/** PDS `app.thesocialwire.entryReadState` record shape. */
-export interface EntryReadStateRecord {
-  $type: typeof COLLECTION_ENTRY_READ_STATE;
-  subjectUri: string;
-  readAt: string;
-  updatedAt?: string;
 }
 
 export type MergedLatrSave =
@@ -1177,88 +1152,6 @@ export class PDSClient {
 
   // ── Feed entry read state (unread sync) ─────────────────────────────────────
 
-  async listEntryReadStateMap(signal?: AbortSignal): Promise<EntryReadStateV1> {
-    const all: RepoRecord<EntryReadStateRecord>[] = [];
-    let cursor: string | undefined;
-    do {
-      const response = await this.agent.api.com.atproto.repo.listRecords({
-        repo: this.did,
-        collection: COLLECTION_ENTRY_READ_STATE,
-        limit: 100,
-        cursor,
-      });
-      signal?.throwIfAborted();
-      all.push(
-        ...(response.data.records as unknown as RepoRecord<EntryReadStateRecord>[])
-      );
-      cursor = response.data.cursor ?? undefined;
-    } while (cursor);
-
-    const out: EntryReadStateV1 = {};
-    for (const rec of all) {
-      const subjectUri = rec.value.subjectUri?.trim();
-      const readAt = rec.value.readAt;
-      if (!subjectUri || !readAt) continue;
-      const existing = out[subjectUri];
-      if (!existing) {
-        out[subjectUri] = readAt;
-      } else {
-        out[subjectUri] = pickEarlierReadAt(existing, readAt);
-      }
-    }
-    return out;
-  }
-
-  /**
-   * Idempotent upsert with deterministic rkey (same base32(SHA-256(subjectUri)) scheme as L@tr).
-   */
-  async putEntryReadState(subjectUri: string, readAt: string): Promise<void> {
-    const rkey = await latrItemRkeyFromSubjectUri(subjectUri);
-    const updatedAt = new Date().toISOString();
-    const record: EntryReadStateRecord = {
-      $type: COLLECTION_ENTRY_READ_STATE,
-      subjectUri,
-      readAt,
-      updatedAt,
-    };
-    await this.agent.api.com.atproto.repo.putRecord({
-      repo: this.did,
-      collection: COLLECTION_ENTRY_READ_STATE,
-      rkey,
-      record: record as unknown as Record<string, unknown>,
-    });
-    await this.deleteLegacyEntryReadStateKeys(subjectUri, rkey);
-    if (isThinAppViewEnabled()) {
-      void writeThroughReadMark(this.oauthSession, subjectUri, readAt).catch(
-        () => {
-          /* best-effort index sync */
-        }
-      );
-    }
-  }
-
-  /** Best-effort delete; record may already be absent on the PDS. */
-  async deleteEntryReadState(subjectUri: string): Promise<void> {
-    const rkey = await latrItemRkeyFromSubjectUri(subjectUri);
-    await this.deleteLegacyEntryReadStateKeys(subjectUri, null);
-    try {
-      await this.agent.api.com.atproto.repo.deleteRecord({
-        repo: this.did,
-        collection: COLLECTION_ENTRY_READ_STATE,
-        rkey,
-      });
-    } catch {
-      /* record may already be absent */
-    }
-    if (isThinAppViewEnabled()) {
-      void writeThroughReadMarkDelete(this.oauthSession, subjectUri).catch(
-        () => {
-          /* best-effort index sync */
-        }
-      );
-    }
-  }
-
   /** Joins wrappers with queue rows for read-later browsing. */
   async listMergedLatrSaves(
     options: { state?: LatrSaveListState; signal?: AbortSignal } = {}
@@ -1364,28 +1257,6 @@ export class PDSClient {
     return summary;
   }
 
-  /** Removes legacy hex / iOS-prefixed read-state keys after canonical write or delete. */
-  private async deleteLegacyEntryReadStateKeys(
-    subjectUri: string,
-    keepRkey: string | null
-  ): Promise<void> {
-    const legacyKeys = [
-      await legacyHexEntryReadStateRkey(subjectUri),
-      await legacyIOSLatrItemRkey(subjectUri),
-    ];
-    for (const legacyRkey of legacyKeys) {
-      if (keepRkey != null && legacyRkey === keepRkey) continue;
-      try {
-        await this.agent.api.com.atproto.repo.deleteRecord({
-          repo: this.did,
-          collection: COLLECTION_ENTRY_READ_STATE,
-          rkey: legacyRkey,
-        });
-      } catch {
-        /* legacy record may already be absent */
-      }
-    }
-  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1402,11 +1273,9 @@ export interface LexiconMigrationSummary {
   foldersCopied: number;
   publicationPrefsCopied: number;
   preferencesCopied: number;
-  entryReadStateCopied: number;
   foldersDeleted: number;
   publicationPrefsDeleted: number;
   preferencesDeleted: number;
-  entryReadStateDeleted: number;
 }
 
 export function lexiconMigrationChanged(
@@ -1416,11 +1285,9 @@ export function lexiconMigrationChanged(
     summary.foldersCopied > 0 ||
     summary.publicationPrefsCopied > 0 ||
     summary.preferencesCopied > 0 ||
-    summary.entryReadStateCopied > 0 ||
     summary.foldersDeleted > 0 ||
     summary.publicationPrefsDeleted > 0 ||
-    summary.preferencesDeleted > 0 ||
-    summary.entryReadStateDeleted > 0
+    summary.preferencesDeleted > 0
   );
 }
 
@@ -1429,11 +1296,9 @@ function emptyLexiconMigrationSummary(): LexiconMigrationSummary {
     foldersCopied: 0,
     publicationPrefsCopied: 0,
     preferencesCopied: 0,
-    entryReadStateCopied: 0,
     foldersDeleted: 0,
     publicationPrefsDeleted: 0,
     preferencesDeleted: 0,
-    entryReadStateDeleted: 0,
   };
 }
 
@@ -1450,9 +1315,6 @@ function incrementLexiconMigrationCopied(
       break;
     case LEGACY_COLLECTION_PREFERENCES:
       summary.preferencesCopied += 1;
-      break;
-    case LEGACY_COLLECTION_ENTRY_READ_STATE:
-      summary.entryReadStateCopied += 1;
       break;
   }
 }
@@ -1471,15 +1333,5 @@ function incrementLexiconMigrationDeleted(
     case LEGACY_COLLECTION_PREFERENCES:
       summary.preferencesDeleted += 1;
       break;
-    case LEGACY_COLLECTION_ENTRY_READ_STATE:
-      summary.entryReadStateDeleted += 1;
-      break;
   }
-}
-
-/** Deterministic `app.thesocialwire.entryReadState` rkey from an entry AT-URI. */
-export async function entryReadStateRkeyFromSubjectUri(
-  subjectUri: string
-): Promise<string> {
-  return latrItemRkeyFromSubjectUri(subjectUri);
 }

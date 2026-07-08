@@ -85,12 +85,12 @@ Social Wire gateway (optional — NEXT_PUBLIC_USE_THIN_APPVIEW=true)
   └─ GET /v1/publications/sidebar       ← sidebar projection (refresh / phased load)
   └─ GET /v1/appview/entries            ← entry list rows (Level-1 index)
   └─ GET /v1/appview/unread-counts      ← sidebar unread badges
-  └─ POST/DELETE /v1/appview/read-marks ← write-through after PDS read state
+  └─ POST/DELETE /v1/appview/read-marks ← AppView read state
   └─ POST /v1/appview/enroll            ← backfill after sidebar load
   └─ POST /v1/appview/mark-all-read     ← scoped bulk read
 ```
 
-All user organisation data (folders, publication prefs, canonical read state) is stored on the user's own PDS. Entry **detail** always reads authors' PDS records. When Thin AppView is enabled, **initial load** uses bootstrap-stream; entry **lists** come from the gateway index with proactive first-page refresh while reading. See [docs/architecture/appview.md](../../docs/architecture/appview.md).
+All user organisation data (folders, publication prefs, subscriptions) is stored on the user's own PDS. Feed read/unread state is local-first and synchronized to Social Wire AppView. Entry **detail** always reads authors' PDS records. When Thin AppView is enabled, **initial load** uses bootstrap-stream; entry **lists** come from the gateway index with proactive first-page refresh while reading. See [docs/architecture/appview.md](../../docs/architecture/appview.md).
 
 #### PDS-first reads vs public App View
 
@@ -111,7 +111,8 @@ Lexicon **collection** (NSID) strings used in the web client match `apps/web/src
 | `app.bsky.graph.follow` | Follow subjects read from the **viewer's** repo (canonical input to discovery) |
 | `app.thesocialwire.folder` | User-defined folders (`PDSClient.listFolders`, mutations) |
 | `app.thesocialwire.publicationPrefs` | Per-publication folder assignment and sort on the user's PDS (legacy `hidden` may still decode from old records but the client clears it on write) |
-| `app.thesocialwire.entryReadState` | Per-entry read timestamps on the viewer PDS (canonical); mirrored to gateway index when Thin AppView is enabled |
+
+Feed read/unread state is not stored in ATProto repo records. Clients keep a local cache for immediate UI and write authenticated read marks to Social Wire AppView.
 
 JSON lexicons for Social Wire–specific records live under **`packages/lexicons/`** (`app.thesocialwire.*`).
 
@@ -131,7 +132,7 @@ These **localStorage** keys are browser-only convenience (no secrets):
 | Key | Purpose |
 |-----|---------|
 | `the-social-wire.react-query.v1` | Dehydrated TanStack Query cache (`PersistQueryClientProvider` in `providers.tsx`) |
-| `the-social-wire.read-state.v1` | Read/unread map for entry AT-URIs (`entryReadStateStorage.ts`) |
+| `the-social-wire.read-state.v1` | Local read/unread map for entry AT-URIs (`entryReadStateStorage.ts`) |
 
 **React Query persistence scope:** only queries that pass `shouldDehydrateQuery` are written: `["discovery", did]`, and **`["entries", authorDid]`** only when the infinite list is small (≤ 3 pages and ≤ 120 entries). Other query keys are not persisted. Persist writes are throttled (2s); max age 7 days.
 

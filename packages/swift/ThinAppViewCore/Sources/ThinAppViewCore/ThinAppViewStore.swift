@@ -45,8 +45,11 @@ public protocol ThinAppViewStore: Actor {
     publicationSiteUrls: [String],
     filter: EntryListFilter,
     cursor: String?,
-    limit: Int
+    limit: Int,
+    readFloorAt: Date?
   ) async throws -> AppViewEntryListResponse
+
+  func readFloor(viewerDid: String, publicationId: String) async throws -> Date?
 
   func countUnreadEntries(
     viewerDid: String,
@@ -60,6 +63,39 @@ public protocol ThinAppViewStore: Actor {
     viewerDid: String,
     scopes: [PublicationUnreadScope]
   ) async throws -> [String: Int]
+
+  func upsertPublicationScopes(_ scopes: [AppViewPublicationScope]) async throws
+
+  func replacePublicationScopes(
+    viewerDid: String,
+    scopes: [AppViewPublicationScope]
+  ) async throws
+
+  func fetchUnreadCounters(
+    viewerDid: String,
+    publicationIds: [String]?
+  ) async throws -> [AppViewUnreadCounter]
+
+  func refreshUnreadCounters(
+    viewerDid: String,
+    scopes: [PublicationUnreadScope]
+  ) async throws -> [AppViewUnreadCounter]
+
+  func incrementUnreadCountersForContentItem(_ item: IndexedContentItem) async throws
+
+  func markUnreadCountersDirtyForContent(authorDid: String, publicationSite: String?) async throws
+
+  func adjustUnreadCountersForReadState(
+    viewerDid: String,
+    subjectUri: String,
+    delta: Int
+  ) async throws
+
+  func markAllReadCounters(
+    viewerDid: String,
+    publicationIds: [String],
+    readAt: Date
+  ) async throws -> [AppViewUnreadCounter]
 
   func deleteExpiredContent(before: Date) async throws -> Int
   func deleteExpiredReadMarks(before: Date) async throws -> Int
@@ -90,4 +126,29 @@ public protocol ThinAppViewStore: Actor {
     publicationSite: String,
     limit: Int
   ) async throws -> [(uri: String, renderJSON: String)]
+}
+
+public extension ThinAppViewStore {
+  func listEntries(
+    viewerDid: String,
+    authorDid: String,
+    publicationAtUri: String?,
+    publicationScopeAtUris: [String],
+    publicationSiteUrls: [String],
+    filter: EntryListFilter,
+    cursor: String?,
+    limit: Int
+  ) async throws -> AppViewEntryListResponse {
+    try await listEntries(
+      viewerDid: viewerDid,
+      authorDid: authorDid,
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls,
+      filter: filter,
+      cursor: cursor,
+      limit: limit,
+      readFloorAt: nil
+    )
+  }
 }
