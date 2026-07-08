@@ -13,35 +13,13 @@ The only data we write to the user's PDS is what the protocol doesn't already ha
 | `app.thesocialwire.folder` | A named folder for organizing publications |
 | `app.thesocialwire.publicationPrefs` | Folder assignment, sort order, and visibility for a discovered publication |
 | `app.thesocialwire.preferences` | Account-level Social Wire preferences, including the configured read-later service |
-| `app.thesocialwire.entryReadState` | Per-entry read/unread sync for the feed reader: subject entry AT-URI + read timestamp only |
 | `link.latr.saved.external` | L@tr (latr.link) wrapper for normalized HTTPS URLs (read-later interoperability) |
 | `link.latr.saved.item` | L@tr read-later queue item pointing at `subjectUri` (external wrapper or ATProto record) |
 | `app.skyreader.feed.subscription` | RSS/Atom subscriptions (Skyreader-compatible) on the user's PDS; see [`app/skyreader/feed/subscription.json`](app/skyreader/feed/subscription.json) |
 
 All records are public by default (ATProto repos are public). Any client that can read a PDS can see a user's Social Wire folders and preferences.
 
-### `app.thesocialwire.entryReadState` (read positions)
-
-Stores **which entry URIs the user has marked read** and **when (first read time)**—for syncing unread state across clients. This is **not** a private analytics log: treat it as preference data comparable to other Social Wire repo records.
-
-**Privacy:** Because ATProto repos are world-readable by default, assume third parties can see that you read a given entry URI at approximately the stored time. Do not put article titles, publisher names, external URLs, or other duplicated metadata in this record.
-
-**Key:** client-chosen deterministic rkey (Social Wire web uses a base32 hash of `subjectUri`, aligned with L@tr deterministic keying).
-
-**Fields:** `subjectUri` (at-uri), `readAt` (datetime), optional `updatedAt` (datetime).
-
-When the optional **Thin AppView** gateway index is enabled, commits to this collection are also mirrored into the gateway's derived `read_marks` table (viewer DID = repo owner) for server-side unread filtering. The PDS record remains canonical; see [docs/architecture/appview.md](../../docs/architecture/appview.md).
-
-**Example:**
-
-```json
-{
-  "$type": "app.thesocialwire.entryReadState",
-  "subjectUri": "at://did:plc:abc123/site.standard.document/xyz",
-  "readAt": "2026-05-12T20:00:00.000Z",
-  "updatedAt": "2026-05-12T20:00:00.000Z"
-}
-```
+Feed read/unread state is not stored in ATProto repo records. Clients keep a local cache for immediate UI and write authenticated read marks to Social Wire AppView for unread filtering and counters.
 
 ### L@tr (read-later) compatibility
 

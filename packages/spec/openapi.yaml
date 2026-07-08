@@ -639,80 +639,6 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /v1/reader/read-marks:
-    post:
-      operationId: upsertReaderReadMark
-      summary: Canonical read-state write on the viewer PDS
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUri]
-              properties:
-                subjectUri:
-                  type: string
-                readAt:
-                  type: string
-                  format: date-time
-      responses:
-        "200":
-          description: Read mark upserted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-    delete:
-      operationId: deleteReaderReadMark
-      summary: Mark entry unread on the viewer PDS
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUri]
-              properties:
-                subjectUri:
-                  type: string
-      responses:
-        "200":
-          description: Read mark deleted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
-  /v1/reader/mark-all-read:
-    post:
-      operationId: markAllReadBySubjectUris
-      summary: Bulk mark entries read by subject URI list
-      tags: [Reader]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [subjectUris]
-              properties:
-                subjectUris:
-                  type: array
-                  items:
-                    type: string
-      responses:
-        "200":
-          description: Bulk mark completed.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [marked]
-                properties:
-                  marked:
-                    type: integer
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
   # ── Thin AppView (GDPR-safe Level-1 read index) ───────────────────────────
 
   /v1/appview/bootstrap-stream:
@@ -1161,8 +1087,6 @@ tags:
     description: Protected ATProto-backed reader accelerators
   - name: Publications
     description: Unified sidebar projection, resolver, and gateway write-through
-  - name: Reader
-    description: Canonical PDS read-state writes via gateway
   - name: AppView
     description: GDPR-safe Level-1 entry index gated behind `ENABLE_THIN_APPVIEW`
   - name: Latr

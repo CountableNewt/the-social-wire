@@ -9,4 +9,4 @@ ATProto lexicon JSON under `packages/lexicons` — Social Wire prefs, read-later
 
 Related architecture notes: [docs/architecture/lexicons.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/docs/architecture/lexicons.md).
 
-`app.thesocialwire.entryReadState` is canonical on the user's PDS; the optional [[Thin-AppView]] gateway may mirror it into derived `read_marks` for unread filtering.
+Feed read/unread state is not stored in ATProto repo records. Clients keep a local cache for immediate UI and write authenticated read marks to [[Thin-AppView]].

@@ -74,11 +74,6 @@ public actor ThinAppViewIndexer {
       return
     }
 
-    if ThinAppViewConfig.readStateCollection == collection {
-      try await handleReadStateCommit(repoDid: repoDid, rkey: rkey, record: record, operation: operation)
-      return
-    }
-
     guard ThinAppViewConfig.contentCollections.contains(collection) else { return }
 
     let uri = RenderFieldExtractor.buildEntryUri(did: repoDid, collection: collection, rkey: rkey)
@@ -210,42 +205,6 @@ public actor ThinAppViewIndexer {
     for publicationId in publicationIds {
       try? await projectionCache.invalidateFirstPageForAllViewers(publicationId: publicationId)
     }
-  }
-
-  private func handleReadStateCommit(
-    repoDid: String,
-    rkey: String,
-    record: [String: Any],
-    operation: String
-  ) async throws {
-    guard let subjectUri = record["subjectUri"] as? String else { return }
-    if operation == "delete" {
-      let wasRead = try? await store.hasReadMark(viewerDid: repoDid, subjectUri: subjectUri)
-      try await store.deleteReadMark(viewerDid: repoDid, subjectUri: subjectUri)
-      if wasRead == true {
-        try? await store.adjustUnreadCountersForReadState(
-          viewerDid: repoDid,
-          subjectUri: subjectUri,
-          delta: 1
-        )
-      }
-      try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
-      return
-    }
-
-    let readAtRaw = (record["readAt"] as? String) ?? (record["updatedAt"] as? String)
-    let readAt = readAtRaw.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-    let alreadyRead = try? await store.hasReadMark(viewerDid: repoDid, subjectUri: subjectUri)
-    try await store.upsertReadMark(viewerDid: repoDid, subjectUri: subjectUri, createdAt: readAt)
-    if alreadyRead != true {
-      try? await store.adjustUnreadCountersForReadState(
-        viewerDid: repoDid,
-        subjectUri: subjectUri,
-        delta: -1
-      )
-    }
-    try? await projectionCache?.invalidateUnreadCounts(viewerDid: repoDid, publicationId: nil)
-    _ = rkey
   }
 
   private func resolvePdsBase(for repoDid: String) async -> String? {

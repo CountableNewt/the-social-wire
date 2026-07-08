@@ -2,11 +2,9 @@
 
 import { useEffect } from "react";
 import { useSidebarBootstrap } from "@/contexts/PublicationSidebarContext";
-import { useReadRoute } from "@/contexts/ReadRouteContext";
 
-/** Pull PDS read markers and AppView unread baselines when the tab becomes visible again. */
+/** Refresh AppView unread baselines when the tab becomes visible again. */
 export function useCrossClientReadSync(enabled = true) {
-  const { syncReadStateFromPDS } = useReadRoute();
   const { refreshUnreadCountsFromAppView } = useSidebarBootstrap();
 
   useEffect(() => {
@@ -15,11 +13,10 @@ export function useCrossClientReadSync(enabled = true) {
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void syncReadStateFromPDS();
       void refreshUnreadCountsFromAppView();
     };
 
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [enabled, syncReadStateFromPDS, refreshUnreadCountsFromAppView]);
+  }, [enabled, refreshUnreadCountsFromAppView]);
 }

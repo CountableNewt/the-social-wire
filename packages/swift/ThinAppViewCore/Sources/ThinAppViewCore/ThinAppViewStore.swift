@@ -45,8 +45,11 @@ public protocol ThinAppViewStore: Actor {
     publicationSiteUrls: [String],
     filter: EntryListFilter,
     cursor: String?,
-    limit: Int
+    limit: Int,
+    readFloorAt: Date?
   ) async throws -> AppViewEntryListResponse
+
+  func readFloor(viewerDid: String, publicationId: String) async throws -> Date?
 
   func countUnreadEntries(
     viewerDid: String,
@@ -123,4 +126,29 @@ public protocol ThinAppViewStore: Actor {
     publicationSite: String,
     limit: Int
   ) async throws -> [(uri: String, renderJSON: String)]
+}
+
+public extension ThinAppViewStore {
+  func listEntries(
+    viewerDid: String,
+    authorDid: String,
+    publicationAtUri: String?,
+    publicationScopeAtUris: [String],
+    publicationSiteUrls: [String],
+    filter: EntryListFilter,
+    cursor: String?,
+    limit: Int
+  ) async throws -> AppViewEntryListResponse {
+    try await listEntries(
+      viewerDid: viewerDid,
+      authorDid: authorDid,
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls,
+      filter: filter,
+      cursor: cursor,
+      limit: limit,
+      readFloorAt: nil
+    )
+  }
 }

@@ -155,7 +155,8 @@ public init(pool: PostgresClient, logger: Logger) {
     publicationSiteUrls: [String],
     filter: EntryListFilter,
     cursor: String?,
-    limit: Int
+    limit: Int,
+    readFloorAt: Date?
   ) async throws -> AppViewEntryListResponse {
     let pageLimit = max(1, min(limit, 100))
     let now = Date()
@@ -183,7 +184,8 @@ public init(pool: PostgresClient, logger: Logger) {
         filter: filter,
         cursor: dbCursor,
         limit: pageLimit + 1,
-        now: now
+        now: now,
+        readFloorAt: readFloorAt
       )
       return ThinAppViewQuerySupport.buildFilteredEntryListPage(
         pageLimit: pageLimit,
@@ -208,7 +210,8 @@ public init(pool: PostgresClient, logger: Logger) {
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
-        now: now
+        now: now,
+        readFloorAt: readFloorAt
       )
       return ThinAppViewQuerySupport.buildFilteredEntryListPage(
         pageLimit: pageLimit,
@@ -238,7 +241,8 @@ public init(pool: PostgresClient, logger: Logger) {
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
-        now: now
+        now: now,
+        readFloorAt: readFloorAt
       )
       if fetched.isEmpty {
         dbHasMore = false
@@ -292,9 +296,11 @@ public init(pool: PostgresClient, logger: Logger) {
     filter: EntryListFilter,
     cursor: (createdAt: Date, uri: String)?,
     limit: Int,
-    now: Date
+    now: Date,
+    readFloorAt: Date?
   ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
     let rows: PostgresRowSequence
+    let unreadFloor = readFloorAt ?? Date(timeIntervalSince1970: 0)
     switch (filter, cursor) {
     case (.all, nil):
       rows = try await pool.query(
@@ -318,6 +324,7 @@ public init(pool: PostgresClient, logger: Logger) {
         WHERE ci.author_did = \(authorDid)
           AND ci.expires_at > \(now)
           AND rm.subject_uri IS NULL
+          AND ci.created_at > \(unreadFloor)
           AND ci.publication_site = ANY(\(siteKeys))
         ORDER BY ci.created_at DESC, ci.uri DESC
         LIMIT \(limit)
@@ -361,6 +368,7 @@ public init(pool: PostgresClient, logger: Logger) {
         WHERE ci.author_did = \(authorDid)
           AND ci.expires_at > \(now)
           AND rm.subject_uri IS NULL
+          AND ci.created_at > \(unreadFloor)
           AND ci.publication_site = ANY(\(siteKeys))
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
@@ -401,9 +409,11 @@ public init(pool: PostgresClient, logger: Logger) {
     filter: EntryListFilter,
     cursor: (createdAt: Date, uri: String)?,
     limit: Int,
-    now: Date
+    now: Date,
+    readFloorAt: Date?
   ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
     let rows: PostgresRowSequence
+    let unreadFloor = readFloorAt ?? Date(timeIntervalSince1970: 0)
     switch (filter, cursor) {
     case (.all, nil):
       rows = try await pool.query(
@@ -423,6 +433,7 @@ public init(pool: PostgresClient, logger: Logger) {
         FROM content_items ci
         LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now) AND rm.subject_uri IS NULL
+          AND ci.created_at > \(unreadFloor)
         ORDER BY ci.created_at DESC, ci.uri DESC
         LIMIT \(limit)
         """,
@@ -459,6 +470,7 @@ public init(pool: PostgresClient, logger: Logger) {
         FROM content_items ci
         LEFT JOIN read_marks rm ON rm.viewer_did = \(viewerDid) AND rm.subject_uri = ci.uri
         WHERE ci.author_did = \(authorDid) AND ci.expires_at > \(now) AND rm.subject_uri IS NULL
+          AND ci.created_at > \(unreadFloor)
           AND (ci.created_at < \(decoded.createdAt) OR (ci.created_at = \(decoded.createdAt) AND ci.uri < \(decoded.uri)))
         ORDER BY ci.created_at DESC, ci.uri DESC
         LIMIT \(limit)
@@ -1035,7 +1047,7 @@ public init(pool: PostgresClient, logger: Logger) {
     return floors
   }
 
-  private func readFloor(viewerDid: String, publicationId: String) async throws -> Date? {
+  public func readFloor(viewerDid: String, publicationId: String) async throws -> Date? {
     let rows = try await pool.query(
       """
       SELECT read_floor_at

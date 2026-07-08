@@ -768,7 +768,7 @@ final class SocialWireAppModel {
         }
     }
 
-    /// Hydrate PDS read state and saved links after sidebar projection refresh.
+    /// Hydrate viewer profile and saved links after sidebar projection refresh.
     func refreshActiveReaderContentIfNeeded() async {
         guard let viewerDID else { return }
         await hydrateViewerStateAfterBootstrap(viewerDID: viewerDID)
@@ -790,10 +790,8 @@ final class SocialWireAppModel {
     }
 
     private func hydrateViewerStateAfterBootstrap(viewerDID: String) async {
-        async let readTask = pds.listEntryReadStates()
         async let profileTask = publicationsService.fetchActorProfile(actor: viewerDID)
 
-        mergeReadAtByEntryId((try? await readTask) ?? [:])
         await refreshSavedLinks()
         viewerProfile = try? await profileTask
     }
@@ -1717,7 +1715,6 @@ final class SocialWireAppModel {
         do {
             let readAt = Date()
             try await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
-            await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
             var readMap = readAtByEntryId
             readMap[entryId] = readAt
             readAtByEntryId = readMap
@@ -1742,7 +1739,6 @@ final class SocialWireAppModel {
             if markingRead {
                 let readAt = Date()
                 try await gateway.upsertReadMark(subjectUri: item.entryId, readAt: readAt)
-                await syncEntryReadStateToPDS(subjectURI: item.entryId, readAt: readAt)
                 var readMap = readAtByEntryId
                 readMap[item.entryId] = readAt
                 readAtByEntryId = readMap
@@ -1758,7 +1754,6 @@ final class SocialWireAppModel {
                 }
             } else {
                 try await gateway.deleteReadMark(subjectUri: item.entryId)
-                await syncEntryReadStateRemovalToPDS(subjectURI: item.entryId)
                 var readMap = readAtByEntryId
                 readMap.removeValue(forKey: item.entryId)
                 readAtByEntryId = readMap
@@ -1780,61 +1775,11 @@ final class SocialWireAppModel {
         }
     }
 
-    /// Reload PDS read markers and AppView unread baselines after another client may have changed them.
+    /// Refresh AppView unread baselines after another client may have changed them.
     func syncCrossClientReadState() async {
         guard isSignedIn else { return }
-
-        let priorReadAtByEntryId = readAtByEntryId
-        var remoteReadAtByEntryId: [String: Date] = [:]
-        do {
-            remoteReadAtByEntryId = try await pds.listEntryReadStates()
-            mergeReadAtByEntryId(remoteReadAtByEntryId)
-        } catch {
-            /* keep in-memory read map */
-        }
-
-        if useAppViewEntryTimelines {
-            let readsNeedingAppViewSync = remoteReadAtByEntryId.filter { entryId, readAt in
-                guard let prior = priorReadAtByEntryId[entryId] else { return true }
-                return readAt < prior
-            }
-            for (entryId, readAt) in readsNeedingAppViewSync {
-                try? await gateway.upsertReadMark(subjectUri: entryId, readAt: readAt)
-            }
-        }
-
         await refreshSidebarUnreadCounts()
         await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
-    }
-
-    private func mergeReadAtByEntryId(_ remote: [String: Date]) {
-        var merged = readAtByEntryId
-        for (entryId, readAt) in remote {
-            if let existing = merged[entryId] {
-                merged[entryId] = min(existing, readAt)
-            } else {
-                merged[entryId] = readAt
-            }
-        }
-        readAtByEntryId = merged
-        sidebarUnread.bumpReadRevision()
-        refreshSidebarUnreadSumCaches()
-    }
-
-    private func syncEntryReadStateToPDS(subjectURI: String, readAt: Date) async {
-        do {
-            try await pds.markRead(subjectURI: subjectURI, readAt: readAt)
-        } catch {
-            /* best-effort cross-client sync */
-        }
-    }
-
-    private func syncEntryReadStateRemovalToPDS(subjectURI: String) async {
-        do {
-            try await pds.markUnread(subjectURI: subjectURI)
-        } catch {
-            /* record may already be absent */
-        }
     }
 
     func purgeIndexedAppViewData() async {

@@ -26,7 +26,7 @@ describe("lexicon JSON schemas", () => {
   it("includes expected Social Wire collections", () => {
     const names = files.map((f) => f.split("/").pop());
     expect(names).toContain("app.thesocialwire.folder.json");
-    expect(names).toContain("app.thesocialwire.entryReadState.json");
+    expect(names).not.toContain("app.thesocialwire.entryReadState.json");
     expect(names).toContain("link.latr.saved.external.json");
   });
 
@@ -43,16 +43,4 @@ describe("lexicon JSON schemas", () => {
       expect(json.defs).toBeTruthy();
     });
   }
-});
-
-describe("entryReadState example shape", () => {
-  it("main record requires subjectUri and readAt", () => {
-    const schema = JSON.parse(
-      readFileSync(join(ROOT, "app.thesocialwire.entryReadState.json"), "utf8")
-    ) as {
-      defs: { main: { record: { required?: string[] } } };
-    };
-    expect(schema.defs.main.record.required).toContain("subjectUri");
-    expect(schema.defs.main.record.required).toContain("readAt");
-  });
 });

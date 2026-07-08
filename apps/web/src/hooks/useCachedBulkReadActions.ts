@@ -35,7 +35,7 @@ export function useCachedBulkReadActions(
   const applyMarkAllRead = useCallback(() => {
     markEntriesRead(cachedEntryIds, {
       publications,
-      syncToPds: false,
+      syncToAppView: false,
     });
     const oauth = getOAuthSession();
     const scopes =

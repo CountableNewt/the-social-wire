@@ -1,6 +1,6 @@
 /**
  * Legacy deterministic key formats used before Stygian contract parity.
- * Listing/read-repair code uses these to locate divergent PDS records.
+ * Listing repair code uses these to locate divergent L@tr PDS records.
  */
 
 const LEGACY_LOWER_B32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -45,21 +45,9 @@ export async function legacyIOSLatrItemRkey(
   return legacyLowerBase32Encode(hash).slice(0, 52).toLowerCase();
 }
 
-/** Legacy gateway hex read-state rkey before base32 parity. */
-export async function legacyHexEntryReadStateRkey(
-  subjectUri: string
-): Promise<string> {
-  const hash = await sha256Utf8(subjectUri);
-  return [...hash].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export function isLegacyLatrExternalRkey(
   canonicalRkey: string,
   candidateRkey: string
 ): boolean {
   return candidateRkey === canonicalRkey.toLowerCase();
-}
-
-export function isLegacyHexReadStateRkey(candidateRkey: string): boolean {
-  return /^[a-f0-9]{64}$/.test(candidateRkey);
 }

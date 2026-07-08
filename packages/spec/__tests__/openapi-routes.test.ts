@@ -70,8 +70,6 @@ describe("OpenAPI route drift", () => {
       "/v1/publications/prefs": ['"/v1/publications/prefs"'],
       "/v1/publications/subscriptions": ['"/v1/publications/subscriptions"'],
       "/v1/publications/rss-subscriptions": ['"/v1/publications/rss-subscriptions"'],
-      "/v1/reader/read-marks": ['"/v1/reader/read-marks"'],
-      "/v1/reader/mark-all-read": ['"/v1/reader/mark-all-read"'],
       "/v1/appview/entries": ['"/v1/appview/entries"'],
       "/v1/appview/entry": ['"/v1/appview/entry"'],
       "/v1/appview/unread-counts": ['"/v1/appview/unread-counts"'],

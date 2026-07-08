@@ -104,6 +104,19 @@ actor ThinAppViewReadService {
       }
     }
 
+    let publicationId = primaryPublicationId(
+      publicationAtUri: publicationAtUri,
+      publicationScopeAtUris: publicationScopeAtUris,
+      publicationSiteUrls: publicationSiteUrls,
+      authorDid: authorDid
+    )
+    let readFloorAt: Date?
+    if filter == .unread, let publicationId {
+      readFloorAt = try await store.readFloor(viewerDid: auth.did, publicationId: publicationId)
+    } else {
+      readFloorAt = nil
+    }
+
     let page = try await store.listEntries(
       viewerDid: auth.did,
       authorDid: authorDid,
@@ -112,7 +125,8 @@ actor ThinAppViewReadService {
       publicationSiteUrls: publicationSiteUrls,
       filter: filter,
       cursor: cursor,
-      limit: limit
+      limit: limit,
+      readFloorAt: readFloorAt
     )
 
     if cursor == nil,

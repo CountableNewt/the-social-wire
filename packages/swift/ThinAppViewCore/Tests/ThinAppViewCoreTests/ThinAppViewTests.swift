@@ -174,6 +174,64 @@ struct SQLiteThinAppViewStoreTests {
     #expect(all.entries.count == 2)
   }
 
+  @Test("unread listing excludes entries at or below mark-all-read floor")
+  func unreadFilterRespectsReadFloor() async throws {
+    let dbPath =
+      FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-appview-\(UUID().uuidString).sqlite")
+        .path
+    defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+    let store = try SQLiteThinAppViewStore(path: dbPath, logger: Logger(label: "appview.test"))
+    let floor = ISO8601DateFormatter().date(from: "2026-05-20T12:00:00.000Z") ?? Date()
+    let publicationId = "at://did:plc:author/site.standard.publication/main"
+    let olderUri = "at://did:plc:author/site.standard.document/older"
+    let newerUri = "at://did:plc:author/site.standard.document/newer"
+
+    for (uri, createdAt, title) in [
+      (olderUri, floor.addingTimeInterval(-60), "Older"),
+      (newerUri, floor.addingTimeInterval(60), "Newer"),
+    ] {
+      try await store.upsertContentItem(
+        IndexedContentItem(
+          uri: uri,
+          cid: "bafy-\(title)",
+          authorDid: "did:plc:author",
+          collection: "site.standard.document",
+          createdAt: createdAt,
+          indexedAt: floor,
+          publicationSite: publicationId,
+          render: ContentRenderFields(title: title, publishedAt: ISO8601DateFormatter().string(from: createdAt)),
+          expiresAt: floor.addingTimeInterval(3600)
+        )
+      )
+    }
+
+    _ = try await store.markAllReadCounters(
+      viewerDid: "did:plc:viewer",
+      publicationIds: [publicationId],
+      readAt: floor
+    )
+    let readFloorAt = try await store.readFloor(
+      viewerDid: "did:plc:viewer",
+      publicationId: publicationId
+    )
+
+    let unread = try await store.listEntries(
+      viewerDid: "did:plc:viewer",
+      authorDid: "did:plc:author",
+      publicationAtUri: publicationId,
+      publicationScopeAtUris: [],
+      publicationSiteUrls: [],
+      filter: .unread,
+      cursor: nil,
+      limit: 10,
+      readFloorAt: readFloorAt
+    )
+
+    #expect(unread.entries.map(\.entryId) == [newerUri])
+  }
+
   @Test("batch unread counts aggregate by author and publication scope")
   func batchUnreadCountsAggregateScopes() async throws {
     let dbPath =

@@ -56,7 +56,7 @@ describe("useCachedBulkReadActions", () => {
     expect(result.current.cachedEntryIds).toEqual([]);
   });
 
-  it("marks cached entries read without per-entry PDS sync", () => {
+  it("marks cached entries read without per-entry AppView sync", () => {
     const queryClient = new QueryClient();
     const entryId = "at://did:plc:alice/site.standard.document/one";
     queryClient.setQueryData([...ENTRIES_QUERY_KEY(pub.publicationId), "all"], {
@@ -87,7 +87,7 @@ describe("useCachedBulkReadActions", () => {
 
     expect(markEntriesRead).toHaveBeenCalledWith([entryId], {
       publications: [pub],
-      syncToPds: false,
+      syncToAppView: false,
     });
   });
 });

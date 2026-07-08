@@ -317,7 +317,8 @@ public init(path dbPath: String, logger: Logger) throws {
     publicationSiteUrls: [String],
     filter: EntryListFilter,
     cursor: String?,
-    limit: Int
+    limit: Int,
+    readFloorAt: Date?
   ) async throws -> AppViewEntryListResponse {
     let nowIso = Self.isoString(from: Date())
     let pageLimit = max(1, min(limit, 100))
@@ -339,7 +340,8 @@ public init(path dbPath: String, logger: Logger) throws {
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
-        nowIso: nowIso
+        nowIso: nowIso,
+        readFloorAt: readFloorAt
       )
       return ThinAppViewQuerySupport.buildFilteredEntryListPage(
         pageLimit: pageLimit,
@@ -369,7 +371,8 @@ public init(path dbPath: String, logger: Logger) throws {
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
-        nowIso: nowIso
+        nowIso: nowIso,
+        readFloorAt: readFloorAt
       )
       if fetched.isEmpty {
         dbHasMore = false
@@ -422,7 +425,8 @@ public init(path dbPath: String, logger: Logger) throws {
     filter: EntryListFilter,
     cursor: (createdAt: Date, uri: String)?,
     limit: Int,
-    nowIso: String
+    nowIso: String,
+    readFloorAt: Date?
   ) async throws -> [(uri: String, renderJSON: String, createdAt: Date, publicationSite: String?)] {
     try await db.read { db in
       let joinClause: String
@@ -461,6 +465,10 @@ public init(path dbPath: String, logger: Logger) throws {
         break
       case .unread:
         sql += " AND rm.subject_uri IS NULL"
+        if let readFloorAt {
+          sql += " AND ci.created_at > ?"
+          args.append(Self.isoString(from: readFloorAt))
+        }
       case .read:
         break
       }
@@ -849,6 +857,12 @@ public init(path dbPath: String, logger: Logger) throws {
       }
     }
     return counters
+  }
+
+  public func readFloor(viewerDid: String, publicationId: String) async throws -> Date? {
+    try await db.read { db in
+      try Self.readFloor(viewerDid: viewerDid, publicationId: publicationId, db: db)
+    }
   }
 
   public func deleteExpiredContent(before: Date) async throws -> Int {

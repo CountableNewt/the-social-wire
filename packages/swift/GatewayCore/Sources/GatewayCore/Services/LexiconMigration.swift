@@ -4,41 +4,33 @@ public struct LexiconMigrationSummary: Sendable, Equatable, Codable {
   public var foldersCopied: Int
   public var publicationPrefsCopied: Int
   public var preferencesCopied: Int
-  public var entryReadStateCopied: Int
   public var foldersDeleted: Int
   public var publicationPrefsDeleted: Int
   public var preferencesDeleted: Int
-  public var entryReadStateDeleted: Int
 
   public init(
     foldersCopied: Int = 0,
     publicationPrefsCopied: Int = 0,
     preferencesCopied: Int = 0,
-    entryReadStateCopied: Int = 0,
     foldersDeleted: Int = 0,
     publicationPrefsDeleted: Int = 0,
-    preferencesDeleted: Int = 0,
-    entryReadStateDeleted: Int = 0
+    preferencesDeleted: Int = 0
   ) {
     self.foldersCopied = foldersCopied
     self.publicationPrefsCopied = publicationPrefsCopied
     self.preferencesCopied = preferencesCopied
-    self.entryReadStateCopied = entryReadStateCopied
     self.foldersDeleted = foldersDeleted
     self.publicationPrefsDeleted = publicationPrefsDeleted
     self.preferencesDeleted = preferencesDeleted
-    self.entryReadStateDeleted = entryReadStateDeleted
   }
 
   public var changed: Bool {
     foldersCopied > 0
       || publicationPrefsCopied > 0
       || preferencesCopied > 0
-      || entryReadStateCopied > 0
       || foldersDeleted > 0
       || publicationPrefsDeleted > 0
       || preferencesDeleted > 0
-      || entryReadStateDeleted > 0
   }
 }
 
@@ -104,14 +96,6 @@ public enum LexiconMigration {
               record: migrated
             )
             summary.preferencesCopied += 1
-          } else if pair.legacy == PublicationLexicons.legacyEntryReadState {
-            try await repo.putRecord(
-              auth: auth,
-              collection: pair.current,
-              rkey: rkey,
-              record: migrated
-            )
-            summary.entryReadStateCopied += 1
           }
         }
 
@@ -124,8 +108,6 @@ public enum LexiconMigration {
           summary.publicationPrefsDeleted += 1
         case PublicationLexicons.legacyPreferences:
           summary.preferencesDeleted += 1
-        case PublicationLexicons.legacyEntryReadState:
-          summary.entryReadStateDeleted += 1
         default:
           break
         }

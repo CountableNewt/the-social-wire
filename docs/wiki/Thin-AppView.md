@@ -12,7 +12,7 @@ Social Wire’s **GDPR-safe Level-1 read index** — optional, feature-flagged, 
 | **Thin AppView** (`/v1/appview/*` on **`services/appview`**, proxied by **`services/gateway`**) | Level-1 entry timelines, unread counts, bootstrap stream, scoped mark-all-read |
 | **Publication sidebar** (`/v1/publications/*` on **`services/appview`**, proxied by gateway) | Server-side discovery, folders, subscriptions, RSS rows, unread badges |
 
-The thin index stores **list-row fields only** (title, `publishedAt`, summary, thumbnail URL refs) for `standard.site` entry collections. **Full entry bodies** and **canonical read writes** stay on each user’s PDS (`app.thesocialwire.entryReadState`).
+The thin index stores **list-row fields only** (title, `publishedAt`, summary, thumbnail URL refs) for `standard.site` entry collections. **Full entry bodies** stay on each author’s PDS. Feed read/unread state is local-first in clients and synchronized to Social Wire AppView, not written as ATProto repo records.
 
 ## Data flow
 
@@ -37,7 +37,7 @@ Fly gateway — OAuth/DPoP, PDS write-through, unbuffered AppView proxy
 
 **Initial reader load:** authenticated NDJSON **`GET /v1/appview/bootstrap-stream`** (gateway proxies AppView without buffering) — progressive sidebar priority, per-folder `sidebarSection` slices, unread counts, first-unread selection, first feed page. Repeat visits paint persisted cache while the stream refreshes.
 
-**Consistency:** PDS first for read marks; clients dual-write to AppView after PDS upsert/delete. Firehose, enrollment, and proactive backfill reconcile drift.
+**Consistency:** clients update local read state immediately, then write AppView read marks or scoped read floors. Firehose, enrollment, and proactive backfill keep content rows current.
 
 ## HTTP routes
 
@@ -51,8 +51,8 @@ All routes require ATProto OAuth (`Authorization: Bearer` or `DPoP` + `DPoP` pro
 | `GET` | `/v1/appview/entries` | Paginated timeline (`authorDid`, scope keys, `filter=all\|unread\|read`, optional `maxEntries`) |
 | `GET` | `/v1/appview/entry` | Level-1 entry detail from index |
 | `GET` | `/v1/appview/unread-counts` | Unread badges by publication or scope |
-| `POST` | `/v1/appview/read-marks` | Write-through read mark after PDS upsert |
-| `DELETE` | `/v1/appview/read-marks` | Write-through unread (delete mark) |
+| `POST` | `/v1/appview/read-marks` | Upsert AppView read mark |
+| `DELETE` | `/v1/appview/read-marks` | Delete AppView read mark |
 | `POST` | `/v1/appview/enroll` | Backfill recent entries for author DIDs (max 500) |
 | `POST` | `/v1/appview/mark-all-read` | Scoped mark-all-read (publication, folder, subscribed, following) |
 | `DELETE` | `/v1/appview/privacy/purge` | Delete all indexed read marks for the authenticated viewer |
@@ -65,7 +65,7 @@ All routes require ATProto OAuth (`Authorization: Bearer` or `DPoP` + `DPoP` pro
 | `POST` | `/v1/publications/refresh` | Recompute sidebar projection |
 | `POST` | `/v1/publications/resolve` | Resolve Add Publication input |
 
-Gateway write-through (PDS repo records): `/v1/publications/folders`, `/prefs`, `/subscriptions`, `/rss-subscriptions`, `/v1/reader/read-marks`, `/v1/reader/mark-all-read`.
+Gateway write-through (PDS repo records): `/v1/publications/folders`, `/prefs`, `/subscriptions`, `/rss-subscriptions`.
 
 OpenAPI: [packages/spec/openapi.yaml](https://github.com/Stygian-Tech/the-social-wire/blob/main/packages/spec/openapi.yaml)
 
@@ -76,7 +76,7 @@ Migrations under [`supabase/migrations/`](https://github.com/Stygian-Tech/the-so
 | Table | Purpose |
 |-------|---------|
 | `content_items` | Level-1 timeline rows keyed by entry AT-URI |
-| `read_marks` | Derived unread state per `(viewer_did, subject_uri)` — not authoritative vs PDS |
+| `read_marks` | AppView unread state per `(viewer_did, subject_uri)` |
 | `sidebar_projection_cache` | Stale-first sidebar/unread/first-page snapshots per viewer |
 | `pds_repo_record_cache` | Short TTL sync accelerator (gateway) |
 
@@ -134,7 +134,7 @@ All use **`primary_region = ams`** (EU co-location with Supabase).
 - **Initial load:** `usePublicationSidebarData` → `GET /v1/appview/bootstrap-stream`
 - **Entry lists:** `useEntries` → `GET /v1/appview/entries`; **`useProactiveFeedRefresh`** polls/refocus-refreshes the active feed
 - **Sidebar:** `publicationProjectionClient` / `socialWireGatewayClient`
-- **Write-through:** AppView + PDS dual-write for read marks; scoped mark-all-read via gateway
+- **Read state:** local optimistic cache + AppView read marks/read floors; scoped mark-all-read via gateway
 - Env: `NEXT_PUBLIC_SOCIALWIRE_API_URL` (default `https://api.thesocialwire.app`)
 
 See [[Web-app]].

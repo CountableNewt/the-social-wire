@@ -18,7 +18,12 @@ describe("atprotoOAuthScopes", () => {
   it("includes required repo collections", () => {
     expect(AT_PROTO_OAUTH_SCOPES).toContain("atproto");
     expect(AT_PROTO_OAUTH_SCOPES).toContain("app.thesocialwire.folder");
-    expect(AT_PROTO_OAUTH_SCOPES).toContain("app.thesocialwire.entryReadState");
+    expect(AT_PROTO_OAUTH_SCOPES).not.toContain(
+      "app.thesocialwire.entryReadState"
+    );
+    expect(AT_PROTO_OAUTH_SCOPES).not.toContain(
+      "com.thesocialwire.entryReadState"
+    );
     expect(AT_PROTO_OAUTH_SCOPES).toContain("com.thesocialwire.folder");
     expect(AT_PROTO_OAUTH_SCOPES).toContain("app.bsky.feed.post");
     expect(AT_PROTO_OAUTH_SCOPES).toContain("app.bsky.feed.like");

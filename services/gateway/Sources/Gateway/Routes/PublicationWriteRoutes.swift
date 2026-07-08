@@ -157,57 +157,6 @@ struct PublicationWriteRoutes {
       return .ok
     }
 
-    group.post("/v1/reader/read-marks") { request, context async throws -> HTTPResponse.Status in
-      guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      let body = try await request.decode(as: ReaderReadMarkRequest.self, context: context)
-      let now = iso8601Now()
-      let readAt = body.readAt ?? now
-      try await repo.putRecord(
-        auth: auth,
-        collection: PublicationLexicons.entryReadState,
-        rkey: DeterministicKeys.entryReadStateRKey(subjectURI: body.subjectUri),
-        record: [
-          "$type": PublicationLexicons.entryReadState,
-          "subjectUri": body.subjectUri,
-          "readAt": readAt,
-          "updatedAt": now,
-        ]
-      )
-      return .ok
-    }
-
-    group.delete("/v1/reader/read-marks") { request, context async throws -> HTTPResponse.Status in
-      guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      let body = try await request.decode(as: ReaderReadMarkDeleteRequest.self, context: context)
-      try await repo.deleteRecord(
-        auth: auth,
-        collection: PublicationLexicons.entryReadState,
-        rkey: DeterministicKeys.entryReadStateRKey(subjectURI: body.subjectUri)
-      )
-      return .ok
-    }
-
-    group.post("/v1/reader/mark-all-read") { request, context async throws -> MarkAllReadResponse in
-      guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      let body = try await request.decode(as: MarkAllReadRequest.self, context: context)
-      let now = iso8601Now()
-      var marked = 0
-      for subjectUri in body.subjectUris {
-        try await repo.putRecord(
-          auth: auth,
-          collection: PublicationLexicons.entryReadState,
-          rkey: DeterministicKeys.entryReadStateRKey(subjectURI: subjectUri),
-          record: [
-            "$type": PublicationLexicons.entryReadState,
-            "subjectUri": subjectUri,
-            "readAt": now,
-            "updatedAt": now,
-          ]
-        )
-        marked += 1
-      }
-      return MarkAllReadResponse(marked: marked)
-    }
   }
 
   private func iso8601Now() -> String {
@@ -257,21 +206,4 @@ struct CreateRssSubscriptionRequest: Codable, Sendable {
   let feedUrl: String
   let title: String?
   let siteUrl: String?
-}
-
-struct ReaderReadMarkRequest: Codable, Sendable {
-  let subjectUri: String
-  let readAt: String?
-}
-
-struct ReaderReadMarkDeleteRequest: Codable, Sendable {
-  let subjectUri: String
-}
-
-struct MarkAllReadRequest: Codable, Sendable {
-  let subjectUris: [String]
-}
-
-struct MarkAllReadResponse: Codable, Sendable, ResponseEncodable {
-  let marked: Int
 }

@@ -20,14 +20,7 @@ const golden = JSON.parse(
   )
 ).vectors;
 
-describe("stygian golden vectors — L@tr/read-state keys", () => {
-  it("entryReadStateRkey matches canonical base32", async () => {
-    const rkey = await latrItemRkeyFromSubjectUri(
-      golden.entryReadStateRkey.input
-    );
-    expect(rkey).toBe(golden.entryReadStateRkey.canonical);
-  });
-
+describe("stygian golden vectors — L@tr keys", () => {
   it("latrExternalRkey matches canonical base32", async () => {
     const rkey = await latrExternalRkeyFromNormalizedUrl(
       golden.latrExternalRkey.normalizedUrl

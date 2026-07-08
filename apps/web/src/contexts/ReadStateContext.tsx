@@ -11,10 +11,8 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { usePDSClient } from "@/hooks/usePDSClient";
 import {
   loadReadState,
-  mergeReadStateMaps,
   saveReadState,
   type EntryReadStateV1,
 } from "@/lib/entryReadStateStorage";
@@ -25,6 +23,11 @@ import {
   bulkUnreadDeltasForPublications,
   clearPublicationUnreadCounts,
 } from "@/lib/optimisticUnreadCounts";
+import {
+  isThinAppViewEnabled,
+  writeThroughReadMark,
+  writeThroughReadMarkDelete,
+} from "@/lib/thinAppViewClient";
 import { publicationEntryIsCached } from "@/lib/unreadCounts";
 
 export type MarkEntryReadOptions = {
@@ -33,8 +36,8 @@ export type MarkEntryReadOptions = {
 
 export type MarkEntriesReadOptions = {
   publications?: DiscoveredPublication[];
-  /** When false, skip per-entry PDS writes (optimistic UI only). */
-  syncToPds?: boolean;
+  /** When false, skip per-entry AppView writes; bulk mark-all-read uses the scoped AppView endpoint instead. */
+  syncToAppView?: boolean;
 };
 
 export type ReadStateContextValue = {
@@ -42,11 +45,10 @@ export type ReadStateContextValue = {
   markEntryUnread: (entryId: string, options?: MarkEntryReadOptions) => void;
   markEntriesRead: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
-  /** Returns whether the entry is marked read in local/PDS-merged state. */
+  /** Returns whether the entry is marked read in local state. */
   isEntryRead: (entryId: string) => boolean;
   /** Bumps when readMap changes; use in unread memo deps. */
   readEpoch: number;
-  syncReadStateFromPDS: () => Promise<void>;
 };
 
 const ReadStateContext = createContext<ReadStateContextValue | null>(null);
@@ -59,9 +61,8 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     setReadEpoch((e) => e + 1);
   }, []);
 
-  const pdsClient = usePDSClient();
   const queryClient = useQueryClient();
-  const { session } = useAuth();
+  const { session, getOAuthSession } = useAuth();
   const viewerDid = session?.did;
 
   useEffect(() => {
@@ -71,29 +72,29 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!pdsClient) return;
+  const syncReadMarkToAppView = useCallback(
+    (entryId: string, readAt: string) => {
+      if (!isThinAppViewEnabled()) return;
+      const oauth = getOAuthSession();
+      if (!oauth) return;
+      void writeThroughReadMark(oauth, entryId, readAt).catch(() => {
+        /* best-effort AppView sync */
+      });
+    },
+    [getOAuthSession]
+  );
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const remote = await pdsClient.listEntryReadStateMap();
-        if (cancelled) return;
-        const local = loadReadState(window.localStorage);
-        const merged = mergeReadStateMaps(local, remote);
-        setReadMap(merged);
-        setReadEpoch((e) => e + 1);
-        saveReadState(window.localStorage, merged);
-      } catch {
-        /* network / OAuth scope / PDS — keep local cache */
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pdsClient]);
+  const syncUnreadMarkToAppView = useCallback(
+    (entryId: string) => {
+      if (!isThinAppViewEnabled()) return;
+      const oauth = getOAuthSession();
+      if (!oauth) return;
+      void writeThroughReadMarkDelete(oauth, entryId).catch(() => {
+        /* best-effort AppView sync */
+      });
+    },
+    [getOAuthSession]
+  );
 
   const markEntryRead = useCallback(
     (entryId: string, options?: MarkEntryReadOptions) => {
@@ -104,11 +105,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") {
           saveReadState(window.localStorage, next);
         }
-        if (pdsClient) {
-          void pdsClient.putEntryReadState(entryId, readAt).catch(() => {
-            /* best-effort sync */
-          });
-        }
+        syncReadMarkToAppView(entryId, readAt);
         if (viewerDid && options?.publicationId) {
           const publicationId = options.publicationId;
           queueMicrotask(() => {
@@ -129,7 +126,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [bumpReadEpoch, pdsClient, queryClient, viewerDid]
+    [bumpReadEpoch, queryClient, syncReadMarkToAppView, viewerDid]
   );
 
   const markEntryUnread = useCallback(
@@ -141,11 +138,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") {
           saveReadState(window.localStorage, next);
         }
-        if (pdsClient) {
-          void pdsClient.deleteEntryReadState(entryId).catch(() => {
-            /* best-effort sync */
-          });
-        }
+        syncUnreadMarkToAppView(entryId);
         if (viewerDid && options?.publicationId) {
           const publicationId = options.publicationId;
           queueMicrotask(() => {
@@ -166,7 +159,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [bumpReadEpoch, pdsClient, queryClient, viewerDid]
+    [bumpReadEpoch, queryClient, syncUnreadMarkToAppView, viewerDid]
   );
 
   const markEntriesRead = useCallback(
@@ -189,11 +182,9 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") {
           saveReadState(window.localStorage, next);
         }
-        if (pdsClient && options?.syncToPds !== false) {
+        if (options?.syncToAppView !== false) {
           for (const id of toSync) {
-            void pdsClient.putEntryReadState(id, readAt).catch(() => {
-              /* best-effort sync */
-            });
+            syncReadMarkToAppView(id, readAt);
           }
         }
         return next;
@@ -209,7 +200,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [bumpReadEpoch, pdsClient, queryClient, viewerDid]
+    [bumpReadEpoch, queryClient, syncReadMarkToAppView, viewerDid]
   );
 
   const markEntriesUnread = useCallback(
@@ -232,12 +223,8 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") {
           saveReadState(window.localStorage, next);
         }
-        if (pdsClient) {
-          for (const id of removed) {
-            void pdsClient.deleteEntryReadState(id).catch(() => {
-              /* best-effort sync */
-            });
-          }
+        for (const id of removed) {
+          syncUnreadMarkToAppView(id);
         }
         if (viewerDid && options?.publications?.length) {
           bulkDeltasRef.current = bulkUnreadDeltasForPublications(
@@ -259,30 +246,13 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [bumpReadEpoch, pdsClient, queryClient, viewerDid]
+    [bumpReadEpoch, queryClient, syncUnreadMarkToAppView, viewerDid]
   );
 
   const isEntryRead = useCallback(
     (entryId: string) => Boolean(readMap[entryId]),
     [readMap]
   );
-
-  const syncReadStateFromPDS = useCallback(async () => {
-    if (!pdsClient) return;
-    try {
-      const remote = await pdsClient.listEntryReadStateMap();
-      setReadMap((local) => {
-        const merged = mergeReadStateMaps(local, remote);
-        if (typeof window !== "undefined") {
-          saveReadState(window.localStorage, merged);
-        }
-        setReadEpoch((e) => e + 1);
-        return merged;
-      });
-    } catch {
-      /* network / OAuth scope / PDS — keep local cache */
-    }
-  }, [pdsClient]);
 
   const value = useMemo(
     (): ReadStateContextValue => ({
@@ -292,7 +262,6 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
       markEntryUnread,
       markEntriesRead,
       markEntriesUnread,
-      syncReadStateFromPDS,
     }),
     [
       isEntryRead,
@@ -301,7 +270,6 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
       markEntryUnread,
       markEntriesRead,
       markEntriesUnread,
-      syncReadStateFromPDS,
     ]
   );
 
