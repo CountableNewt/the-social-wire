@@ -280,10 +280,9 @@ final class SocialWireAppModel {
                 for gatewayScope in scopes {
                     _ = try await gateway.markAllRead(scope: gatewayScope)
                 }
-                for entryId in entryIds {
-                    await syncEntryReadStateToPDS(subjectURI: entryId, readAt: readAt)
-                }
-                await syncCrossClientReadState()
+                await refreshSidebarUnreadCounts(
+                    publicationIds: publicationsAffected(by: scope).map(\.publicationId)
+                )
             } catch {
                 unreadCountsByPublicationId = savedUnreadCounts
                 readAtByEntryId = savedReadAtByEntryId
