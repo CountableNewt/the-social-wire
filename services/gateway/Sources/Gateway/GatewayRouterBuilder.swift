@@ -12,8 +12,12 @@ enum GatewayRouterBuilder {
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
+    router.add(middleware: RequestTraceMiddleware())
     router.add(middleware: GatewayCORSPolicy.middleware(config: config.core))
     router.get("/health") { _, _ in ["status": "ok", "service": "gateway"] }
+    router.get("/livez") { _, _ in ["status": "live", "service": "gateway"] }
+    router.get("/readyz") { _, _ in ["status": "ready", "service": "gateway"] }
+    router.get("/freshness") { _, _ in ["status": "complete", "service": "gateway"] }
 
     OAuthMetadataRoutes(
       oauthPublicOrigin: config.core.oauthPublicOrigin,
@@ -25,7 +29,8 @@ enum GatewayRouterBuilder {
       plcURL: config.core.atprotoPLCURL,
       gatewayClientPolicy: config.core.oauthGateway,
       supplementalJwksJSON: config.core.oauthAccessTokenSupplementalJwksJSON,
-      allowDpopBoundStructuralFallback: config.core.gatewayAppViewInternalSecret != nil,
+      allowDpopBoundStructuralFallback:
+        config.core.gatewayAppViewInternalSecret != nil || config.core.gatewayOperationsInternalSecret != nil,
       logger: logger
     )
     let protected = router.group().add(middleware: authMiddleware)
@@ -50,6 +55,14 @@ enum GatewayRouterBuilder {
         internalSecret: config.core.gatewayAppViewInternalSecret,
         httpClient: httpClient,
         logger: logger
+      ).register(on: protected)
+    }
+
+    if let operationsBase = config.operationsBaseURL {
+      OperationsProxyRoutes(
+        baseURL: operationsBase,
+        internalSecret: config.core.gatewayOperationsInternalSecret,
+        httpClient: httpClient
       ).register(on: protected)
     }
 

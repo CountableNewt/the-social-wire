@@ -1,4 +1,6 @@
+import Foundation
 import Hummingbird
+import OperationsCore
 
 /// Custom request context that carries per-request auth state through the middleware chain.
 ///
@@ -11,9 +13,13 @@ public struct GatewayRequestContext: RequestContext {
   /// Injected by `ATProtoAuthMiddleware` after successful token verification.
   /// `nil` on unauthenticated routes (e.g. `/health`).
   public var authContext: AuthContext?
+  public var requestId: String
+  public var traceContext: TraceContext
 
   public init(source: Source) {
     self.coreContext = .init(source: source)
     self.authContext = nil
+    self.requestId = UUID().uuidString.lowercased()
+    self.traceContext = TraceContext(sampled: false)
   }
 }

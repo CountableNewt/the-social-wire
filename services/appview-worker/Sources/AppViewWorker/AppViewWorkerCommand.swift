@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import ArgumentParser
 import Foundation
 import Logging
+import OperationsCore
 import PostgresNIO
 import ThinAppViewCore
 
@@ -19,6 +20,7 @@ struct AppViewWorkerCommand: AsyncParsableCommand {
 
     let environment = RuntimeEnvironment.mergeProcessWithDotenv()
     let thinConfig = ThinAppViewConfig.fromEnvironment(environment)
+    let operationsConfig = OperationsConfiguration.fromEnvironment(environment)
     guard thinConfig.enabled else {
       throw WorkerRuntimeError.thinAppViewDisabled
     }
@@ -36,13 +38,16 @@ struct AppViewWorkerCommand: AsyncParsableCommand {
     switch backend {
     case .sqlite(let path):
       let store = try SQLiteThinAppViewStore(path: path, logger: workerLogger)
+      let operationsStore = try SQLiteOperationsStore(path: path, logger: workerLogger)
       try await ThinAppViewWorkerRuntime.run(
         store: store,
         config: thinConfig,
         logger: workerLogger,
         httpClient: httpClient,
         plcURL: plcURL,
-        proactiveExtraAuthorDids: proactiveExtraAuthorDids
+        proactiveExtraAuthorDids: proactiveExtraAuthorDids,
+        operationsStore: operationsStore,
+        operationsConfig: operationsConfig
       )
 
     case .postgres(let urlString):
@@ -50,6 +55,7 @@ struct AppViewWorkerCommand: AsyncParsableCommand {
       let pgPool = PostgresClient(configuration: pgConfig, backgroundLogger: workerLogger)
       let store = PostgresThinAppViewStore(pool: pgPool, logger: workerLogger)
       let projectionCache = PostgresAppViewProjectionCacheStore(pool: pgPool, logger: workerLogger)
+      let operationsStore = PostgresOperationsStore(pool: pgPool, logger: workerLogger)
       try await withThrowingTaskGroup(of: Void.self) { group in
         group.addTask { await pgPool.run() }
         group.addTask {
@@ -60,7 +66,9 @@ struct AppViewWorkerCommand: AsyncParsableCommand {
             httpClient: httpClient,
             plcURL: plcURL,
             proactiveExtraAuthorDids: proactiveExtraAuthorDids,
-            projectionCache: projectionCache
+            projectionCache: projectionCache,
+            operationsStore: operationsStore,
+            operationsConfig: operationsConfig
           )
         }
         try await group.next()

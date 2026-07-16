@@ -14,7 +14,11 @@ enum AppViewRouterBuilder {
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
+    router.add(middleware: RequestTraceMiddleware())
     router.get("/health") { _, _ in ["status": "ok", "service": "appview"] }
+    router.get("/livez") { _, _ in ["status": "live", "service": "appview"] }
+    router.get("/readyz") { _, _ in ["status": "ready", "service": "appview"] }
+    router.get("/freshness") { _, _ in ["status": "available", "service": "appview"] }
 
     let internalTrustMiddleware = GatewayInternalTrustAuthMiddleware(
       sharedSecret: config.core.gatewayAppViewInternalSecret,
