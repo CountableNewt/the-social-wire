@@ -27,10 +27,14 @@ public enum ThinAppViewWorkerRuntime {
       },
       projectionCache: projectionCache
     )
+    let telemetry = operationsStore.map { OperationsTelemetryBuffer(store: $0, logger: logger) }
     let firehose = FirehoseSubscriber(
       relayURL: config.relayWebSocketURL,
       indexer: indexer,
       operationsStore: operationsStore,
+      telemetry: telemetry,
+      environment: operationsConfig?.environment ?? "unknown",
+      instanceId: operationsConfig?.instanceId ?? "unknown",
       replayRewindMicroseconds: operationsConfig?.replayRewindMicroseconds ?? 5_000_000,
       logger: logger
     )
@@ -41,6 +45,7 @@ public enum ThinAppViewWorkerRuntime {
     try await withThrowingTaskGroup(of: Void.self) { group in
       group.addTask { await firehose.runForever() }
       group.addTask { await cleanup.runForever() }
+      if let telemetry { group.addTask { await telemetry.runForever() } }
 
       if let httpClient, let plcURL {
         let backfill = ThinAppViewEnrollBackfill(
@@ -78,6 +83,7 @@ public enum ThinAppViewWorkerRuntime {
       if let operationsStore, let operationsConfig, operationsConfig.enabled {
         let heartbeat = OperationsHeartbeatJob(
           store: operationsStore,
+          service: "appview-worker",
           environment: operationsConfig.environment,
           instanceId: operationsConfig.instanceId,
           logger: logger

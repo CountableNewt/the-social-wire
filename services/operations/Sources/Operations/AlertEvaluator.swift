@@ -37,6 +37,21 @@ struct AlertEvaluator {
         )
       )
     }
+    if state.connectionState == .connected,
+       let receivedAt = state.lastReceivedAt,
+       now.timeIntervalSince(receivedAt) >= config.idleAlertSeconds
+    {
+      opened.append(
+        try await store.openAlert(
+          rule: "jetstream_connected_idle",
+          severity: "critical",
+          summary: "Jetstream is connected but has not received an event within the configured threshold.",
+          evidence: ["last_received_cursor": state.lastReceivedCursor.map(String.init) ?? "none"],
+          runbookSlug: "live-process-stalled-ingestion",
+          at: now
+        )
+      )
+    }
     if let committedAt = state.lastCommittedAt,
        now.timeIntervalSince(committedAt) >= config.commitStaleSeconds
     {
@@ -46,7 +61,7 @@ struct AlertEvaluator {
           severity: "critical",
           summary: "The last committed Jetstream cursor is stale.",
           evidence: ["last_committed_cursor": state.lastCommittedCursor.map(String.init) ?? "none"],
-          runbookSlug: "stalled-ingestion",
+          runbookSlug: "live-process-stalled-ingestion",
           at: now
         )
       )
@@ -61,7 +76,7 @@ struct AlertEvaluator {
           severity: "warning",
           summary: "The receive-to-commit Jetstream backlog is above threshold.",
           evidence: ["cursor_delta_microseconds": String(received - committed)],
-          runbookSlug: "stalled-ingestion",
+          runbookSlug: "live-process-stalled-ingestion",
           at: now
         )
       )
@@ -74,7 +89,36 @@ struct AlertEvaluator {
           severity: "critical",
           summary: "A confirmed ingestion gap requires recovery.",
           evidence: ["gap_count": String(confirmedGaps.count)],
-          runbookSlug: "confirm-scope-gap",
+          runbookSlug: "confirming-and-scoping-a-gap",
+          at: now
+        )
+      )
+    }
+    let backfills = try await store.listBackfills(limit: 250)
+    let stalled = backfills.filter {
+      $0.status == .running && now.timeIntervalSince($0.updatedAt) >= config.backfillStallSeconds
+    }
+    if !stalled.isEmpty {
+      opened.append(
+        try await store.openAlert(
+          rule: "backfill_without_progress",
+          severity: "critical",
+          summary: "A running backfill has not reported progress within the configured threshold.",
+          evidence: ["backfill_count": String(stalled.count)],
+          runbookSlug: "running-and-validating-backfills",
+          at: now
+        )
+      )
+    }
+    let terminalFailures = backfills.filter { $0.status == .failed }
+    if !terminalFailures.isEmpty {
+      opened.append(
+        try await store.openAlert(
+          rule: "terminal_backfill_failure",
+          severity: "critical",
+          summary: "A backfill ended in a terminal failure.",
+          evidence: ["backfill_count": String(terminalFailures.count)],
+          runbookSlug: "running-and-validating-backfills",
           at: now
         )
       )

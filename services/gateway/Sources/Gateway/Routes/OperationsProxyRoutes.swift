@@ -12,60 +12,65 @@ struct OperationsProxyRoutes {
   let httpClient: HTTPClient
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
-    get("/v1/operations/overview", on: group)
-    get("/v1/operations/services", on: group)
-    get("/v1/operations/ingestion", on: group)
-    get("/v1/operations/appview", on: group)
-    get("/v1/operations/gaps", on: group)
+    get("/v1/operations/overview", path: "/v1/operations/overview", on: group)
+    get("/v1/operations/services", path: "/v1/operations/services", on: group)
+    get("/v1/operations/ingestion", path: "/v1/operations/ingestion", on: group)
+    get("/v1/operations/appview", path: "/v1/operations/appview", on: group)
+    get("/v1/operations/gaps", path: "/v1/operations/gaps", on: group)
     group.patch("/v1/operations/gaps/:id") { request, context async throws -> Response in
-      try await forward(request, context: context, path: "/v1/operations/gaps/\(context.parameters.get("id"))", method: "PATCH")
+      guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+      return try await forward(request, context: context, path: "/v1/operations/gaps/\(id)", method: "PATCH")
     }
-    get("/v1/operations/backfills", on: group)
-    post("/v1/operations/backfills/dry-run", on: group)
-    post("/v1/operations/backfills", on: group)
+    get("/v1/operations/backfills", path: "/v1/operations/backfills", on: group)
+    post("/v1/operations/backfills/dry-run", path: "/v1/operations/backfills/dry-run", on: group)
+    post("/v1/operations/backfills", path: "/v1/operations/backfills", on: group)
     group.get("/v1/operations/backfills/:id") { request, context async throws -> Response in
-      try await forward(request, context: context, path: "/v1/operations/backfills/\(context.parameters.get("id"))", method: "GET")
+      guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+      return try await forward(request, context: context, path: "/v1/operations/backfills/\(id)", method: "GET")
     }
     for action in ["pause", "resume", "cancel"] {
       group.post("/v1/operations/backfills/:id/\(action)") { request, context async throws -> Response in
-        try await forward(
+        guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+        return try await forward(
           request,
           context: context,
-          path: "/v1/operations/backfills/\(context.parameters.get("id"))/\(action)",
+          path: "/v1/operations/backfills/\(id)/\(action)",
           method: "POST"
         )
       }
     }
-    get("/v1/operations/alerts", on: group)
+    get("/v1/operations/alerts", path: "/v1/operations/alerts", on: group)
     for action in ["acknowledge", "resolve"] {
       group.post("/v1/operations/alerts/:id/\(action)") { request, context async throws -> Response in
-        try await forward(
+        guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+        return try await forward(
           request,
           context: context,
-          path: "/v1/operations/alerts/\(context.parameters.get("id"))/\(action)",
+          path: "/v1/operations/alerts/\(id)/\(action)",
           method: "POST"
         )
       }
     }
-    get("/v1/operations/traces", on: group)
+    get("/v1/operations/traces", path: "/v1/operations/traces", on: group)
     group.get("/v1/operations/traces/:traceId") { request, context async throws -> Response in
-      try await forward(
+      guard let traceId = context.parameters.get("traceId") else { throw HTTPError(.badRequest) }
+      return try await forward(
         request,
         context: context,
-        path: "/v1/operations/traces/\(context.parameters.get("traceId"))",
+        path: "/v1/operations/traces/\(traceId)",
         method: "GET"
       )
     }
   }
 
-  private func get(_ path: String, on group: RouterGroup<GatewayRequestContext>) {
-    group.get(path) { request, context async throws -> Response in
+  private func get(_ route: RouterPath, path: String, on group: RouterGroup<GatewayRequestContext>) {
+    group.get(route) { request, context async throws -> Response in
       try await forward(request, context: context, path: path, method: "GET")
     }
   }
 
-  private func post(_ path: String, on group: RouterGroup<GatewayRequestContext>) {
-    group.post(path) { request, context async throws -> Response in
+  private func post(_ route: RouterPath, path: String, on group: RouterGroup<GatewayRequestContext>) {
+    group.post(route) { request, context async throws -> Response in
       try await forward(request, context: context, path: path, method: "POST")
     }
   }

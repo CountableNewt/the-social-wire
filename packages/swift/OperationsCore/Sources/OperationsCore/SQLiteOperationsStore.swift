@@ -540,6 +540,49 @@ public actor SQLiteOperationsStore: OperationsStore {
     }
   }
 
+  public func recordMetric(_ sample: OperationsMetricSample) async throws {
+    let dimensions = OperationsRedactor.boundedAttributes(sample.dimensions)
+    let dimensionsJSON = try json(dimensions)
+    let dimensionsKey = dimensions.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+    let dimensionsHash = OperationsRedactor.hashIdentity(dimensionsKey)
+    let bucket = Date(timeIntervalSince1970: floor(sample.recordedAt.timeIntervalSince1970 / 60) * 60)
+    try await db.write { database in
+      try database.execute(
+        sql: """
+        INSERT INTO operations_metric_rollups
+          (bucket_start, metric_name, dimensions_hash, dimensions, sample_count, value_sum,
+           value_min, value_max, histogram_buckets, expires_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?, ?, '{}', ?)
+        ON CONFLICT (bucket_start, metric_name, dimensions_hash) DO UPDATE SET
+          sample_count = sample_count + 1, value_sum = value_sum + excluded.value_sum,
+          value_min = MIN(value_min, excluded.value_min), value_max = MAX(value_max, excluded.value_max)
+        """,
+        arguments: [
+          Self.iso(bucket), String(sample.name.prefix(160)), dimensionsHash, dimensionsJSON,
+          sample.value, sample.value, sample.value, Self.iso(bucket.addingTimeInterval(90 * 86_400)),
+        ]
+      )
+    }
+  }
+
+  public func recordEvent(_ event: OperationsEvent) async throws {
+    let attributes = try json(OperationsRedactor.boundedAttributes(event.attributes))
+    try await db.write { database in
+      try database.execute(
+        sql: """
+        INSERT OR IGNORE INTO operations_events
+          (id, service, environment, instance_id, event_name, occurred_at, request_id, trace_id, attributes, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        arguments: [
+          event.id, event.service, event.environment, event.instanceId, String(event.name.prefix(160)),
+          Self.iso(event.occurredAt), event.requestId, event.traceId, attributes,
+          Self.iso(event.occurredAt.addingTimeInterval(30 * 86_400)),
+        ]
+      )
+    }
+  }
+
   public func recordAudit(
     operatorDid: String,
     action: String,
@@ -696,14 +739,15 @@ private enum Schema {
   );
   CREATE INDEX IF NOT EXISTS idx_operations_trace_spans_trace ON operations_trace_spans (trace_id, started_at);
   CREATE TABLE IF NOT EXISTS operations_metric_rollups (
-    bucket_at TEXT NOT NULL, service TEXT NOT NULL, environment TEXT NOT NULL,
-    metric_name TEXT NOT NULL, dimensions TEXT NOT NULL DEFAULT '{}', count INTEGER NOT NULL DEFAULT 0,
-    sum REAL NOT NULL DEFAULT 0, min REAL, max REAL, histogram_buckets TEXT NOT NULL DEFAULT '{}',
-    expires_at TEXT NOT NULL, PRIMARY KEY (bucket_at, service, environment, metric_name, dimensions)
+    bucket_start TEXT NOT NULL, metric_name TEXT NOT NULL, dimensions_hash TEXT NOT NULL,
+    dimensions TEXT NOT NULL DEFAULT '{}', sample_count INTEGER NOT NULL DEFAULT 0,
+    value_sum REAL NOT NULL DEFAULT 0, value_min REAL, value_max REAL,
+    histogram_buckets TEXT NOT NULL DEFAULT '{}', expires_at TEXT NOT NULL,
+    PRIMARY KEY (bucket_start, metric_name, dimensions_hash)
   );
   CREATE TABLE IF NOT EXISTS operations_events (
-    id TEXT PRIMARY KEY, service TEXT NOT NULL, environment TEXT NOT NULL, name TEXT NOT NULL,
-    occurred_at TEXT NOT NULL, trace_id TEXT, request_id TEXT, severity TEXT NOT NULL,
+    id TEXT PRIMARY KEY, service TEXT NOT NULL, environment TEXT NOT NULL, instance_id TEXT NOT NULL,
+    event_name TEXT NOT NULL, occurred_at TEXT NOT NULL, request_id TEXT, trace_id TEXT,
     attributes TEXT NOT NULL DEFAULT '{}', expires_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS operations_audit_events (

@@ -1,0 +1,21 @@
+meta {
+  name: Resume Operations Backfill
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/v1/operations/backfills/{{operationsBackfillId}}/resume
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+  { "auditNote": "Resume after validating backfill conditions", "environmentConfirmation": "{{operationsEnvironmentConfirmation}}" }
+}

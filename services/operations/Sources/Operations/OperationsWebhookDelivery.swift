@@ -12,6 +12,22 @@ struct OperationsWebhookDelivery: Sendable {
   let logger: Logger
 
   func deliver(_ alert: OperationsAlert) async throws {
+    var lastError: Error?
+    for attempt in 0..<5 {
+      do {
+        try await deliverOnce(alert)
+        return
+      } catch {
+        lastError = error
+        guard attempt < 4 else { break }
+        let delayMilliseconds = 250 * (1 << attempt)
+        try? await Task.sleep(for: .milliseconds(delayMilliseconds))
+      }
+    }
+    throw lastError ?? WebhookDeliveryError.rejected
+  }
+
+  private func deliverOnce(_ alert: OperationsAlert) async throws {
     let body = try JSONEncoder().encode(alert)
     let signature = HMAC<SHA256>.authenticationCode(
       for: body,

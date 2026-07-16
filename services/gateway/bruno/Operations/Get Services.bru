@@ -1,0 +1,16 @@
+meta {
+  name: Get Operations Services
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/v1/operations/services
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}

@@ -10,10 +10,11 @@ enum OperationsRouterBuilder {
     config: OperationsServiceConfig,
     httpClient: HTTPClient,
     store: any OperationsStore,
+    telemetry: OperationsTelemetryBuffer?,
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
-    router.add(middleware: RequestTraceMiddleware())
+    router.add(middleware: RequestTraceMiddleware(service: "operations", environment: config.operations.environment, instanceId: config.operations.instanceId, telemetry: telemetry))
     router.get("/health") { _, _ in ["status": "ok", "service": "operations"] }
     router.get("/livez") { _, _ in ["status": "live", "service": "operations"] }
     router.get("/readyz") { _, _ async throws -> [String: String] in

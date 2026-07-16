@@ -220,6 +220,7 @@ public struct CreateBackfillRequest: Codable, Sendable {
   public let dryRun: BackfillDryRunRequest
   public let expectedEstimate: Int
   public let auditNote: String
+  public let environmentConfirmation: String?
 }
 
 public struct OperationsAlert: Codable, Sendable, Identifiable {
@@ -249,6 +250,78 @@ public struct TraceSpan: Codable, Sendable, Identifiable {
   public let status: String
   public let attributes: [String: String]
   public let expiresAt: Date
+
+  public init(
+    id: String = UUID().uuidString.lowercased(),
+    traceId: String,
+    parentSpanId: String? = nil,
+    service: String,
+    name: String,
+    startedAt: Date,
+    durationMs: Double,
+    status: String,
+    attributes: [String: String],
+    expiresAt: Date
+  ) {
+    self.id = id
+    self.traceId = traceId
+    self.parentSpanId = parentSpanId
+    self.service = service
+    self.name = name
+    self.startedAt = startedAt
+    self.durationMs = durationMs
+    self.status = status
+    self.attributes = attributes
+    self.expiresAt = expiresAt
+  }
+}
+
+public struct OperationsMetricSample: Sendable {
+  public let name: String
+  public let value: Double
+  public let dimensions: [String: String]
+  public let recordedAt: Date
+
+  public init(name: String, value: Double, dimensions: [String: String], recordedAt: Date = Date()) {
+    self.name = name
+    self.value = value
+    self.dimensions = dimensions
+    self.recordedAt = recordedAt
+  }
+}
+
+public struct OperationsEvent: Sendable {
+  public let id: String
+  public let service: String
+  public let environment: String
+  public let instanceId: String
+  public let name: String
+  public let occurredAt: Date
+  public let requestId: String?
+  public let traceId: String?
+  public let attributes: [String: String]
+
+  public init(
+    id: String = UUID().uuidString.lowercased(),
+    service: String,
+    environment: String,
+    instanceId: String,
+    name: String,
+    occurredAt: Date = Date(),
+    requestId: String? = nil,
+    traceId: String? = nil,
+    attributes: [String: String] = [:]
+  ) {
+    self.id = id
+    self.service = service
+    self.environment = environment
+    self.instanceId = instanceId
+    self.name = name
+    self.occurredAt = occurredAt
+    self.requestId = requestId
+    self.traceId = traceId
+    self.attributes = attributes
+  }
 }
 
 public struct OperationsOverview: Codable, Sendable {

@@ -294,6 +294,34 @@ paths:
                     type: string
                     example: ok
 
+  /livez:
+    get:
+      operationId: livenessCheck
+      summary: Process liveness
+      security: []
+      tags: [Health]
+      responses:
+        "200": { description: Process is live. }
+
+  /readyz:
+    get:
+      operationId: readinessCheck
+      summary: Dependency readiness
+      security: []
+      tags: [Health]
+      responses:
+        "200": { description: Required dependencies are ready. }
+        "503": { description: A required dependency is unavailable. }
+
+  /freshness:
+    get:
+      operationId: freshnessCheck
+      summary: Data freshness and completeness
+      security: []
+      tags: [Health]
+      responses:
+        "200": { description: Freshness state; degradation does not necessarily remove AppView from rotation. }
+
   /oauth-client-metadata.json:
     get:
       operationId: getOAuthWebClientMetadata
@@ -305,7 +333,7 @@ paths:
       tags: [OAuth]
       responses:
         "200":
-          description: Web client registration JSON (`application_type: web`).
+          description: "Web client registration JSON (`application_type: web`)."
           content:
             application/json:
               schema:
@@ -321,7 +349,7 @@ paths:
       tags: [OAuth]
       responses:
         "200":
-          description: Web client registration JSON (`application_type: web`).
+          description: "Web client registration JSON (`application_type: web`)."
           content:
             application/json:
               schema:
@@ -336,7 +364,7 @@ paths:
       tags: [OAuth]
       responses:
         "200":
-          description: Native client registration JSON (`application_type: native`).
+          description: "Native client registration JSON (`application_type: native`)."
           content:
             application/json:
               schema:
@@ -1078,6 +1106,178 @@ paths:
         "503":
           description: L@tr iOS proxy credentials (`LATR_IOS_PROXY_*`) not configured on this host.
 
+  /v1/operations/overview:
+    get:
+      operationId: getOperationsOverview
+      summary: Aggregated operator overview
+      tags: [Operations]
+      responses:
+        "200": { description: Service, ingestion, gap, backfill, alert, and trace overview. }
+        "403": { description: Authenticated DID is not in `OPERATIONS_OPERATOR_DIDS`. }
+
+  /v1/operations/services:
+    get:
+      operationId: getOperationsServices
+      summary: Service health states
+      tags: [Operations]
+      responses:
+        "200": { description: Service heartbeat and dependency states. }
+
+  /v1/operations/ingestion:
+    get:
+      operationId: getOperationsIngestion
+      summary: Jetstream cursor and gap state
+      tags: [Operations]
+      responses:
+        "200": { description: Received/committed cursor state and recent gaps. }
+
+  /v1/operations/appview:
+    get:
+      operationId: getOperationsAppView
+      summary: AppView operational state
+      tags: [Operations]
+      responses:
+        "200": { description: AppView service state and sampled traces. }
+
+  /v1/operations/gaps:
+    get:
+      operationId: listOperationsGaps
+      summary: List ingestion gaps
+      tags: [Operations]
+      responses:
+        "200": { description: Gap lifecycle rows. }
+
+  /v1/operations/gaps/{id}:
+    patch:
+      operationId: updateOperationsGap
+      summary: Update a gap lifecycle status
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [suspected, confirmed, backfill_queued, backfilling, resolved, ignored] }
+      responses:
+        "200": { description: Updated gap. }
+
+  /v1/operations/backfills/dry-run:
+    post:
+      operationId: dryRunOperationsBackfill
+      summary: Estimate a bounded recovery job
+      tags: [Operations]
+      responses:
+        "200": { description: Estimated records, duration, snapshot end, and conflicts. }
+
+  /v1/operations/backfills:
+    get:
+      operationId: listOperationsBackfills
+      summary: List recovery jobs
+      tags: [Operations]
+      responses:
+        "200": { description: Recovery jobs. }
+    post:
+      operationId: createOperationsBackfill
+      summary: Queue a dry-run-confirmed recovery job
+      tags: [Operations]
+      responses:
+        "200": { description: Queued recovery job. }
+        "409": { description: Dry-run estimate changed and must be reviewed again. }
+        "503": { description: Recovery mutations are disabled. }
+
+  /v1/operations/backfills/{id}:
+    get:
+      operationId: getOperationsBackfill
+      summary: Get one recovery job
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Recovery job and progress. }
+
+  /v1/operations/backfills/{id}/pause:
+    post:
+      operationId: pauseOperationsBackfill
+      summary: Pause between recovery batches
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Paused recovery job. }
+
+  /v1/operations/backfills/{id}/resume:
+    post:
+      operationId: resumeOperationsBackfill
+      summary: Resume from the durable checkpoint
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Requeued recovery job. }
+
+  /v1/operations/backfills/{id}/cancel:
+    post:
+      operationId: cancelOperationsBackfill
+      summary: Cancel between recovery batches
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Cancelled recovery job. }
+
+  /v1/operations/alerts:
+    get:
+      operationId: listOperationsAlerts
+      summary: List persisted alerts and delivery state
+      tags: [Operations]
+      responses:
+        "200": { description: Alert lifecycle rows. }
+
+  /v1/operations/alerts/{id}/acknowledge:
+    post:
+      operationId: acknowledgeOperationsAlert
+      summary: Acknowledge an alert
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Acknowledged alert. }
+
+  /v1/operations/alerts/{id}/resolve:
+    post:
+      operationId: resolveOperationsAlert
+      summary: Resolve an alert
+      tags: [Operations]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Resolved alert. }
+
+  /v1/operations/traces:
+    get:
+      operationId: listOperationsTraces
+      summary: Filter sampled traces
+      tags: [Operations]
+      parameters:
+        - { name: traceId, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: Sampled trace spans. }
+
+  /v1/operations/traces/{traceId}:
+    get:
+      operationId: getOperationsTrace
+      summary: Get one correlated trace
+      tags: [Operations]
+      parameters:
+        - { name: traceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Correlated trace spans. }
+
 tags:
   - name: Health
     description: Service health
@@ -1091,3 +1291,5 @@ tags:
     description: GDPR-safe Level-1 entry index gated behind `ENABLE_THIN_APPVIEW`
   - name: Latr
     description: Authenticated L@tr read-later iOS proxy (`LATR_IOS_PROXY_*` server credentials)
+  - name: Operations
+    description: Operator-DID-allowlisted observability and recovery control plane

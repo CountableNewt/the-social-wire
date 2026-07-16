@@ -2,13 +2,28 @@ import Foundation
 import Logging
 import OperationsCore
 
-struct OperationsHeartbeatJob: Sendable {
+public struct OperationsHeartbeatJob: Sendable {
   let store: any OperationsStore
+  let service: String
   let environment: String
   let instanceId: String
   let logger: Logger
 
-  func runForever() async {
+  public init(
+    store: any OperationsStore,
+    service: String,
+    environment: String,
+    instanceId: String,
+    logger: Logger
+  ) {
+    self.store = store
+    self.service = service
+    self.environment = environment
+    self.instanceId = instanceId
+    self.logger = logger
+  }
+
+  public func runForever() async {
     let startedAt = Date()
     while !Task.isCancelled {
       do {
@@ -24,7 +39,7 @@ struct OperationsHeartbeatJob: Sendable {
         let completeness: OperationsHealthState = gaps.contains { $0.status == .confirmed } ? .degraded : .healthy
         try await store.upsertServiceState(
           OperationsServiceState(
-            service: "appview-worker",
+            service: service,
             environment: environment,
             instanceId: instanceId,
             liveness: .healthy,

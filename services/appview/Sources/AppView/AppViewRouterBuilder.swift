@@ -3,6 +3,7 @@ import Foundation
 import GatewayCore
 import Hummingbird
 import Logging
+import OperationsCore
 import ThinAppViewCore
 
 enum AppViewRouterBuilder {
@@ -11,14 +12,23 @@ enum AppViewRouterBuilder {
     httpClient: HTTPClient,
     thinAppViewStore: any ThinAppViewStore,
     projectionCache: (any AppViewProjectionCacheStore)?,
+    operationsStore: (any OperationsStore)? = nil,
+    telemetry: OperationsTelemetryBuffer? = nil,
+    telemetryEnvironment: String = "unknown",
+    telemetryInstanceId: String = "unknown",
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
-    router.add(middleware: RequestTraceMiddleware())
+    router.add(middleware: RequestTraceMiddleware(service: "appview", environment: telemetryEnvironment, instanceId: telemetryInstanceId, telemetry: telemetry))
     router.get("/health") { _, _ in ["status": "ok", "service": "appview"] }
     router.get("/livez") { _, _ in ["status": "live", "service": "appview"] }
-    router.get("/readyz") { _, _ in ["status": "ready", "service": "appview"] }
-    router.get("/freshness") { _, _ in ["status": "available", "service": "appview"] }
+    router.get("/readyz") { _, _ async throws -> [String: String] in
+      try await operationsStore?.ping()
+      return ["status": "ready", "service": "appview"]
+    }
+    router.get("/freshness") { _, _ async throws -> ServiceFreshnessResponse in
+      try await ServiceFreshnessResponse.evaluate(service: "appview", store: operationsStore)
+    }
 
     let internalTrustMiddleware = GatewayInternalTrustAuthMiddleware(
       sharedSecret: config.core.gatewayAppViewInternalSecret,

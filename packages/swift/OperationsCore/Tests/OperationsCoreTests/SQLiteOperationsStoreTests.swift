@@ -48,7 +48,12 @@ struct SQLiteOperationsStoreTests {
     #expect(estimate.estimatedCount > 0)
 
     let job = try await store.createBackfill(
-      CreateBackfillRequest(dryRun: request, expectedEstimate: estimate.estimatedCount, auditNote: "Repair test gap"),
+      CreateBackfillRequest(
+        dryRun: request,
+        expectedEstimate: estimate.estimatedCount,
+        auditNote: "Repair test gap",
+        environmentConfirmation: nil
+      ),
       operatorDid: "did:plc:operator",
       at: Date()
     )

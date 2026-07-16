@@ -642,6 +642,48 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
+  public func recordMetric(_ sample: OperationsMetricSample) async throws {
+    let dimensions = OperationsRedactor.boundedAttributes(sample.dimensions)
+    let dimensionsJSON = try json(dimensions)
+    let dimensionsKey = dimensions.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+    let dimensionsHash = OperationsRedactor.hashIdentity(dimensionsKey)
+    let bucket = Date(timeIntervalSince1970: floor(sample.recordedAt.timeIntervalSince1970 / 60) * 60)
+    let expiresAt = bucket.addingTimeInterval(90 * 86_400)
+    try await pool.query(
+      """
+      INSERT INTO operations_metric_rollups
+        (bucket_start, metric_name, dimensions_hash, dimensions, sample_count, value_sum,
+         value_min, value_max, histogram_buckets, expires_at)
+      VALUES
+        (\(bucket), \(String(sample.name.prefix(160))), \(dimensionsHash), \(dimensionsJSON)::jsonb,
+         1, \(sample.value), \(sample.value), \(sample.value), '{}'::jsonb, \(expiresAt))
+      ON CONFLICT (bucket_start, metric_name, dimensions_hash) DO UPDATE SET
+        sample_count = operations_metric_rollups.sample_count + 1,
+        value_sum = operations_metric_rollups.value_sum + EXCLUDED.value_sum,
+        value_min = LEAST(operations_metric_rollups.value_min, EXCLUDED.value_min),
+        value_max = GREATEST(operations_metric_rollups.value_max, EXCLUDED.value_max)
+      """,
+      logger: logger
+    )
+  }
+
+  public func recordEvent(_ event: OperationsEvent) async throws {
+    let attributes = try json(OperationsRedactor.boundedAttributes(event.attributes))
+    let expiresAt = event.occurredAt.addingTimeInterval(30 * 86_400)
+    try await pool.query(
+      """
+      INSERT INTO operations_events
+        (id, service, environment, instance_id, event_name, occurred_at, request_id, trace_id, attributes, expires_at)
+      VALUES
+        (\(event.id), \(event.service), \(event.environment), \(event.instanceId),
+         \(String(event.name.prefix(160))), \(event.occurredAt), \(event.requestId), \(event.traceId),
+         \(attributes)::jsonb, \(expiresAt))
+      ON CONFLICT (id) DO NOTHING
+      """,
+      logger: logger
+    )
+  }
+
   public func recordAudit(
     operatorDid: String,
     action: String,

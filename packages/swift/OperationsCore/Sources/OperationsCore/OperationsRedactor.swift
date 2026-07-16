@@ -20,4 +20,16 @@ public enum OperationsRedactor {
     let digest = SHA256.hash(data: Data(value.utf8))
     return digest.prefix(12).map { String(format: "%02x", $0) }.joined()
   }
+
+  public static func hashIdentity(_ value: String) -> String {
+    recordIdentifierHash(value)
+  }
+
+  public static func errorCategory(_ error: Error) -> String {
+    let typeName = String(reflecting: type(of: error)).split(separator: ".").last.map(String.init) ?? "unknown"
+    let bounded = typeName.unicodeScalars.map { scalar in
+      CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : "_"
+    }
+    return String(String(bounded).prefix(64)).lowercased()
+  }
 }

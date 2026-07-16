@@ -15,6 +15,17 @@ public struct OperationsConfiguration: Sendable {
   public let commitStaleSeconds: TimeInterval
   public let backlogAlertMicroseconds: Int64
   public let backfillStallSeconds: TimeInterval
+  public let indexFailureRatio: Double
+  public let indexFailureMinimum: Int
+  public let appView5xxRatio: Double
+  public let appView5xxMinimumRequests: Int
+  public let bootstrapP95Seconds: TimeInterval
+  public let entriesP95Seconds: TimeInterval
+  public let unreadCountsP95Seconds: TimeInterval
+  public let sidebarP95Seconds: TimeInterval
+  public let databaseQueryP95Seconds: TimeInterval
+  public let responseFreshnessSeconds: TimeInterval
+  public let responseFreshnessRatio: Double
 
   public static func fromEnvironment(_ environment: [String: String]) -> OperationsConfiguration {
     let operatorDids = Set(
@@ -37,7 +48,18 @@ public struct OperationsConfiguration: Sendable {
       idleAlertSeconds: seconds(environment["OPERATIONS_IDLE_ALERT_SECONDS"], 300),
       commitStaleSeconds: seconds(environment["OPERATIONS_COMMIT_STALE_SECONDS"], 300),
       backlogAlertMicroseconds: int64(environment["OPERATIONS_BACKLOG_ALERT_MICROSECONDS"], 60_000_000),
-      backfillStallSeconds: seconds(environment["OPERATIONS_BACKFILL_STALL_SECONDS"], 600)
+      backfillStallSeconds: seconds(environment["OPERATIONS_BACKFILL_STALL_SECONDS"], 600),
+      indexFailureRatio: ratio(environment["OPERATIONS_INDEX_FAILURE_RATIO"], 0.01),
+      indexFailureMinimum: integer(environment["OPERATIONS_INDEX_FAILURE_MINIMUM"], 10),
+      appView5xxRatio: ratio(environment["OPERATIONS_APPVIEW_5XX_RATIO"], 0.02),
+      appView5xxMinimumRequests: integer(environment["OPERATIONS_APPVIEW_5XX_MINIMUM_REQUESTS"], 20),
+      bootstrapP95Seconds: seconds(environment["OPERATIONS_BOOTSTRAP_P95_SECONDS"], 5),
+      entriesP95Seconds: seconds(environment["OPERATIONS_ENTRIES_P95_SECONDS"], 2),
+      unreadCountsP95Seconds: seconds(environment["OPERATIONS_UNREAD_COUNTS_P95_SECONDS"], 1.5),
+      sidebarP95Seconds: seconds(environment["OPERATIONS_SIDEBAR_P95_SECONDS"], 3),
+      databaseQueryP95Seconds: seconds(environment["OPERATIONS_DATABASE_QUERY_P95_SECONDS"], 1),
+      responseFreshnessSeconds: seconds(environment["OPERATIONS_RESPONSE_FRESHNESS_SECONDS"], 300),
+      responseFreshnessRatio: ratio(environment["OPERATIONS_RESPONSE_FRESHNESS_RATIO"], 0.05)
     )
   }
 
@@ -60,6 +82,16 @@ public struct OperationsConfiguration: Sendable {
 
   private static func int64(_ value: String?, _ fallback: Int64) -> Int64 {
     guard let value, let parsed = Int64(value), parsed > 0 else { return fallback }
+    return parsed
+  }
+
+  private static func integer(_ value: String?, _ fallback: Int) -> Int {
+    guard let value, let parsed = Int(value), parsed > 0 else { return fallback }
+    return parsed
+  }
+
+  private static func ratio(_ value: String?, _ fallback: Double) -> Double {
+    guard let value, let parsed = Double(value), parsed > 0, parsed <= 1 else { return fallback }
     return parsed
   }
 }

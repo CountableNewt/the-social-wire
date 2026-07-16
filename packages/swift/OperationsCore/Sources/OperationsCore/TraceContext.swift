@@ -37,7 +37,7 @@ public struct TraceContext: Codable, Sendable {
     TraceContext(traceId: traceId, spanId: Self.randomHex(bytes: 8), sampled: sampled ?? self.sampled)
   }
 
-  private static func randomHex(bytes: Int) -> String {
+  public static func randomHex(bytes: Int) -> String {
     (0..<bytes).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
   }
 }

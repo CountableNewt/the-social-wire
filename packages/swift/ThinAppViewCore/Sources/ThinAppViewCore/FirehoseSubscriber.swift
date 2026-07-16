@@ -7,6 +7,9 @@ actor FirehoseSubscriber {
   private let relayURL: String
   private let indexer: ThinAppViewIndexer
   private let operationsStore: (any OperationsStore)?
+  private let telemetry: OperationsTelemetryBuffer?
+  private let environment: String
+  private let instanceId: String
   private let replayRewindMicroseconds: Int64
   private let logger: Logger
 
@@ -14,12 +17,18 @@ actor FirehoseSubscriber {
     relayURL: String,
     indexer: ThinAppViewIndexer,
     operationsStore: (any OperationsStore)?,
+    telemetry: OperationsTelemetryBuffer?,
+    environment: String,
+    instanceId: String,
     replayRewindMicroseconds: Int64,
     logger: Logger
   ) {
     self.relayURL = relayURL
     self.indexer = indexer
     self.operationsStore = operationsStore
+    self.telemetry = telemetry
+    self.environment = environment
+    self.instanceId = instanceId
     self.replayRewindMicroseconds = replayRewindMicroseconds
     self.logger = logger
   }
@@ -35,6 +44,7 @@ actor FirehoseSubscriber {
           reason: OperationsRedactor.errorCategory(error),
           at: now
         )
+        await emitEvent("jetstream.disconnected", attributes: ["error_type": OperationsRedactor.errorCategory(error)])
         await recordDisconnectGap(reason: error, at: now)
         logger.warning(
           "Firehose disconnected; reconnecting from durable cursor",
@@ -54,6 +64,7 @@ actor FirehoseSubscriber {
     )
     let url = try JetstreamCursor.url(relayURL, cursor: cursor)
     try await operationsStore?.markStreamConnected(source: "jetstream", at: Date())
+    await emitEvent("jetstream.connected")
 
     #if canImport(WebSocketKit)
     try await FirehoseLinuxWebSocket.consume(relayURL: url, logger: logger) { text in
@@ -84,6 +95,7 @@ actor FirehoseSubscriber {
     else { return }
 
     let now = Date()
+    let startedAt = now
     let eventTime = Date(timeIntervalSince1970: Double(cursor) / 1_000_000)
     try await operationsStore?.markStreamReceived(
       source: "jetstream",
@@ -116,6 +128,13 @@ actor FirehoseSubscriber {
         committedAt: Date(),
         queueDepth: 0
       )
+      let duration = Date().timeIntervalSince(startedAt)
+      await emitMetric("socialwire.ingestion.events_total", value: 1, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
+      await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "success", "ingestion_mode": "live"])
+      await emitMetric("socialwire.ingestion.commit_lag_seconds", value: Date().timeIntervalSince(eventTime), dimensions: ["collection": collection, "ingestion_mode": "live"])
+      await emitMetric("socialwire.ingestion.db_write_duration_seconds", value: duration, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
+      await emitEvent("commit.committed", attributes: ["collection": collection, "operation": operation])
+      if Int.random(in: 0..<100) < 5 { await emitSpan(startedAt: startedAt, duration: duration, status: "ok", collection: collection, operation: operation) }
     } catch {
       try? await operationsStore?.recordRecoveryFailure(
         jobId: nil,
@@ -126,8 +145,46 @@ actor FirehoseSubscriber {
         errorCategory: OperationsRedactor.errorCategory(error),
         at: Date()
       )
+      let duration = Date().timeIntervalSince(startedAt)
+      await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "error", "error_type": OperationsRedactor.errorCategory(error), "ingestion_mode": "live"])
+      await emitEvent("commit.failed", attributes: ["collection": collection, "operation": operation, "error_type": OperationsRedactor.errorCategory(error)])
+      await emitSpan(startedAt: startedAt, duration: duration, status: "error", collection: collection, operation: operation)
       throw error
     }
+  }
+
+  private func emitMetric(_ name: String, value: Double, dimensions: [String: String]) async {
+    var bounded = dimensions
+    if let collection = bounded["collection"] { bounded["collection"] = Self.collectionDimension(collection) }
+    _ = await telemetry?.enqueue(.metric(.init(name: name, value: value, dimensions: bounded)))
+  }
+
+  private func emitEvent(_ name: String, attributes: [String: String] = [:]) async {
+    var bounded = attributes
+    if let collection = bounded["collection"] { bounded["collection"] = Self.collectionDimension(collection) }
+    _ = await telemetry?.enqueue(.event(.init(service: "appview-worker", environment: environment, instanceId: instanceId, name: name, attributes: bounded)))
+  }
+
+  private func emitSpan(startedAt: Date, duration: TimeInterval, status: String, collection: String, operation: String) async {
+    let trace = TraceContext(sampled: true)
+    _ = await telemetry?.enqueue(.span(.init(
+      traceId: trace.traceId,
+      service: "appview-worker",
+      name: "worker.index.commit",
+      startedAt: startedAt,
+      durationMs: duration * 1_000,
+      status: status,
+      attributes: ["collection": Self.collectionDimension(collection), "operation": operation, "ingestion_mode": "live"],
+      expiresAt: startedAt.addingTimeInterval(status == "error" ? 30 * 86_400 : 7 * 86_400)
+    )))
+  }
+
+  private static func collectionDimension(_ value: String) -> String {
+    let allowlist: Set<String> = [
+      "site.standard.document", "site.standard.entry", "site.standard.publication",
+      "app.skyreader.feed.subscription", "app.thesocialwire.entryReadState",
+    ]
+    return allowlist.contains(value) ? value : "other"
   }
 
   private func recordDisconnectGap(reason: Error, at: Date) async {
