@@ -14,6 +14,10 @@ COPY packages/swift/GatewayCore/Package.swift packages/swift/GatewayCore/Package
 COPY packages/swift/GatewayCore/Sources packages/swift/GatewayCore/Sources
 COPY packages/swift/GatewayCore/Tests packages/swift/GatewayCore/Tests
 
+COPY packages/swift/OperationsCore/Package.swift packages/swift/OperationsCore/Package.resolved* packages/swift/OperationsCore/
+COPY packages/swift/OperationsCore/Sources packages/swift/OperationsCore/Sources
+COPY packages/swift/OperationsCore/Tests packages/swift/OperationsCore/Tests
+
 COPY services/appview/Package.swift services/appview/Package.resolved* services/appview/
 COPY services/appview/Sources services/appview/Sources
 COPY services/appview/Tests services/appview/Tests

@@ -10,6 +10,10 @@ COPY packages/swift/ThinAppViewCore/Package.swift packages/swift/ThinAppViewCore
 COPY packages/swift/ThinAppViewCore/Sources packages/swift/ThinAppViewCore/Sources
 COPY packages/swift/ThinAppViewCore/Tests packages/swift/ThinAppViewCore/Tests
 
+COPY packages/swift/OperationsCore/Package.swift packages/swift/OperationsCore/Package.resolved* packages/swift/OperationsCore/
+COPY packages/swift/OperationsCore/Sources packages/swift/OperationsCore/Sources
+COPY packages/swift/OperationsCore/Tests packages/swift/OperationsCore/Tests
+
 COPY services/appview-worker/Package.swift services/appview-worker/Package.resolved* services/appview-worker/
 COPY services/appview-worker/Sources services/appview-worker/Sources
 COPY services/appview-worker/Tests services/appview-worker/Tests
