@@ -8,6 +8,7 @@ let package = Package(
   ],
   dependencies: [
     .package(path: "../../packages/swift/GatewayCore"),
+    .package(path: "../../packages/swift/OperationsCore"),
     .package(path: "../../packages/swift/ThinAppViewCore"),
     .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.6.0"),
     .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
@@ -23,6 +24,7 @@ let package = Package(
       name: "AppView",
       dependencies: [
         "GatewayCore",
+        "OperationsCore",
         .product(name: "ThinAppViewCore", package: "ThinAppViewCore"),
         .product(name: "Hummingbird", package: "hummingbird"),
         .product(name: "HummingbirdAuth", package: "hummingbird-auth"),

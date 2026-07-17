@@ -22,18 +22,22 @@ enum FirehoseLinuxWebSocket {
 
           WebSocket.connect(to: relayURL, on: group) { ws in
             socketBox.set(ws)
+            let pump = BoundedSequentialMessagePump(
+              capacity: 4_096,
+              handleMessage: handleMessage,
+              onFailure: { error in
+                resumed.resumeOnce(continuation, with: .failure(error))
+                socketBox.close()
+              }
+            )
             logger.info("Firehose connected", metadata: ["url": .string(relayURL)])
 
             ws.onText { _, text in
-              Task {
-                do {
-                  try await handleMessage(text)
-                } catch {
-                  logger.warning(
-                    "Firehose message handling failed",
-                    metadata: ["error": .string("\(error)")]
-                  )
-                }
+              guard pump.enqueue(text) else {
+                logger.warning("Firehose message pump saturated; reconnecting")
+                resumed.resumeOnce(continuation, with: .failure(FirehoseQueueOverflowError()))
+                socketBox.close()
+                return
               }
             }
 

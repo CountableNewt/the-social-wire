@@ -1,0 +1,16 @@
+meta {
+  name: Get Operations Trace
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/v1/operations/traces/{{operationsTraceId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}

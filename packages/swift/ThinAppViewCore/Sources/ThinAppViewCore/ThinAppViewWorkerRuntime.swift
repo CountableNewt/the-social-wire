@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Foundation
 import Logging
+import OperationsCore
 
 /// Runs firehose ingestion, proactive PDS backfill, and TTL cleanup until one task exits or throws.
 public enum ThinAppViewWorkerRuntime {
@@ -11,7 +12,9 @@ public enum ThinAppViewWorkerRuntime {
     httpClient: HTTPClient? = nil,
     plcURL: String? = nil,
     proactiveExtraAuthorDids: [String] = [],
-    projectionCache: (any AppViewProjectionCacheStore)? = nil
+    projectionCache: (any AppViewProjectionCacheStore)? = nil,
+    operationsStore: (any OperationsStore)? = nil,
+    operationsConfig: OperationsConfiguration? = nil
   ) async throws {
     let indexer = ThinAppViewIndexer(
       store: store,
@@ -24,9 +27,15 @@ public enum ThinAppViewWorkerRuntime {
       },
       projectionCache: projectionCache
     )
+    let telemetry = operationsStore.map { OperationsTelemetryBuffer(store: $0, logger: logger) }
     let firehose = FirehoseSubscriber(
       relayURL: config.relayWebSocketURL,
       indexer: indexer,
+      operationsStore: operationsStore,
+      telemetry: telemetry,
+      environment: operationsConfig?.environment ?? "unknown",
+      instanceId: operationsConfig?.instanceId ?? "unknown",
+      replayRewindMicroseconds: operationsConfig?.replayRewindMicroseconds ?? 5_000_000,
       logger: logger
     )
     let cleanup = ThinAppViewTtlCleanupJob(store: store, config: config, logger: logger)
@@ -36,8 +45,9 @@ public enum ThinAppViewWorkerRuntime {
     try await withThrowingTaskGroup(of: Void.self) { group in
       group.addTask { await firehose.runForever() }
       group.addTask { await cleanup.runForever() }
+      if let telemetry { group.addTask { await telemetry.runForever() } }
 
-      if config.proactiveBackfillEnabled, let httpClient, let plcURL {
+      if let httpClient, let plcURL {
         let backfill = ThinAppViewEnrollBackfill(
           store: store,
           indexer: indexer,
@@ -46,14 +56,39 @@ public enum ThinAppViewWorkerRuntime {
           config: config,
           logger: logger
         )
-        let proactive = ThinAppViewProactiveBackfillJob(
-          store: store,
-          backfill: backfill,
-          config: config,
-          logger: logger,
-          extraAuthorDids: proactiveExtraAuthorDids
+        if config.proactiveBackfillEnabled {
+          let proactive = ThinAppViewProactiveBackfillJob(
+            store: store,
+            backfill: backfill,
+            config: config,
+            logger: logger,
+            extraAuthorDids: proactiveExtraAuthorDids
+          )
+          group.addTask { await proactive.runForever() }
+        }
+
+        if let operationsStore, let operationsConfig, operationsConfig.recoveryEnabled {
+          let recovery = ThinAppViewRecoveryJobRunner(
+            store: operationsStore,
+            indexer: indexer,
+            pdsBackfill: backfill,
+            relayURL: config.relayWebSocketURL,
+            workerId: operationsConfig.instanceId,
+            logger: logger
+          )
+          group.addTask { await recovery.runForever() }
+        }
+      }
+
+      if let operationsStore, let operationsConfig, operationsConfig.enabled {
+        let heartbeat = OperationsHeartbeatJob(
+          store: operationsStore,
+          service: "appview-worker",
+          environment: operationsConfig.environment,
+          instanceId: operationsConfig.instanceId,
+          logger: logger
         )
-        group.addTask { await proactive.runForever() }
+        group.addTask { await heartbeat.runForever() }
       }
 
       if config.rssFeedPollEnabled, let httpClient {

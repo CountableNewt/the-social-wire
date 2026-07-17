@@ -7,6 +7,8 @@ struct GatewayServiceConfig: Sendable {
   let cacheBackend: CacheBackend
   /// When set, `GET /v1/publications/sidebar` is proxied to this AppView service base URL.
   let appViewBaseURL: String?
+  /// Dedicated control-plane origin for `/v1/operations/*`.
+  let operationsBaseURL: String?
   /// When set, `/v1/latr/*` is proxied to the external L@tr Gateway using iOS-proxy server credentials.
   let latrIosProxy: LatrIosProxyCredentials.Config?
 
@@ -31,11 +33,14 @@ struct GatewayServiceConfig: Sendable {
     }
     let appViewRaw = env["APPVIEW_BASE_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let appViewBaseURL = (appViewRaw?.isEmpty == false) ? appViewRaw : nil
+    let operationsRaw = env["OPERATIONS_BASE_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let operationsBaseURL = (operationsRaw?.isEmpty == false) ? operationsRaw : nil
     let latrIosProxy = LatrIosProxyCredentials.Config.fromEnvironment(env)
     return GatewayServiceConfig(
       core: core,
       cacheBackend: backend,
       appViewBaseURL: appViewBaseURL,
+      operationsBaseURL: operationsBaseURL,
       latrIosProxy: latrIosProxy
     )
   }

@@ -43,17 +43,6 @@ public actor ThinAppViewIndexer {
     cursor: String? = nil,
     eventTime: Date? = nil
   ) async throws {
-    if let ingestionSource {
-      try? await store.recordIngestionCheckpoint(
-        source: ingestionSource,
-        repoDid: repoDid,
-        collection: collection,
-        cursor: cursor,
-        eventTime: eventTime,
-        observedAt: Date()
-      )
-    }
-
     let record = (try JSONSerialization.jsonObject(with: recordJSON) as? [String: Any]) ?? [:]
 
     if collection == RssFeedLexicons.skyreaderFeedSubscription {

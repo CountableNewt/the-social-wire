@@ -1,0 +1,16 @@
+meta {
+  name: Get Operations Alerts
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/v1/operations/alerts
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}
