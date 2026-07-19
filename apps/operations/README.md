@@ -13,7 +13,7 @@ Set `NEXT_PUBLIC_OPERATIONS_DEMO_MODE=1` for the explicit local demo dataset. No
 ## Environment
 
 - `APP_ENV` — Fixed deployment environment (`dev` or `prod`); forwarded to the browser as `NEXT_PUBLIC_APP_ENV`.
-- `OPERATIONS_OPERATOR_DIDS` — Comma-delimited operator DID allowlist; mirror the Operations service value.
+- `NEXT_PUBLIC_OPERATIONS_OPERATOR_DIDS` — Public comma-delimited operator DID allowlist; `OPERATIONS_OPERATOR_DIDS` is also accepted at build time and forwarded for parity with the Operations service.
 - `NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN` — The single Gateway origin for this deployment.
 - `NEXT_PUBLIC_OPERATIONS_OAUTH_CLIENT_ID` — Hosted client metadata URL when it differs from the same-origin default.
 - `NEXT_PUBLIC_OPERATIONS_DEMO_MODE` — Explicit demo mode; never enable in a deployed operator console.
