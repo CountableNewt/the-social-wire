@@ -16,7 +16,7 @@ export function OperatorActionDialog({ environment, path, label }: { environment
   const [auditNote, setAuditNote] = useState("")
   const [confirmation, setConfirmation] = useState("")
   const mutation = useMutation({
-    mutationFn: () => operationsRequest(session, environment, path, {
+    mutationFn: () => operationsRequest(session, path, {
       method: "POST",
       body: JSON.stringify({ auditNote, environmentConfirmation: confirmation || undefined }),
     }),
