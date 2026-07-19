@@ -1,0 +1,21 @@
+meta {
+  name: Acknowledge Operations Alert
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/v1/operations/alerts/{{operationsAlertId}}/acknowledge
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+  { "auditNote": "Acknowledge after reviewing current evidence", "environmentConfirmation": "{{operationsEnvironmentConfirmation}}" }
+}

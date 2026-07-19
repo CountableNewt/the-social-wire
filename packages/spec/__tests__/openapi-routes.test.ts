@@ -15,6 +15,10 @@ const APPVIEW_SOURCES = join(
   import.meta.dir,
   "../../../services/appview/Sources/AppView"
 );
+const OPERATIONS_SOURCES = join(
+  import.meta.dir,
+  "../../../services/operations/Sources/Operations"
+);
 
 function collectSwiftFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -46,6 +50,7 @@ describe("OpenAPI route drift", () => {
       ...collectSwiftFiles(GATEWAY_SOURCES),
       ...collectSwiftFiles(GATEWAY_CORE_SOURCES),
       ...collectSwiftFiles(APPVIEW_SOURCES),
+      ...collectSwiftFiles(OPERATIONS_SOURCES),
     ]
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
@@ -53,6 +58,9 @@ describe("OpenAPI route drift", () => {
 
     const routePatterns: Record<string, string[]> = {
       "/health": ['get("/health")'],
+      "/livez": ['get("/livez")'],
+      "/readyz": ['get("/readyz")'],
+      "/freshness": ['get("/freshness")'],
       "/oauth-client-metadata.json": ['"/oauth-client-metadata.json"'],
       "/oauth/client-metadata.json": ['"/oauth/client-metadata.json"'],
       "/ios-client-metadata.json": ['"/ios-client-metadata.json"'],
@@ -82,6 +90,23 @@ describe("OpenAPI route drift", () => {
       "/v1/latr/saves/{rkey}/state": ['"/v1/latr/saves/:rkey/state"'],
       "/v1/latr/saves/{rkey}": ['"/v1/latr/saves/:rkey"'],
       "/v1/latr/og-preview": ['"/v1/latr/og-preview"'],
+      "/v1/operations/overview": ['"/v1/operations/overview"'],
+      "/v1/operations/services": ['"/v1/operations/services"'],
+      "/v1/operations/ingestion": ['"/v1/operations/ingestion"'],
+      "/v1/operations/appview": ['"/v1/operations/appview"'],
+      "/v1/operations/gaps": ['"/v1/operations/gaps"'],
+      "/v1/operations/gaps/{id}": ['"/v1/operations/gaps/:id"'],
+      "/v1/operations/backfills/dry-run": ['"/v1/operations/backfills/dry-run"'],
+      "/v1/operations/backfills": ['"/v1/operations/backfills"'],
+      "/v1/operations/backfills/{id}": ['"/v1/operations/backfills/:id"'],
+      "/v1/operations/backfills/{id}/pause": ['registerBackfillAction("pause"'],
+      "/v1/operations/backfills/{id}/resume": ['registerBackfillAction("resume"'],
+      "/v1/operations/backfills/{id}/cancel": ['registerBackfillAction("cancel"'],
+      "/v1/operations/alerts": ['"/v1/operations/alerts"'],
+      "/v1/operations/alerts/{id}/acknowledge": ['registerAlertAction("acknowledge"'],
+      "/v1/operations/alerts/{id}/resolve": ['registerAlertAction("resolve"'],
+      "/v1/operations/traces": ['"/v1/operations/traces"'],
+      "/v1/operations/traces/{traceId}": ['"/v1/operations/traces/:traceId"'],
     };
 
     for (const path of paths) {

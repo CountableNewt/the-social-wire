@@ -67,10 +67,26 @@ filter_changed web \
   'turbo.json' \
   '.github/workflows/ci.yml'
 
+filter_changed operations \
+  'apps/operations/**' \
+  'docs/runbooks/operations/**' \
+  'package.json' \
+  'bun.lock' \
+  'turbo.json' \
+  '.github/workflows/ci.yml'
+
+filter_changed operations_service \
+  'services/operations/**' \
+  'packages/swift/OperationsCore/**' \
+  'supabase/**' \
+  'scripts/fly-deploy-operations.sh' \
+  '.github/workflows/ci.yml'
+
 filter_changed gateway \
   'services/gateway/**' \
   'packages/swift/GatewayCore/**' \
   'packages/swift/ThinAppViewCore/**' \
+  'packages/swift/OperationsCore/**' \
   'scripts/fly-deploy-gateway.sh' \
   '.github/workflows/ci.yml'
 
@@ -78,6 +94,7 @@ filter_changed appview \
   'services/appview/**' \
   'packages/swift/GatewayCore/**' \
   'packages/swift/ThinAppViewCore/**' \
+  'packages/swift/OperationsCore/**' \
   'supabase/**' \
   'scripts/fly-deploy-appview.sh' \
   '.github/workflows/ci.yml'
@@ -85,6 +102,7 @@ filter_changed appview \
 filter_changed appview-worker \
   'services/appview-worker/**' \
   'packages/swift/ThinAppViewCore/**' \
+  'packages/swift/OperationsCore/**' \
   'supabase/**' \
   'scripts/fly-deploy-appview-worker.sh' \
   '.github/workflows/ci.yml'
@@ -102,5 +120,6 @@ filter_changed spec \
   'packages/spec/**' \
   'services/gateway/Sources/Gateway/**' \
   'services/appview/Sources/AppView/**' \
+  'services/operations/Sources/Operations/**' \
   'packages/swift/GatewayCore/**' \
   '.github/workflows/ci.yml'

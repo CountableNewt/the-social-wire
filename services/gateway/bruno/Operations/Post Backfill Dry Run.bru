@@ -1,0 +1,21 @@
+meta {
+  name: Post Backfill Dry Run
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/v1/operations/backfills/dry-run
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+  { "gapId": "{{operationsGapId}}", "sourceMode": "jetstream_replay", "startCursor": 1747487745123000, "endCursor": 1747487750123000, "collections": ["site.standard.document"], "authorDids": [], "batchSize": 1000, "rateLimit": 500, "maxConcurrency": 4 }
+}

@@ -1,0 +1,21 @@
+meta {
+  name: Resolve Operations Alert
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/v1/operations/alerts/{{operationsAlertId}}/resolve
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+  { "auditNote": "Resolve after validating service recovery", "environmentConfirmation": "{{operationsEnvironmentConfirmation}}" }
+}

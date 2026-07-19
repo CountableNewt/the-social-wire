@@ -1,0 +1,21 @@
+meta {
+  name: Patch Operations Gap
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/v1/operations/gaps/{{operationsGapId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+  { "status": "confirmed", "auditNote": "Confirm after reviewing cursor evidence", "environmentConfirmation": "{{operationsEnvironmentConfirmation}}" }
+}

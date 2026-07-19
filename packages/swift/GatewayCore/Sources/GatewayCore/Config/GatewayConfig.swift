@@ -15,6 +15,8 @@ public struct GatewayConfig: Sendable {
   public let oauthAccessTokenSupplementalJwksJSON: String?
   /// Shared HMAC secret for Gateway → AppView internal trust (`GATEWAY_APPVIEW_INTERNAL_SECRET`).
   public let gatewayAppViewInternalSecret: String?
+  /// Shared HMAC secret for Gateway → Operations internal trust.
+  public let gatewayOperationsInternalSecret: String?
 
   public enum AppEnvironment: String, Sendable {
     case local
@@ -45,6 +47,10 @@ public struct GatewayConfig: Sendable {
       env["GATEWAY_APPVIEW_INTERNAL_SECRET"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let gatewayAppViewInternalSecret =
       (internalSecretRaw?.isEmpty == false) ? internalSecretRaw : nil
+    let operationsSecretRaw =
+      env["GATEWAY_OPERATIONS_INTERNAL_SECRET"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let gatewayOperationsInternalSecret =
+      (operationsSecretRaw?.isEmpty == false) ? operationsSecretRaw : nil
     return GatewayConfig(
       atprotoPLCURL: plcURL,
       appEnv: appEnv,
@@ -52,7 +58,8 @@ public struct GatewayConfig: Sendable {
       oauthIosMetadataOrigin: oauthIosMetadataOrigin,
       oauthGateway: gateway,
       oauthAccessTokenSupplementalJwksJSON: oauthAccessTokenSupplementalJwksJSON,
-      gatewayAppViewInternalSecret: gatewayAppViewInternalSecret
+      gatewayAppViewInternalSecret: gatewayAppViewInternalSecret,
+      gatewayOperationsInternalSecret: gatewayOperationsInternalSecret
     )
   }
 }

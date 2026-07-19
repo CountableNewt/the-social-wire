@@ -4,6 +4,7 @@ import Foundation
 import GatewayCore
 import Hummingbird
 import Logging
+import OperationsCore
 import PostgresNIO
 import ThinAppViewCore
 
@@ -29,6 +30,7 @@ struct Serve: AsyncParsableCommand {
 
     let environment = AppEnvironmentLoader.mergeProcessWithDotenv()
     let config = AppViewServiceConfig.fromEnvironment(environment)
+    let operationsConfig = OperationsConfiguration.fromEnvironment(environment)
     let listenPort =
       port
       ?? Int(environment["APPVIEW_PORT"] ?? "")
@@ -55,29 +57,49 @@ struct Serve: AsyncParsableCommand {
       case .sqlite(let path):
         let store = try SQLiteThinAppViewStore(path: path, logger: logger)
         let projectionCache = try SQLiteAppViewProjectionCacheStore(path: path, logger: logger)
+        let operationsStore = try SQLiteOperationsStore(path: path, logger: logger)
+        let telemetry = OperationsTelemetryBuffer(store: operationsStore, logger: logger)
+        let heartbeat = OperationsHeartbeatJob(store: operationsStore, service: "appview", environment: operationsConfig.environment, instanceId: operationsConfig.instanceId, logger: logger)
         let router = AppViewRouterBuilder.router(
           config: config,
           httpClient: httpClient,
           thinAppViewStore: store,
           projectionCache: projectionCache,
+          operationsStore: operationsStore,
+          telemetry: operationsConfig.enabled ? telemetry : nil,
+          telemetryEnvironment: operationsConfig.environment,
+          telemetryInstanceId: operationsConfig.instanceId,
           logger: logger
         )
         let app = Application(
           router: router,
           configuration: .init(address: .hostname(listenHost, port: listenPort))
         )
-        try await app.run()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+          group.addTask { try await app.run() }
+          if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
+          if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
+          try await group.next()
+          group.cancelAll()
+        }
 
       case .postgres(let urlString):
         let pgConfig = try makePostgresConfig(from: urlString, logger: logger)
         let pgPool = PostgresClient(configuration: pgConfig, backgroundLogger: logger)
         let store = PostgresThinAppViewStore(pool: pgPool, logger: logger)
         let projectionCache = PostgresAppViewProjectionCacheStore(pool: pgPool, logger: logger)
+        let operationsStore = PostgresOperationsStore(pool: pgPool, logger: logger)
+        let telemetry = OperationsTelemetryBuffer(store: operationsStore, logger: logger)
+        let heartbeat = OperationsHeartbeatJob(store: operationsStore, service: "appview", environment: operationsConfig.environment, instanceId: operationsConfig.instanceId, logger: logger)
         let router = AppViewRouterBuilder.router(
           config: config,
           httpClient: httpClient,
           thinAppViewStore: store,
           projectionCache: projectionCache,
+          operationsStore: operationsStore,
+          telemetry: operationsConfig.enabled ? telemetry : nil,
+          telemetryEnvironment: operationsConfig.environment,
+          telemetryInstanceId: operationsConfig.instanceId,
           logger: logger
         )
         let app = Application(
@@ -87,6 +109,8 @@ struct Serve: AsyncParsableCommand {
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { await pgPool.run() }
           group.addTask { try await app.run() }
+          if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
+          if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           try await group.next()
           group.cancelAll()
         }

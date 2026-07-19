@@ -100,6 +100,8 @@ struct AppViewProxyRoutes {
     }
     fwd.headers.add(name: "Accept", value: "application/json")
     fwd.headers.add(name: "Authorization", value: auth.authorizationForwardingValue)
+    fwd.headers.add(name: "X-Request-ID", value: context.requestId)
+    fwd.headers.add(name: "traceparent", value: context.traceContext.traceparent)
     if let dpop = auth.dpopProof { fwd.headers.add(name: "DPoP", value: dpop) }
     if let upstream = auth.upstreamDpopProof?.trimmingCharacters(in: .whitespacesAndNewlines),
        !upstream.isEmpty
@@ -152,6 +154,8 @@ struct AppViewProxyRoutes {
     fwd.method = .GET
     fwd.headers.add(name: "Accept", value: "application/x-ndjson")
     fwd.headers.add(name: "Authorization", value: auth.authorizationForwardingValue)
+    fwd.headers.add(name: "X-Request-ID", value: context.requestId)
+    fwd.headers.add(name: "traceparent", value: context.traceContext.traceparent)
     if let dpop = auth.dpopProof { fwd.headers.add(name: "DPoP", value: dpop) }
     if let upstream = auth.upstreamDpopProof?.trimmingCharacters(in: .whitespacesAndNewlines),
        !upstream.isEmpty
