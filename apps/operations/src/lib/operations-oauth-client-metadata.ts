@@ -15,3 +15,7 @@ export function buildOperationsOAuthClientMetadata(origin: string) {
     client_uri: normalizedOrigin,
   }
 }
+
+export function operationsOAuthClientMetadataUrl(gatewayOrigin: string) {
+  return `${new URL(gatewayOrigin).origin}/operations-oauth-client-metadata.json`
+}

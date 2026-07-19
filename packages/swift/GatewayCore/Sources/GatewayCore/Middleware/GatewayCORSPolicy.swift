@@ -15,10 +15,17 @@ public enum GatewayCORSPolicy {
     {
       origins.append(oauth)
     }
+    if let operations = config.oauthOperationsOrigin?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !operations.isEmpty
+    {
+      origins.append(operations)
+    }
     if config.appEnv == .local {
       origins.append(contentsOf: [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
       ])
     }
     return Array(Set(origins)).sorted()

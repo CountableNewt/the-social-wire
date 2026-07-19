@@ -17,6 +17,6 @@ Set `NEXT_PUBLIC_OPERATIONS_DEMO_MODE=1` for the explicit local demo dataset. No
 - `NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN` — The single Gateway origin for this deployment.
 - `NEXT_PUBLIC_OPERATIONS_DEMO_MODE` — Explicit demo mode; never enable in a deployed operator console.
 
-Deploy Development and Production as separate Vercel projects rooted at `apps/operations`. Configure a fixed `APP_ENV`, its corresponding Gateway origin, and the operator DID allowlist per project; the console does not switch environments at runtime. Hosted OAuth metadata is generated at `/operations-client-metadata.json` for the deployment's own origin, including Vercel Preview URLs.
+Deploy Development and Production as separate Vercel projects rooted at `apps/operations`. Configure a fixed `APP_ENV`, its corresponding Gateway origin, and the operator DID allowlist per project; the console does not switch environments at runtime. Hosted deployments use the public Gateway's `/operations-oauth-client-metadata.json` document so OAuth works when the Vercel UI deployment is protected. The same-origin `/operations-client-metadata.json` route remains available as a fallback.
 
 Backfill creation is dry-run-first. Every operator mutation requires an audit note, and Production additionally requires the exact `PRODUCTION` confirmation. Authorization is enforced by the operations service DID allowlist.

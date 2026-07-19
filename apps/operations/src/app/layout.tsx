@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next"
+import { EnvironmentBanner } from "@/components/operations/environment-banner"
+import { operationsEnvironment } from "@/lib/app-environment"
 import { Providers } from "./providers"
 import "./globals.css"
 
@@ -24,9 +26,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, colorScheme: "light dark" }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const development = operationsEnvironment() === "development"
+
   return (
     <html lang="en">
-      <body><Providers>{children}</Providers></body>
+      <body>
+        {development ? <EnvironmentBanner /> : null}
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

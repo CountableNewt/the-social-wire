@@ -64,6 +64,7 @@ describe("OpenAPI route drift", () => {
       "/oauth-client-metadata.json": ['"/oauth-client-metadata.json"'],
       "/oauth/client-metadata.json": ['"/oauth/client-metadata.json"'],
       "/ios-client-metadata.json": ['"/ios-client-metadata.json"'],
+      "/operations-oauth-client-metadata.json": ['"/operations-oauth-client-metadata.json"'],
       "/v1/sync/preferences": ['"/v1/sync/preferences"'],
       "/v1/pds/cache/record": ['"/v1/pds/cache/record"'],
       "/v1/publications/sidebar": ['"/v1/publications/sidebar"'],

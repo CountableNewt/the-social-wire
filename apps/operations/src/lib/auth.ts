@@ -1,5 +1,6 @@
 import { BrowserOAuthClient, type OAuthSession } from "@atproto/oauth-client-browser"
 import { buildAtprotoLoopbackClientId } from "@atproto/oauth-types"
+import { operationsOAuthClientMetadataUrl } from "@/lib/operations-oauth-client-metadata"
 
 export const OPERATIONS_OAUTH_SCOPE = "atproto"
 const storedDidKey = "@@atproto/oauth-client-browser(sub)"
@@ -10,6 +11,8 @@ function localCallback() { const url = new URL(window.location.href); url.hostna
 function hostedCallback() { return new URL("/callback", window.location.origin).toString() }
 function clientId() {
   if (isLocal()) return buildAtprotoLoopbackClientId({ redirect_uris: [localCallback()], scope: OPERATIONS_OAUTH_SCOPE })
+  const gatewayOrigin = process.env.NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN?.trim()
+  if (gatewayOrigin) return operationsOAuthClientMetadataUrl(gatewayOrigin)
   return `${window.location.origin}/operations-client-metadata.json`
 }
 

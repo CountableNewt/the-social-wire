@@ -14,6 +14,8 @@ primary_region = 'ams'
 
 [env]
   PORT = '8080'
+  OAUTH_OPERATIONS_ORIGIN = 'https://operations.thesocialwire.app'
+  OAUTH_OPERATIONS_CLIENT_ID = 'https://api.thesocialwire.app/operations-oauth-client-metadata.json'
 
 [http_service]
   internal_port = 8080
