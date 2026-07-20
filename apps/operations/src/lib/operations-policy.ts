@@ -4,8 +4,30 @@ export function productionConfirmationMatches(environment: EnvironmentName, valu
   return environment !== "production" || value === "PRODUCTION"
 }
 
-export function canQueueBackfill(input: { dryRunComplete: boolean; reviewed: boolean; environment: EnvironmentName; environmentConfirmation: string; auditNote: string; pending: boolean }) {
-  return input.dryRunComplete && input.reviewed && productionConfirmationMatches(input.environment, input.environmentConfirmation) && input.auditNote.trim().length >= 8 && !input.pending
+export type BackfillReadinessInput = {
+  collectionScopeSelected: boolean
+  dryRunComplete: boolean
+  reviewed: boolean
+  environment: EnvironmentName
+  environmentConfirmation: string
+  auditNote: string
+  pending: boolean
+}
+
+export function backfillReadiness(input: BackfillReadinessInput) {
+  return [
+    { id: "collection-scope", label: "At least one collection selected", complete: input.collectionScopeSelected },
+    { id: "dry-run", label: "Dry-run completed for the current configuration", complete: input.dryRunComplete },
+    { id: "audit-note", label: "Audit note contains at least 8 characters", complete: input.auditNote.trim().length >= 8 },
+    { id: "reviewed", label: "Impact review acknowledged", complete: input.reviewed },
+    ...(input.environment === "production"
+      ? [{ id: "production-confirmation", label: "Production confirmation exactly matches PRODUCTION", complete: productionConfirmationMatches(input.environment, input.environmentConfirmation) }]
+      : []),
+  ]
+}
+
+export function canQueueBackfill(input: BackfillReadinessInput) {
+  return !input.pending && backfillReadiness(input).every((requirement) => requirement.complete)
 }
 
 export function filterTraces(spans: Span[], query: string) {

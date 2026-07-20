@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { canQueueBackfill, filterTraces, productionConfirmationMatches } from "@/lib/operations-policy"
+import { backfillReadiness, canQueueBackfill, filterTraces, productionConfirmationMatches } from "@/lib/operations-policy"
 import type { Span } from "@/lib/operations-types"
 
 describe("operations mutation safeguards", () => {
@@ -10,11 +10,17 @@ describe("operations mutation safeguards", () => {
   })
 
   test("requires dry-run, review, audit note, and idle mutation", () => {
-    const ready = { dryRunComplete: true, reviewed: true, environment: "development" as const, environmentConfirmation: "", auditNote: "Recover confirmed gap", pending: false }
+    const ready = { collectionScopeSelected: true, dryRunComplete: true, reviewed: true, environment: "development" as const, environmentConfirmation: "", auditNote: "Recover confirmed gap", pending: false }
     expect(canQueueBackfill(ready)).toBe(true)
+    expect(canQueueBackfill({ ...ready, collectionScopeSelected: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, dryRunComplete: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, auditNote: "short" })).toBe(false)
     expect(canQueueBackfill({ ...ready, pending: true })).toBe(false)
+  })
+
+  test("reports the exact unmet backfill requirements", () => {
+    const requirements = backfillReadiness({ collectionScopeSelected: true, dryRunComplete: true, reviewed: false, environment: "production", environmentConfirmation: "production", auditNote: "short", pending: false })
+    expect(requirements.filter((requirement) => !requirement.complete).map((requirement) => requirement.id)).toEqual(["audit-note", "reviewed", "production-confirmation"])
   })
 })
 
