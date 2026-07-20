@@ -17,6 +17,15 @@ struct OperationsProxyRoutes {
     get("/v1/operations/ingestion", path: "/v1/operations/ingestion", on: group)
     get("/v1/operations/appview", path: "/v1/operations/appview", on: group)
     get("/v1/operations/gaps", path: "/v1/operations/gaps", on: group)
+    group.get("/v1/operations/gaps/:id/investigation") { request, context async throws -> Response in
+      guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+      return try await forward(
+        request,
+        context: context,
+        path: "/v1/operations/gaps/\(id)/investigation",
+        method: "GET"
+      )
+    }
     group.patch("/v1/operations/gaps/:id") { request, context async throws -> Response in
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
       return try await forward(request, context: context, path: "/v1/operations/gaps/\(id)", method: "PATCH")

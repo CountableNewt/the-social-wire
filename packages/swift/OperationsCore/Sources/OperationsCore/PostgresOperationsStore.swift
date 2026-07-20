@@ -689,6 +689,40 @@ public actor PostgresOperationsStore: OperationsStore {
     return result
   }
 
+  public func listTraceSpans(startAt: Date, endAt: Date, limit: Int) async throws -> [TraceSpan] {
+    let limit = max(1, min(limit, 500))
+    let rows = try await pool.query(
+      """
+      SELECT id, trace_id, parent_span_id, service, name, started_at, duration_ms, status,
+             attributes::text, expires_at
+      FROM operations_trace_spans
+      WHERE started_at >= \(startAt) AND started_at <= \(endAt)
+      ORDER BY started_at ASC
+      LIMIT \(limit)
+      """,
+      logger: logger
+    )
+    var result: [TraceSpan] = []
+    for try await row in rows {
+      let value = try row.decode((String, String, String?, String, String, Date, Double, String, String, Date).self)
+      result.append(
+        TraceSpan(
+          id: value.0,
+          traceId: value.1,
+          parentSpanId: value.2,
+          service: value.3,
+          name: value.4,
+          startedAt: value.5,
+          durationMs: value.6,
+          status: value.7,
+          attributes: decodeJSON([String: String].self, from: value.8) ?? [:],
+          expiresAt: value.9
+        )
+      )
+    }
+    return result
+  }
+
   public func recordTraceSpan(_ span: TraceSpan) async throws {
     let attributes = try json(OperationsRedactor.boundedAttributes(span.attributes))
     try await pool.query(
@@ -727,6 +761,40 @@ public actor PostgresOperationsStore: OperationsStore {
       """,
       logger: logger
     )
+  }
+
+  public func listGapInvestigationEvents(startAt: Date, endAt: Date, limit: Int) async throws -> [OperationsEvent] {
+    let limit = max(1, min(limit, 500))
+    let rows = try await pool.query(
+      """
+      SELECT id, service, environment, instance_id, event_name, occurred_at,
+             request_id, trace_id, attributes::text
+      FROM operations_events
+      WHERE occurred_at >= \(startAt) AND occurred_at <= \(endAt)
+        AND event_name IN ('jetstream.disconnected', 'jetstream.connected', 'commit.failed')
+      ORDER BY occurred_at ASC
+      LIMIT \(limit)
+      """,
+      logger: logger
+    )
+    var result: [OperationsEvent] = []
+    for try await row in rows {
+      let value = try row.decode((String, String, String, String, String, Date, String?, String?, String).self)
+      result.append(
+        OperationsEvent(
+          id: value.0,
+          service: value.1,
+          environment: value.2,
+          instanceId: value.3,
+          name: value.4,
+          occurredAt: value.5,
+          requestId: value.6,
+          traceId: value.7,
+          attributes: decodeJSON([String: String].self, from: value.8) ?? [:]
+        )
+      )
+    }
+    return result
   }
 
   public func recordEvent(_ event: OperationsEvent) async throws {

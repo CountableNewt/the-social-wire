@@ -1181,6 +1181,15 @@ paths:
       responses:
         "200": { description: Updated gap. }
 
+  /v1/operations/gaps/{id}/investigation:
+    get:
+      operationId: investigateOperationsGap
+      summary: Correlate retained operational evidence around an ingestion gap
+      tags: [Operations]
+      responses:
+        "200": { description: Qualified cause assessment, evidence timeline, limitations, and next checks. }
+        "404": { description: Gap not found. }
+
   /v1/operations/backfills/dry-run:
     post:
       operationId: dryRunOperationsBackfill

@@ -30,8 +30,10 @@ public protocol OperationsStore: Actor {
   func updateAlertStatus(id: String, status: OperationsAlertStatus, operatorDid: String, at: Date) async throws
   func recordAlertDelivery(id: String, error: String?, at: Date) async throws
   func listTraceSpans(limit: Int, traceId: String?) async throws -> [TraceSpan]
+  func listTraceSpans(startAt: Date, endAt: Date, limit: Int) async throws -> [TraceSpan]
   func recordTraceSpan(_ span: TraceSpan) async throws
   func recordMetric(_ sample: OperationsMetricSample) async throws
+  func listGapInvestigationEvents(startAt: Date, endAt: Date, limit: Int) async throws -> [OperationsEvent]
   func recordEvent(_ event: OperationsEvent) async throws
   func recordAudit(operatorDid: String, action: String, targetType: String, targetId: String?, note: String?, at: Date) async throws
 }

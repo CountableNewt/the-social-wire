@@ -290,7 +290,7 @@ public struct OperationsMetricSample: Sendable {
   }
 }
 
-public struct OperationsEvent: Sendable {
+public struct OperationsEvent: Codable, Sendable {
   public let id: String
   public let service: String
   public let environment: String

@@ -1,8 +1,8 @@
 import type { OAuthSession } from "@/lib/auth"
 import { authFetch } from "@/lib/auth"
 import { operationsEnvironment } from "@/lib/app-environment"
-import { demoOverview } from "@/lib/demo-data"
-import type { BackfillDryRun, DryRunResult, Overview } from "@/lib/operations-types"
+import { demoGapInvestigation, demoOverview } from "@/lib/demo-data"
+import type { BackfillDryRun, DryRunResult, GapInvestigation, Overview } from "@/lib/operations-types"
 
 export function gatewayOrigin() {
   return process.env.NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN
@@ -15,6 +15,7 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
   if (process.env.NEXT_PUBLIC_OPERATIONS_DEMO_MODE === "1") {
     await new Promise((resolve) => setTimeout(resolve, 80))
     if (path === "/v1/operations/overview") return demoOverview as T
+    if (/^\/v1\/operations\/gaps\/[^/]+\/investigation$/.test(path)) return demoGapInvestigation(path.split("/")[4]!) as T
     if (path === "/v1/operations/backfills/dry-run") return { estimatedCount: 1_982_341, estimatedDurationSeconds: 3965, snapshotEndCursor: 1747487750123000, conflicts: [], unresolvedDeletesWarning: false } as T
     return demoOverview as T
   }
@@ -30,5 +31,6 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
   return response.json() as Promise<T>
 }
 export const fetchOverview = (session: OAuthSession | null) => operationsRequest<Overview>(session, "/v1/operations/overview")
+export const fetchGapInvestigation = (session: OAuthSession | null, gapId: string) => operationsRequest<GapInvestigation>(session, `/v1/operations/gaps/${encodeURIComponent(gapId)}/investigation`)
 export const dryRunBackfill = (session: OAuthSession | null, request: BackfillDryRun) => operationsRequest<DryRunResult>(session, "/v1/operations/backfills/dry-run", { method: "POST", body: JSON.stringify(request) })
 export class OperationsForbiddenError extends Error { constructor() { super("This DID is not authorized for operations access") } }

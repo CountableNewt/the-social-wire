@@ -523,6 +523,22 @@ public actor SQLiteOperationsStore: OperationsStore {
     }
   }
 
+  public func listTraceSpans(startAt: Date, endAt: Date, limit: Int) async throws -> [TraceSpan] {
+    let limit = max(1, min(limit, 500))
+    return try await db.read { database in
+      try Row.fetchAll(
+        database,
+        sql: """
+        SELECT * FROM operations_trace_spans
+        WHERE started_at >= ? AND started_at <= ?
+        ORDER BY started_at ASC
+        LIMIT ?
+        """,
+        arguments: [Self.iso(startAt), Self.iso(endAt), limit]
+      ).compactMap(Self.span)
+    }
+  }
+
   public func recordTraceSpan(_ span: TraceSpan) async throws {
     let attributes = try json(OperationsRedactor.boundedAttributes(span.attributes))
     try await db.write { database in
@@ -562,6 +578,23 @@ public actor SQLiteOperationsStore: OperationsStore {
           sample.value, sample.value, sample.value, Self.iso(bucket.addingTimeInterval(90 * 86_400)),
         ]
       )
+    }
+  }
+
+  public func listGapInvestigationEvents(startAt: Date, endAt: Date, limit: Int) async throws -> [OperationsEvent] {
+    let limit = max(1, min(limit, 500))
+    return try await db.read { database in
+      try Row.fetchAll(
+        database,
+        sql: """
+        SELECT * FROM operations_events
+        WHERE occurred_at >= ? AND occurred_at <= ?
+          AND event_name IN ('jetstream.disconnected', 'jetstream.connected', 'commit.failed')
+        ORDER BY occurred_at ASC
+        LIMIT ?
+        """,
+        arguments: [Self.iso(startAt), Self.iso(endAt), limit]
+      ).compactMap(Self.event)
     }
   }
 
@@ -720,6 +753,22 @@ public actor SQLiteOperationsStore: OperationsStore {
       service: row["service"], name: row["name"], startedAt: startedAt,
       durationMs: row["duration_ms"], status: row["status"],
       attributes: decode([String: String].self, attributes) ?? [:], expiresAt: expiresAt
+    )
+  }
+
+  private static func event(_ row: Row) -> OperationsEvent? {
+    guard let occurredAt = date(row["occurred_at"]) else { return nil }
+    let attributes: String = row["attributes"]
+    return OperationsEvent(
+      id: row["id"],
+      service: row["service"],
+      environment: row["environment"],
+      instanceId: row["instance_id"],
+      name: row["event_name"],
+      occurredAt: occurredAt,
+      requestId: row["request_id"],
+      traceId: row["trace_id"],
+      attributes: decode([String: String].self, attributes) ?? [:]
     )
   }
 }

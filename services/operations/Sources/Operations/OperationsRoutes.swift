@@ -26,6 +26,11 @@ struct OperationsRoutes {
     group.get("/v1/operations/gaps") { _, _ async throws -> GapListResponse in
       GapListResponse(gaps: try await store.listGaps(limit: 250))
     }
+    group.get("/v1/operations/gaps/:id/investigation") { _, context async throws -> GapInvestigation in
+      guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
+      guard let investigation = try await store.investigateGap(id: id) else { throw HTTPError(.notFound) }
+      return investigation
+    }
     group.patch("/v1/operations/gaps/:id") { request, context async throws -> IngestionGap in
       guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
@@ -173,6 +178,7 @@ extension OperationsOverview: @retroactive ResponseEncodable {}
 extension OperationsServiceState: @retroactive ResponseEncodable {}
 extension IngestionStreamState: @retroactive ResponseEncodable {}
 extension IngestionGap: @retroactive ResponseEncodable {}
+extension GapInvestigation: @retroactive ResponseEncodable {}
 extension BackfillDryRunResponse: @retroactive ResponseEncodable {}
 extension BackfillJob: @retroactive ResponseEncodable {}
 extension OperationsAlert: @retroactive ResponseEncodable {}

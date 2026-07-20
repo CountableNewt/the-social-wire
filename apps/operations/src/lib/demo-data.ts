@@ -1,4 +1,4 @@
-import type { Overview } from "@/lib/operations-types"
+import type { GapInvestigation, GapInvestigationEvidence, Overview } from "@/lib/operations-types"
 
 const now = new Date()
 const iso = (secondsAgo = 0) => new Date(now.getTime() - secondsAgo * 1000).toISOString()
@@ -38,4 +38,37 @@ export const demoOverview: Overview = {
     ],
   },
   refreshedAt: iso(),
+}
+
+export function demoGapInvestigation(gapId: string): GapInvestigation {
+  const gap = demoOverview.gaps.find((candidate) => candidate.id === gapId) ?? demoOverview.gaps[0]!
+  const disconnectedAt = new Date(gap.detectedAt).getTime() - 2_000
+  const connectedAt = disconnectedAt + 8_000
+  const evidence: GapInvestigationEvidence[] = [
+    { id: "event-commit-failed", kind: "indexing", occurredAt: new Date(disconnectedAt - 400).toISOString(), service: "appview-worker", title: "Commit indexing failed", detail: "database_timeout", attributes: { collection: "site.standard.entry", error_type: "database_timeout" }, traceId: "e2f3a4b5c6d78904".padEnd(32, "a") },
+    { id: "event-disconnected", kind: "stream", occurredAt: new Date(disconnectedAt).toISOString(), service: "appview-worker", title: "Jetstream disconnected", detail: "database_timeout", attributes: { error_type: "database_timeout" } },
+    { id: "gap-detected", kind: "gap", occurredAt: gap.detectedAt, service: "jetstream", title: "Gap detected", detail: gap.reason.replaceAll("_", " "), attributes: { start_cursor: String(gap.startCursor ?? "unknown"), end_cursor: String(gap.endCursor ?? "unknown") } },
+    { id: "event-connected", kind: "stream", occurredAt: new Date(connectedAt).toISOString(), service: "appview-worker", title: "Jetstream connected", detail: "The worker established a Jetstream connection.", attributes: {} },
+  ]
+  evidence.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
+  return {
+    gap,
+    windowStart: new Date(disconnectedAt - 5 * 60_000).toISOString(),
+    windowEnd: new Date(connectedAt + 10 * 60_000).toISOString(),
+    assessment: {
+      title: "Indexing failure interrupted commit advancement",
+      confidence: "high",
+      summary: "The worker recorded a database timeout immediately before the Jetstream connection was restarted.",
+      evidenceIds: ["event-commit-failed", "event-disconnected"],
+      limitations: [
+        "This assessment correlates recorded signals; it cannot prove an unobserved upstream or infrastructure root cause.",
+        "Error details are deliberately redacted to a bounded category in operations telemetry.",
+      ],
+    },
+    evidence,
+    recommendedActions: [
+      "Open the correlated error trace and inspect its recorded attributes.",
+      "Verify the proposed recovery scope against the gap cursor range before running a backfill.",
+    ],
+  }
 }
