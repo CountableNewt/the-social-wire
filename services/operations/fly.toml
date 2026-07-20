@@ -8,7 +8,7 @@ primary_region = 'ord'
 [env]
   PORT = '8083'
   OPERATIONS_TELEMETRY_ENABLED = 'true'
-  OPERATIONS_RECOVERY_ENABLED = 'false'
+  OPERATIONS_RECOVERY_ENABLED = 'true'
   OPERATIONS_ALERT_DELIVERY_ENABLED = 'false'
 
 [http_service]

@@ -10,6 +10,7 @@ primary_region = 'ord'
 
 [env]
   ENABLE_THIN_APPVIEW = 'true'
+  OPERATIONS_RECOVERY_ENABLED = 'true'
   # Per-app secret (same pooler URI as gateway/appview):
   # fly secrets set SUPABASE_DATABASE_URL='postgresql://postgres.[ref]:...' APP_ENV=dev --app the-social-wire-dev-appview-worker
 
