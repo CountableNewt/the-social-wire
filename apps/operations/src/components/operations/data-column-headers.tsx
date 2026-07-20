@@ -37,7 +37,7 @@ export const columnExplanations = {
   "Cursor / Time Range (μs)": "The Jetstream cursor interval covered by the detected gap.",
   "Reason": "The signal that caused the gap to be detected.",
   "Detected": "When the system first recorded the gap.",
-  "Affected Collections": "The number of ATProto collections included in the gap.",
+  "Affected Collections": "The number of ATProto collections attributed to the gap. Unknown means the detector could not determine the collection scope.",
   "Action": "The recovery or lifecycle action currently available for this row.",
   "Backfill ID": "The stable identifier assigned to this recovery job.",
   "Range (μs)": "The cursor interval the backfill is configured to replay.",
