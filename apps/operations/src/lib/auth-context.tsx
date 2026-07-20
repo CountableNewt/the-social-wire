@@ -35,7 +35,14 @@ export function OperationsAuthProvider({ children }: { children: React.ReactNode
   const value = React.useMemo<AuthState>(() => ({
     session, loading, forbidden, setForbidden,
     signIn: beginSignIn,
-    signOut: async () => { if (session) await endSession(session.did); setSession(null); setForbiddenState(false) },
+    signOut: async () => {
+      try {
+        if (session) await endSession(session.did)
+      } finally {
+        setSession(null)
+        setForbiddenState(false)
+      }
+    },
   }), [session, loading, forbidden, setForbidden])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

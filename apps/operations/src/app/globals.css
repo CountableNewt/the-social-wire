@@ -111,7 +111,7 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  html, body { @apply h-full bg-background text-foreground; }
+  html, body { @apply h-full overflow-hidden overscroll-none bg-background text-foreground; }
   body { @apply font-mono antialiased; }
   button, a, select, input, textarea { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45; }
 }

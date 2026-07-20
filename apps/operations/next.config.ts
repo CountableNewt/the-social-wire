@@ -7,6 +7,7 @@ const operatorDids =
   || ""
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   env: {
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV ?? process.env.APP_ENV ?? "",
     NEXT_PUBLIC_OPERATIONS_OPERATOR_DIDS: operatorDids,

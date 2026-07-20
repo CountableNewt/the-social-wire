@@ -18,6 +18,68 @@ public actor PostgresOperationsStore: OperationsStore {
     for try await _ in rows { return }
   }
 
+  public func fetchDatabaseObservability() async throws -> DatabaseObservabilitySnapshot? {
+    let summaryRows = try await pool.query(
+      """
+      SELECT
+        pg_database_size(current_database())::bigint,
+        numbackends::bigint,
+        current_setting('max_connections')::bigint,
+        (xact_commit + xact_rollback)::bigint,
+        CASE
+          WHEN (blks_hit + blks_read) = 0 THEN 1::double precision
+          ELSE blks_hit::double precision / (blks_hit + blks_read)::double precision
+        END,
+        stats_reset
+      FROM pg_stat_database
+      WHERE datname = current_database()
+      """,
+      logger: logger
+    )
+    var summary: (Int64, Int64, Int64, Int64, Double, Date?)?
+    for try await row in summaryRows {
+      summary = try row.decode((Int64, Int64, Int64, Int64, Double, Date?).self)
+      break
+    }
+    guard let summary else { return nil }
+
+    let recordCountRows = try await pool.query(
+      "SELECT COALESCE(SUM(n_live_tup), 0)::bigint FROM pg_stat_user_tables",
+      logger: logger
+    )
+    var estimatedRecords: Int64 = 0
+    for try await row in recordCountRows {
+      estimatedRecords = try row.decode(Int64.self)
+      break
+    }
+
+    let tableRows = try await pool.query(
+      """
+      SELECT schemaname, relname, n_live_tup::bigint
+      FROM pg_stat_user_tables
+      ORDER BY n_live_tup DESC, schemaname, relname
+      LIMIT 10
+      """,
+      logger: logger
+    )
+    var topTables: [DatabaseTableRecordCount] = []
+    for try await row in tableRows {
+      let value = try row.decode((String, String, Int64).self)
+      topTables.append(DatabaseTableRecordCount(schema: value.0, table: value.1, estimatedRecords: value.2))
+    }
+
+    return DatabaseObservabilitySnapshot(
+      databaseSizeBytes: summary.0,
+      activeConnections: summary.1,
+      maxConnections: summary.2,
+      transactionsTotal: summary.3,
+      estimatedRecords: estimatedRecords,
+      cacheHitRatio: summary.4,
+      statsResetAt: summary.5,
+      topTables: topTables
+    )
+  }
+
   public func upsertServiceState(_ state: OperationsServiceState) async throws {
     let dependencies = try json(state.dependencyState)
     try await pool.query(

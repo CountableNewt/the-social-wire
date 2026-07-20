@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next"
+import type { CSSProperties } from "react"
 import { EnvironmentBanner } from "@/components/operations/environment-banner"
 import { operationsEnvironment } from "@/lib/app-environment"
 import { Providers } from "./providers"
@@ -27,10 +28,13 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, colo
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const development = operationsEnvironment() === "development"
+  const shellStyle = {
+    "--operations-banner-height": development ? "1.5rem" : "0rem",
+  } as CSSProperties
 
   return (
     <html lang="en">
-      <body>
+      <body style={shellStyle}>
         {development ? <EnvironmentBanner /> : null}
         <Providers>{children}</Providers>
       </body>

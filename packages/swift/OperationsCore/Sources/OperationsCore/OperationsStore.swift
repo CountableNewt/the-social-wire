@@ -2,6 +2,7 @@ import Foundation
 
 public protocol OperationsStore: Actor {
   func ping() async throws
+  func fetchDatabaseObservability() async throws -> DatabaseObservabilitySnapshot?
   func upsertServiceState(_ state: OperationsServiceState) async throws
   func listServiceStates() async throws -> [OperationsServiceState]
 
@@ -36,6 +37,8 @@ public protocol OperationsStore: Actor {
 }
 
 public extension OperationsStore {
+  func fetchDatabaseObservability() async throws -> DatabaseObservabilitySnapshot? { nil }
+
   func overview(at: Date = Date()) async throws -> OperationsOverview {
     async let services = listServiceStates()
     async let stream = fetchStreamState(source: "jetstream")
@@ -43,6 +46,7 @@ public extension OperationsStore {
     async let backfills = listBackfills(limit: 20)
     async let alerts = listAlerts(limit: 20)
     async let traces = listTraceSpans(limit: 20, traceId: nil)
+    async let database = fetchDatabaseObservability()
     return try await OperationsOverview(
       services: services,
       ingestion: stream,
@@ -50,6 +54,7 @@ public extension OperationsStore {
       backfills: backfills,
       alerts: alerts,
       recentTraces: traces,
+      database: try? await database,
       refreshedAt: at
     )
   }

@@ -22,5 +22,20 @@ export const demoOverview: Overview = {
   recentTraces: [
     ["gateway.request", 812, "200", "/v1/appview/bootstrap-stream"], ["appview.request", 286, "200", "/v1/appview/entries"], ["appview.cache.lookup", 95, "200", "/v1/appview/unread-counts"], ["gateway.appview.proxy", 143, "200", "/v1/publications/sidebar"], ["worker.index.commit", 1210, "error", "site.standard.entry"],
   ].map(([name, duration, status, route], index) => ({ id: `span-${index}`, traceId: `e2f3a4b5c6d7890${index}`.padEnd(32, "a"), service: String(name).split(".")[0], name: String(name), startedAt: iso(20 + index * 8), durationMs: Number(duration), status: String(status), attributes: { route: String(route), cache_outcome: index === 2 ? "hit" : "miss", query_name: "overview" }, expiresAt: iso(-604800) })),
+  database: {
+    databaseSizeBytes: 3_006_477_312,
+    activeConnections: 8,
+    maxConnections: 15,
+    transactionsTotal: 4_826_341,
+    estimatedRecords: 9_842_117,
+    cacheHitRatio: 0.997,
+    statsResetAt: iso(604800),
+    topTables: [
+      { schema: "public", table: "content_items", estimatedRecords: 6_482_193 },
+      { schema: "public", table: "appview_read_marks", estimatedRecords: 1_924_882 },
+      { schema: "public", table: "appview_projection_caches", estimatedRecords: 842_117 },
+      { schema: "public", table: "operations_trace_spans", estimatedRecords: 592_925 },
+    ],
+  },
   refreshedAt: iso(),
 }

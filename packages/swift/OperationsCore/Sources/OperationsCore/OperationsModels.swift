@@ -324,6 +324,49 @@ public struct OperationsEvent: Sendable {
   }
 }
 
+public struct DatabaseTableRecordCount: Codable, Sendable {
+  public let schema: String
+  public let table: String
+  public let estimatedRecords: Int64
+
+  public init(schema: String, table: String, estimatedRecords: Int64) {
+    self.schema = schema
+    self.table = table
+    self.estimatedRecords = estimatedRecords
+  }
+}
+
+public struct DatabaseObservabilitySnapshot: Codable, Sendable {
+  public let databaseSizeBytes: Int64
+  public let activeConnections: Int64
+  public let maxConnections: Int64
+  public let transactionsTotal: Int64
+  public let estimatedRecords: Int64
+  public let cacheHitRatio: Double
+  public let statsResetAt: Date?
+  public let topTables: [DatabaseTableRecordCount]
+
+  public init(
+    databaseSizeBytes: Int64,
+    activeConnections: Int64,
+    maxConnections: Int64,
+    transactionsTotal: Int64,
+    estimatedRecords: Int64,
+    cacheHitRatio: Double,
+    statsResetAt: Date?,
+    topTables: [DatabaseTableRecordCount]
+  ) {
+    self.databaseSizeBytes = databaseSizeBytes
+    self.activeConnections = activeConnections
+    self.maxConnections = maxConnections
+    self.transactionsTotal = transactionsTotal
+    self.estimatedRecords = estimatedRecords
+    self.cacheHitRatio = cacheHitRatio
+    self.statsResetAt = statsResetAt
+    self.topTables = topTables
+  }
+}
+
 public struct OperationsOverview: Codable, Sendable {
   public let services: [OperationsServiceState]
   public let ingestion: IngestionStreamState?
@@ -331,5 +374,6 @@ public struct OperationsOverview: Codable, Sendable {
   public let backfills: [BackfillJob]
   public let alerts: [OperationsAlert]
   public let recentTraces: [TraceSpan]
+  public let database: DatabaseObservabilitySnapshot?
   public let refreshedAt: Date
 }
