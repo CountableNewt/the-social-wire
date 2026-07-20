@@ -82,7 +82,7 @@ struct HTTPRouteContractTests {
     }
   }
 
-  @Test("protected route preflight includes configured allow-origin")
+  @Test("protected route preflight allows operations tracing headers")
   func protectedRoutePreflight() async throws {
     try await withSingletonHTTPClient { client in
       let dbPath =
@@ -95,6 +95,7 @@ struct HTTPRouteContractTests {
         "APP_ENV": "local",
         "SQLITE_DB_PATH": dbPath,
         "OAUTH_PUBLIC_ORIGIN": "https://testing.thesocialwire.app",
+        "OAUTH_OPERATIONS_ORIGIN": "https://operations.testing.thesocialwire.app",
       ]
       let config = GatewayServiceConfig.fromEnvironment(env)
       let cache = try SQLiteCache(path: dbPath, logger: Logger(label: "contracts.sqlite"))
@@ -107,17 +108,29 @@ struct HTTPRouteContractTests {
       let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
       try await app.test(.live) { c in
         var headers = HTTPFields()
-        headers[.origin] = "https://testing.thesocialwire.app"
+        headers[.origin] = "https://operations.testing.thesocialwire.app"
         headers[.accessControlRequestMethod] = "GET"
-        headers[.accessControlRequestHeaders] = "authorization,dpop"
+        headers[.accessControlRequestHeaders] = "authorization,dpop,traceparent,x-request-id"
         let response = try await c.execute(
           uri: "/v1/sync/preferences",
           method: .options,
           headers: headers
         )
         #expect(response.status == .noContent)
-        #expect(response.headers[.accessControlAllowOrigin] == "https://testing.thesocialwire.app")
+        #expect(response.headers[.accessControlAllowOrigin] == "https://operations.testing.thesocialwire.app")
         #expect(response.headers[.accessControlAllowCredentials] == "true")
+        let allowedHeaders = Set(
+          (response.headers[.accessControlAllowHeaders] ?? "")
+            .lowercased()
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        )
+        #expect(allowedHeaders.isSuperset(of: [
+          "authorization",
+          "dpop",
+          "traceparent",
+          "x-request-id",
+        ]))
       }
     }
   }
