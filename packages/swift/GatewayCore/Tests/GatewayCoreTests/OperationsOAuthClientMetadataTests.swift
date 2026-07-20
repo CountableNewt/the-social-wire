@@ -21,6 +21,7 @@ struct OperationsOAuthClientMetadataTests {
       object["redirect_uris"] as? [String]
         == ["https://operations.testing.thesocialwire.app/callback"]
     )
+    #expect(object["client_uri"] as? String == "https://api.testing.thesocialwire.app")
     #expect(object["scope"] as? String == "atproto")
     #expect(object["client_name"] as? String == "The Social Wire Operations")
   }

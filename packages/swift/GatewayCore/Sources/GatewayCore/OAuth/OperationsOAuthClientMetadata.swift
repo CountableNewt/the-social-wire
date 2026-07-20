@@ -33,7 +33,7 @@ public enum OperationsOAuthClientMetadata {
       token_endpoint_auth_method: "none",
       dpop_bound_access_tokens: true,
       client_name: "The Social Wire Operations",
-      client_uri: redirectBase
+      client_uri: metadataBase
     )
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
