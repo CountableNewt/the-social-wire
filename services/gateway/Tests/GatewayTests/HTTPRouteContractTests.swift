@@ -27,7 +27,8 @@ struct HTTPRouteContractTests {
   private func gatewayRouter(
     client: HTTPClient,
     dbPath: String,
-    appViewBaseURL: String? = nil
+    appViewBaseURL: String? = nil,
+    operationsBaseURL: String? = nil
   ) throws -> Router<GatewayRequestContext> {
     let cache = try SQLiteCache(path: dbPath, logger: Logger(label: "contracts.sqlite"))
     var env: [String: String] = [
@@ -36,6 +37,9 @@ struct HTTPRouteContractTests {
     ]
     if let appViewBaseURL, !appViewBaseURL.isEmpty {
       env["APPVIEW_BASE_URL"] = appViewBaseURL
+    }
+    if let operationsBaseURL, !operationsBaseURL.isEmpty {
+      env["OPERATIONS_BASE_URL"] = operationsBaseURL
     }
     let config = GatewayServiceConfig.fromEnvironment(env)
     return GatewayRouterBuilder.router(
@@ -78,6 +82,46 @@ struct HTTPRouteContractTests {
       try await app.test(.live) { c in
         let response = try await c.execute(uri: "/v1/sync/preferences", method: .get)
         #expect(response.status.code == 401)
+      }
+    }
+  }
+
+  @Test("operations overview is absent without OPERATIONS_BASE_URL")
+  func operationsOverviewAbsentWithoutBaseURL() async throws {
+    try await withSingletonHTTPClient { client in
+      let dbPath =
+        FileManager.default.temporaryDirectory
+          .appendingPathComponent("sw-http-\(UUID().uuidString).sqlite")
+          .path
+      defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+      let router = try gatewayRouter(client: client, dbPath: dbPath)
+      let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+      try await app.test(.live) { c in
+        let response = try await c.execute(uri: "/v1/operations/overview", method: .get)
+        #expect(response.status == .notFound)
+      }
+    }
+  }
+
+  @Test("operations overview rejects unauthenticated calls when configured")
+  func operationsOverviewUnauthorizedWhenConfigured() async throws {
+    try await withSingletonHTTPClient { client in
+      let dbPath =
+        FileManager.default.temporaryDirectory
+          .appendingPathComponent("sw-http-\(UUID().uuidString).sqlite")
+          .path
+      defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+      let router = try gatewayRouter(
+        client: client,
+        dbPath: dbPath,
+        operationsBaseURL: "https://operations.example"
+      )
+      let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+      try await app.test(.live) { c in
+        let response = try await c.execute(uri: "/v1/operations/overview", method: .get)
+        #expect(response.status == .unauthorized)
       }
     }
   }
