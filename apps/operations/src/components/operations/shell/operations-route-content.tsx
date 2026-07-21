@@ -33,7 +33,7 @@ export function OperationsRouteContent({
   if (current === "ingestion")
     return (
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
-        <LiveStream data={data} />
+        <LiveStream data={data} environment={environment} />
         <CollectionTable metricRollups={data.metricRollups ?? []} refreshedAt={data.refreshedAt} />
         <GapsTable
           gaps={data.gaps}
@@ -69,7 +69,7 @@ export function OperationsRouteContent({
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <HealthStrip overview={data} />
-      <LiveStream data={data} />
+      <LiveStream data={data} environment={environment} />
       <CollectionTable metricRollups={data.metricRollups ?? []} refreshedAt={data.refreshedAt} />
       <RequestTable spans={data.recentTraces} />
       <DatabaseObservability overview={data} />

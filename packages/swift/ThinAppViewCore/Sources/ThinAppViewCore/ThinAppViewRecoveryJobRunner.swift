@@ -147,14 +147,19 @@ private struct JetstreamReplayExecutor: Sendable {
     )
     do {
       #if canImport(WebSocketKit)
-        try await FirehoseLinuxWebSocket.consume(relayURL: replayURL, logger: logger) { text in
+        try await FirehoseLinuxWebSocket.consume(
+          relayURL: replayURL,
+          logger: logger,
+          onConnected: {}
+        ) { text in
           try await handle(text, progress: progress)
         }
       #else
         try await FirehoseSubscriberURLSessionTransport.consume(
           relayURL: replayURL,
           logger: logger,
-          isCancelled: { Task.isCancelled }
+          isCancelled: { Task.isCancelled },
+          onConnected: {}
         ) { text in
           try await handle(text, progress: progress)
         }

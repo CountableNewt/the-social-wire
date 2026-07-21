@@ -126,6 +126,31 @@ struct HTTPRouteContractTests {
     }
   }
 
+  @Test("operations reconnect rejects unauthenticated calls when configured")
+  func operationsReconnectUnauthorizedWhenConfigured() async throws {
+    try await withSingletonHTTPClient { client in
+      let dbPath =
+        FileManager.default.temporaryDirectory
+          .appendingPathComponent("sw-http-\(UUID().uuidString).sqlite")
+          .path
+      defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+      let router = try gatewayRouter(
+        client: client,
+        dbPath: dbPath,
+        operationsBaseURL: "https://operations.example"
+      )
+      let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+      try await app.test(.live) { c in
+        let response = try await c.execute(
+          uri: "/v1/operations/ingestion/reconnect",
+          method: .post
+        )
+        #expect(response.status == .unauthorized)
+      }
+    }
+  }
+
   @Test("protected route preflight allows operations tracing headers")
   func protectedRoutePreflight() async throws {
     try await withSingletonHTTPClient { client in

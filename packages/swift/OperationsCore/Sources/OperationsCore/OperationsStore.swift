@@ -9,6 +9,8 @@ public protocol OperationsStore: Actor {
   func fetchStreamState(source: String) async throws -> IngestionStreamState?
   func markStreamConnected(source: String, at: Date) async throws
   func markStreamDisconnected(source: String, reason: String, at: Date) async throws
+  func upsertJetstreamEndpoint(_ state: JetstreamEndpointState) async throws
+  func listJetstreamEndpoints() async throws -> [JetstreamEndpointState]
   func markStreamReceived(
     source: String, cursor: Int64, eventAt: Date?, receivedAt: Date, queueDepth: Int) async throws
   func markStreamCommitted(
@@ -16,6 +18,17 @@ public protocol OperationsStore: Actor {
   func recordRecoveryFailure(
     jobId: String?, identityHash: String, collection: String, operation: String, cursor: Int64?,
     errorCategory: String, at: Date) async throws
+
+  func createCommand(
+    action: OperationsCommandAction, operatorDid: String, auditNote: String, at: Date
+  ) async throws -> OperationsWorkerCommand
+  func listCommands(limit: Int) async throws -> [OperationsWorkerCommand]
+  func claimNextCommand(
+    action: OperationsCommandAction, workerId: String, at: Date
+  ) async throws -> OperationsWorkerCommand?
+  func completeCommand(
+    id: String, status: OperationsCommandStatus, failureReason: String?, at: Date
+  ) async throws
 
   func createGap(
     source: String, startCursor: Int64?, endCursor: Int64?, reason: String, collections: [String],
@@ -71,6 +84,8 @@ extension OperationsStore {
   public func overview(at: Date = Date()) async throws -> OperationsOverview {
     async let services = listServiceStates()
     async let stream = fetchStreamState(source: "jetstream")
+    async let jetstreamEndpoints = listJetstreamEndpoints()
+    async let commands = listCommands(limit: 20)
     async let gaps = listGaps(limit: 20)
     async let backfills = listBackfills(limit: 20)
     async let alerts = listAlerts(limit: 20)
@@ -84,6 +99,8 @@ extension OperationsStore {
     return try await OperationsOverview(
       services: services,
       ingestion: stream,
+      jetstreamEndpoints: jetstreamEndpoints,
+      commands: commands,
       gaps: gaps,
       backfills: backfills,
       alerts: alerts,

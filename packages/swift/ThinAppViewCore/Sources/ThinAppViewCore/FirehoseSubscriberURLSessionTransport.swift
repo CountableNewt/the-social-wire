@@ -10,6 +10,7 @@ enum FirehoseSubscriberURLSessionTransport {
     relayURL: String,
     logger: Logger,
     isCancelled: @Sendable @escaping () -> Bool,
+    onConnected: @Sendable @escaping () async -> Void,
     handleMessage: @Sendable @escaping (String) async throws -> Void
   ) async throws {
     guard let url = URL(string: relayURL) else {
@@ -18,6 +19,7 @@ enum FirehoseSubscriberURLSessionTransport {
 
     let task = URLSession.shared.webSocketTask(with: url)
     task.resume()
+    await onConnected()
     defer {
       task.cancel(with: URLSessionWebSocketTask.CloseCode.goingAway, reason: nil)
     }

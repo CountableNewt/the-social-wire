@@ -27,6 +27,31 @@ export type StreamState = {
   queueDepth: number
   heartbeatAt: string
 }
+export type JetstreamEndpoint = {
+  id: string
+  displayName: string
+  host: string
+  role: "active" | "standby"
+  connectionState: "connected" | "disconnected" | "reconnecting" | "unknown"
+  lastConnectedAt?: string
+  lastDisconnectedAt?: string
+  lastError?: string
+  connectionAttempts: number
+  failoverCount: number
+  updatedAt: string
+}
+export type OperationsCommand = {
+  id: string
+  action: "reconnect_jetstream"
+  status: "queued" | "running" | "completed" | "failed"
+  requestedByDid: string
+  auditNote: string
+  claimedBy?: string
+  failureReason?: string
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+}
 export type Gap = {
   id: string
   source: string
@@ -147,6 +172,8 @@ export type DatabaseObservabilitySnapshot = {
 export type Overview = {
   services: ServiceState[]
   ingestion?: StreamState
+  jetstreamEndpoints?: JetstreamEndpoint[]
+  commands?: OperationsCommand[]
   gaps: Gap[]
   backfills: Backfill[]
   alerts: Alert[]

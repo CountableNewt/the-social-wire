@@ -8,10 +8,12 @@ import type {
   DryRunResult,
   GapInvestigation,
   Overview,
+  OperationsCommand,
   TraceListResponse,
 } from "@/lib/operations-types"
 
 let demoCreatedBackfill: Backfill | undefined
+let demoReconnectCommand: OperationsCommand | undefined
 
 export function gatewayOrigin() {
   return (
@@ -31,12 +33,29 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
     if (path === "/v1/operations/overview")
       return {
         ...demoOverview,
+        commands: demoReconnectCommand
+          ? [evolveDemoReconnect(demoReconnectCommand), ...(demoOverview.commands ?? [])]
+          : demoOverview.commands,
         backfills: demoCreatedBackfill
           ? [evolveDemoBackfill(demoCreatedBackfill), ...demoOverview.backfills]
           : demoOverview.backfills,
         metricRollups: demoMetricRollups(),
         refreshedAt: new Date().toISOString(),
       } as T
+    if (path === "/v1/operations/ingestion/reconnect" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { auditNote: string }
+      const createdAt = new Date().toISOString()
+      demoReconnectCommand = {
+        id: `command-demo-${Date.now()}`,
+        action: "reconnect_jetstream",
+        status: "queued",
+        requestedByDid: "did:plc:demo-operator",
+        auditNote: body.auditNote,
+        createdAt,
+        updatedAt: createdAt,
+      }
+      return demoReconnectCommand as T
+    }
     if (/^\/v1\/operations\/gaps\/[^/]+\/investigation$/.test(path))
       return demoGapInvestigation(path.split("/")[4]!) as T
     if (/^\/v1\/operations\/traces\/[^/]+$/.test(path)) {
@@ -143,5 +162,19 @@ function evolveDemoBackfill(job: Backfill): Backfill {
     leaseExpiresAt: completed ? undefined : new Date(Date.now() + 30_000).toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: completed ? new Date().toISOString() : undefined,
+  }
+}
+
+function evolveDemoReconnect(command: OperationsCommand): OperationsCommand {
+  const elapsedSeconds = Math.max(0, (Date.now() - new Date(command.createdAt).getTime()) / 1000)
+  if (elapsedSeconds < 1) return command
+  if (elapsedSeconds < 3)
+    return { ...command, status: "running", claimedBy: "worker-demo-01", updatedAt: new Date().toISOString() }
+  return {
+    ...command,
+    status: "completed",
+    claimedBy: "worker-demo-01",
+    updatedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
   }
 }

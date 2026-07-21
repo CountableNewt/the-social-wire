@@ -17,7 +17,34 @@ struct OperationsRoutes {
     group.get("/v1/operations/ingestion") { _, _ async throws -> IngestionResponse in
       IngestionResponse(
         state: try await store.fetchStreamState(source: "jetstream"),
+        endpoints: try await store.listJetstreamEndpoints(),
+        commands: try await store.listCommands(limit: 20),
         gaps: try await store.listGaps(limit: 100))
+    }
+    group.post("/v1/operations/ingestion/reconnect") {
+      request, context async throws -> OperationsWorkerCommand in
+      guard config.recoveryEnabled else {
+        throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled")
+      }
+      guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
+      let mutation = try await request.decode(as: OperatorMutationRequest.self, context: context)
+      try validate(mutation)
+      let active = try await store.listCommands(limit: 250).contains {
+        $0.action == .reconnectJetstream && ($0.status == .queued || $0.status == .running)
+      }
+      guard !active else {
+        throw HTTPError(.conflict, message: "A Jetstream reconnect is already in progress")
+      }
+      let command = try await store.createCommand(
+        action: .reconnectJetstream,
+        operatorDid: operatorDid,
+        auditNote: mutation.auditNote,
+        at: Date()
+      )
+      try await store.recordAudit(
+        operatorDid: operatorDid, action: "jetstream.reconnect_requested", targetType: "command",
+        targetId: command.id, note: mutation.auditNote, at: Date())
+      return command
     }
     group.get("/v1/operations/appview") { _, _ async throws -> AppViewOperationsResponse in
       AppViewOperationsResponse(
@@ -207,6 +234,8 @@ struct OperatorMutationRequest: Codable, Sendable {
 struct OperationsServiceListResponse: Codable, Sendable { let services: [OperationsServiceState] }
 struct IngestionResponse: Codable, Sendable {
   let state: IngestionStreamState?
+  let endpoints: [JetstreamEndpointState]
+  let commands: [OperationsWorkerCommand]
   let gaps: [IngestionGap]
 }
 struct AppViewOperationsResponse: Codable, Sendable {
@@ -226,6 +255,7 @@ extension GapInvestigation: @retroactive ResponseEncodable {}
 extension BackfillDryRunResponse: @retroactive ResponseEncodable {}
 extension BackfillJob: @retroactive ResponseEncodable {}
 extension OperationsAlert: @retroactive ResponseEncodable {}
+extension OperationsWorkerCommand: @retroactive ResponseEncodable {}
 extension TraceSpan: @retroactive ResponseEncodable {}
 extension OperationsServiceListResponse: ResponseEncodable {}
 extension IngestionResponse: ResponseEncodable {}

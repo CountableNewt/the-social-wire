@@ -15,6 +15,7 @@ struct OperationsProxyRoutes {
     get("/v1/operations/overview", path: "/v1/operations/overview", on: group)
     get("/v1/operations/services", path: "/v1/operations/services", on: group)
     get("/v1/operations/ingestion", path: "/v1/operations/ingestion", on: group)
+    post("/v1/operations/ingestion/reconnect", path: "/v1/operations/ingestion/reconnect", on: group)
     get("/v1/operations/appview", path: "/v1/operations/appview", on: group)
     get("/v1/operations/gaps", path: "/v1/operations/gaps", on: group)
     group.get("/v1/operations/gaps/:id/investigation") { request, context async throws -> Response in
