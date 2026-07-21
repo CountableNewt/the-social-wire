@@ -61,7 +61,7 @@ export function BackfillSheet({
       authorDids: [],
       batchSize: 1000,
       rateLimit: 500,
-      maxConcurrency: 4,
+      maxConcurrency: 1,
     }),
     [collections, gap, sourceMode],
   )
@@ -173,7 +173,11 @@ export function BackfillSheet({
                     {gap?.startCursor ?? "—"} .. {gap?.endCursor ?? "—"}
                   </p>
                   <p className="mt-2 text-muted-foreground">
-                    Δ {gap?.startCursor && gap?.endCursor ? (gap.endCursor - gap.startCursor).toLocaleString() : 0} μs
+                    Δ{" "}
+                    {gap?.startCursor !== undefined && gap.endCursor !== undefined
+                      ? (gap.endCursor - gap.startCursor).toLocaleString()
+                      : "—"}{" "}
+                    μs
                   </p>
                 </div>
               </section>
@@ -191,16 +195,26 @@ export function BackfillSheet({
                 </div>
                 <dl className="mt-2 divide-y rounded-md border text-[10px]">
                   <BackfillSummary
-                    label="Estimated Events"
+                    label="Modeled Event Estimate"
                     value={dryRun.data?.estimatedCount.toLocaleString() ?? "Required"}
                   />
                   <BackfillSummary
-                    label="Estimated Duration"
+                    label="Rate-Limit Projection"
                     value={dryRun.data ? `~ ${Math.ceil(dryRun.data.estimatedDurationSeconds / 60)} min` : "—"}
                   />
                   <BackfillSummary
+                    label="Estimate Basis"
+                    value={
+                      dryRun.data
+                        ? sourceMode === "jetstream_replay"
+                          ? "250 events/s × cursor duration"
+                          : "100 records × author × collection"
+                        : "—"
+                    }
+                  />
+                  <BackfillSummary
                     label="Existing Conflicts"
-                    value={dryRun.data?.conflicts.length ? String(dryRun.data.conflicts.length) : "None"}
+                    value={dryRun.data ? (dryRun.data.conflicts.length ? String(dryRun.data.conflicts.length) : "None") : "—"}
                   />
                 </dl>
               </section>
@@ -226,9 +240,9 @@ export function BackfillSheet({
                   <FieldLabel>Bounded Batch Size</FieldLabel>
                   <Input value={request.batchSize} readOnly />
                   <FieldLabel>Rate Limit</FieldLabel>
-                  <Input value={request.rateLimit} readOnly />
-                  <FieldLabel>Max Concurrency</FieldLabel>
-                  <Input value={request.maxConcurrency} readOnly />
+                  <Input value={`≤ ${request.rateLimit} events/s`} readOnly />
+                  <FieldLabel>Worker Concurrency</FieldLabel>
+                  <Input value={`${request.maxConcurrency} (sequential executor)`} readOnly />
                   <FieldLabel>Snapshot End Cursor</FieldLabel>
                   <Input className="font-mono" value={dryRun.data?.snapshotEndCursor ?? "Dry-run required"} readOnly />
                 </FieldGroup>

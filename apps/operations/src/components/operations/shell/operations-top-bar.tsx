@@ -3,7 +3,8 @@ import { OperatorMenu } from "@/components/operations/operator-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip } from "@/components/ui/tooltip"
-import type { EnvironmentName } from "@/lib/operations-types"
+import { healthLabel, overallSystemHealth } from "@/lib/observability-values"
+import type { EnvironmentName, Overview } from "@/lib/operations-types"
 
 export function OperationsTopBar({
   environment,
@@ -13,6 +14,8 @@ export function OperationsTopBar({
   onRefresh,
   operator,
   onSignOut,
+  overview,
+  demo,
 }: {
   environment: EnvironmentName
   autoRefresh: boolean
@@ -21,7 +24,18 @@ export function OperationsTopBar({
   onRefresh: () => void
   operator: string
   onSignOut: () => Promise<void>
+  overview?: Overview
+  demo: boolean
 }) {
+  const systemHealth = overview ? overallSystemHealth(overview) : "unknown"
+  const systemTone =
+    systemHealth === "healthy"
+      ? "success"
+      : systemHealth === "degraded"
+        ? "warning"
+        : systemHealth === "unhealthy"
+          ? "danger"
+          : "neutral"
   return (
     <header className="sticky top-0 z-30 flex min-h-[53px] flex-wrap items-center gap-x-4 gap-y-2 border-b bg-background/95 px-3 py-2 backdrop-blur sm:px-4 md:flex-nowrap">
       <div className="flex items-center gap-2">
@@ -29,21 +43,22 @@ export function OperationsTopBar({
         <Badge tone={environment === "production" ? "danger" : "warning"}>
           {environment === "production" ? "Production" : "Development"}
         </Badge>
+        {demo ? <Badge tone="info">Demo Data</Badge> : null}
       </div>
       <div className="hidden h-7 border-l sm:block" />
       <div className="flex items-center gap-2 text-xs">
         <span>System State</span>
-        <Badge tone="success">
-          <CircleDot className="mr-1 size-2.5" /> Healthy
+        <Badge tone={systemTone}>
+          <CircleDot className="mr-1 size-2.5" /> {healthLabel(systemHealth)}
         </Badge>
       </div>
       <div className="ml-auto flex items-center gap-3">
         <div className="hidden items-center gap-2 lg:flex">
           <span className="ops-label normal-case tracking-normal">Time Range</span>
-          <Button variant="outline">
+          <span className="inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs">
             <span>Last 15 minutes</span>
             <CalendarDays />
-          </Button>
+          </span>
         </div>
         <label className="flex items-center gap-1.5 text-[10px]">
           <span>Auto-refresh</span>

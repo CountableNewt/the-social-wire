@@ -96,6 +96,15 @@ export function Sparkline({
         onPointerDown={handlePointerDown}
       >
         <svg className="h-5 w-20" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} aria-hidden="true">
+          <line
+            x1="1"
+            x2={WIDTH - 1}
+            y1={HEIGHT - 2}
+            y2={HEIGHT - 2}
+            stroke="var(--border)"
+            strokeWidth="0.75"
+            vectorEffect="non-scaling-stroke"
+          />
           {geometry.paths.map((path) => (
             <path key={path} d={path} fill="none" stroke={stroke} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
           ))}

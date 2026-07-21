@@ -2,7 +2,7 @@ import { DataColumnHeaders } from "@/components/operations/data-column-headers"
 import { MetricSparklineCell } from "@/components/operations/metric-sparkline-cell"
 import { OperationsSection } from "@/components/operations/operations-section"
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
-import { collectionMetricRows, latestMetricValue } from "@/lib/collection-metrics"
+import { collectionMetricRows, currentMetricValue } from "@/lib/collection-metrics"
 import type { MetricRollup } from "@/lib/operations-types"
 
 const formatRate = (value: number) =>
@@ -10,8 +10,8 @@ const formatRate = (value: number) =>
 const formatMilliseconds = (value: number) => `${Math.round(value).toLocaleString()} ms`
 const formatSeconds = (value: number) => `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} s`
 
-export function CollectionHealth({ metricRollups }: { metricRollups: MetricRollup[] }) {
-  const rows = collectionMetricRows(metricRollups)
+export function CollectionHealth({ metricRollups, refreshedAt }: { metricRollups: MetricRollup[]; refreshedAt: string }) {
+  const rows = collectionMetricRows(metricRollups, refreshedAt)
 
   return (
     <OperationsSection title="Collection Health (15 minutes)">
@@ -41,7 +41,10 @@ export function CollectionHealth({ metricRollups }: { metricRollups: MetricRollu
             </TableRow>
           ) : (
             rows.map((row) => {
-              const atRisk = (latestMetricValue(row.failedRate) ?? 0) > 0
+              const currentAccepted = currentMetricValue(row.acceptedRate)
+              const currentFailed = currentMetricValue(row.failedRate)
+              const status =
+                currentAccepted === null && currentFailed === null ? "Unknown" : (currentFailed ?? 0) > 0 ? "At Risk" : "Good"
               return (
                 <TableRow key={row.collection}>
                   <TableCell className="font-mono">{row.collection}</TableCell>
@@ -89,7 +92,11 @@ export function CollectionHealth({ metricRollups }: { metricRollups: MetricRollu
                     />
                   </TableCell>
                   <TableCell>
-                    <span className={atRisk ? "ops-warning" : "ops-success"}>{atRisk ? "At Risk" : "Good"}</span>
+                    <span
+                      className={status === "At Risk" ? "ops-warning" : status === "Good" ? "ops-success" : "text-muted-foreground"}
+                    >
+                      {status}
+                    </span>
                   </TableCell>
                 </TableRow>
               )

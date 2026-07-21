@@ -8,7 +8,7 @@ export function OperationsSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="ops-panel min-w-0 overflow-hidden">
+    <section className="ops-panel min-w-0 w-full max-w-full overflow-hidden">
       <header className="flex min-h-9 items-center justify-between border-b px-3">
         <h2 className="text-xs font-semibold">{title}</h2>
         {action}

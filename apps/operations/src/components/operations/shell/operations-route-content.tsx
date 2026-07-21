@@ -32,9 +32,9 @@ export function OperationsRouteContent({
 }) {
   if (current === "ingestion")
     return (
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
         <LiveStream data={data} />
-        <CollectionTable metricRollups={data.metricRollups ?? []} />
+        <CollectionTable metricRollups={data.metricRollups ?? []} refreshedAt={data.refreshedAt} />
         <GapsTable
           gaps={data.gaps}
           backfills={data.backfills}
@@ -45,7 +45,7 @@ export function OperationsRouteContent({
     )
   if (current === "appview")
     return (
-      <div className="grid gap-3">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
         <RequestTable spans={data.recentTraces} />
         <DatabaseObservability overview={data} />
         <ServiceTable data={data} />
@@ -65,15 +65,15 @@ export function OperationsRouteContent({
   if (current === "alerts") return <AlertsTable data={data} environment={environment} />
   if (current === "runbooks") return <Runbooks runbooks={runbooks} />
   if (current === "traces")
-    return <TraceDetail span={data.recentTraces.find((span) => span.traceId === traceId) ?? data.recentTraces[0]} />
+    return <TraceDetail traceId={traceId} />
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <HealthStrip overview={data} />
       <LiveStream data={data} />
-      <CollectionTable metricRollups={data.metricRollups ?? []} />
+      <CollectionTable metricRollups={data.metricRollups ?? []} refreshedAt={data.refreshedAt} />
       <RequestTable spans={data.recentTraces} />
       <DatabaseObservability overview={data} />
-      <CollectionHealth metricRollups={data.metricRollups ?? []} />
+      <CollectionHealth metricRollups={data.metricRollups ?? []} refreshedAt={data.refreshedAt} />
       <div className="flex w-full flex-col gap-3">
         <GapsTable
           gaps={data.gaps}

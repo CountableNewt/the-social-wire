@@ -26,7 +26,7 @@ const completedJob: Backfill = {
 }
 
 describe("BackfillRow", () => {
-  it("shows completed jobs at 100 percent even when no records needed processing", () => {
+  it("keeps completed status separate from observed progress", () => {
     render(
       <Table>
         <TableBody>
@@ -35,8 +35,8 @@ describe("BackfillRow", () => {
       </Table>,
     )
 
-    expect(screen.getByText("100%")).toBeTruthy()
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100")
+    expect(screen.getByText("0% est.")).toBeTruthy()
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("0")
   })
 
   it("shows the persisted failure reason for failed jobs", () => {

@@ -4,11 +4,13 @@ import { OperatorActionDialog } from "@/components/operations/operator-action-di
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { backfillProgressPercent } from "@/lib/backfill-progress"
+import { backfillProgressEvidence } from "@/lib/backfill-progress"
 import type { Backfill, EnvironmentName } from "@/lib/operations-types"
 
 export function BackfillRow({ job, environment }: { job: Backfill; environment: EnvironmentName }) {
-  const progress = Math.round(backfillProgressPercent(job))
+  const progress = backfillProgressEvidence(job)
+  const progressLabel =
+    progress.percentOfEstimate === null ? "—" : `${Math.round(progress.percentOfEstimate)}% est.`
   const action = job.status === "running" ? "pause" : job.status === "paused" ? "resume" : undefined
   return (
     <TableRow>
@@ -24,11 +26,11 @@ export function BackfillRow({ job, environment }: { job: Backfill; environment: 
         {job.endCursor ?? "—"}
       </TableCell>
       <TableCell>
-        <span className="font-mono">{progress}%</span>
-        <Progress value={progress} className="mt-1 w-20" />
+        <span className="font-mono">{progressLabel}</span>
+        <Progress value={progress.boundedPercent} ariaValueText={progressLabel} className="mt-1 w-20" />
       </TableCell>
       <TableCell className="font-mono">{job.processedCount.toLocaleString()}</TableCell>
-      <TableCell>{job.status === "running" ? `${job.rateLimit} rps` : "—"}</TableCell>
+      <TableCell>{`≤ ${job.rateLimit.toLocaleString()} events/s`}</TableCell>
       <TableCell className="font-mono">{job.checkpointCursor ?? "—"}</TableCell>
       <TableCell>
         {action ? (

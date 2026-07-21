@@ -1,8 +1,15 @@
 import type { OAuthSession } from "@/lib/auth"
 import { authFetch } from "@/lib/auth"
 import { operationsEnvironment } from "@/lib/app-environment"
-import { demoGapInvestigation, demoOverview } from "@/lib/demo-data"
-import type { Backfill, BackfillDryRun, DryRunResult, GapInvestigation, Overview } from "@/lib/operations-types"
+import { demoGapInvestigation, demoMetricRollups, demoOverview } from "@/lib/demo-data"
+import type {
+  Backfill,
+  BackfillDryRun,
+  DryRunResult,
+  GapInvestigation,
+  Overview,
+  TraceListResponse,
+} from "@/lib/operations-types"
 
 let demoCreatedBackfill: Backfill | undefined
 
@@ -27,10 +34,15 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
         backfills: demoCreatedBackfill
           ? [evolveDemoBackfill(demoCreatedBackfill), ...demoOverview.backfills]
           : demoOverview.backfills,
+        metricRollups: demoMetricRollups(),
         refreshedAt: new Date().toISOString(),
       } as T
     if (/^\/v1\/operations\/gaps\/[^/]+\/investigation$/.test(path))
       return demoGapInvestigation(path.split("/")[4]!) as T
+    if (/^\/v1\/operations\/traces\/[^/]+$/.test(path)) {
+      const traceId = decodeURIComponent(path.split("/")[4]!)
+      return { spans: demoOverview.recentTraces.filter((span) => span.traceId === traceId) } as T
+    }
     if (path === "/v1/operations/backfills/dry-run")
       return {
         estimatedCount: 1_982_341,
@@ -97,6 +109,8 @@ export const fetchBackfill = (session: OAuthSession | null, backfillId: string) 
   operationsRequest<Backfill>(session, `/v1/operations/backfills/${encodeURIComponent(backfillId)}`)
 export const fetchGapInvestigation = (session: OAuthSession | null, gapId: string) =>
   operationsRequest<GapInvestigation>(session, `/v1/operations/gaps/${encodeURIComponent(gapId)}/investigation`)
+export const fetchTraceSpans = (session: OAuthSession | null, traceId: string) =>
+  operationsRequest<TraceListResponse>(session, `/v1/operations/traces/${encodeURIComponent(traceId)}`)
 export const dryRunBackfill = (session: OAuthSession | null, request: BackfillDryRun) =>
   operationsRequest<DryRunResult>(session, "/v1/operations/backfills/dry-run", {
     method: "POST",
@@ -113,7 +127,7 @@ function evolveDemoBackfill(job: Backfill): Backfill {
   if (elapsedSeconds < 2) return job
   const processedCount = Math.min(
     job.estimatedCount,
-    Math.floor((elapsedSeconds - 2) * job.rateLimit * job.maxConcurrency),
+    Math.floor((elapsedSeconds - 2) * job.rateLimit),
   )
   const completed = processedCount >= job.estimatedCount
   const progress = job.estimatedCount > 0 ? processedCount / job.estimatedCount : 0

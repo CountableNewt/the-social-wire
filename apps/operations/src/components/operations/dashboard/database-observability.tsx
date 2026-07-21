@@ -1,6 +1,7 @@
 import { Database } from "lucide-react"
 import { DataColumnHeaders } from "@/components/operations/data-column-headers"
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
+import { boundedNonNegativeInteger, boundedNonNegativeNumber } from "@/lib/observability-values"
 import type { Overview, Span } from "@/lib/operations-types"
 
 const percentile = (values: number[], value: number) => {
@@ -10,9 +11,17 @@ const percentile = (values: number[], value: number) => {
 }
 
 const formatBytes = (bytes?: number) => {
-  if (bytes === undefined) return "—"
-  if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
-  return `${(bytes / 1_000_000_000).toFixed(1)} GB`
+  const bounded = boundedNonNegativeNumber(bytes)
+  if (bounded === null) return "—"
+  if (bounded < 1_000_000_000) return `${(bounded / 1_000_000).toFixed(1)} MB`
+  return `${(bounded / 1_000_000_000).toFixed(1)} GB`
+}
+
+const formatCount = (value?: number) => boundedNonNegativeInteger(value)?.toLocaleString() ?? "—"
+
+const formatCacheHitRatio = (value?: number) => {
+  const bounded = boundedNonNegativeNumber(value)
+  return bounded !== null && bounded <= 1 ? `${(bounded * 100).toFixed(1)}%` : "—"
 }
 
 const isDatabaseSpan = (span: Span) =>
@@ -21,11 +30,11 @@ const isDatabaseSpan = (span: Span) =>
 export function DatabaseObservability({ overview }: { overview: Overview }) {
   const database = overview.database
   const spans = overview.recentTraces.filter(isDatabaseSpan)
-  const p95 = percentile(
-    spans.map((span) => span.durationMs),
-    0.95,
-  )
-  const slowQueries = spans.filter((span) => span.durationMs >= 1_000).length
+  const observedDurations = spans
+    .map((span) => boundedNonNegativeNumber(span.durationMs))
+    .filter((value): value is number => value !== null)
+  const p95 = percentile(observedDurations, 0.95)
+  const slowQueries = observedDurations.filter((duration) => duration >= 1_000).length
   const dependencyStates = overview.services
     .flatMap((service) => [service.dependencyState.database, service.dependencyState.operations_database])
     .filter(Boolean)
@@ -40,24 +49,26 @@ export function DatabaseObservability({ overview }: { overview: Overview }) {
     { label: "Database Size", value: formatBytes(database?.databaseSizeBytes), note: "Current Postgres database size" },
     {
       label: "Database Request Volume",
-      value: database?.transactionsTotal.toLocaleString() ?? "—",
+      value: formatCount(database?.transactionsTotal),
       note: database?.statsResetAt
         ? `Transactions since ${new Date(database.statsResetAt).toLocaleDateString()}`
         : "Committed + rolled-back transactions",
     },
     {
       label: "Estimated Records",
-      value: database?.estimatedRecords.toLocaleString() ?? "—",
+      value: formatCount(database?.estimatedRecords),
       note: "Live-row estimates across user tables",
     },
     {
       label: "Connections",
-      value: database ? `${database.activeConnections} / ${database.maxConnections}` : "—",
+      value: database
+        ? `${formatCount(database.activeConnections)} / ${formatCount(database.maxConnections)}`
+        : "—",
       note: "Active connections / configured maximum",
     },
     {
       label: "Cache Hit Ratio",
-      value: database ? `${(database.cacheHitRatio * 100).toFixed(1)}%` : "—",
+      value: formatCacheHitRatio(database?.cacheHitRatio),
       note: "Postgres shared-buffer hit ratio",
     },
   ]
@@ -69,7 +80,8 @@ export function DatabaseObservability({ overview }: { overview: Overview }) {
           <Database className="size-3.5" /> Database Observability
         </h2>
         <span className="text-right text-[9px] text-muted-foreground">
-          Query p95 {p95 === undefined ? "—" : `${p95.toLocaleString()} ms`} · {slowQueries} slow
+          Sampled DB span p95 {p95 === undefined ? "—" : `${p95.toLocaleString()} ms`} · n={observedDurations.length} ·{" "}
+          {slowQueries} slow
         </span>
       </header>
       <div className="grid divide-y sm:grid-cols-2 sm:divide-x xl:grid-cols-3">
@@ -95,7 +107,7 @@ export function DatabaseObservability({ overview }: { overview: Overview }) {
                 <TableRow key={`${table.schema}.${table.table}`}>
                   <TableCell>{table.schema}</TableCell>
                   <TableCell className="font-mono">{table.table}</TableCell>
-                  <TableCell className="font-mono">{table.estimatedRecords.toLocaleString()}</TableCell>
+                  <TableCell className="font-mono">{formatCount(table.estimatedRecords)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

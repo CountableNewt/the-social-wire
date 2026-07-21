@@ -77,6 +77,8 @@ struct SQLiteOperationsStoreTests {
     let updated = try #require(await store.fetchBackfill(id: job.id))
     #expect(updated.checkpointCursor == 3_000_000)
     #expect(updated.processedCount == 20)
+    #expect(updated.failedCount == 1)
+    #expect(updated.reconciledCount == 19)
 
     try await store.updateBackfillStatus(
       id: job.id,

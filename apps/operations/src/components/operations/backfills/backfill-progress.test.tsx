@@ -35,8 +35,8 @@ describe("BackfillProgress", () => {
     render(<BackfillProgress job={job} refreshing />)
 
     expect(screen.getByText("Running")).toBeTruthy()
-    expect(screen.getByText("50%")).toBeTruthy()
-    expect(screen.getByText("500 / 1,000")).toBeTruthy()
+    expect(screen.getByText("50% of estimate")).toBeTruthy()
+    expect(screen.getByText("500 observed / ~1,000 estimated")).toBeTruthy()
     expect(screen.getByText("Live Updates Every 2 Seconds")).toBeTruthy()
     expect(screen.getByText("worker-01")).toBeTruthy()
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50")
@@ -46,8 +46,10 @@ describe("BackfillProgress", () => {
     render(<BackfillProgress job={{ ...job, status: "completed", processedCount: 0 }} refreshing={false} />)
 
     expect(screen.getByText("Final Status")).toBeTruthy()
-    expect(screen.getByText("100%")).toBeTruthy()
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100")
+    expect(screen.getByText("0% of estimate")).toBeTruthy()
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("0")
+    expect(screen.getByText("Run Finished; Estimate Did Not Match")).toBeTruthy()
+    expect(screen.getByText(/Completion describes the scan state/)).toBeTruthy()
     expect(isBackfillTerminal("completed")).toBe(true)
     expect(isBackfillTerminal("running")).toBe(false)
   })
@@ -78,5 +80,12 @@ describe("BackfillProgress", () => {
 
     expect(screen.getByText("Backfill Failed")).toBeTruthy()
     expect(screen.getByText("Failure Reason: upstream unavailable")).toBeTruthy()
+  })
+
+  it("withholds progress when counts are invalid", () => {
+    render(<BackfillProgress job={{ ...job, processedCount: -1 }} refreshing={false} />)
+
+    expect(screen.getByText("Not Measurable")).toBeTruthy()
+    expect(screen.getByText("Invalid Progress Telemetry")).toBeTruthy()
   })
 })

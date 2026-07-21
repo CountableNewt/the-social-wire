@@ -10,9 +10,11 @@ const demoCollections = [
   { name: "site.standard.graph.subscription", rates: [274, 12, 0.2], latency: 0.16, lag: 0.6 },
 ] as const
 
-const demoMetricRollups: MetricRollup[] = demoCollections.flatMap((collection, collectionIndex) =>
-  Array.from({ length: 15 }, (_, minuteIndex) => {
-    const bucketStart = iso((14 - minuteIndex) * 60)
+export function demoMetricRollups(reference = new Date()): MetricRollup[] {
+  const lastCompletedMinute = Math.floor(reference.getTime() / 60_000) * 60_000 - 60_000
+  return demoCollections.flatMap((collection, collectionIndex) =>
+    Array.from({ length: 15 }, (_, minuteIndex) => {
+      const bucketStart = new Date(lastCompletedMinute - (14 - minuteIndex) * 60_000).toISOString()
     const variation = 1 + Math.sin(minuteIndex * (0.45 + collectionIndex * 0.08) + collectionIndex) * 0.12
     const operations = ["create", "update", "delete"] as const
     const operationRollups = operations.flatMap((operation, operationIndex): MetricRollup[] => {
@@ -81,9 +83,10 @@ const demoMetricRollups: MetricRollup[] = demoCollections.flatMap((collection, c
             },
           ]
         : []
-    return [...operationRollups, lagRollup, ...failureRollups]
-  }).flat(),
-)
+      return [...operationRollups, lagRollup, ...failureRollups]
+    }).flat(),
+  )
+}
 
 export const demoOverview: Overview = {
   services: ["gateway", "appview", "appview-worker", "operations"].map((service, index) => ({
@@ -267,6 +270,27 @@ export const demoOverview: Overview = {
       updatedAt: iso(89900),
       completedAt: iso(89900),
     },
+    {
+      id: "bf-demo-no-matches",
+      sourceMode: "jetstream_replay",
+      status: "completed",
+      startCursor: 1747456593925382,
+      endCursor: 1747459397244042,
+      collections: ["site.standard.document"],
+      authorDids: [],
+      batchSize: 1000,
+      rateLimit: 500,
+      maxConcurrency: 1,
+      estimatedCount: 127,
+      processedCount: 0,
+      failedCount: 0,
+      reconciledCount: 0,
+      requestedByDid: "did:plc:operator",
+      auditNote: "Verify a completed scan with no matching records",
+      createdAt: iso(120),
+      updatedAt: iso(60),
+      completedAt: iso(60),
+    },
   ],
   alerts: [
     {
@@ -296,10 +320,10 @@ export const demoOverview: Overview = {
     },
   ],
   recentTraces: [
-    ["gateway.request", 812, "200", "/v1/appview/bootstrap-stream"],
-    ["appview.request", 286, "200", "/v1/appview/entries"],
-    ["appview.cache.lookup", 95, "200", "/v1/appview/unread-counts"],
-    ["gateway.appview.proxy", 143, "200", "/v1/publications/sidebar"],
+    ["gateway.request", 812, "ok", "/v1/appview/bootstrap-stream"],
+    ["appview.request", 286, "ok", "/v1/appview/entries"],
+    ["appview.cache.lookup", 95, "ok", "/v1/appview/unread-counts"],
+    ["gateway.appview.proxy", 143, "ok", "/v1/publications/sidebar"],
     ["worker.index.commit", 1210, "error", "site.standard.entry"],
   ].map(([name, duration, status, route], index) => ({
     id: `span-${index}`,
@@ -309,10 +333,16 @@ export const demoOverview: Overview = {
     startedAt: iso(20 + index * 8),
     durationMs: Number(duration),
     status: String(status),
-    attributes: { route: String(route), cache_outcome: index === 2 ? "hit" : "miss", query_name: "overview" },
+    attributes: {
+      route_template: String(route),
+      method: "GET",
+      status_class: status === "error" ? "5xx" : "2xx",
+      environment: "development",
+      ...(index === 2 ? { query_name: "overview" } : {}),
+    },
     expiresAt: iso(-604800),
   })),
-  metricRollups: demoMetricRollups,
+  metricRollups: demoMetricRollups(now),
   database: {
     databaseSizeBytes: 3_006_477_312,
     activeConnections: 8,

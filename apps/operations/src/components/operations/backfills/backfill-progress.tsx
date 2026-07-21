@@ -5,7 +5,7 @@ import { BackfillFailureReason } from "@/components/operations/backfills/backfil
 import { BackfillMetric } from "@/components/operations/backfills/backfill-metric"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { backfillProgressPercent } from "@/lib/backfill-progress"
+import { backfillProgressEvidence } from "@/lib/backfill-progress"
 import type { Backfill } from "@/lib/operations-types"
 
 const terminalStatuses = new Set<Backfill["status"]>(["completed", "failed", "cancelled"])
@@ -15,10 +15,20 @@ export function isBackfillTerminal(status: Backfill["status"]) {
 }
 
 export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshing: boolean }) {
-  const exactProgress = backfillProgressPercent(job)
-  const progressLabel = exactProgress > 0 && exactProgress < 1 ? "<1%" : `${Math.round(exactProgress)}%`
+  const progress = backfillProgressEvidence(job)
+  const progressLabel =
+    progress.percentOfEstimate === null
+      ? "Not Measurable"
+      : progress.percentOfEstimate > 0 && progress.percentOfEstimate < 1
+        ? "<1% of estimate"
+        : `${Math.round(progress.percentOfEstimate)}% of estimate`
   const active = !isBackfillTerminal(job.status)
   const waitingForWorker = job.status === "queued"
+  const completedEstimateMismatch =
+    job.status === "completed" &&
+    progress.observedCount !== null &&
+    progress.estimatedCount !== null &&
+    progress.observedCount !== progress.estimatedCount
   return (
     <div className="flex-1 overflow-y-auto overscroll-contain p-4">
       <div aria-live="polite" className="rounded-md border bg-muted/20 p-3">
@@ -44,11 +54,37 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
         <div className="mt-4 flex items-end justify-between">
           <span className="font-mono text-xl font-semibold">{progressLabel}</span>
           <span className="font-mono text-[10px] text-muted-foreground">
-            {job.processedCount.toLocaleString()} / {job.estimatedCount.toLocaleString()}
+            {progress.observedCount?.toLocaleString() ?? "Invalid"} observed / ~
+            {progress.estimatedCount?.toLocaleString() ?? "Invalid"} estimated
           </span>
         </div>
-        <Progress value={exactProgress} className="mt-2 h-2" />
+        <Progress
+          value={progress.boundedPercent}
+          ariaValueText={progressLabel}
+          className="mt-2 h-2"
+        />
       </div>
+
+      {!progress.valid ? (
+        <Alert variant="destructive" className="mt-4">
+          <AlertTitle>Invalid Progress Telemetry</AlertTitle>
+          <AlertDescription>
+            The service returned a negative, fractional, or unsafe count. Progress is withheld instead of displaying a
+            fabricated percentage.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {completedEstimateMismatch ? (
+        <Alert variant="warning" className="mt-4">
+          <AlertTitle>Run Finished; Estimate Did Not Match</AlertTitle>
+          <AlertDescription>
+            The worker finished the bounded scan after observing {progress.observedCount!.toLocaleString()} matching
+            records. The dry-run estimate was ~{progress.estimatedCount!.toLocaleString()}. Completion describes the
+            scan state, not fulfillment of the estimate.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {waitingForWorker ? (
         <Alert variant="warning" className="mt-4">
@@ -79,7 +115,7 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
             tone={job.failedCount > 0 ? "danger" : undefined}
           />
           <BackfillMetric label="Reconciled" value={job.reconciledCount.toLocaleString()} />
-          <BackfillMetric label="Rate Limit" value={`${job.rateLimit.toLocaleString()} rps`} />
+          <BackfillMetric label="Configured Rate Limit" value={`≤ ${job.rateLimit.toLocaleString()} events/s`} />
         </dl>
       </section>
 

@@ -171,6 +171,8 @@ private struct JetstreamReplayExecutor: Sendable {
     let record = commit["record"] ?? [:]
     let recordJSON = (try? JSONSerialization.data(withJSONObject: record)) ?? Data("{}".utf8)
     do {
+      let intervalNanoseconds = Int64(1_000_000_000 / max(1, job.rateLimit))
+      try await Task.sleep(for: .nanoseconds(intervalNanoseconds))
       try await indexer.handleCommit(
         repoDid: did,
         collection: collection,
@@ -203,6 +205,16 @@ private struct JetstreamReplayExecutor: Sendable {
         operation: operation,
         cursor: cursor,
         errorCategory: OperationsRedactor.errorCategory(error),
+        at: Date()
+      )
+      let snapshot = await progress.snapshot()
+      try? await store.checkpointBackfill(
+        id: job.id,
+        cursor: cursor,
+        processed: snapshot.processed,
+        failed: current.failedCount + 1,
+        reconciled: current.reconciledCount,
+        leaseUntil: Date().addingTimeInterval(60),
         at: Date()
       )
       throw error

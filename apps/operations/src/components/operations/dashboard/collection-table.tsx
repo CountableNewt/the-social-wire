@@ -9,8 +9,8 @@ const formatRate = (value: number) =>
   value < 1 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(value).toLocaleString()
 const formatMilliseconds = (value: number) => `${Math.round(value).toLocaleString()} ms`
 
-export function CollectionTable({ metricRollups }: { metricRollups: MetricRollup[] }) {
-  const rows = collectionMetricRows(metricRollups)
+export function CollectionTable({ metricRollups, refreshedAt }: { metricRollups: MetricRollup[]; refreshedAt: string }) {
+  const rows = collectionMetricRows(metricRollups, refreshedAt)
 
   return (
     <OperationsSection title="Events / sec by Bounded Collection / Operation (15 minutes)">

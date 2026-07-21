@@ -8,12 +8,19 @@ export type SparklinePoint = {
 }
 
 export function sparklineGeometry(points: MetricPoint[], width = 80, height = 20) {
-  const visible = points.filter((point): point is { timestamp: number; value: number } => point.value !== null)
+  const boundedPoints = points.map((point) => ({
+    timestamp: point.timestamp,
+    value:
+      Number.isFinite(point.timestamp) && point.value !== null && Number.isFinite(point.value) && point.value >= 0
+        ? point.value
+        : null,
+  }))
+  const visible = boundedPoints.filter((point): point is { timestamp: number; value: number } => point.value !== null)
   if (visible.length === 0) return { paths: [], points: [] }
 
   const minimumTimestamp = Math.min(...visible.map(({ timestamp }) => timestamp))
   const maximumTimestamp = Math.max(...visible.map(({ timestamp }) => timestamp))
-  const minimumValue = Math.min(...visible.map(({ value }) => value))
+  const minimumValue = 0
   const maximumValue = Math.max(...visible.map(({ value }) => value))
   const horizontalRange = maximumTimestamp - minimumTimestamp
   const verticalRange = maximumValue - minimumValue
@@ -23,7 +30,7 @@ export function sparklineGeometry(points: MetricPoint[], width = 80, height = 20
   const positionedPoints: SparklinePoint[] = []
   let current = ""
 
-  for (const point of points) {
+  for (const point of boundedPoints) {
     if (point.value === null) {
       if (current) paths.push(current)
       current = ""
@@ -36,7 +43,7 @@ export function sparklineGeometry(points: MetricPoint[], width = 80, height = 20
         : horizontalPadding + ((point.timestamp - minimumTimestamp) / horizontalRange) * (width - horizontalPadding * 2)
     const y =
       verticalRange === 0
-        ? height / 2
+        ? height - verticalPadding
         : height - verticalPadding - ((point.value - minimumValue) / verticalRange) * (height - verticalPadding * 2)
     positionedPoints.push({ timestamp: point.timestamp, value: point.value, x, y })
     current += `${current ? " L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`

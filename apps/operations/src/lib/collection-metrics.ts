@@ -48,6 +48,14 @@ function emptyRow(collection: string): MutableCollectionMetricRow {
 }
 
 function append(series: Series, timestamp: number, rollup: MetricRollup) {
+  if (
+    !Number.isFinite(rollup.valueSum) ||
+    rollup.valueSum < 0 ||
+    !Number.isSafeInteger(rollup.sampleCount) ||
+    rollup.sampleCount < 0 ||
+    (rollup.valueMax !== undefined && (!Number.isFinite(rollup.valueMax) || rollup.valueMax < 0))
+  )
+    return
   const current = series.get(timestamp) ?? { sum: 0, count: 0, maximum: null }
   current.sum += rollup.valueSum
   current.count += rollup.sampleCount
@@ -55,25 +63,51 @@ function append(series: Series, timestamp: number, rollup: MetricRollup) {
   series.set(timestamp, current)
 }
 
-function points(series: Series, value: (aggregate: Aggregate) => number): MetricPoint[] {
-  return [...series.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([timestamp, aggregate]) => ({ timestamp, value: value(aggregate) }))
+function observedTimestamps(row: MutableCollectionMetricRow) {
+  return new Set(
+    Object.entries(row)
+      .filter((entry): entry is [string, Series] => entry[1] instanceof Map)
+      .flatMap(([, series]) => [...series.keys()]),
+  )
 }
 
-function counterRate(series: Series, timestamps: number[]) {
-  return timestamps.map((timestamp) => ({ timestamp, value: (series.get(timestamp)?.sum ?? 0) / 60 }))
+function counterRate(series: Series, timestamps: number[], observed: Set<number>) {
+  return timestamps.map((timestamp) => ({
+    timestamp,
+    value: observed.has(timestamp) ? (series.get(timestamp)?.sum ?? 0) / 60 : null,
+  }))
 }
 
-function average(series: Series, multiplier = 1) {
-  return points(series, ({ sum, count }) => (count > 0 ? (sum / count) * multiplier : 0))
+function average(series: Series, timestamps: number[], multiplier = 1) {
+  return timestamps.map((timestamp) => {
+    const aggregate = series.get(timestamp)
+    return {
+      timestamp,
+      value: aggregate && aggregate.count > 0 ? (aggregate.sum / aggregate.count) * multiplier : null,
+    }
+  })
 }
 
-function maximum(series: Series, multiplier = 1) {
-  return points(series, ({ maximum: value }) => (value ?? 0) * multiplier)
+function maximum(series: Series, timestamps: number[], multiplier = 1) {
+  return timestamps.map((timestamp) => {
+    const value = series.get(timestamp)?.maximum
+    return { timestamp, value: value === null || value === undefined ? null : value * multiplier }
+  })
 }
 
-export function collectionMetricRows(rollups: MetricRollup[]): CollectionMetricRow[] {
+function metricTimestamps(rows: Map<string, MutableCollectionMetricRow>, refreshedAt?: string) {
+  const refreshedAtMs = refreshedAt ? new Date(refreshedAt).getTime() : Number.NaN
+  if (Number.isFinite(refreshedAtMs)) {
+    const finalClosedBucket = Math.floor(refreshedAtMs / 60_000) * 60_000 - 60_000
+    return Array.from({ length: 15 }, (_, index) => finalClosedBucket - (14 - index) * 60_000)
+  }
+
+  return [...new Set([...rows.values()].flatMap((row) => [...observedTimestamps(row)]))].sort(
+    (left, right) => left - right,
+  )
+}
+
+export function collectionMetricRows(rollups: MetricRollup[], refreshedAt?: string): CollectionMetricRow[] {
   const rows = new Map<string, MutableCollectionMetricRow>()
 
   for (const rollup of rollups) {
@@ -108,21 +142,23 @@ export function collectionMetricRows(rollups: MetricRollup[]): CollectionMetricR
     }
   }
 
+  const timestamps = metricTimestamps(rows, refreshedAt)
+
   return [...rows.values()]
     .map((row) => {
-      const timestamps = [...row.allOperationsRate.keys()].sort((left, right) => left - right)
+      const observed = observedTimestamps(row)
       return {
         collection: row.collection,
-        createRate: counterRate(row.createRate, timestamps),
-        updateRate: counterRate(row.updateRate, timestamps),
-        deleteRate: counterRate(row.deleteRate, timestamps),
-        allOperationsRate: counterRate(row.allOperationsRate, timestamps),
-        acceptedRate: counterRate(row.acceptedRate, timestamps),
-        failedRate: counterRate(row.failedRate, timestamps),
-        averageCommitMilliseconds: average(row.averageCommitMilliseconds, 1_000),
-        maximumCommitMilliseconds: maximum(row.maximumCommitMilliseconds, 1_000),
-        averageLagSeconds: average(row.averageLagSeconds),
-        maximumLagSeconds: maximum(row.maximumLagSeconds),
+        createRate: counterRate(row.createRate, timestamps, observed),
+        updateRate: counterRate(row.updateRate, timestamps, observed),
+        deleteRate: counterRate(row.deleteRate, timestamps, observed),
+        allOperationsRate: counterRate(row.allOperationsRate, timestamps, observed),
+        acceptedRate: counterRate(row.acceptedRate, timestamps, observed),
+        failedRate: counterRate(row.failedRate, timestamps, observed),
+        averageCommitMilliseconds: average(row.averageCommitMilliseconds, timestamps, 1_000),
+        maximumCommitMilliseconds: maximum(row.maximumCommitMilliseconds, timestamps, 1_000),
+        averageLagSeconds: average(row.averageLagSeconds, timestamps),
+        maximumLagSeconds: maximum(row.maximumLagSeconds, timestamps),
       }
     })
     .sort(
@@ -133,4 +169,8 @@ export function collectionMetricRows(rollups: MetricRollup[]): CollectionMetricR
 
 export function latestMetricValue(points: MetricPoint[]) {
   return points.findLast(({ value }) => value !== null)?.value ?? null
+}
+
+export function currentMetricValue(points: MetricPoint[]) {
+  return points.at(-1)?.value ?? null
 }

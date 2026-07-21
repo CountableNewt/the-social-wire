@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { collectionMetricRows, latestMetricValue } from "@/lib/collection-metrics"
+import { collectionMetricRows, currentMetricValue, latestMetricValue } from "@/lib/collection-metrics"
 import type { MetricRollup } from "@/lib/operations-types"
 
 function rollup(overrides: Partial<MetricRollup> = {}): MetricRollup {
@@ -54,5 +54,23 @@ describe("collectionMetricRows", () => {
     ])
 
     expect(rows).toEqual([])
+  })
+
+  it("represents missing telemetry buckets as gaps instead of connecting invented values", () => {
+    const rows = collectionMetricRows(
+      [rollup({ bucketStart: "2026-07-20T19:58:00.000Z" })],
+      "2026-07-20T20:01:30.000Z",
+    )
+
+    expect(rows[0]?.createRate.slice(-3).map(({ value }) => value)).toEqual([2, null, null])
+    expect(currentMetricValue(rows[0]!.createRate)).toBeNull()
+    expect(latestMetricValue(rows[0]!.createRate)).toBe(2)
+  })
+
+  it("rejects negative metric rollups at the display boundary", () => {
+    const rows = collectionMetricRows([rollup({ valueSum: -120 })])
+
+    expect(rows[0]?.createRate).toEqual([])
+    expect(latestMetricValue(rows[0]!.createRate)).toBeNull()
   })
 })

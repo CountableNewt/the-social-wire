@@ -1,35 +1,61 @@
 import { Activity, CheckCircle2, Clock3, Database, TriangleAlert } from "lucide-react"
+import { elapsedSeconds, healthLabel, serviceHealthEvidence } from "@/lib/observability-values"
 import type { Overview } from "@/lib/operations-types"
 
 export function HealthStrip({ overview }: { overview: Overview }) {
-  const stale = overview.ingestion?.lastCommittedAt
-    ? Math.max(
-        0,
-        (new Date(overview.refreshedAt).getTime() - new Date(overview.ingestion.lastCommittedAt).getTime()) / 1000,
-      )
-    : 0
+  const liveness = serviceHealthEvidence(overview.services, "liveness")
+  const readiness = serviceHealthEvidence(overview.services, "readiness")
+  const freshness = serviceHealthEvidence(overview.services, "freshness")
+  const completeness = serviceHealthEvidence(overview.services, "completeness")
+  const commitAge = elapsedSeconds(overview.ingestion?.lastCommittedAt, overview.refreshedAt)
+  const activeGaps = overview.gaps.filter((gap) => !["resolved", "ignored"].includes(gap.status)).length
+  const ingestionFresh =
+    overview.ingestion?.connectionState === "connected" &&
+    commitAge !== null &&
+    commitAge < 300 &&
+    freshness.state === "healthy"
+  const freshnessLabel =
+    commitAge === null
+      ? "Unknown"
+      : overview.ingestion?.connectionState === "disconnected"
+        ? "Disconnected"
+        : freshness.state !== "healthy"
+          ? healthLabel(freshness.state)
+          : commitAge >= 300
+            ? "Stale"
+            : "Good"
+  const projectionsComplete = completeness.state === "healthy" && activeGaps === 0
   const items = [
-    { label: "Service Liveness", value: "Healthy", note: "All services running", icon: Activity, warning: false },
+    {
+      label: "Service Liveness",
+      value: healthLabel(liveness.state),
+      note: `${liveness.healthy} / ${liveness.total} instances report healthy`,
+      icon: Activity,
+      warning: liveness.state !== "healthy",
+    },
     {
       label: "Traffic Readiness",
-      value: "Ready",
-      note: "All critical components ready",
+      value: readiness.state === "healthy" ? "Ready" : healthLabel(readiness.state),
+      note: `${readiness.healthy} / ${readiness.total} instances report ready`,
       icon: CheckCircle2,
-      warning: false,
+      warning: readiness.state !== "healthy",
     },
     {
       label: "Ingestion Freshness",
-      value: stale < 300 ? "Good" : "Stale",
-      note: `Ingestion lag ${stale.toFixed(1)}s`,
+      value: freshnessLabel,
+      note:
+        commitAge === null
+          ? "No valid committed-event timestamp reported"
+          : `Last commit ${commitAge.toFixed(1)}s before refresh · service freshness ${freshness.state}`,
       icon: Clock3,
-      warning: stale >= 300,
+      warning: !ingestionFresh,
     },
     {
       label: "Projection Completeness",
-      value: overview.gaps.some((gap) => gap.status === "confirmed") ? "At Risk" : "Complete",
-      note: `${overview.gaps.filter((gap) => !["resolved", "ignored"].includes(gap.status)).length} gaps detected`,
+      value: projectionsComplete ? "Complete" : completeness.state === "unknown" ? "Unknown" : "At Risk",
+      note: `${activeGaps} active gaps · ${completeness.healthy} / ${completeness.total} instances complete`,
       icon: Database,
-      warning: overview.gaps.some((gap) => gap.status === "confirmed"),
+      warning: !projectionsComplete,
     },
   ]
   return (

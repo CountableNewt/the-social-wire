@@ -123,6 +123,7 @@ export type Span = {
   attributes: Record<string, string>
   expiresAt: string
 }
+export type TraceListResponse = { spans: Span[] }
 export type MetricRollup = {
   bucketStart: string
   metricName: string

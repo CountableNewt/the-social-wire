@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { backfillProgressPercent } from "@/lib/backfill-progress"
+import { backfillProgressEvidence, backfillProgressPercent } from "@/lib/backfill-progress"
 import type { Backfill } from "@/lib/operations-types"
 
 const job: Backfill = {
@@ -26,11 +26,29 @@ describe("backfillProgressPercent", () => {
     expect(backfillProgressPercent(job)).toBe(50)
   })
 
-  it("treats a completed no-op backfill as fully complete", () => {
-    expect(backfillProgressPercent({ ...job, status: "completed", processedCount: 0 })).toBe(100)
+  it("does not fabricate full progress from a completed status", () => {
+    const completed = { ...job, status: "completed" as const, processedCount: 0 }
+
+    expect(backfillProgressPercent(completed)).toBe(0)
+    expect(backfillProgressEvidence(completed).percentOfEstimate).toBe(0)
   })
 
   it("preserves partial progress for a failed job", () => {
     expect(backfillProgressPercent({ ...job, status: "failed", processedCount: 250 })).toBe(25)
+  })
+
+  it("keeps the visual bounded while exposing estimate overruns", () => {
+    const progress = backfillProgressEvidence({ ...job, processedCount: 1_250 })
+
+    expect(progress.percentOfEstimate).toBe(125)
+    expect(progress.boundedPercent).toBe(100)
+  })
+
+  it("withholds a percentage for invalid telemetry", () => {
+    const progress = backfillProgressEvidence({ ...job, processedCount: -1 })
+
+    expect(progress.valid).toBe(false)
+    expect(progress.percentOfEstimate).toBeNull()
+    expect(progress.boundedPercent).toBe(0)
   })
 })

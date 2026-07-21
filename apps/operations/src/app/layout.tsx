@@ -30,6 +30,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, colo
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const development = operationsEnvironment() === "development"
+  const demo = process.env.NEXT_PUBLIC_OPERATIONS_DEMO_MODE === "1"
   const shellStyle = {
     "--operations-banner-height": development ? "1.5rem" : "0rem",
   } as CSSProperties
@@ -37,7 +38,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body style={shellStyle}>
-        {development ? <EnvironmentBanner /> : null}
+        {development ? <EnvironmentBanner demo={demo} /> : null}
         <Providers>{children}</Providers>
       </body>
     </html>

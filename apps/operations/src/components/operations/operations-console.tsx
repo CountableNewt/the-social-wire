@@ -101,13 +101,15 @@ export function OperationsConsole({ section, runbooks }: { section: string[]; ru
           refreshedAt={data?.refreshedAt}
           onRefresh={() => overview.refetch()}
           operator={auth.session?.did ?? "did:plc:demo-operator"}
+          overview={data}
+          demo={demo}
           onSignOut={async () => {
             await auth.signOut()
             if (demo) setDemoSessionActive(false)
           }}
         />
         <MobileOperationsNav current={current} />
-        <div className="p-3 sm:p-4">
+        <div className="min-w-0 p-3 sm:p-4">
           <OperationsPageHeading current={current} />
           {overview.isLoading || !data ? (
             <OverviewSkeleton />
