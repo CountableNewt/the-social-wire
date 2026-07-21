@@ -406,6 +406,7 @@ jobs:
 
   deploy-gateway:
     name: Deploy Gateway (Fly.io)
+    timeout-minutes: 20
     needs: [changes, ci, test-gateway, test-spec, supabase-validate, supabase-push-dev, supabase-push-prod]
     if: |
       always() &&
@@ -447,6 +448,7 @@ jobs:
 
   deploy-appview:
     name: Deploy AppView (Fly.io)
+    timeout-minutes: 20
     needs: [changes, ci, test-appview, test-spec, supabase-validate, supabase-push-dev, supabase-push-prod]
     if: |
       always() &&
@@ -488,6 +490,7 @@ jobs:
 
   deploy-appview-worker:
     name: Deploy AppView Worker (Fly.io)
+    timeout-minutes: 20
     needs: [changes, ci, test-appview-worker, supabase-validate, supabase-push-dev, supabase-push-prod]
     if: |
       always() &&
@@ -526,6 +529,7 @@ jobs:
 
   deploy-operations:
     name: Deploy Operations (Fly.io)
+    timeout-minutes: 20
     needs: [changes, ci, test-operations, supabase-validate, supabase-push-dev, supabase-push-prod]
     if: |
       always() &&
