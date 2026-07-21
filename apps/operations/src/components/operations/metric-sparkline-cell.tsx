@@ -19,7 +19,7 @@ export function MetricSparklineCell({
   return (
     <div className="flex items-center gap-2 font-mono tabular-nums">
       <span>{format(current)}</span>
-      <Sparkline points={points} label={`${label}, 15-minute trend`} tone={tone} />
+      <Sparkline points={points} label={`${label}, 15-minute trend`} format={format} tone={tone} />
     </div>
   )
 }

@@ -17,7 +17,7 @@ type TooltipPosition = {
   top: number
 }
 
-export function Tooltip({ label, children }: { label: string; children: React.ReactElement<TooltipChildProps> }) {
+export function Tooltip({ label, children }: { label: React.ReactNode; children: React.ReactElement<TooltipChildProps> }) {
   const descriptionId = React.useId()
   const [position, setPosition] = React.useState<TooltipPosition | null>(null)
 
