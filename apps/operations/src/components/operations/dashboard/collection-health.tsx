@@ -1,12 +1,20 @@
 import { DataColumnHeaders } from "@/components/operations/data-column-headers"
-import { collectionRows } from "@/components/operations/dashboard/operations-demo-metrics"
+import { MetricSparklineCell } from "@/components/operations/metric-sparkline-cell"
 import { OperationsSection } from "@/components/operations/operations-section"
-import { Sparkline } from "@/components/operations/sparkline"
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
+import { collectionMetricRows, latestMetricValue } from "@/lib/collection-metrics"
+import type { MetricRollup } from "@/lib/operations-types"
 
-export function CollectionHealth() {
+const formatRate = (value: number) =>
+  value < 1 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(value).toLocaleString()
+const formatMilliseconds = (value: number) => `${Math.round(value).toLocaleString()} ms`
+const formatSeconds = (value: number) => `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} s`
+
+export function CollectionHealth({ metricRollups }: { metricRollups: MetricRollup[] }) {
+  const rows = collectionMetricRows(metricRollups)
+
   return (
-    <OperationsSection title="Collection Health (per bounded collection)">
+    <OperationsSection title="Collection Health (15 minutes)">
       <Table>
         <TableHeader>
           <TableRow>
@@ -14,37 +22,79 @@ export function CollectionHealth() {
               labels={[
                 "Collection",
                 "Accepted (eps)",
-                "Filtered (eps)",
                 "Failed (eps)",
-                "p95 Commit Time (ms)",
-                "Newest-Event Age",
-                "Lag (s)",
+                "Avg Commit Time (ms)",
+                "Max Commit Time (ms)",
+                "Avg Event Lag (s)",
+                "Max Event Lag (s)",
                 "Status",
               ]}
             />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {collectionRows.map((row, index) => (
-            <TableRow key={row[0]}>
-              <TableCell className="font-mono">{row[0]}</TableCell>
-              <TableCell>
-                {row[4].toLocaleString()} <Sparkline />
-              </TableCell>
-              <TableCell>
-                {12 + index * 8} <Sparkline />
-              </TableCell>
-              <TableCell>
-                {row[8]} <Sparkline tone={index < 2 ? "warning" : "primary"} />
-              </TableCell>
-              <TableCell>{row[7].toLocaleString()}</TableCell>
-              <TableCell>{(2.1 - index * 0.5).toFixed(1)}s</TableCell>
-              <TableCell>{(2.1 - index * 0.5).toFixed(1)}</TableCell>
-              <TableCell>
-                <span className={index < 2 ? "ops-warning" : "ops-success"}>{index < 2 ? "At Risk" : "Good"}</span>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                No collection health history is available for the last 15 minutes.
               </TableCell>
             </TableRow>
-          ))}
+          ) : (
+            rows.map((row) => {
+              const atRisk = (latestMetricValue(row.failedRate) ?? 0) > 0
+              return (
+                <TableRow key={row.collection}>
+                  <TableCell className="font-mono">{row.collection}</TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.acceptedRate}
+                      label={`${row.collection} accepted rate`}
+                      format={formatRate}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.failedRate}
+                      label={`${row.collection} failed rate`}
+                      format={formatRate}
+                      tone="warning"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.averageCommitMilliseconds}
+                      label={`${row.collection} average commit time`}
+                      format={formatMilliseconds}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.maximumCommitMilliseconds}
+                      label={`${row.collection} maximum commit time`}
+                      format={formatMilliseconds}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.averageLagSeconds}
+                      label={`${row.collection} average event lag`}
+                      format={formatSeconds}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <MetricSparklineCell
+                      points={row.maximumLagSeconds}
+                      label={`${row.collection} maximum event lag`}
+                      format={formatSeconds}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <span className={atRisk ? "ops-warning" : "ops-success"}>{atRisk ? "At Risk" : "Good"}</span>
+                  </TableCell>
+                </TableRow>
+              )
+            })
+          )}
         </TableBody>
       </Table>
     </OperationsSection>

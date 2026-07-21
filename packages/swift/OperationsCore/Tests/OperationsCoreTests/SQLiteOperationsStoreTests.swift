@@ -77,5 +77,44 @@ struct SQLiteOperationsStoreTests {
     let updated = try #require(await store.fetchBackfill(id: job.id))
     #expect(updated.checkpointCursor == 3_000_000)
     #expect(updated.processedCount == 20)
+
+    try await store.updateBackfillStatus(
+      id: job.id,
+      status: .failed,
+      operatorDid: "system:worker",
+      failureReason: "database_timeout",
+      at: Date()
+    )
+    let failed = try #require(await store.fetchBackfill(id: job.id))
+    #expect(failed.failureReason == "database_timeout")
+  }
+
+  @Test("Metric rollups retain real bucket values and dimensions")
+  func metricRollups() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("operations-\(UUID().uuidString).sqlite")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = try SQLiteOperationsStore(path: url.path, logger: Logger(label: "operations.test"))
+    let now = Date()
+
+    try await store.recordMetric(
+      OperationsMetricSample(
+        name: "socialwire.ingestion.events_total",
+        value: 1,
+        dimensions: ["collection": "site.standard.document", "operation": "create"],
+        recordedAt: now
+      )
+    )
+
+    let rollups = try await store.listMetricRollups(
+      startAt: now.addingTimeInterval(-60),
+      endAt: now.addingTimeInterval(60),
+      limit: 100
+    )
+    let rollup = try #require(rollups.first)
+    #expect(rollup.metricName == "socialwire.ingestion.events_total")
+    #expect(rollup.dimensions["collection"] == "site.standard.document")
+    #expect(rollup.sampleCount == 1)
+    #expect(rollup.valueSum == 1)
   }
 }

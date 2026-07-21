@@ -10,7 +10,6 @@ export type BackfillReadinessInput = {
   reviewed: boolean
   environment: EnvironmentName
   environmentConfirmation: string
-  auditNote: string
   pending: boolean
 }
 
@@ -18,11 +17,6 @@ export function backfillReadiness(input: BackfillReadinessInput) {
   return [
     { id: "collection-scope", label: "At least one collection selected", complete: input.collectionScopeSelected },
     { id: "dry-run", label: "Dry-run completed for the current configuration", complete: input.dryRunComplete },
-    {
-      id: "audit-note",
-      label: "Audit note contains at least 8 characters",
-      complete: input.auditNote.trim().length >= 8,
-    },
     { id: "reviewed", label: "Impact review acknowledged", complete: input.reviewed },
     ...(input.environment === "production"
       ? [

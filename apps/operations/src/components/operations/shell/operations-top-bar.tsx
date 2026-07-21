@@ -23,7 +23,7 @@ export function OperationsTopBar({
   onSignOut: () => Promise<void>
 }) {
   return (
-    <header className="sticky top-0 z-30 flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-background/95 px-3 py-2 backdrop-blur sm:px-4">
+    <header className="sticky top-0 z-30 flex min-h-[53px] flex-wrap items-center gap-x-4 gap-y-2 border-b bg-background/95 px-3 py-2 backdrop-blur sm:px-4 md:flex-nowrap">
       <div className="flex items-center gap-2">
         <span className="ops-label normal-case tracking-normal">Environment</span>
         <Badge tone={environment === "production" ? "danger" : "warning"}>
@@ -59,7 +59,7 @@ export function OperationsTopBar({
             />
           </button>
         </label>
-        <div className="hidden text-right text-[9px] text-muted-foreground xl:block">
+        <div className="hidden text-right text-[9px] leading-tight text-muted-foreground xl:block">
           <p>Last refreshed</p>
           <p>{refreshedAt ? new Date(refreshedAt).toLocaleString() : "—"}</p>
         </div>

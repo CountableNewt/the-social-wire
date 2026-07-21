@@ -34,7 +34,7 @@ export function OperationsRouteContent({
     return (
       <div className="grid gap-3">
         <LiveStream data={data} />
-        <CollectionTable />
+        <CollectionTable metricRollups={data.metricRollups ?? []} />
         <GapsTable
           gaps={data.gaps}
           backfills={data.backfills}
@@ -70,10 +70,10 @@ export function OperationsRouteContent({
     <div className="grid gap-3">
       <HealthStrip overview={data} />
       <LiveStream data={data} />
-      <CollectionTable />
+      <CollectionTable metricRollups={data.metricRollups ?? []} />
       <RequestTable spans={data.recentTraces} />
       <DatabaseObservability overview={data} />
-      <CollectionHealth />
+      <CollectionHealth metricRollups={data.metricRollups ?? []} />
       <div className="flex w-full flex-col gap-3">
         <GapsTable
           gaps={data.gaps}

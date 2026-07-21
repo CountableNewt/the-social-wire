@@ -65,7 +65,8 @@ public actor PostgresOperationsStore: OperationsStore {
     var topTables: [DatabaseTableRecordCount] = []
     for try await row in tableRows {
       let value = try row.decode((String, String, Int64).self)
-      topTables.append(DatabaseTableRecordCount(schema: value.0, table: value.1, estimatedRecords: value.2))
+      topTables.append(
+        DatabaseTableRecordCount(schema: value.0, table: value.1, estimatedRecords: value.2))
     }
 
     return DatabaseObservabilitySnapshot(
@@ -153,7 +154,10 @@ public actor PostgresOperationsStore: OperationsStore {
     )
     for try await row in rows {
       let value = try row.decode(
-        (String, String, Date?, Date?, String?, Int64?, Date?, Date?, Int64?, Date?, Date?, Int, Date).self
+        (
+          String, String, Date?, Date?, String?, Int64?, Date?, Date?, Int64?, Date?, Date?, Int,
+          Date
+        ).self
       )
       return IngestionStreamState(
         source: value.0,
@@ -327,7 +331,10 @@ public actor PostgresOperationsStore: OperationsStore {
     var result: [IngestionGap] = []
     for try await row in rows {
       let value = try row.decode(
-        (String, String, Int64?, Int64?, Date?, Date?, String, String, String, Date, Date, String?, Int, Int, Int, Int).self
+        (
+          String, String, Int64?, Int64?, Date?, Date?, String, String, String, Date, Date, String?,
+          Int, Int, Int, Int
+        ).self
       )
       result.append(
         IngestionGap(
@@ -353,7 +360,9 @@ public actor PostgresOperationsStore: OperationsStore {
     return result
   }
 
-  public func updateGap(id: String, status: IngestionGapStatus, operatorDid: String, at: Date) async throws {
+  public func updateGap(id: String, status: IngestionGapStatus, operatorDid: String, at: Date)
+    async throws
+  {
     try await pool.query(
       "UPDATE appview_ingestion_gaps SET status = \(status.rawValue), updated_at = \(at) WHERE id = \(id)",
       logger: logger
@@ -368,7 +377,9 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
-  public func estimateBackfill(_ request: BackfillDryRunRequest) async throws -> BackfillDryRunResponse {
+  public func estimateBackfill(_ request: BackfillDryRunRequest) async throws
+    -> BackfillDryRunResponse
+  {
     let estimate: Int
     switch request.sourceMode {
     case .jetstreamReplay:
@@ -378,7 +389,8 @@ public actor PostgresOperationsStore: OperationsStore {
     case .pdsReconciliation:
       estimate = request.authorDids.count * max(1, request.collections.count) * 100
     }
-    let duration = request.rateLimit > 0 ? Int(ceil(Double(estimate) / Double(request.rateLimit))) : 0
+    let duration =
+      request.rateLimit > 0 ? Int(ceil(Double(estimate) / Double(request.rateLimit))) : 0
     return BackfillDryRunResponse(
       estimatedCount: estimate,
       estimatedDurationSeconds: duration,
@@ -407,7 +419,7 @@ public actor PostgresOperationsStore: OperationsStore {
          \(request.dryRun.startCursor), \(request.dryRun.endCursor), \(request.dryRun.startCursor),
          \(collections)::jsonb, \(authorDids)::jsonb, \(request.dryRun.batchSize),
          \(request.dryRun.rateLimit), \(request.dryRun.maxConcurrency), \(request.expectedEstimate),
-         \(operatorDid), \(String(request.auditNote.prefix(280))), \(at), \(at))
+         \(operatorDid), \(String((request.auditNote ?? "").prefix(280))), \(at), \(at))
       """,
       logger: logger
     )
@@ -425,7 +437,9 @@ public actor PostgresOperationsStore: OperationsStore {
       note: request.auditNote,
       at: at
     )
-    guard let job = try await fetchBackfill(id: id) else { throw OperationsStoreError.missingCreatedRecord }
+    guard let job = try await fetchBackfill(id: id) else {
+      throw OperationsStoreError.missingCreatedRecord
+    }
     return job
   }
 
@@ -436,7 +450,7 @@ public actor PostgresOperationsStore: OperationsStore {
       SELECT id, gap_id, source_mode, status, start_cursor, end_cursor, checkpoint_cursor,
              collections::text, author_dids::text, batch_size, rate_limit, max_concurrency,
              estimated_count, processed_count, failed_count, reconciled_count,
-             requested_by_did, audit_note, lease_owner, lease_expires_at,
+             requested_by_did, audit_note, failure_reason, lease_owner, lease_expires_at,
              created_at, updated_at, completed_at
       FROM appview_backfill_jobs
       ORDER BY created_at DESC
@@ -453,7 +467,7 @@ public actor PostgresOperationsStore: OperationsStore {
       SELECT id, gap_id, source_mode, status, start_cursor, end_cursor, checkpoint_cursor,
              collections::text, author_dids::text, batch_size, rate_limit, max_concurrency,
              estimated_count, processed_count, failed_count, reconciled_count,
-             requested_by_did, audit_note, lease_owner, lease_expires_at,
+             requested_by_did, audit_note, failure_reason, lease_owner, lease_expires_at,
              created_at, updated_at, completed_at
       FROM appview_backfill_jobs
       WHERE id = \(id)
@@ -468,6 +482,7 @@ public actor PostgresOperationsStore: OperationsStore {
     id: String,
     status: BackfillJobStatus,
     operatorDid: String,
+    failureReason: String?,
     at: Date
   ) async throws {
     let completedAt: Date? = [.completed, .failed, .cancelled].contains(status) ? at : nil
@@ -475,6 +490,7 @@ public actor PostgresOperationsStore: OperationsStore {
       """
       UPDATE appview_backfill_jobs
       SET status = \(status.rawValue), updated_at = \(at), completed_at = COALESCE(\(completedAt), completed_at),
+          failure_reason = CASE WHEN \(status.rawValue) = 'failed' THEN \(failureReason.map { String($0.prefix(160)) }) ELSE failure_reason END,
           lease_owner = CASE WHEN \(status.rawValue) = 'running' THEN lease_owner ELSE NULL END,
           lease_expires_at = CASE WHEN \(status.rawValue) = 'running' THEN lease_expires_at ELSE NULL END
       WHERE id = \(id)
@@ -491,7 +507,9 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
-  public func claimNextBackfill(workerId: String, leaseUntil: Date, at: Date) async throws -> BackfillJob? {
+  public func claimNextBackfill(workerId: String, leaseUntil: Date, at: Date) async throws
+    -> BackfillJob?
+  {
     let rows = try await pool.query(
       """
       UPDATE appview_backfill_jobs
@@ -507,7 +525,7 @@ public actor PostgresOperationsStore: OperationsStore {
       RETURNING id, gap_id, source_mode, status, start_cursor, end_cursor, checkpoint_cursor,
                 collections::text, author_dids::text, batch_size, rate_limit, max_concurrency,
                 estimated_count, processed_count, failed_count, reconciled_count,
-                requested_by_did, audit_note, lease_owner, lease_expires_at,
+                requested_by_did, audit_note, failure_reason, lease_owner, lease_expires_at,
                 created_at, updated_at, completed_at
       """,
       logger: logger
@@ -551,7 +569,10 @@ public actor PostgresOperationsStore: OperationsStore {
     var result: [OperationsAlert] = []
     for try await row in rows {
       let value = try row.decode(
-        (String, String, String, String, String, String, String, Date, Date, String?, String?, Int, String?).self
+        (
+          String, String, String, String, String, String, String, Date, Date, String?, String?, Int,
+          String?
+        ).self
       )
       result.append(
         OperationsAlert(
@@ -582,7 +603,9 @@ public actor PostgresOperationsStore: OperationsStore {
     runbookSlug: String,
     at: Date
   ) async throws -> OperationsAlert {
-    if let existing = try await listAlerts(limit: 250).first(where: { $0.rule == rule && $0.status != .resolved }) {
+    if let existing = try await listAlerts(limit: 250).first(where: {
+      $0.rule == rule && $0.status != .resolved
+    }) {
       return existing
     }
     let id = UUID().uuidString.lowercased()
@@ -670,7 +693,8 @@ public actor PostgresOperationsStore: OperationsStore {
     }
     var result: [TraceSpan] = []
     for try await row in rows {
-      let value = try row.decode((String, String, String?, String, String, Date, Double, String, String, Date).self)
+      let value = try row.decode(
+        (String, String, String?, String, String, Date, Double, String, String, Date).self)
       result.append(
         TraceSpan(
           id: value.0,
@@ -704,7 +728,8 @@ public actor PostgresOperationsStore: OperationsStore {
     )
     var result: [TraceSpan] = []
     for try await row in rows {
-      let value = try row.decode((String, String, String?, String, String, Date, Double, String, String, Date).self)
+      let value = try row.decode(
+        (String, String, String?, String, String, Date, Double, String, String, Date).self)
       result.append(
         TraceSpan(
           id: value.0,
@@ -741,9 +766,11 @@ public actor PostgresOperationsStore: OperationsStore {
   public func recordMetric(_ sample: OperationsMetricSample) async throws {
     let dimensions = OperationsRedactor.boundedAttributes(sample.dimensions)
     let dimensionsJSON = try json(dimensions)
-    let dimensionsKey = dimensions.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+    let dimensionsKey = dimensions.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+      .joined(separator: "&")
     let dimensionsHash = OperationsRedactor.hashIdentity(dimensionsKey)
-    let bucket = Date(timeIntervalSince1970: floor(sample.recordedAt.timeIntervalSince1970 / 60) * 60)
+    let bucket = Date(
+      timeIntervalSince1970: floor(sample.recordedAt.timeIntervalSince1970 / 60) * 60)
     let expiresAt = bucket.addingTimeInterval(90 * 86_400)
     try await pool.query(
       """
@@ -763,7 +790,41 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
-  public func listGapInvestigationEvents(startAt: Date, endAt: Date, limit: Int) async throws -> [OperationsEvent] {
+  public func listMetricRollups(startAt: Date, endAt: Date, limit: Int) async throws
+    -> [OperationsMetricRollup]
+  {
+    let limit = max(1, min(limit, 10_000))
+    let rows = try await pool.query(
+      """
+      SELECT bucket_start, metric_name, dimensions::text, sample_count, value_sum, value_min, value_max
+      FROM operations_metric_rollups
+      WHERE bucket_start >= \(startAt) AND bucket_start <= \(endAt)
+      ORDER BY bucket_start ASC, metric_name ASC, dimensions_hash ASC
+      LIMIT \(limit)
+      """,
+      logger: logger
+    )
+    var result: [OperationsMetricRollup] = []
+    for try await row in rows {
+      let value = try row.decode((Date, String, String, Int, Double, Double?, Double?).self)
+      result.append(
+        OperationsMetricRollup(
+          bucketStart: value.0,
+          metricName: value.1,
+          dimensions: decodeJSON([String: String].self, from: value.2) ?? [:],
+          sampleCount: value.3,
+          valueSum: value.4,
+          valueMin: value.5,
+          valueMax: value.6
+        )
+      )
+    }
+    return result
+  }
+
+  public func listGapInvestigationEvents(startAt: Date, endAt: Date, limit: Int) async throws
+    -> [OperationsEvent]
+  {
     let limit = max(1, min(limit, 500))
     let rows = try await pool.query(
       """
@@ -779,7 +840,8 @@ public actor PostgresOperationsStore: OperationsStore {
     )
     var result: [OperationsEvent] = []
     for try await row in rows {
-      let value = try row.decode((String, String, String, String, String, Date, String?, String?, String).self)
+      let value = try row.decode(
+        (String, String, String, String, String, Date, String?, String?, String).self)
       result.append(
         OperationsEvent(
           id: value.0,
@@ -823,7 +885,9 @@ public actor PostgresOperationsStore: OperationsStore {
     at: Date
   ) async throws {
     let id = UUID().uuidString.lowercased()
-    let expiresAt = Calendar.current.date(byAdding: .day, value: 365, to: at) ?? at.addingTimeInterval(365 * 86_400)
+    let expiresAt =
+      Calendar.current.date(byAdding: .day, value: 365, to: at)
+      ?? at.addingTimeInterval(365 * 86_400)
     try await pool.query(
       """
       INSERT INTO operations_audit_events
@@ -840,7 +904,10 @@ public actor PostgresOperationsStore: OperationsStore {
     var result: [BackfillJob] = []
     for try await row in rows {
       let value = try row.decode(
-        (String, String?, String, String, Int64?, Int64?, Int64?, String, String, Int, Int, Int, Int, Int, Int, Int, String, String, String?, Date?, Date, Date, Date?).self
+        (
+          String, String?, String, String, Int64?, Int64?, Int64?, String, String, Int, Int, Int,
+          Int, Int, Int, Int, String, String, String?, String?, Date?, Date, Date, Date?
+        ).self
       )
       result.append(
         BackfillJob(
@@ -862,11 +929,12 @@ public actor PostgresOperationsStore: OperationsStore {
           reconciledCount: value.15,
           requestedByDid: value.16,
           auditNote: value.17,
-          leaseOwner: value.18,
-          leaseExpiresAt: value.19,
-          createdAt: value.20,
-          updatedAt: value.21,
-          completedAt: value.22
+          failureReason: value.18,
+          leaseOwner: value.19,
+          leaseExpiresAt: value.20,
+          createdAt: value.21,
+          updatedAt: value.22,
+          completedAt: value.23
         )
       )
     }
@@ -875,7 +943,9 @@ public actor PostgresOperationsStore: OperationsStore {
 
   private func json<T: Encodable>(_ value: T) throws -> String {
     let data = try encoder.encode(value)
-    guard let string = String(data: data, encoding: .utf8) else { throw OperationsStoreError.jsonEncoding }
+    guard let string = String(data: data, encoding: .utf8) else {
+      throw OperationsStoreError.jsonEncoding
+    }
     return string
   }
 

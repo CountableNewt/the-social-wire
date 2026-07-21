@@ -89,6 +89,7 @@ export type Backfill = {
   reconciledCount: number
   requestedByDid: string
   auditNote: string
+  failureReason?: string
   leaseOwner?: string
   leaseExpiresAt?: string
   createdAt: string
@@ -122,6 +123,15 @@ export type Span = {
   attributes: Record<string, string>
   expiresAt: string
 }
+export type MetricRollup = {
+  bucketStart: string
+  metricName: string
+  dimensions: Record<string, string>
+  sampleCount: number
+  valueSum: number
+  valueMin?: number
+  valueMax?: number
+}
 export type DatabaseTableRecordCount = { schema: string; table: string; estimatedRecords: number }
 export type DatabaseObservabilitySnapshot = {
   databaseSizeBytes: number
@@ -140,6 +150,7 @@ export type Overview = {
   backfills: Backfill[]
   alerts: Alert[]
   recentTraces: Span[]
+  metricRollups: MetricRollup[]
   database?: DatabaseObservabilitySnapshot
   refreshedAt: string
 }

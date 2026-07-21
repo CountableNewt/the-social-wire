@@ -1,7 +1,90 @@
-import type { GapInvestigation, GapInvestigationEvidence, Overview } from "@/lib/operations-types"
+import type { GapInvestigation, GapInvestigationEvidence, MetricRollup, Overview } from "@/lib/operations-types"
 
 const now = new Date()
 const iso = (secondsAgo = 0) => new Date(now.getTime() - secondsAgo * 1000).toISOString()
+
+const demoCollections = [
+  { name: "site.standard.document", rates: [512, 78, 3], latency: 0.22, lag: 2.1 },
+  { name: "site.standard.entry", rates: [1264, 193, 6], latency: 0.31, lag: 1.6 },
+  { name: "app.skyreader.feed.subscription", rates: [852, 41, 1], latency: 0.19, lag: 1.1 },
+  { name: "site.standard.graph.subscription", rates: [274, 12, 0.2], latency: 0.16, lag: 0.6 },
+] as const
+
+const demoMetricRollups: MetricRollup[] = demoCollections.flatMap((collection, collectionIndex) =>
+  Array.from({ length: 15 }, (_, minuteIndex) => {
+    const bucketStart = iso((14 - minuteIndex) * 60)
+    const variation = 1 + Math.sin(minuteIndex * (0.45 + collectionIndex * 0.08) + collectionIndex) * 0.12
+    const operations = ["create", "update", "delete"] as const
+    const operationRollups = operations.flatMap((operation, operationIndex): MetricRollup[] => {
+      const sampleCount = Math.max(1, Math.round(collection.rates[operationIndex] * variation * 60))
+      const duration = collection.latency * (1 + Math.cos(minuteIndex * 0.37 + operationIndex) * 0.18)
+      const dimensions = { collection: collection.name, operation, ingestion_mode: "live" }
+      return [
+        {
+          bucketStart,
+          metricName: "socialwire.ingestion.events_total",
+          dimensions,
+          sampleCount,
+          valueSum: sampleCount,
+          valueMin: 1,
+          valueMax: 1,
+        },
+        {
+          bucketStart,
+          metricName: "socialwire.ingestion.results_total",
+          dimensions: { ...dimensions, result: "success" },
+          sampleCount,
+          valueSum: sampleCount,
+          valueMin: 1,
+          valueMax: 1,
+        },
+        {
+          bucketStart,
+          metricName: "socialwire.ingestion.db_write_duration_seconds",
+          dimensions,
+          sampleCount,
+          valueSum: sampleCount * duration,
+          valueMin: duration * 0.55,
+          valueMax: duration * 2.4,
+        },
+      ]
+    })
+    const totalSamples = operationRollups
+      .filter(({ metricName }) => metricName === "socialwire.ingestion.events_total")
+      .reduce((sum, rollup) => sum + rollup.sampleCount, 0)
+    const lag = collection.lag * (1 + Math.sin(minuteIndex * 0.29 + collectionIndex) * 0.2)
+    const lagRollup: MetricRollup = {
+      bucketStart,
+      metricName: "socialwire.ingestion.commit_lag_seconds",
+      dimensions: { collection: collection.name, ingestion_mode: "live" },
+      sampleCount: totalSamples,
+      valueSum: totalSamples * lag,
+      valueMin: lag * 0.5,
+      valueMax: lag * 1.8,
+    }
+    const failureRollups: MetricRollup[] =
+      collectionIndex < 2 && minuteIndex % (7 + collectionIndex) === 3
+        ? [
+            {
+              bucketStart,
+              metricName: "socialwire.ingestion.results_total",
+              dimensions: {
+                collection: collection.name,
+                operation: "create",
+                result: "error",
+                ingestion_mode: "live",
+              },
+              sampleCount: collectionIndex + 1,
+              valueSum: collectionIndex + 1,
+              valueMin: 1,
+              valueMax: 1,
+            },
+          ]
+        : []
+    return [...operationRollups, lagRollup, ...failureRollups]
+  }).flat(),
+)
+
 export const demoOverview: Overview = {
   services: ["gateway", "appview", "appview-worker", "operations"].map((service, index) => ({
     service,
@@ -161,6 +244,29 @@ export const demoOverview: Overview = {
       updatedAt: iso(82000),
       completedAt: iso(82000),
     },
+    {
+      id: "bf-20250516-006",
+      sourceMode: "jetstream_replay",
+      status: "failed",
+      startCursor: 1747487600123000,
+      endCursor: 1747487605123000,
+      checkpointCursor: 1747487601123000,
+      collections: ["site.standard.document"],
+      authorDids: [],
+      batchSize: 1000,
+      rateLimit: 500,
+      maxConcurrency: 4,
+      estimatedCount: 1250,
+      processedCount: 250,
+      failedCount: 1,
+      reconciledCount: 0,
+      requestedByDid: "did:plc:operator",
+      auditNote: "",
+      failureReason: "database_timeout",
+      createdAt: iso(90000),
+      updatedAt: iso(89900),
+      completedAt: iso(89900),
+    },
   ],
   alerts: [
     {
@@ -206,6 +312,7 @@ export const demoOverview: Overview = {
     attributes: { route: String(route), cache_outcome: index === 2 ? "hit" : "miss", query_name: "overview" },
     expiresAt: iso(-604800),
   })),
+  metricRollups: demoMetricRollups,
   database: {
     databaseSizeBytes: 3_006_477_312,
     activeConnections: 8,

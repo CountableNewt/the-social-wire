@@ -167,6 +167,7 @@ public struct BackfillJob: Codable, Sendable, Identifiable {
   public let reconciledCount: Int
   public let requestedByDid: String
   public let auditNote: String
+  public let failureReason: String?
   public let leaseOwner: String?
   public let leaseExpiresAt: Date?
   public let createdAt: Date
@@ -219,7 +220,7 @@ public struct BackfillDryRunResponse: Codable, Sendable {
 public struct CreateBackfillRequest: Codable, Sendable {
   public let dryRun: BackfillDryRunRequest
   public let expectedEstimate: Int
-  public let auditNote: String
+  public let auditNote: String?
   public let environmentConfirmation: String?
 }
 
@@ -282,11 +283,40 @@ public struct OperationsMetricSample: Sendable {
   public let dimensions: [String: String]
   public let recordedAt: Date
 
-  public init(name: String, value: Double, dimensions: [String: String], recordedAt: Date = Date()) {
+  public init(name: String, value: Double, dimensions: [String: String], recordedAt: Date = Date())
+  {
     self.name = name
     self.value = value
     self.dimensions = dimensions
     self.recordedAt = recordedAt
+  }
+}
+
+public struct OperationsMetricRollup: Codable, Sendable {
+  public let bucketStart: Date
+  public let metricName: String
+  public let dimensions: [String: String]
+  public let sampleCount: Int
+  public let valueSum: Double
+  public let valueMin: Double?
+  public let valueMax: Double?
+
+  public init(
+    bucketStart: Date,
+    metricName: String,
+    dimensions: [String: String],
+    sampleCount: Int,
+    valueSum: Double,
+    valueMin: Double?,
+    valueMax: Double?
+  ) {
+    self.bucketStart = bucketStart
+    self.metricName = metricName
+    self.dimensions = dimensions
+    self.sampleCount = sampleCount
+    self.valueSum = valueSum
+    self.valueMin = valueMin
+    self.valueMax = valueMax
   }
 }
 
@@ -374,6 +404,7 @@ public struct OperationsOverview: Codable, Sendable {
   public let backfills: [BackfillJob]
   public let alerts: [OperationsAlert]
   public let recentTraces: [TraceSpan]
+  public let metricRollups: [OperationsMetricRollup]
   public let database: DatabaseObservabilitySnapshot?
   public let refreshedAt: Date
 }

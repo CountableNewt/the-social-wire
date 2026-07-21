@@ -33,7 +33,7 @@ export function Sidebar({ className, children }: React.HTMLAttributes<HTMLElemen
   )
 }
 export function SidebarHeader(props: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className="flex h-12 shrink-0 items-center border-b px-3" {...props} />
+  return <div className="flex h-[53.5px] shrink-0 items-center border-b px-3" {...props} />
 }
 export function SidebarContent(props: React.HTMLAttributes<HTMLDivElement>) {
   return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2" {...props} />

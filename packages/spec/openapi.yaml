@@ -1127,7 +1127,7 @@ paths:
       summary: Aggregated operator overview
       tags: [Operations]
       responses:
-        "200": { description: Service, ingestion, gap, backfill, alert, and trace overview. }
+        "200": { description: Service, ingestion, metric rollup, gap, backfill, alert, and trace overview. }
         "403": { description: Authenticated DID is not in `OPERATIONS_OPERATOR_DIDS`. }
 
   /v1/operations/services:

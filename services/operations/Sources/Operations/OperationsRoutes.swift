@@ -15,20 +15,27 @@ struct OperationsRoutes {
       OperationsServiceListResponse(services: try await store.listServiceStates())
     }
     group.get("/v1/operations/ingestion") { _, _ async throws -> IngestionResponse in
-      IngestionResponse(state: try await store.fetchStreamState(source: "jetstream"), gaps: try await store.listGaps(limit: 100))
+      IngestionResponse(
+        state: try await store.fetchStreamState(source: "jetstream"),
+        gaps: try await store.listGaps(limit: 100))
     }
     group.get("/v1/operations/appview") { _, _ async throws -> AppViewOperationsResponse in
       AppViewOperationsResponse(
-        services: try await store.listServiceStates().filter { $0.service == "appview" || $0.service == "gateway" },
+        services: try await store.listServiceStates().filter {
+          $0.service == "appview" || $0.service == "gateway"
+        },
         traces: try await store.listTraceSpans(limit: 100, traceId: nil)
       )
     }
     group.get("/v1/operations/gaps") { _, _ async throws -> GapListResponse in
       GapListResponse(gaps: try await store.listGaps(limit: 250))
     }
-    group.get("/v1/operations/gaps/:id/investigation") { _, context async throws -> GapInvestigation in
+    group.get("/v1/operations/gaps/:id/investigation") {
+      _, context async throws -> GapInvestigation in
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
-      guard let investigation = try await store.investigateGap(id: id) else { throw HTTPError(.notFound) }
+      guard let investigation = try await store.investigateGap(id: id) else {
+        throw HTTPError(.notFound)
+      }
       return investigation
     }
     group.patch("/v1/operations/gaps/:id") { request, context async throws -> IngestionGap in
@@ -36,15 +43,20 @@ struct OperationsRoutes {
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
       let body = try await request.decode(as: GapUpdateRequest.self, context: context)
       guard IngestionGapStatus.allCases.contains(body.status) else { throw HTTPError(.badRequest) }
-      try validate(OperatorMutationRequest(auditNote: body.auditNote, environmentConfirmation: body.environmentConfirmation))
+      try validate(
+        OperatorMutationRequest(
+          auditNote: body.auditNote, environmentConfirmation: body.environmentConfirmation))
       try await store.updateGap(id: id, status: body.status, operatorDid: operatorDid, at: Date())
-      try await store.recordAudit(operatorDid: operatorDid, action: "gap.\(body.status.rawValue).note", targetType: "gap", targetId: id, note: body.auditNote, at: Date())
+      try await store.recordAudit(
+        operatorDid: operatorDid, action: "gap.\(body.status.rawValue).note", targetType: "gap",
+        targetId: id, note: body.auditNote, at: Date())
       guard let gap = try await store.listGaps(limit: 250).first(where: { $0.id == id }) else {
         throw HTTPError(.notFound)
       }
       return gap
     }
-    group.post("/v1/operations/backfills/dry-run") { request, context async throws -> BackfillDryRunResponse in
+    group.post("/v1/operations/backfills/dry-run") {
+      request, context async throws -> BackfillDryRunResponse in
       let body = try await request.decode(as: BackfillDryRunRequest.self, context: context)
       try Self.validate(body)
       return try await store.estimateBackfill(body)
@@ -53,14 +65,15 @@ struct OperationsRoutes {
       BackfillListResponse(backfills: try await store.listBackfills(limit: 250))
     }
     group.post("/v1/operations/backfills") { request, context async throws -> BackfillJob in
-      guard config.recoveryEnabled else { throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled") }
+      guard config.recoveryEnabled else {
+        throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled")
+      }
       guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: CreateBackfillRequest.self, context: context)
       try Self.validate(body.dryRun)
-      guard body.auditNote.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 else {
-        throw HTTPError(.badRequest, message: "An operator audit note is required")
-      }
-      if config.environment.lowercased() == "production", body.environmentConfirmation != "PRODUCTION" {
+      if config.environment.lowercased() == "production",
+        body.environmentConfirmation != "PRODUCTION"
+      {
         throw HTTPError(.badRequest, message: "Production confirmation is required")
       }
       let freshEstimate = try await store.estimateBackfill(body.dryRun)
@@ -92,7 +105,8 @@ struct OperationsRoutes {
     }
     group.get("/v1/operations/traces/:traceId") { _, context async throws -> TraceListResponse in
       TraceListResponse(
-        spans: try await store.listTraceSpans(limit: 500, traceId: context.parameters.get("traceId"))
+        spans: try await store.listTraceSpans(
+          limit: 500, traceId: context.parameters.get("traceId"))
       )
     }
   }
@@ -102,14 +116,25 @@ struct OperationsRoutes {
     status: BackfillJobStatus,
     on group: RouterGroup<GatewayRequestContext>
   ) {
-    group.post("/v1/operations/backfills/:id/\(action)") { request, context async throws -> BackfillJob in
-      guard config.recoveryEnabled else { throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled") }
+    group.post("/v1/operations/backfills/:id/\(action)") {
+      request, context async throws -> BackfillJob in
+      guard config.recoveryEnabled else {
+        throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled")
+      }
       guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
       let mutation = try await request.decode(as: OperatorMutationRequest.self, context: context)
       try validate(mutation)
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
-      try await store.updateBackfillStatus(id: id, status: status, operatorDid: operatorDid, at: Date())
-      try await store.recordAudit(operatorDid: operatorDid, action: "backfill.\(action).note", targetType: "backfill", targetId: id, note: mutation.auditNote, at: Date())
+      try await store.updateBackfillStatus(
+        id: id,
+        status: status,
+        operatorDid: operatorDid,
+        failureReason: nil,
+        at: Date()
+      )
+      try await store.recordAudit(
+        operatorDid: operatorDid, action: "backfill.\(action).note", targetType: "backfill",
+        targetId: id, note: mutation.auditNote, at: Date())
       guard let job = try await store.fetchBackfill(id: id) else { throw HTTPError(.notFound) }
       return job
     }
@@ -120,13 +145,17 @@ struct OperationsRoutes {
     status: OperationsAlertStatus,
     on group: RouterGroup<GatewayRequestContext>
   ) {
-    group.post("/v1/operations/alerts/:id/\(action)") { request, context async throws -> OperationsAlert in
+    group.post("/v1/operations/alerts/:id/\(action)") {
+      request, context async throws -> OperationsAlert in
       guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
       let mutation = try await request.decode(as: OperatorMutationRequest.self, context: context)
       try validate(mutation)
       guard let id = context.parameters.get("id") else { throw HTTPError(.badRequest) }
-      try await store.updateAlertStatus(id: id, status: status, operatorDid: operatorDid, at: Date())
-      try await store.recordAudit(operatorDid: operatorDid, action: "alert.\(action).note", targetType: "alert", targetId: id, note: mutation.auditNote, at: Date())
+      try await store.updateAlertStatus(
+        id: id, status: status, operatorDid: operatorDid, at: Date())
+      try await store.recordAudit(
+        operatorDid: operatorDid, action: "alert.\(action).note", targetType: "alert", targetId: id,
+        note: mutation.auditNote, at: Date())
       guard let alert = try await store.listAlerts(limit: 250).first(where: { $0.id == id }) else {
         throw HTTPError(.notFound)
       }
@@ -136,14 +165,15 @@ struct OperationsRoutes {
 
   private static func validate(_ request: BackfillDryRunRequest) throws {
     guard (1...10_000).contains(request.batchSize),
-          (1...5_000).contains(request.rateLimit),
-          (1...16).contains(request.maxConcurrency),
-          !request.collections.isEmpty,
-          request.collections.count <= 16
+      (1...5_000).contains(request.rateLimit),
+      (1...16).contains(request.maxConcurrency),
+      !request.collections.isEmpty,
+      request.collections.count <= 16
     else { throw HTTPError(.badRequest, message: "Backfill bounds are invalid") }
     if request.sourceMode == .jetstreamReplay {
       guard let start = request.startCursor, let end = request.endCursor, start < end else {
-        throw HTTPError(.badRequest, message: "Jetstream replay requires an increasing cursor range")
+        throw HTTPError(
+          .badRequest, message: "Jetstream replay requires an increasing cursor range")
       }
     } else if request.authorDids.isEmpty {
       throw HTTPError(.badRequest, message: "PDS reconciliation requires at least one author DID")
@@ -154,7 +184,9 @@ struct OperationsRoutes {
     guard request.auditNote.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 else {
       throw HTTPError(.badRequest, message: "An operator audit note is required")
     }
-    if config.environment.lowercased() == "production", request.environmentConfirmation != "PRODUCTION" {
+    if config.environment.lowercased() == "production",
+      request.environmentConfirmation != "PRODUCTION"
+    {
       throw HTTPError(.badRequest, message: "Production confirmation is required")
     }
   }
@@ -165,10 +197,19 @@ struct GapUpdateRequest: Codable, Sendable {
   let auditNote: String
   let environmentConfirmation: String?
 }
-struct OperatorMutationRequest: Codable, Sendable { let auditNote: String; let environmentConfirmation: String? }
+struct OperatorMutationRequest: Codable, Sendable {
+  let auditNote: String
+  let environmentConfirmation: String?
+}
 struct OperationsServiceListResponse: Codable, Sendable { let services: [OperationsServiceState] }
-struct IngestionResponse: Codable, Sendable { let state: IngestionStreamState?; let gaps: [IngestionGap] }
-struct AppViewOperationsResponse: Codable, Sendable { let services: [OperationsServiceState]; let traces: [TraceSpan] }
+struct IngestionResponse: Codable, Sendable {
+  let state: IngestionStreamState?
+  let gaps: [IngestionGap]
+}
+struct AppViewOperationsResponse: Codable, Sendable {
+  let services: [OperationsServiceState]
+  let traces: [TraceSpan]
+}
 struct GapListResponse: Codable, Sendable { let gaps: [IngestionGap] }
 struct BackfillListResponse: Codable, Sendable { let backfills: [BackfillJob] }
 struct AlertListResponse: Codable, Sendable { let alerts: [OperationsAlert] }

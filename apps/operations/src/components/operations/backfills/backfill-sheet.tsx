@@ -83,7 +83,7 @@ export function BackfillSheet({
         body: JSON.stringify({
           dryRun: request,
           expectedEstimate: dryRun.data?.estimatedCount,
-          auditNote,
+          auditNote: auditNote.trim() || undefined,
           environmentConfirmation: productionConfirmation || undefined,
         }),
       }),
@@ -134,7 +134,6 @@ export function BackfillSheet({
     reviewed,
     environment,
     environmentConfirmation: productionConfirmation,
-    auditNote,
     pending: create.isPending,
   }
   const canRun = canQueueBackfill(readinessInput)
@@ -235,13 +234,13 @@ export function BackfillSheet({
                 </FieldGroup>
               </section>
               <Field className="mt-4">
-                <FieldLabel htmlFor="audit-note">Operator Audit Note</FieldLabel>
+                <FieldLabel htmlFor="audit-note">Operator Audit Note (Optional)</FieldLabel>
                 <Textarea
                   id="audit-note"
                   value={auditNote}
                   maxLength={280}
                   onChange={(event) => setAuditNote(event.target.value)}
-                  placeholder="Add an audit note for this backfill (required)"
+                  placeholder="Add context for this backfill"
                 />
                 <FieldDescription className="text-right">{auditNote.length} / 280</FieldDescription>
               </Field>

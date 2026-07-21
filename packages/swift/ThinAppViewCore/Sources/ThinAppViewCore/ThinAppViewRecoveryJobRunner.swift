@@ -57,7 +57,8 @@ struct ThinAppViewRecoveryJobRunner: Sendable {
         cursor = result.cursor
       }
 
-      guard let current = try await store.fetchBackfill(id: job.id), current.status == .running else { return }
+      guard let current = try await store.fetchBackfill(id: job.id), current.status == .running
+      else { return }
       try await store.checkpointBackfill(
         id: job.id,
         cursor: cursor,
@@ -67,14 +68,27 @@ struct ThinAppViewRecoveryJobRunner: Sendable {
         leaseUntil: Date().addingTimeInterval(60),
         at: Date()
       )
-      try await store.updateBackfillStatus(id: job.id, status: .completed, operatorDid: "system:worker", at: Date())
+      try await store.updateBackfillStatus(
+        id: job.id,
+        status: .completed,
+        operatorDid: "system:worker",
+        failureReason: nil,
+        at: Date()
+      )
       if let gapId = job.gapId {
-        try await store.updateGap(id: gapId, status: .resolved, operatorDid: "system:worker", at: Date())
+        try await store.updateGap(
+          id: gapId, status: .resolved, operatorDid: "system:worker", at: Date())
       }
     } catch RecoveryControlError.stopped {
       return
     } catch {
-      try? await store.updateBackfillStatus(id: job.id, status: .failed, operatorDid: "system:worker", at: Date())
+      try? await store.updateBackfillStatus(
+        id: job.id,
+        status: .failed,
+        operatorDid: "system:worker",
+        failureReason: OperationsRedactor.errorCategory(error),
+        at: Date()
+      )
       throw error
     }
   }
@@ -95,8 +109,13 @@ private struct JetstreamReplayResult: Sendable {
 private actor JetstreamReplayProgress {
   var processed = 0
   var cursor: Int64?
-  func advanced(to cursor: Int64) { processed += 1; self.cursor = cursor }
-  func snapshot() -> JetstreamReplayResult { JetstreamReplayResult(processed: processed, cursor: cursor) }
+  func advanced(to cursor: Int64) {
+    processed += 1
+    self.cursor = cursor
+  }
+  func snapshot() -> JetstreamReplayResult {
+    JetstreamReplayResult(processed: processed, cursor: cursor)
+  }
 }
 
 private struct JetstreamReplayExecutor: Sendable {
@@ -112,17 +131,17 @@ private struct JetstreamReplayExecutor: Sendable {
     let progress = JetstreamReplayProgress()
     do {
       #if canImport(WebSocketKit)
-      try await FirehoseLinuxWebSocket.consume(relayURL: replayURL, logger: logger) { text in
-        try await handle(text, progress: progress)
-      }
+        try await FirehoseLinuxWebSocket.consume(relayURL: replayURL, logger: logger) { text in
+          try await handle(text, progress: progress)
+        }
       #else
-      try await FirehoseSubscriberURLSessionTransport.consume(
-        relayURL: replayURL,
-        logger: logger,
-        isCancelled: { Task.isCancelled }
-      ) { text in
-        try await handle(text, progress: progress)
-      }
+        try await FirehoseSubscriberURLSessionTransport.consume(
+          relayURL: replayURL,
+          logger: logger,
+          isCancelled: { Task.isCancelled }
+        ) { text in
+          try await handle(text, progress: progress)
+        }
       #endif
     } catch RecoveryControlError.replayComplete {
       return await progress.snapshot()

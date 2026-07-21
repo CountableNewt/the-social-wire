@@ -1,21 +1,34 @@
-"use client"
-import { Line, LineChart } from "recharts"
-import { ChartContainer } from "@/components/ui/chart"
+import type { MetricPoint } from "@/lib/collection-metrics"
+import { sparklinePaths } from "@/lib/sparkline-path"
 
-const values = [5, 7, 4, 9, 6, 10, 8, 12, 7, 9, 6, 11, 8].map((value, index) => ({ index, value }))
-export function Sparkline({ tone = "primary" }: { tone?: "primary" | "warning" }) {
+export function Sparkline({
+  points,
+  label,
+  tone = "primary",
+}: {
+  points: MetricPoint[]
+  label: string
+  tone?: "primary" | "warning"
+}) {
+  const paths = sparklinePaths(points)
+  const singlePoint = points.filter(({ value }) => value !== null).length === 1
+
   return (
-    <ChartContainer className="inline-block h-5 w-16 align-middle">
-      <LineChart data={values}>
-        <Line
-          type="monotone"
-          dataKey="value"
+    <svg className="h-5 w-20" viewBox="0 0 80 20" role="img" aria-label={label}>
+      <title>{label}</title>
+      {paths.map((path) => (
+        <path
+          key={path}
+          d={path}
+          fill="none"
           stroke={tone === "warning" ? "var(--warning)" : "var(--primary)"}
-          strokeWidth={1.4}
-          dot={false}
-          isAnimationActive={false}
+          strokeWidth="1.6"
+          vectorEffect="non-scaling-stroke"
         />
-      </LineChart>
-    </ChartContainer>
+      ))}
+      {singlePoint ? (
+        <circle cx="40" cy="10" r="2" fill={tone === "warning" ? "var(--warning)" : "var(--primary)"} />
+      ) : null}
+    </svg>
   )
 }

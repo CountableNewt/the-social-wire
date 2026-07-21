@@ -14,16 +14,12 @@ describe("BackfillReadiness", () => {
           reviewed: false,
           environment: "production",
           environmentConfirmation: "production",
-          auditNote: "short",
           pending: false,
         }}
       />,
     )
 
-    expect(screen.getByText("2 of 5 Complete")).toBeTruthy()
-    expect(screen.getByText("Audit note contains at least 8 characters").parentElement?.className).toContain(
-      "text-muted-foreground",
-    )
+    expect(screen.getByText("2 of 4 Complete")).toBeTruthy()
     expect(screen.getByText("Production confirmation exactly matches PRODUCTION").parentElement?.className).toContain(
       "text-muted-foreground",
     )
@@ -38,7 +34,6 @@ describe("BackfillReadiness", () => {
           reviewed: true,
           environment: "development",
           environmentConfirmation: "",
-          auditNote: "Recover confirmed gap",
           pending: false,
         }}
       />,

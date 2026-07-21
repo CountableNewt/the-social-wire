@@ -43,7 +43,7 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
       const body = JSON.parse(String(init.body)) as {
         dryRun: BackfillDryRun
         expectedEstimate: number
-        auditNote: string
+        auditNote?: string
       }
       const createdAt = new Date().toISOString()
       demoCreatedBackfill = {
@@ -63,7 +63,7 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
         failedCount: 0,
         reconciledCount: 0,
         requestedByDid: "did:plc:demo-operator",
-        auditNote: body.auditNote,
+        auditNote: body.auditNote ?? "",
         createdAt,
         updatedAt: createdAt,
       }

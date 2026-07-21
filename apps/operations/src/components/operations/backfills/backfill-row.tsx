@@ -1,4 +1,5 @@
 import { BackfillStatusIndicator } from "@/components/operations/backfills/backfill-status-indicator"
+import { BackfillFailureReason } from "@/components/operations/backfills/backfill-failure-reason"
 import { OperatorActionDialog } from "@/components/operations/operator-action-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -14,6 +15,7 @@ export function BackfillRow({ job, environment }: { job: Backfill; environment: 
       <TableCell className="font-mono">{job.id}</TableCell>
       <TableCell>
         <BackfillStatusIndicator status={job.status} />
+        <BackfillFailureReason reason={job.failureReason} className="mt-1 max-w-48 text-[9px] text-destructive" />
       </TableCell>
       <TableCell className="font-mono">{job.collections[0] ?? "PDS reconciliation"}</TableCell>
       <TableCell className="font-mono">

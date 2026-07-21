@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react"
 import { BackfillStatusIndicator } from "@/components/operations/backfills/backfill-status-indicator"
 import { BackfillDetail } from "@/components/operations/backfills/backfill-detail"
+import { BackfillFailureReason } from "@/components/operations/backfills/backfill-failure-reason"
 import { BackfillMetric } from "@/components/operations/backfills/backfill-metric"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
@@ -55,6 +56,15 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
           <AlertDescription>
             This job is queued but has not been claimed. Check the AppView Worker and its Operations database
             configuration if this state persists.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {job.status === "failed" ? (
+        <Alert variant="destructive" className="mt-4">
+          <AlertTitle>Backfill Failed</AlertTitle>
+          <AlertDescription>
+            <BackfillFailureReason reason={job.failureReason ?? "No failure category was recorded"} />
           </AlertDescription>
         </Alert>
       ) : null}

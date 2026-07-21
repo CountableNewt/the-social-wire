@@ -38,4 +38,19 @@ describe("BackfillRow", () => {
     expect(screen.getByText("100%")).toBeTruthy()
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100")
   })
+
+  it("shows the persisted failure reason for failed jobs", () => {
+    render(
+      <Table>
+        <TableBody>
+          <BackfillRow
+            job={{ ...completedJob, status: "failed", failureReason: "database_timeout" }}
+            environment="development"
+          />
+        </TableBody>
+      </Table>,
+    )
+
+    expect(screen.getByRole("alert").textContent).toContain("Failure Reason: database timeout")
+  })
 })

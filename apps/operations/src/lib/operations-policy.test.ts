@@ -14,20 +14,19 @@ describe("operations mutation safeguards", () => {
     expect(productionConfirmationMatches("development", "")).toBe(true)
   })
 
-  test("requires dry-run, review, audit note, and idle mutation", () => {
+  test("requires collection scope, dry-run, review, and an idle mutation", () => {
     const ready = {
       collectionScopeSelected: true,
       dryRunComplete: true,
       reviewed: true,
       environment: "development" as const,
       environmentConfirmation: "",
-      auditNote: "Recover confirmed gap",
       pending: false,
     }
     expect(canQueueBackfill(ready)).toBe(true)
     expect(canQueueBackfill({ ...ready, collectionScopeSelected: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, dryRunComplete: false })).toBe(false)
-    expect(canQueueBackfill({ ...ready, auditNote: "short" })).toBe(false)
+    expect(canQueueBackfill({ ...ready, reviewed: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, pending: true })).toBe(false)
   })
 
@@ -38,11 +37,9 @@ describe("operations mutation safeguards", () => {
       reviewed: false,
       environment: "production",
       environmentConfirmation: "production",
-      auditNote: "short",
       pending: false,
     })
     expect(requirements.filter((requirement) => !requirement.complete).map((requirement) => requirement.id)).toEqual([
-      "audit-note",
       "reviewed",
       "production-confirmation",
     ])

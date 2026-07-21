@@ -67,4 +67,16 @@ describe("BackfillProgress", () => {
       ),
     ).toBeTruthy()
   })
+
+  it("explains why a failed job stopped", () => {
+    render(
+      <BackfillProgress
+        job={{ ...job, status: "failed", failureReason: "upstream_unavailable" }}
+        refreshing={false}
+      />,
+    )
+
+    expect(screen.getByText("Backfill Failed")).toBeTruthy()
+    expect(screen.getByText("Failure Reason: upstream unavailable")).toBeTruthy()
+  })
 })
