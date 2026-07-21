@@ -18,6 +18,7 @@ describe("operations mutation safeguards", () => {
     const ready = {
       collectionScopeSelected: true,
       dryRunComplete: true,
+      dryRunConflictFree: true,
       reviewed: true,
       environment: "development" as const,
       environmentConfirmation: "",
@@ -26,6 +27,7 @@ describe("operations mutation safeguards", () => {
     expect(canQueueBackfill(ready)).toBe(true)
     expect(canQueueBackfill({ ...ready, collectionScopeSelected: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, dryRunComplete: false })).toBe(false)
+    expect(canQueueBackfill({ ...ready, dryRunConflictFree: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, reviewed: false })).toBe(false)
     expect(canQueueBackfill({ ...ready, pending: true })).toBe(false)
   })
@@ -34,6 +36,7 @@ describe("operations mutation safeguards", () => {
     const requirements = backfillReadiness({
       collectionScopeSelected: true,
       dryRunComplete: true,
+      dryRunConflictFree: true,
       reviewed: false,
       environment: "production",
       environmentConfirmation: "production",

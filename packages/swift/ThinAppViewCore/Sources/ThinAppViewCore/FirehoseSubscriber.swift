@@ -12,6 +12,7 @@ actor FirehoseSubscriber {
   private let instanceId: String
   private let replayRewindMicroseconds: Int64
   private let logger: Logger
+  private var suspectedGapEndCursor: Int64?
 
   init(
     relayURL: String,
@@ -57,6 +58,12 @@ actor FirehoseSubscriber {
 
   private func consumeOnce() async throws {
     let streamState = try await operationsStore?.fetchStreamState(source: "jetstream")
+    if let gaps = try await operationsStore?.listGaps(limit: 250) {
+      suspectedGapEndCursor = gaps
+        .filter { $0.source == "jetstream" && $0.status == .suspected }
+        .compactMap(\.endCursor)
+        .max()
+    }
     let cursor = JetstreamCursor.resumeCursor(
       committed: streamState?.lastCommittedCursor,
       seededReceived: streamState?.lastReceivedCursor,
@@ -128,6 +135,7 @@ actor FirehoseSubscriber {
         committedAt: Date(),
         queueDepth: 0
       )
+      try await resolveRecoveredGaps(through: cursor, at: Date())
       let duration = Date().timeIntervalSince(startedAt)
       await emitMetric("socialwire.ingestion.events_total", value: 1, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
       await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "success", "ingestion_mode": "live"])
@@ -149,6 +157,7 @@ actor FirehoseSubscriber {
       await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "error", "error_type": OperationsRedactor.errorCategory(error), "ingestion_mode": "live"])
       await emitEvent("commit.failed", attributes: ["collection": collection, "operation": operation, "error_type": OperationsRedactor.errorCategory(error)])
       await emitSpan(startedAt: startedAt, duration: duration, status: "error", collection: collection, operation: operation)
+      await recordCommitFailureGap(collection: collection, cursor: cursor, at: Date())
       throw error
     }
   }
@@ -190,14 +199,92 @@ actor FirehoseSubscriber {
   private func recordDisconnectGap(reason: Error, at: Date) async {
     guard let operationsStore else { return }
     guard let state = try? await operationsStore.fetchStreamState(source: "jetstream") else { return }
-    guard state.lastReceivedCursor != state.lastCommittedCursor || reason is FirehoseQueueOverflowError else { return }
-    _ = try? await operationsStore.createGap(
+    guard let candidate = JetstreamGapDetector.candidate(state: state, reason: reason) else { return }
+    await recordGap(candidate, collections: [], at: at)
+  }
+
+  private func recordCommitFailureGap(collection: String, cursor: Int64, at: Date) async {
+    guard let operationsStore,
+      let state = try? await operationsStore.fetchStreamState(source: "jetstream"),
+      let committed = state.lastCommittedCursor,
+      cursor > committed
+    else { return }
+    await recordGap(
+      JetstreamGapCandidate(
+        startCursor: committed,
+        endCursor: cursor,
+        reason: "commit_indexing_failure"
+      ),
+      collections: [collection],
+      at: at
+    )
+  }
+
+  private func recordGap(
+    _ candidate: JetstreamGapCandidate,
+    collections: [String],
+    at: Date
+  ) async {
+    guard let operationsStore else { return }
+    let existingGaps = (try? await operationsStore.listGaps(limit: 250)) ?? []
+    guard !existingGaps.contains(where: { candidate.isCovered(by: $0) }) else { return }
+    guard let gap = try? await operationsStore.createGap(
       source: "jetstream",
-      startCursor: state.lastCommittedCursor,
-      endCursor: state.lastReceivedCursor,
-      reason: reason is FirehoseQueueOverflowError ? "message_pump_overflow" : "receive_commit_backlog",
-      collections: [],
+      startCursor: candidate.startCursor,
+      endCursor: candidate.endCursor,
+      reason: candidate.reason,
+      collections: collections,
       detectedAt: at
+    ) else { return }
+    suspectedGapEndCursor = max(suspectedGapEndCursor ?? gap.endCursor ?? 0, gap.endCursor ?? 0)
+  }
+
+  private func resolveRecoveredGaps(through cursor: Int64, at: Date) async throws {
+    guard let target = suspectedGapEndCursor, cursor >= target, let operationsStore else { return }
+    let resolvedIds = try await operationsStore.resolveSuspectedGaps(
+      source: "jetstream",
+      through: cursor,
+      at: at
+    )
+    for id in resolvedIds {
+      try await operationsStore.recordAudit(
+        operatorDid: "system:worker",
+        action: "gap.auto_resolved",
+        targetType: "gap",
+        targetId: id,
+        note: "Live ingestion committed through the suspected cursor range.",
+        at: at
+      )
+    }
+    suspectedGapEndCursor = nil
+  }
+}
+
+struct JetstreamGapCandidate: Equatable, Sendable {
+  let startCursor: Int64
+  let endCursor: Int64
+  let reason: String
+
+  func isCovered(by gap: IngestionGap) -> Bool {
+    guard gap.source == "jetstream",
+      [.suspected, .confirmed, .backfillQueued, .backfilling].contains(gap.status),
+      let existingStart = gap.startCursor,
+      let existingEnd = gap.endCursor
+    else { return false }
+    return existingStart <= startCursor && existingEnd >= endCursor
+  }
+}
+
+enum JetstreamGapDetector {
+  static func candidate(state: IngestionStreamState, reason: Error) -> JetstreamGapCandidate? {
+    guard let committed = state.lastCommittedCursor,
+      let received = state.lastReceivedCursor,
+      received > committed
+    else { return nil }
+    return JetstreamGapCandidate(
+      startCursor: committed,
+      endCursor: received,
+      reason: reason is FirehoseQueueOverflowError ? "message_pump_overflow" : "receive_commit_backlog"
     )
   }
 }

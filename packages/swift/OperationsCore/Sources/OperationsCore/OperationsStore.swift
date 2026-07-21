@@ -23,6 +23,8 @@ public protocol OperationsStore: Actor {
   ) async throws -> IngestionGap
   func listGaps(limit: Int) async throws -> [IngestionGap]
   func updateGap(id: String, status: IngestionGapStatus, operatorDid: String, at: Date) async throws
+  func resolveSuspectedGaps(source: String, through committedCursor: Int64, at: Date) async throws
+    -> [String]
 
   func estimateBackfill(_ request: BackfillDryRunRequest) async throws -> BackfillDryRunResponse
   func createBackfill(_ request: CreateBackfillRequest, operatorDid: String, at: Date) async throws

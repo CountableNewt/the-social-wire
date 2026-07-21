@@ -377,26 +377,45 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
+  public func resolveSuspectedGaps(
+    source: String,
+    through committedCursor: Int64,
+    at: Date
+  ) async throws -> [String] {
+    let rows = try await pool.query(
+      """
+      UPDATE appview_ingestion_gaps
+      SET status = 'resolved', updated_at = \(at)
+      WHERE source = \(source) AND status = 'suspected'
+        AND end_cursor IS NOT NULL AND end_cursor <= \(committedCursor)
+      RETURNING id
+      """,
+      logger: logger
+    )
+    var ids: [String] = []
+    for try await row in rows {
+      ids.append(try row.decode(String.self))
+    }
+    return ids
+  }
+
   public func estimateBackfill(_ request: BackfillDryRunRequest) async throws
     -> BackfillDryRunResponse
   {
-    let estimate: Int
-    switch request.sourceMode {
-    case .jetstreamReplay:
-      let delta = max(0, (request.endCursor ?? 0) - (request.startCursor ?? 0))
-      let seconds = Double(delta) / 1_000_000
-      estimate = min(Int.max / 2, max(0, Int(seconds * 250)))
-    case .pdsReconciliation:
-      estimate = request.authorDids.count * max(1, request.collections.count) * 100
+    let gap: IngestionGap?
+    if let gapId = request.gapId {
+      gap = try await listGaps(limit: 250).first { $0.id == gapId }
+    } else {
+      gap = nil
     }
-    let duration =
-      request.rateLimit > 0 ? Int(ceil(Double(estimate) / Double(request.rateLimit))) : 0
-    return BackfillDryRunResponse(
-      estimatedCount: estimate,
-      estimatedDurationSeconds: duration,
-      snapshotEndCursor: request.endCursor,
-      conflicts: [],
-      unresolvedDeletesWarning: request.sourceMode == .pdsReconciliation
+    async let streamState = fetchStreamState(source: "jetstream")
+    async let existingJobs = listBackfills(limit: 250)
+    let (resolvedStreamState, resolvedExistingJobs) = try await (streamState, existingJobs)
+    return BackfillDryRunAssessment.build(
+      request: request,
+      gap: gap,
+      streamState: resolvedStreamState,
+      existingJobs: resolvedExistingJobs
     )
   }
 

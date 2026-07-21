@@ -7,6 +7,7 @@ export function productionConfirmationMatches(environment: EnvironmentName, valu
 export type BackfillReadinessInput = {
   collectionScopeSelected: boolean
   dryRunComplete: boolean
+  dryRunConflictFree: boolean
   reviewed: boolean
   environment: EnvironmentName
   environmentConfirmation: string
@@ -17,6 +18,7 @@ export function backfillReadiness(input: BackfillReadinessInput) {
   return [
     { id: "collection-scope", label: "At least one collection selected", complete: input.collectionScopeSelected },
     { id: "dry-run", label: "Dry-run completed for the current configuration", complete: input.dryRunComplete },
+    { id: "conflicts", label: "Dry-run found no existing recovery or completed range", complete: input.dryRunConflictFree },
     { id: "reviewed", label: "Impact review acknowledged", complete: input.reviewed },
     ...(input.environment === "production"
       ? [

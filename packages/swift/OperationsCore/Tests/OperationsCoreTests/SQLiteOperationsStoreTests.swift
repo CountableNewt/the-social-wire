@@ -91,6 +91,84 @@ struct SQLiteOperationsStoreTests {
     #expect(failed.failureReason == "database_timeout")
   }
 
+  @Test("Dry run blocks cursor ranges already recovered by live ingestion")
+  func recoveredGapIsNotBackfilledAgain() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("operations-\(UUID().uuidString).sqlite")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = try SQLiteOperationsStore(path: url.path, logger: Logger(label: "operations.test"))
+    let now = Date()
+    let gap = try await store.createGap(
+      source: "jetstream",
+      startCursor: 1_000_000,
+      endCursor: 2_000_000,
+      reason: "receive_commit_backlog",
+      collections: [],
+      detectedAt: now
+    )
+    try await store.markStreamCommitted(
+      source: "jetstream",
+      cursor: 2_000_000,
+      eventAt: now,
+      committedAt: now,
+      queueDepth: 0
+    )
+
+    let estimate = try await store.estimateBackfill(
+      BackfillDryRunRequest(
+        gapId: gap.id,
+        sourceMode: .jetstreamReplay,
+        startCursor: 1_000_000,
+        endCursor: 2_000_000,
+        collections: ["site.standard.document"],
+        batchSize: 100,
+        rateLimit: 50,
+        maxConcurrency: 1
+      )
+    )
+    #expect(estimate.estimatedCount == 0)
+    #expect(estimate.conflicts.contains { $0.contains("already committed") })
+
+    let resolved = try await store.resolveSuspectedGaps(
+      source: "jetstream",
+      through: 2_000_000,
+      at: now
+    )
+    #expect(resolved == [gap.id])
+    #expect(try await store.listGaps(limit: 10).first?.status == .resolved)
+  }
+
+  @Test("Dry run rejects an overlapping active backfill")
+  func duplicateBackfillIsRejected() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("operations-\(UUID().uuidString).sqlite")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = try SQLiteOperationsStore(path: url.path, logger: Logger(label: "operations.test"))
+    let request = BackfillDryRunRequest(
+      sourceMode: .jetstreamReplay,
+      startCursor: 1_000_000,
+      endCursor: 6_000_000,
+      collections: ["site.standard.document"],
+      batchSize: 100,
+      rateLimit: 50,
+      maxConcurrency: 1
+    )
+    let firstEstimate = try await store.estimateBackfill(request)
+    _ = try await store.createBackfill(
+      CreateBackfillRequest(
+        dryRun: request,
+        expectedEstimate: firstEstimate.estimatedCount,
+        auditNote: nil,
+        environmentConfirmation: nil
+      ),
+      operatorDid: "did:plc:operator",
+      at: Date()
+    )
+
+    let duplicateEstimate = try await store.estimateBackfill(request)
+    #expect(duplicateEstimate.conflicts.contains { $0.contains("active backfill") })
+  }
+
   @Test("Metric rollups retain real bucket values and dimensions")
   func metricRollups() async throws {
     let url = FileManager.default.temporaryDirectory

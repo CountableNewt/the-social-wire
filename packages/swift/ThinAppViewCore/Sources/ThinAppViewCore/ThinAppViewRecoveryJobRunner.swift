@@ -100,6 +100,7 @@ struct ThinAppViewRecoveryJobRunner: Sendable {
 }
 
 private enum RecoveryControlError: Error { case stopped, replayComplete }
+private struct ReplayIncompleteError: Error {}
 
 private struct JetstreamReplayResult: Sendable {
   let processed: Int
@@ -107,10 +108,19 @@ private struct JetstreamReplayResult: Sendable {
 }
 
 private actor JetstreamReplayProgress {
-  var processed = 0
+  var processed: Int
   var cursor: Int64?
+
+  init(processed: Int, cursor: Int64?) {
+    self.processed = processed
+    self.cursor = cursor
+  }
+
   func advanced(to cursor: Int64) {
     processed += 1
+    self.cursor = cursor
+  }
+  func completed(through cursor: Int64) {
     self.cursor = cursor
   }
   func snapshot() -> JetstreamReplayResult {
@@ -126,9 +136,15 @@ private struct JetstreamReplayExecutor: Sendable {
   let logger: Logger
 
   func run() async throws -> JetstreamReplayResult {
-    let start = max(0, (job.checkpointCursor ?? job.startCursor ?? 0) - 5_000_000)
-    let replayURL = try JetstreamCursor.url(relayURL, cursor: start)
-    let progress = JetstreamReplayProgress()
+    let window = JetstreamReplayWindow(
+      lowerBound: job.checkpointCursor ?? job.startCursor ?? 0,
+      upperBound: job.endCursor
+    )
+    let replayURL = try JetstreamCursor.url(relayURL, cursor: window.connectionCursor)
+    let progress = JetstreamReplayProgress(
+      processed: job.processedCount,
+      cursor: job.checkpointCursor
+    )
     do {
       #if canImport(WebSocketKit)
         try await FirehoseLinuxWebSocket.consume(relayURL: replayURL, logger: logger) { text in
@@ -146,7 +162,7 @@ private struct JetstreamReplayExecutor: Sendable {
     } catch RecoveryControlError.replayComplete {
       return await progress.snapshot()
     }
-    return await progress.snapshot()
+    throw ReplayIncompleteError()
   }
 
   private func handle(_ text: String, progress: JetstreamReplayProgress) async throws {
@@ -159,7 +175,17 @@ private struct JetstreamReplayExecutor: Sendable {
       (json["kind"] as? String) == "commit",
       let cursor = JetstreamCursor.parse(json["time_us"])
     else { return }
-    if let end = job.endCursor, cursor > end { throw RecoveryControlError.replayComplete }
+    let window = JetstreamReplayWindow(
+      lowerBound: job.checkpointCursor ?? job.startCursor ?? 0,
+      upperBound: job.endCursor
+    )
+    if window.isPastUpperBound(cursor) {
+      if let upperBound = window.upperBound {
+        await progress.completed(through: upperBound)
+      }
+      throw RecoveryControlError.replayComplete
+    }
+    guard window.contains(cursor) else { return }
     guard
       let did = json["did"] as? String,
       let commit = json["commit"] as? [String: Any],
@@ -219,5 +245,21 @@ private struct JetstreamReplayExecutor: Sendable {
       )
       throw error
     }
+  }
+}
+
+struct JetstreamReplayWindow: Equatable, Sendable {
+  let lowerBound: Int64
+  let upperBound: Int64?
+
+  var connectionCursor: Int64 { max(0, lowerBound - 5_000_000) }
+
+  func contains(_ cursor: Int64) -> Bool {
+    guard cursor > lowerBound else { return false }
+    return upperBound.map { cursor <= $0 } ?? true
+  }
+
+  func isPastUpperBound(_ cursor: Int64) -> Bool {
+    upperBound.map { cursor > $0 } ?? false
   }
 }

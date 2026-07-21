@@ -131,6 +131,7 @@ export function BackfillSheet({
   const readinessInput: BackfillReadinessInput = {
     collectionScopeSelected: collections.length > 0,
     dryRunComplete: Boolean(dryRun.data),
+    dryRunConflictFree: Boolean(dryRun.data && dryRun.data.conflicts.length === 0),
     reviewed,
     environment,
     environmentConfirmation: productionConfirmation,
@@ -217,6 +218,19 @@ export function BackfillSheet({
                     value={dryRun.data ? (dryRun.data.conflicts.length ? String(dryRun.data.conflicts.length) : "None") : "—"}
                   />
                 </dl>
+                {dryRun.data?.conflicts.length ? (
+                  <Alert variant="warning" className="mt-3">
+                    <AlertTriangle className="mb-1 size-3.5" />
+                    <AlertTitle>Backfill Not Needed or Already Covered</AlertTitle>
+                    <AlertDescription>
+                      <ul className="grid gap-1">
+                        {dryRun.data.conflicts.map((conflict) => (
+                          <li key={conflict}>{conflict}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
               </section>
               <section className="mt-4">
                 <p className="text-xs font-semibold">Backfill Configuration</p>

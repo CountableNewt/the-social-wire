@@ -11,6 +11,7 @@ describe("BackfillReadiness", () => {
         input={{
           collectionScopeSelected: true,
           dryRunComplete: true,
+          dryRunConflictFree: true,
           reviewed: false,
           environment: "production",
           environmentConfirmation: "production",
@@ -19,7 +20,7 @@ describe("BackfillReadiness", () => {
       />,
     )
 
-    expect(screen.getByText("2 of 4 Complete")).toBeTruthy()
+    expect(screen.getByText("3 of 5 Complete")).toBeTruthy()
     expect(screen.getByText("Production confirmation exactly matches PRODUCTION").parentElement?.className).toContain(
       "text-muted-foreground",
     )
@@ -31,6 +32,7 @@ describe("BackfillReadiness", () => {
         input={{
           collectionScopeSelected: true,
           dryRunComplete: true,
+          dryRunConflictFree: true,
           reviewed: true,
           environment: "development",
           environmentConfirmation: "",

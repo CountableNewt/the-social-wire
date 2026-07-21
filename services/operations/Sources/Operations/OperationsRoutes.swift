@@ -77,6 +77,9 @@ struct OperationsRoutes {
         throw HTTPError(.badRequest, message: "Production confirmation is required")
       }
       let freshEstimate = try await store.estimateBackfill(body.dryRun)
+      guard freshEstimate.conflicts.isEmpty else {
+        throw HTTPError(.conflict, message: freshEstimate.conflicts.joined(separator: " "))
+      }
       guard freshEstimate.estimatedCount == body.expectedEstimate else {
         throw HTTPError(.conflict, message: "Dry-run estimate changed; review it again")
       }

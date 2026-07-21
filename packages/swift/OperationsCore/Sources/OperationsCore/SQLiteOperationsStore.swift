@@ -266,24 +266,52 @@ public actor SQLiteOperationsStore: OperationsStore {
     )
   }
 
+  public func resolveSuspectedGaps(
+    source: String,
+    through committedCursor: Int64,
+    at: Date
+  ) async throws -> [String] {
+    try await db.write { database in
+      let ids = try String.fetchAll(
+        database,
+        sql: """
+          SELECT id
+          FROM appview_ingestion_gaps
+          WHERE source = ? AND status = 'suspected'
+            AND end_cursor IS NOT NULL AND end_cursor <= ?
+          """,
+        arguments: [source, committedCursor]
+      )
+      guard !ids.isEmpty else { return [] }
+      try database.execute(
+        sql: """
+          UPDATE appview_ingestion_gaps
+          SET status = 'resolved', updated_at = ?
+          WHERE source = ? AND status = 'suspected'
+            AND end_cursor IS NOT NULL AND end_cursor <= ?
+          """,
+        arguments: [Self.iso(at), source, committedCursor]
+      )
+      return ids
+    }
+  }
+
   public func estimateBackfill(_ request: BackfillDryRunRequest) async throws
     -> BackfillDryRunResponse
   {
-    let estimate: Int
-    switch request.sourceMode {
-    case .jetstreamReplay:
-      let delta = max(0, (request.endCursor ?? 0) - (request.startCursor ?? 0))
-      estimate = max(0, Int(Double(delta) / 1_000_000 * 250))
-    case .pdsReconciliation:
-      estimate = request.authorDids.count * max(1, request.collections.count) * 100
+    let gap: IngestionGap?
+    if let gapId = request.gapId {
+      gap = try await listGaps(limit: 250).first { $0.id == gapId }
+    } else {
+      gap = nil
     }
-    return BackfillDryRunResponse(
-      estimatedCount: estimate,
-      estimatedDurationSeconds: request.rateLimit > 0
-        ? Int(ceil(Double(estimate) / Double(request.rateLimit))) : 0,
-      snapshotEndCursor: request.endCursor,
-      conflicts: [],
-      unresolvedDeletesWarning: request.sourceMode == .pdsReconciliation
+    let streamState = try await fetchStreamState(source: "jetstream")
+    let existingJobs = try await listBackfills(limit: 250)
+    return BackfillDryRunAssessment.build(
+      request: request,
+      gap: gap,
+      streamState: streamState,
+      existingJobs: existingJobs
     )
   }
 

@@ -1,4 +1,5 @@
 import Foundation
+import OperationsCore
 import Testing
 @testable import ThinAppViewCore
 
@@ -38,6 +39,43 @@ struct JetstreamCursorTests {
     #expect(url.contains("wantedCollections=site.standard.document"))
     #expect(url.contains("cursor=25"))
     #expect(!url.contains("cursor=1&"))
+  }
+
+  @Test func gapDetectorRequiresObservedUncommittedCursors() {
+    let caughtUp = IngestionStreamState(
+      source: "jetstream",
+      connectionState: .disconnected,
+      lastReceivedCursor: 2_000,
+      lastCommittedCursor: 2_000,
+      heartbeatAt: Date()
+    )
+    #expect(JetstreamGapDetector.candidate(state: caughtUp, reason: FirehoseQueueOverflowError()) == nil)
+
+    let backlog = IngestionStreamState(
+      source: "jetstream",
+      connectionState: .disconnected,
+      lastReceivedCursor: 2_100,
+      lastCommittedCursor: 2_000,
+      heartbeatAt: Date()
+    )
+    #expect(
+      JetstreamGapDetector.candidate(state: backlog, reason: FirehoseQueueOverflowError())
+        == JetstreamGapCandidate(
+          startCursor: 2_000,
+          endCursor: 2_100,
+          reason: "message_pump_overflow"
+        )
+    )
+  }
+
+  @Test func replayWindowUsesRewindOnlyForTransportCatchup() {
+    let window = JetstreamReplayWindow(lowerBound: 20_000_000, upperBound: 30_000_000)
+    #expect(window.connectionCursor == 15_000_000)
+    #expect(!window.contains(19_999_999))
+    #expect(!window.contains(20_000_000))
+    #expect(window.contains(20_000_001))
+    #expect(window.contains(30_000_000))
+    #expect(window.isPastUpperBound(30_000_001))
   }
 }
 
