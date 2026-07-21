@@ -54,22 +54,24 @@ export function Tooltip({ label, children }: { label: string; children: React.Re
   return (
     <>
       {trigger}
-      {position ? createPortal(
-        <div
-          id={descriptionId}
-          role="tooltip"
-          className="pointer-events-none fixed z-50 w-max max-w-64 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] leading-relaxed text-popover-foreground shadow-md"
-          data-placement={position.placement}
-          style={{
-            left: position.left,
-            top: position.top,
-            transform: position.placement === "top" ? "translate(-50%, -100%)" : "translateX(-50%)",
-          }}
-        >
-          {label}
-        </div>,
-        document.body,
-      ) : null}
+      {position
+        ? createPortal(
+            <div
+              id={descriptionId}
+              role="tooltip"
+              className="pointer-events-none fixed z-50 w-max max-w-64 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] leading-relaxed text-popover-foreground shadow-md"
+              data-placement={position.placement}
+              style={{
+                left: position.left,
+                top: position.top,
+                transform: position.placement === "top" ? "translate(-50%, -100%)" : "translateX(-50%)",
+              }}
+            >
+              {label}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

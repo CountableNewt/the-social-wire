@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import { render, screen } from "@testing-library/react"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 
 describe("Sidebar", () => {
   it("keeps the toggle footer inside the viewport-height flex layout", () => {
@@ -8,7 +15,9 @@ describe("Sidebar", () => {
       <SidebarProvider>
         <Sidebar>
           <SidebarContent>Navigation</SidebarContent>
-          <SidebarFooter><SidebarTrigger /></SidebarFooter>
+          <SidebarFooter>
+            <SidebarTrigger />
+          </SidebarFooter>
         </Sidebar>
         <SidebarInset>Content</SidebarInset>
       </SidebarProvider>,

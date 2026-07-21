@@ -37,7 +37,10 @@ test("operations requests propagate request and W3C trace identifiers", async ()
   const session = {
     fetchHandler: async (_url: string, init?: RequestInit) => {
       headers = new Headers(init?.headers)
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
     },
   } as unknown as OAuthSession
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { render, screen } from "@testing-library/react"
-import { DatabaseObservability } from "@/components/operations/database-observability"
+import { DatabaseObservability } from "@/components/operations/dashboard/database-observability"
 import { demoOverview } from "@/lib/demo-data"
 
 describe("DatabaseObservability", () => {

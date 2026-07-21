@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { render, screen } from "@testing-library/react"
-import { HealthStrip } from "@/components/operations/health-strip"
+import { HealthStrip } from "@/components/operations/dashboard/health-strip"
 import { demoOverview } from "@/lib/demo-data"
 
 describe("HealthStrip", () => {

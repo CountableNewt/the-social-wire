@@ -22,7 +22,9 @@ export function OperatorMenu({ operator, onSignOut }: { operator: string; onSign
         aria-label="Operator Menu"
         className="hidden items-center gap-2 rounded-md border-l py-1 pl-3 pr-1 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring md:flex"
       >
-        <span className="grid size-7 place-items-center rounded-full bg-primary text-[10px] text-primary-foreground">OP</span>
+        <span className="grid size-7 place-items-center rounded-full bg-primary text-[10px] text-primary-foreground">
+          OP
+        </span>
         <span className="max-w-32">
           <span className="block truncate text-[10px] font-medium">Operator</span>
           <span className="block truncate text-[9px] text-muted-foreground">{operator}</span>

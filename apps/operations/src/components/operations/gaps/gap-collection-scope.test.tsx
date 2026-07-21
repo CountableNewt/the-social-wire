@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
-import { GapCollectionScope } from "@/components/operations/gap-collection-scope"
+import { GapCollectionScope } from "@/components/operations/gaps/gap-collection-scope"
 
 afterEach(cleanup)
 

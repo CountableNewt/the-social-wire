@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { BackfillCollectionSelector } from "@/components/operations/backfill-collection-selector"
+import { BackfillCollectionSelector } from "@/components/operations/backfills/backfill-collection-selector"
 
 afterEach(cleanup)
 
@@ -22,6 +22,8 @@ describe("BackfillCollectionSelector", () => {
     render(<BackfillCollectionSelector value={["app.skyreader.feed.subscription"]} onValueChange={() => undefined} />)
 
     expect(screen.queryByRole("alert")).toBeNull()
-    expect((screen.getByRole("checkbox", { name: "app.skyreader.feed.subscription" }) as HTMLInputElement).checked).toBe(true)
+    expect(
+      (screen.getByRole("checkbox", { name: "app.skyreader.feed.subscription" }) as HTMLInputElement).checked,
+    ).toBe(true)
   })
 })

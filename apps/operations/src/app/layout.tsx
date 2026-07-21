@@ -14,7 +14,9 @@ export const metadata: Metadata = {
     title: "The Social Wire Operations",
     description: "Operations, observability, and recovery control plane",
     type: "website",
-    images: [{ url: "/og/the-social-wire-operations.png", width: 1200, height: 630, alt: "The Social Wire Operations" }],
+    images: [
+      { url: "/og/the-social-wire-operations.png", width: 1200, height: 630, alt: "The Social Wire Operations" },
+    ],
   },
   twitter: {
     card: "summary_large_image",

@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test"
-import { buildOperationsOAuthClientMetadata, operationsOAuthClientMetadataUrl } from "@/lib/operations-oauth-client-metadata"
+import {
+  buildOperationsOAuthClientMetadata,
+  operationsOAuthClientMetadataUrl,
+} from "@/lib/operations-oauth-client-metadata"
 
 test("builds same-origin metadata for hosted deployments", () => {
   const metadata = buildOperationsOAuthClientMetadata("https://preview.example.com/some-path")
@@ -11,6 +14,7 @@ test("builds same-origin metadata for hosted deployments", () => {
 })
 
 test("builds the public Gateway metadata URL for protected deployments", () => {
-  expect(operationsOAuthClientMetadataUrl("https://api.testing.thesocialwire.app/"))
-    .toBe("https://api.testing.thesocialwire.app/operations-oauth-client-metadata.json")
+  expect(operationsOAuthClientMetadataUrl("https://api.testing.thesocialwire.app/")).toBe(
+    "https://api.testing.thesocialwire.app/operations-oauth-client-metadata.json",
+  )
 })

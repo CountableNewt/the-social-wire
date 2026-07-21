@@ -20,11 +20,7 @@ export function BackfillCollectionSelector({
               type="checkbox"
               checked={checked}
               onChange={() => {
-                onValueChange(
-                  checked
-                    ? value.filter((item) => item !== collection)
-                    : [...value, collection],
-                )
+                onValueChange(checked ? value.filter((item) => item !== collection) : [...value, collection])
               }}
             />
             <span className="break-all font-mono">{collection}</span>

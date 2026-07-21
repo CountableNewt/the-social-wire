@@ -2,21 +2,82 @@ import type { OAuthSession } from "@/lib/auth"
 import { authFetch } from "@/lib/auth"
 import { operationsEnvironment } from "@/lib/app-environment"
 import { demoGapInvestigation, demoOverview } from "@/lib/demo-data"
-import type { BackfillDryRun, DryRunResult, GapInvestigation, Overview } from "@/lib/operations-types"
+import type { Backfill, BackfillDryRun, DryRunResult, GapInvestigation, Overview } from "@/lib/operations-types"
+
+let demoCreatedBackfill: Backfill | undefined
 
 export function gatewayOrigin() {
-  return process.env.NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN
-    || (operationsEnvironment() === "production" ? "https://api.thesocialwire.app" : "https://api.testing.thesocialwire.app")
+  return (
+    process.env.NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN ||
+    (operationsEnvironment() === "production"
+      ? "https://api.thesocialwire.app"
+      : "https://api.testing.thesocialwire.app")
+  )
 }
 const requestId = () => crypto.randomUUID()
-const randomHex = (bytes: number) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (value) => value.toString(16).padStart(2, "0")).join("")
+const randomHex = (bytes: number) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (value) => value.toString(16).padStart(2, "0")).join("")
 const traceparent = () => `00-${randomHex(16)}-${randomHex(8)}-01`
 export async function operationsRequest<T>(session: OAuthSession | null, path: string, init?: RequestInit): Promise<T> {
   if (process.env.NEXT_PUBLIC_OPERATIONS_DEMO_MODE === "1") {
     await new Promise((resolve) => setTimeout(resolve, 80))
-    if (path === "/v1/operations/overview") return demoOverview as T
-    if (/^\/v1\/operations\/gaps\/[^/]+\/investigation$/.test(path)) return demoGapInvestigation(path.split("/")[4]!) as T
-    if (path === "/v1/operations/backfills/dry-run") return { estimatedCount: 1_982_341, estimatedDurationSeconds: 3965, snapshotEndCursor: 1747487750123000, conflicts: [], unresolvedDeletesWarning: false } as T
+    if (path === "/v1/operations/overview")
+      return {
+        ...demoOverview,
+        backfills: demoCreatedBackfill
+          ? [evolveDemoBackfill(demoCreatedBackfill), ...demoOverview.backfills]
+          : demoOverview.backfills,
+        refreshedAt: new Date().toISOString(),
+      } as T
+    if (/^\/v1\/operations\/gaps\/[^/]+\/investigation$/.test(path))
+      return demoGapInvestigation(path.split("/")[4]!) as T
+    if (path === "/v1/operations/backfills/dry-run")
+      return {
+        estimatedCount: 1_982_341,
+        estimatedDurationSeconds: 3965,
+        snapshotEndCursor: 1747487750123000,
+        conflicts: [],
+        unresolvedDeletesWarning: false,
+      } as T
+    if (path === "/v1/operations/backfills" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as {
+        dryRun: BackfillDryRun
+        expectedEstimate: number
+        auditNote: string
+      }
+      const createdAt = new Date().toISOString()
+      demoCreatedBackfill = {
+        id: `bf-demo-${Date.now()}`,
+        gapId: body.dryRun.gapId,
+        sourceMode: body.dryRun.sourceMode,
+        status: "queued",
+        startCursor: body.dryRun.startCursor,
+        endCursor: body.dryRun.endCursor,
+        collections: body.dryRun.collections,
+        authorDids: body.dryRun.authorDids,
+        batchSize: body.dryRun.batchSize,
+        rateLimit: body.dryRun.rateLimit,
+        maxConcurrency: body.dryRun.maxConcurrency,
+        estimatedCount: body.expectedEstimate,
+        processedCount: 0,
+        failedCount: 0,
+        reconciledCount: 0,
+        requestedByDid: "did:plc:demo-operator",
+        auditNote: body.auditNote,
+        createdAt,
+        updatedAt: createdAt,
+      }
+      return demoCreatedBackfill as T
+    }
+    if (/^\/v1\/operations\/backfills\/[^/]+$/.test(path)) {
+      const id = decodeURIComponent(path.split("/")[4]!)
+      const job =
+        demoCreatedBackfill?.id === id
+          ? evolveDemoBackfill(demoCreatedBackfill)
+          : demoOverview.backfills.find((candidate) => candidate.id === id)
+      if (job) return job as T
+      throw new Error("Backfill not found")
+    }
     return demoOverview as T
   }
   if (!session) throw new Error("Operator authentication is required")
@@ -30,7 +91,43 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
   if (!response.ok) throw new Error(`Operations request failed (${response.status})`)
   return response.json() as Promise<T>
 }
-export const fetchOverview = (session: OAuthSession | null) => operationsRequest<Overview>(session, "/v1/operations/overview")
-export const fetchGapInvestigation = (session: OAuthSession | null, gapId: string) => operationsRequest<GapInvestigation>(session, `/v1/operations/gaps/${encodeURIComponent(gapId)}/investigation`)
-export const dryRunBackfill = (session: OAuthSession | null, request: BackfillDryRun) => operationsRequest<DryRunResult>(session, "/v1/operations/backfills/dry-run", { method: "POST", body: JSON.stringify(request) })
-export class OperationsForbiddenError extends Error { constructor() { super("This DID is not authorized for operations access") } }
+export const fetchOverview = (session: OAuthSession | null) =>
+  operationsRequest<Overview>(session, "/v1/operations/overview")
+export const fetchBackfill = (session: OAuthSession | null, backfillId: string) =>
+  operationsRequest<Backfill>(session, `/v1/operations/backfills/${encodeURIComponent(backfillId)}`)
+export const fetchGapInvestigation = (session: OAuthSession | null, gapId: string) =>
+  operationsRequest<GapInvestigation>(session, `/v1/operations/gaps/${encodeURIComponent(gapId)}/investigation`)
+export const dryRunBackfill = (session: OAuthSession | null, request: BackfillDryRun) =>
+  operationsRequest<DryRunResult>(session, "/v1/operations/backfills/dry-run", {
+    method: "POST",
+    body: JSON.stringify(request),
+  })
+export class OperationsForbiddenError extends Error {
+  constructor() {
+    super("This DID is not authorized for operations access")
+  }
+}
+
+function evolveDemoBackfill(job: Backfill): Backfill {
+  const elapsedSeconds = Math.max(0, (Date.now() - new Date(job.createdAt).getTime()) / 1000)
+  if (elapsedSeconds < 2) return job
+  const processedCount = Math.min(
+    job.estimatedCount,
+    Math.floor((elapsedSeconds - 2) * job.rateLimit * job.maxConcurrency),
+  )
+  const completed = processedCount >= job.estimatedCount
+  const progress = job.estimatedCount > 0 ? processedCount / job.estimatedCount : 0
+  return {
+    ...job,
+    status: completed ? "completed" : "running",
+    processedCount,
+    checkpointCursor:
+      job.startCursor !== undefined && job.endCursor !== undefined
+        ? Math.round(job.startCursor + (job.endCursor - job.startCursor) * progress)
+        : undefined,
+    leaseOwner: completed ? undefined : "worker-demo-01",
+    leaseExpiresAt: completed ? undefined : new Date(Date.now() + 30_000).toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: completed ? new Date().toISOString() : undefined,
+  }
+}

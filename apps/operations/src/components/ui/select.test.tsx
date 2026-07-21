@@ -5,7 +5,17 @@ import { Select } from "@/components/ui/select"
 describe("Select", () => {
   it("opens a popup and reports the chosen value", async () => {
     const onValueChange = mock(() => {})
-    render(<Select ariaLabel="Source Mode" value="jetstream_replay" onValueChange={onValueChange} options={[{ value: "jetstream_replay", label: "Jetstream Replay" }, { value: "pds_reconciliation", label: "PDS Reconciliation" }]} />)
+    render(
+      <Select
+        ariaLabel="Source Mode"
+        value="jetstream_replay"
+        onValueChange={onValueChange}
+        options={[
+          { value: "jetstream_replay", label: "Jetstream Replay" },
+          { value: "pds_reconciliation", label: "PDS Reconciliation" },
+        ]}
+      />,
+    )
 
     const trigger = screen.getByRole("combobox", { name: "Source Mode" })
     expect(trigger.textContent).toContain("Jetstream Replay")

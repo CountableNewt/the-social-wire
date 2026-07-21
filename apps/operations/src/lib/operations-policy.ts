@@ -18,10 +18,20 @@ export function backfillReadiness(input: BackfillReadinessInput) {
   return [
     { id: "collection-scope", label: "At least one collection selected", complete: input.collectionScopeSelected },
     { id: "dry-run", label: "Dry-run completed for the current configuration", complete: input.dryRunComplete },
-    { id: "audit-note", label: "Audit note contains at least 8 characters", complete: input.auditNote.trim().length >= 8 },
+    {
+      id: "audit-note",
+      label: "Audit note contains at least 8 characters",
+      complete: input.auditNote.trim().length >= 8,
+    },
     { id: "reviewed", label: "Impact review acknowledged", complete: input.reviewed },
     ...(input.environment === "production"
-      ? [{ id: "production-confirmation", label: "Production confirmation exactly matches PRODUCTION", complete: productionConfirmationMatches(input.environment, input.environmentConfirmation) }]
+      ? [
+          {
+            id: "production-confirmation",
+            label: "Production confirmation exactly matches PRODUCTION",
+            complete: productionConfirmationMatches(input.environment, input.environmentConfirmation),
+          },
+        ]
       : []),
   ]
 }
@@ -33,5 +43,9 @@ export function canQueueBackfill(input: BackfillReadinessInput) {
 export function filterTraces(spans: Span[], query: string) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return spans
-  return spans.filter((span) => [span.traceId, span.service, span.name, ...Object.values(span.attributes)].some((value) => value.toLowerCase().includes(normalized)))
+  return spans.filter((span) =>
+    [span.traceId, span.service, span.name, ...Object.values(span.attributes)].some((value) =>
+      value.toLowerCase().includes(normalized),
+    ),
+  )
 }

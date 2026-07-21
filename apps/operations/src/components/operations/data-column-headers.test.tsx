@@ -4,7 +4,15 @@ import { DataColumnHeaders } from "@/components/operations/data-column-headers"
 
 describe("DataColumnHeaders", () => {
   it("shows explanations when a column title is hovered", async () => {
-    render(<table><thead><tr><DataColumnHeaders labels={["Collection", "Total Latency"]} /></tr></thead></table>)
+    render(
+      <table>
+        <thead>
+          <tr>
+            <DataColumnHeaders labels={["Collection", "Total Latency"]} />
+          </tr>
+        </thead>
+      </table>,
+    )
 
     fireEvent.mouseEnter(screen.getByText("Collection"))
 

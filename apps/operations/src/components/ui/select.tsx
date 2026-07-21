@@ -23,16 +23,18 @@ export function Select({
   value: string
 }) {
   return (
-    <SelectPrimitive.Root
-      items={options}
-      value={value}
-    >
+    <SelectPrimitive.Root items={options} value={value}>
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
-        className={cn("flex h-8 w-full items-center justify-between gap-2 rounded-md border bg-background px-2.5 text-left text-xs hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)}
+        className={cn(
+          "flex h-8 w-full items-center justify-between gap-2 rounded-md border bg-background px-2.5 text-left text-xs hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          className,
+        )}
       >
         <SelectPrimitive.Value />
-        <SelectPrimitive.Icon><ChevronDown className="size-3 text-muted-foreground" /></SelectPrimitive.Icon>
+        <SelectPrimitive.Icon>
+          <ChevronDown className="size-3 text-muted-foreground" />
+        </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Positioner align="start" sideOffset={4} className="z-[60]">
@@ -46,7 +48,9 @@ export function Select({
                   className="relative flex cursor-default select-none items-center rounded-sm py-2 pl-2.5 pr-8 outline-none data-highlighted:bg-muted data-selected:text-primary"
                 >
                   <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
-                  <SelectPrimitive.ItemIndicator className="absolute right-2.5"><Check className="size-3.5" /></SelectPrimitive.ItemIndicator>
+                  <SelectPrimitive.ItemIndicator className="absolute right-2.5">
+                    <Check className="size-3.5" />
+                  </SelectPrimitive.ItemIndicator>
                 </SelectPrimitive.Item>
               ))}
             </SelectPrimitive.List>

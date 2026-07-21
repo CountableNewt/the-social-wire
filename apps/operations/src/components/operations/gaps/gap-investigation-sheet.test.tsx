@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
-import { GapInvestigationContent } from "@/components/operations/gap-investigation-sheet"
+import { GapInvestigationContent } from "@/components/operations/gaps/gap-investigation-content"
 import { demoGapInvestigation } from "@/lib/demo-data"
 
 afterEach(cleanup)
@@ -19,7 +19,20 @@ describe("GapInvestigationContent", () => {
 
   it("labels an unsupported assessment as insufficient evidence", () => {
     const investigation = demoGapInvestigation("gap-20250516-001")
-    render(<GapInvestigationContent investigation={{ ...investigation, assessment: { ...investigation.assessment, confidence: "insufficient", title: "Cause not determined from retained telemetry", summary: "No supported trigger was retained.", evidenceIds: ["gap-detected"] } }} />)
+    render(
+      <GapInvestigationContent
+        investigation={{
+          ...investigation,
+          assessment: {
+            ...investigation.assessment,
+            confidence: "insufficient",
+            title: "Cause not determined from retained telemetry",
+            summary: "No supported trigger was retained.",
+            evidenceIds: ["gap-detected"],
+          },
+        }}
+      />,
+    )
 
     expect(screen.getByText("Insufficient Evidence")).toBeTruthy()
     expect(screen.getByText("Cause not determined from retained telemetry")).toBeTruthy()
