@@ -94,6 +94,7 @@ describe("OpenAPI route drift", () => {
       "/v1/operations/overview": ['"/v1/operations/overview"'],
       "/v1/operations/services": ['"/v1/operations/services"'],
       "/v1/operations/ingestion": ['"/v1/operations/ingestion"'],
+      "/v1/operations/ingestion/reconnect": ['"/v1/operations/ingestion/reconnect"'],
       "/v1/operations/appview": ['"/v1/operations/appview"'],
       "/v1/operations/gaps": ['"/v1/operations/gaps"'],
       "/v1/operations/gaps/{id}": ['"/v1/operations/gaps/:id"'],

@@ -115,6 +115,32 @@ export const demoOverview: Overview = {
     queueDepth: 128,
     heartbeatAt: iso(2),
   },
+  jetstreamEndpoints: [
+    {
+      id: "jetstream1.us-east.bsky.network",
+      displayName: "Jetstream 1",
+      host: "jetstream1.us-east.bsky.network",
+      role: "active",
+      connectionState: "connected",
+      lastConnectedAt: iso(224000),
+      connectionAttempts: 3,
+      failoverCount: 1,
+      updatedAt: iso(2),
+    },
+    {
+      id: "jetstream2.us-east.bsky.network",
+      displayName: "Jetstream 2",
+      host: "jetstream2.us-east.bsky.network",
+      role: "standby",
+      connectionState: "unknown",
+      lastConnectedAt: iso(410000),
+      lastDisconnectedAt: iso(224010),
+      connectionAttempts: 2,
+      failoverCount: 1,
+      updatedAt: iso(224010),
+    },
+  ],
+  commands: [],
   gaps: [
     {
       id: "gap-20250516-001",

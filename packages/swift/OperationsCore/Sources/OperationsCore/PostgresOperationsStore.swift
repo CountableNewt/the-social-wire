@@ -206,6 +206,145 @@ public actor PostgresOperationsStore: OperationsStore {
     )
   }
 
+  public func upsertJetstreamEndpoint(_ state: JetstreamEndpointState) async throws {
+    try await pool.query(
+      """
+      INSERT INTO appview_jetstream_endpoints
+        (id, display_name, host, role, connection_state, last_connected_at,
+         last_disconnected_at, last_error, connection_attempts, failover_count, updated_at)
+      VALUES
+        (\(state.id), \(state.displayName), \(state.host), \(state.role.rawValue),
+         \(state.connectionState.rawValue), \(state.lastConnectedAt), \(state.lastDisconnectedAt),
+         \(state.lastError), \(state.connectionAttempts), \(state.failoverCount), \(state.updatedAt))
+      ON CONFLICT (id) DO UPDATE SET
+        display_name = EXCLUDED.display_name,
+        host = EXCLUDED.host,
+        role = EXCLUDED.role,
+        connection_state = EXCLUDED.connection_state,
+        last_connected_at = EXCLUDED.last_connected_at,
+        last_disconnected_at = EXCLUDED.last_disconnected_at,
+        last_error = EXCLUDED.last_error,
+        connection_attempts = EXCLUDED.connection_attempts,
+        failover_count = EXCLUDED.failover_count,
+        updated_at = EXCLUDED.updated_at
+      """,
+      logger: logger
+    )
+  }
+
+  public func listJetstreamEndpoints() async throws -> [JetstreamEndpointState] {
+    let rows = try await pool.query(
+      """
+      SELECT id, display_name, host, role, connection_state, last_connected_at,
+             last_disconnected_at, last_error, connection_attempts, failover_count, updated_at
+      FROM appview_jetstream_endpoints
+      ORDER BY id
+      """,
+      logger: logger
+    )
+    var result: [JetstreamEndpointState] = []
+    for try await row in rows {
+      let value = try row.decode(
+        (String, String, String, String, String, Date?, Date?, String?, Int, Int, Date).self
+      )
+      result.append(
+        JetstreamEndpointState(
+          id: value.0, displayName: value.1, host: value.2,
+          role: JetstreamEndpointRole(rawValue: value.3) ?? .standby,
+          connectionState: IngestionConnectionState(rawValue: value.4) ?? .unknown,
+          lastConnectedAt: value.5, lastDisconnectedAt: value.6, lastError: value.7,
+          connectionAttempts: value.8, failoverCount: value.9, updatedAt: value.10
+        )
+      )
+    }
+    return result
+  }
+
+  public func createCommand(
+    action: OperationsCommandAction,
+    operatorDid: String,
+    auditNote: String,
+    at: Date
+  ) async throws -> OperationsWorkerCommand {
+    let command = OperationsWorkerCommand(
+      id: UUID().uuidString.lowercased(), action: action, status: .queued,
+      requestedByDid: operatorDid, auditNote: String(auditNote.prefix(280)),
+      createdAt: at, updatedAt: at
+    )
+    try await pool.query(
+      """
+      INSERT INTO operations_commands
+        (id, action, status, requested_by_did, audit_note, created_at, updated_at)
+      VALUES
+        (\(command.id), \(action.rawValue), 'queued', \(operatorDid), \(command.auditNote), \(at), \(at))
+      """,
+      logger: logger
+    )
+    return command
+  }
+
+  public func listCommands(limit: Int) async throws -> [OperationsWorkerCommand] {
+    let boundedLimit = max(1, min(limit, 250))
+    let rows = try await pool.query(
+      """
+      SELECT id, action, status, requested_by_did, audit_note, claimed_by, failure_reason,
+             created_at, updated_at, completed_at
+      FROM operations_commands
+      ORDER BY created_at DESC
+      LIMIT \(boundedLimit)
+      """,
+      logger: logger
+    )
+    return try await decodeCommands(rows)
+  }
+
+  public func claimNextCommand(
+    action: OperationsCommandAction,
+    workerId: String,
+    at: Date
+  ) async throws -> OperationsWorkerCommand? {
+    let staleBefore = at.addingTimeInterval(-60)
+    let rows = try await pool.query(
+      """
+      WITH next_command AS (
+        SELECT id FROM operations_commands
+        WHERE action = \(action.rawValue)
+          AND (status = 'queued' OR (status = 'running' AND updated_at < \(staleBefore)))
+        ORDER BY created_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      UPDATE operations_commands AS command
+      SET status = 'running', claimed_by = \(workerId), updated_at = \(at)
+      FROM next_command
+      WHERE command.id = next_command.id
+      RETURNING command.id, command.action, command.status, command.requested_by_did,
+                command.audit_note, command.claimed_by, command.failure_reason,
+                command.created_at, command.updated_at, command.completed_at
+      """,
+      logger: logger
+    )
+    return try await decodeCommands(rows).first
+  }
+
+  public func completeCommand(
+    id: String,
+    status: OperationsCommandStatus,
+    failureReason: String?,
+    at: Date
+  ) async throws {
+    precondition(status == .completed || status == .failed)
+    try await pool.query(
+      """
+      UPDATE operations_commands
+      SET status = \(status.rawValue), failure_reason = \(failureReason),
+          updated_at = \(at), completed_at = \(at)
+      WHERE id = \(id) AND status = 'running'
+      """,
+      logger: logger
+    )
+  }
+
   public func markStreamReceived(
     source: String,
     cursor: Int64,
@@ -954,6 +1093,27 @@ public actor PostgresOperationsStore: OperationsStore {
           createdAt: value.21,
           updatedAt: value.22,
           completedAt: value.23
+        )
+      )
+    }
+    return result
+  }
+
+  private func decodeCommands(_ rows: PostgresRowSequence) async throws -> [OperationsWorkerCommand] {
+    var result: [OperationsWorkerCommand] = []
+    for try await row in rows {
+      let value = try row.decode(
+        (String, String, String, String, String, String?, String?, Date, Date, Date?).self
+      )
+      guard
+        let action = OperationsCommandAction(rawValue: value.1),
+        let status = OperationsCommandStatus(rawValue: value.2)
+      else { continue }
+      result.append(
+        OperationsWorkerCommand(
+          id: value.0, action: action, status: status, requestedByDid: value.3,
+          auditNote: value.4, claimedBy: value.5, failureReason: value.6,
+          createdAt: value.7, updatedAt: value.8, completedAt: value.9
         )
       )
     }

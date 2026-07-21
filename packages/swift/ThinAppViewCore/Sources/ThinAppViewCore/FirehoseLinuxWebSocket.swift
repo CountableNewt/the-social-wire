@@ -10,6 +10,7 @@ enum FirehoseLinuxWebSocket {
   static func consume(
     relayURL: String,
     logger: Logger,
+    onConnected: @Sendable @escaping () async -> Void,
     handleMessage: @Sendable @escaping (String) async throws -> Void
   ) async throws {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -22,6 +23,7 @@ enum FirehoseLinuxWebSocket {
 
           WebSocket.connect(to: relayURL, on: group) { ws in
             socketBox.set(ws)
+            Task { await onConnected() }
             let pump = BoundedSequentialMessagePump(
               capacity: 4_096,
               handleMessage: handleMessage,

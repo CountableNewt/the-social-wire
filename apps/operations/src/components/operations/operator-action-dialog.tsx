@@ -31,6 +31,7 @@ export function OperatorActionDialog({
 }) {
   const { session } = useOperationsAuth()
   const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
   const [auditNote, setAuditNote] = useState("")
   const [confirmation, setConfirmation] = useState("")
   const mutation = useMutation({
@@ -39,11 +40,24 @@ export function OperatorActionDialog({
         method: "POST",
         body: JSON.stringify({ auditNote, environmentConfirmation: confirmation || undefined }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["operations-overview", environment] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["operations-overview", environment] })
+      setOpen(false)
+    },
   })
   const allowed = auditNote.trim().length >= 8 && (environment !== "production" || confirmation === "PRODUCTION")
   return (
-    <AlertDialog>
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (nextOpen) {
+          setAuditNote("")
+          setConfirmation("")
+          mutation.reset()
+        }
+      }}
+    >
       <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>{label}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -83,11 +97,9 @@ export function OperatorActionDialog({
         </div>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-          <AlertDialogClose
-            render={<Button disabled={!allowed || mutation.isPending} onClick={() => mutation.mutate()} />}
-          >
+          <Button disabled={!allowed || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? "Working…" : label}
-          </AlertDialogClose>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

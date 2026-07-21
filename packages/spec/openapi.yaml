@@ -1144,7 +1144,27 @@ paths:
       summary: Jetstream cursor and gap state
       tags: [Operations]
       responses:
-        "200": { description: Received/committed cursor state and recent gaps. }
+        "200": { description: Received/committed cursor state, per-Jetstream endpoint connectivity, recent reconnect commands, and gaps. }
+
+  /v1/operations/ingestion/reconnect:
+    post:
+      operationId: reconnectOperationsJetstream
+      summary: Queue an audited Jetstream reconnect and post-connect gap assessment
+      tags: [Operations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auditNote]
+              properties:
+                auditNote: { type: string, minLength: 8, maxLength: 280 }
+                environmentConfirmation: { type: string }
+      responses:
+        "200": { description: Queued reconnect command. }
+        "409": { description: A reconnect command is already queued or running. }
+        "503": { description: Recovery mutations are disabled. }
 
   /v1/operations/appview:
     get:

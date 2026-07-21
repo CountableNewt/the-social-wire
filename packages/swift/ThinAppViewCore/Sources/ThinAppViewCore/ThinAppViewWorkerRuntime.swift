@@ -29,7 +29,7 @@ public enum ThinAppViewWorkerRuntime {
     )
     let telemetry = operationsStore.map { OperationsTelemetryBuffer(store: $0, logger: logger) }
     let firehose = FirehoseSubscriber(
-      relayURL: config.relayWebSocketURL,
+      relayURLs: config.relayWebSocketURLs,
       indexer: indexer,
       operationsStore: operationsStore,
       telemetry: telemetry,

@@ -44,6 +44,7 @@ export const columnExplanations = {
   "Affected Collections":
     "The number of ATProto collections attributed to the gap. Unknown means the detector could not determine the collection scope.",
   Action: "The recovery or lifecycle action currently available for this row.",
+  "Recovery / Lifecycle": "A safe recovery action for the underlying condition and the alert lifecycle action.",
   "Backfill ID": "The stable identifier assigned to this recovery job.",
   "Range (μs)": "The cursor interval the backfill is configured to replay.",
   Progress:

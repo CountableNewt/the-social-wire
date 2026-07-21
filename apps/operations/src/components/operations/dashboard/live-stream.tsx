@@ -1,7 +1,9 @@
 import { OperationsSection } from "@/components/operations/operations-section"
+import { JetstreamEndpointStatus } from "@/components/operations/dashboard/jetstream-endpoint-status"
+import { OperatorActionDialog } from "@/components/operations/operator-action-dialog"
 import { Badge } from "@/components/ui/badge"
 import { boundedNonNegativeInteger, elapsedSeconds } from "@/lib/observability-values"
-import type { Overview } from "@/lib/operations-types"
+import type { EnvironmentName, Overview } from "@/lib/operations-types"
 
 function formatDuration(seconds: number | null) {
   if (seconds === null) return "—"
@@ -21,7 +23,7 @@ function formatTimestamp(value?: string) {
   return Number.isFinite(timestamp.getTime()) ? timestamp.toLocaleString() : "Invalid timestamp"
 }
 
-export function LiveStream({ data }: { data: Overview }) {
+export function LiveStream({ data, environment }: { data: Overview; environment: EnvironmentName }) {
   const state = data.ingestion
   const receivedCursor = boundedNonNegativeInteger(state?.lastReceivedCursor)
   const committedCursor = boundedNonNegativeInteger(state?.lastCommittedCursor)
@@ -41,12 +43,25 @@ export function LiveStream({ data }: { data: Overview }) {
     ["In-Flight", boundedNonNegativeInteger(state?.queueDepth)?.toLocaleString() ?? "—"],
     ["Reconnect Reason", state?.lastDisconnectReason ?? "—"],
   ]
+  const reconnect = data.commands?.find((command) => command.action === "reconnect_jetstream")
+  const reconnectActive = reconnect?.status === "queued" || reconnect?.status === "running"
   return (
     <OperationsSection
       title={
         <span className="flex items-center gap-2">
           Live Stream / Consumer <Badge tone={connectionTone}>● {connectionState}</Badge>
         </span>
+      }
+      action={
+        reconnectActive ? (
+          <Badge tone="warning">Reconnect {reconnect.status}</Badge>
+        ) : (
+          <OperatorActionDialog
+            environment={environment}
+            path="/v1/operations/ingestion/reconnect"
+            label="Reconnect Jetstream"
+          />
+        )
       }
     >
       <div className="grid grid-cols-2 divide-x divide-y sm:grid-cols-3 xl:grid-cols-5">
@@ -57,6 +72,13 @@ export function LiveStream({ data }: { data: Overview }) {
           </div>
         ))}
       </div>
+      <JetstreamEndpointStatus endpoints={data.jetstreamEndpoints ?? []} />
+      {reconnect ? (
+        <p className="border-t px-3 py-2 text-[10px] text-muted-foreground">
+          Latest reconnect: <span className="font-medium text-foreground">{reconnect.status}</span>
+          {reconnect.failureReason ? ` — ${reconnect.failureReason}` : ""}
+        </p>
+      ) : null}
     </OperationsSection>
   )
 }

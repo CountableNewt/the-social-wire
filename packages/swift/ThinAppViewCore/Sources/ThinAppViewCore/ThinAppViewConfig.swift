@@ -11,11 +11,18 @@ public static let contentCollections: [String] = [
 
 public static let graphSubscriptionCollection = "site.standard.graph.subscription"
 
-public static let defaultRelayWebSocketURL =
-    "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=site.standard.document&wantedCollections=com.standard.document&wantedCollections=site.standard.entry&wantedCollections=com.standard.entry&wantedCollections=app.skyreader.feed.subscription&wantedCollections=site.standard.graph.subscription"
+private static let relayQuery = "wantedCollections=site.standard.document&wantedCollections=com.standard.document&wantedCollections=site.standard.entry&wantedCollections=com.standard.entry&wantedCollections=app.thesocialwire.entryReadState&wantedCollections=app.skyreader.feed.subscription&wantedCollections=site.standard.graph.subscription"
+
+public static let defaultRelayWebSocketURLs = [
+    "wss://jetstream1.us-east.bsky.network/subscribe?\(relayQuery)",
+    "wss://jetstream2.us-east.bsky.network/subscribe?\(relayQuery)",
+  ]
+
+public static let defaultRelayWebSocketURL = defaultRelayWebSocketURLs[0]
 
 public let enabled: Bool
-public let relayWebSocketURL: String
+public let relayWebSocketURLs: [String]
+public var relayWebSocketURL: String { relayWebSocketURLs[0] }
 public let contentRetentionSeconds: TimeInterval
 public let readMarkRetentionSeconds: TimeInterval
 public let maxEnrollAuthors: Int
@@ -32,10 +39,10 @@ public let maxEnrollAuthors: Int
 public static func fromEnvironment(
     _ env: [String: String] = ProcessInfo.processInfo.environment
   ) -> ThinAppViewConfig {
-    ThinAppViewConfig(
+    let configuredRelays = relayURLs(from: env)
+    return ThinAppViewConfig(
       enabled: Self.truthyFlag(env["ENABLE_THIN_APPVIEW"]),
-      relayWebSocketURL: env["THIN_APPVIEW_RELAY_WS_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        .nonEmpty ?? defaultRelayWebSocketURL,
+      relayWebSocketURLs: configuredRelays,
       contentRetentionSeconds: Self.seconds(env["THIN_APPVIEW_CONTENT_TTL_SECONDS"], default: 30 * 24 * 60 * 60),
       readMarkRetentionSeconds: Self.seconds(env["THIN_APPVIEW_READ_MARK_TTL_SECONDS"], default: 180 * 24 * 60 * 60),
       maxEnrollAuthors: Self.int(env["THIN_APPVIEW_MAX_ENROLL_AUTHORS"], default: 500),
@@ -56,7 +63,7 @@ public static func fromEnvironment(
 
 public static let disabled = ThinAppViewConfig(
     enabled: false,
-    relayWebSocketURL: defaultRelayWebSocketURL,
+    relayWebSocketURLs: defaultRelayWebSocketURLs,
     contentRetentionSeconds: 30 * 24 * 60 * 60,
     readMarkRetentionSeconds: 180 * 24 * 60 * 60,
     maxEnrollAuthors: 500,
@@ -70,6 +77,24 @@ public static let disabled = ThinAppViewConfig(
     rssFeedPollIntervalSeconds: 30 * 60,
     rssFeedPollFeedLimit: 20
   )
+
+  private static func relayURLs(from env: [String: String]) -> [String] {
+    let configured = (env["THIN_APPVIEW_RELAY_WS_URLS"] ?? "")
+      .split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    if !configured.isEmpty { return deduplicated(configured) }
+
+    guard let legacy = env["THIN_APPVIEW_RELAY_WS_URL"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+    else { return defaultRelayWebSocketURLs }
+    return deduplicated([legacy] + defaultRelayWebSocketURLs)
+  }
+
+  private static func deduplicated(_ values: [String]) -> [String] {
+    var seen = Set<String>()
+    return values.filter { seen.insert($0).inserted }
+  }
 
   private static func truthyFlag(_ value: String?, defaultWhenUnset: Bool = false) -> Bool {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),

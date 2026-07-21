@@ -43,6 +43,99 @@ public enum OperationsAlertStatus: String, Codable, Sendable {
   case resolved
 }
 
+public enum JetstreamEndpointRole: String, Codable, Sendable {
+  case active
+  case standby
+}
+
+public struct JetstreamEndpointState: Codable, Sendable, Identifiable {
+  public let id: String
+  public let displayName: String
+  public let host: String
+  public let role: JetstreamEndpointRole
+  public let connectionState: IngestionConnectionState
+  public let lastConnectedAt: Date?
+  public let lastDisconnectedAt: Date?
+  public let lastError: String?
+  public let connectionAttempts: Int
+  public let failoverCount: Int
+  public let updatedAt: Date
+
+  public init(
+    id: String,
+    displayName: String,
+    host: String,
+    role: JetstreamEndpointRole,
+    connectionState: IngestionConnectionState,
+    lastConnectedAt: Date? = nil,
+    lastDisconnectedAt: Date? = nil,
+    lastError: String? = nil,
+    connectionAttempts: Int = 0,
+    failoverCount: Int = 0,
+    updatedAt: Date
+  ) {
+    self.id = id
+    self.displayName = displayName
+    self.host = host
+    self.role = role
+    self.connectionState = connectionState
+    self.lastConnectedAt = lastConnectedAt
+    self.lastDisconnectedAt = lastDisconnectedAt
+    self.lastError = lastError
+    self.connectionAttempts = connectionAttempts
+    self.failoverCount = failoverCount
+    self.updatedAt = updatedAt
+  }
+}
+
+public enum OperationsCommandAction: String, Codable, Sendable {
+  case reconnectJetstream = "reconnect_jetstream"
+}
+
+public enum OperationsCommandStatus: String, Codable, Sendable {
+  case queued
+  case running
+  case completed
+  case failed
+}
+
+public struct OperationsWorkerCommand: Codable, Sendable, Identifiable {
+  public let id: String
+  public let action: OperationsCommandAction
+  public let status: OperationsCommandStatus
+  public let requestedByDid: String
+  public let auditNote: String
+  public let claimedBy: String?
+  public let failureReason: String?
+  public let createdAt: Date
+  public let updatedAt: Date
+  public let completedAt: Date?
+
+  public init(
+    id: String,
+    action: OperationsCommandAction,
+    status: OperationsCommandStatus,
+    requestedByDid: String,
+    auditNote: String,
+    claimedBy: String? = nil,
+    failureReason: String? = nil,
+    createdAt: Date,
+    updatedAt: Date,
+    completedAt: Date? = nil
+  ) {
+    self.id = id
+    self.action = action
+    self.status = status
+    self.requestedByDid = requestedByDid
+    self.auditNote = auditNote
+    self.claimedBy = claimedBy
+    self.failureReason = failureReason
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.completedAt = completedAt
+  }
+}
+
 public struct OperationsServiceState: Codable, Sendable {
   public let service: String
   public let environment: String
@@ -400,6 +493,8 @@ public struct DatabaseObservabilitySnapshot: Codable, Sendable {
 public struct OperationsOverview: Codable, Sendable {
   public let services: [OperationsServiceState]
   public let ingestion: IngestionStreamState?
+  public let jetstreamEndpoints: [JetstreamEndpointState]
+  public let commands: [OperationsWorkerCommand]
   public let gaps: [IngestionGap]
   public let backfills: [BackfillJob]
   public let alerts: [OperationsAlert]

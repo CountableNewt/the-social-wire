@@ -120,6 +120,131 @@ public actor SQLiteOperationsStore: OperationsStore {
     }
   }
 
+  public func upsertJetstreamEndpoint(_ state: JetstreamEndpointState) async throws {
+    try await db.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO appview_jetstream_endpoints
+            (id, display_name, host, role, connection_state, last_connected_at,
+             last_disconnected_at, last_error, connection_attempts, failover_count, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (id) DO UPDATE SET
+            display_name = excluded.display_name, host = excluded.host, role = excluded.role,
+            connection_state = excluded.connection_state,
+            last_connected_at = excluded.last_connected_at,
+            last_disconnected_at = excluded.last_disconnected_at,
+            last_error = excluded.last_error,
+            connection_attempts = excluded.connection_attempts,
+            failover_count = excluded.failover_count, updated_at = excluded.updated_at
+          """,
+        arguments: [
+          state.id, state.displayName, state.host, state.role.rawValue,
+          state.connectionState.rawValue, state.lastConnectedAt.map(Self.iso),
+          state.lastDisconnectedAt.map(Self.iso), state.lastError,
+          state.connectionAttempts, state.failoverCount, Self.iso(state.updatedAt),
+        ]
+      )
+    }
+  }
+
+  public func listJetstreamEndpoints() async throws -> [JetstreamEndpointState] {
+    try await db.read { database in
+      try Row.fetchAll(
+        database,
+        sql: "SELECT * FROM appview_jetstream_endpoints ORDER BY id"
+      ).compactMap(Self.jetstreamEndpoint)
+    }
+  }
+
+  public func createCommand(
+    action: OperationsCommandAction,
+    operatorDid: String,
+    auditNote: String,
+    at: Date
+  ) async throws -> OperationsWorkerCommand {
+    let command = OperationsWorkerCommand(
+      id: UUID().uuidString.lowercased(),
+      action: action,
+      status: .queued,
+      requestedByDid: operatorDid,
+      auditNote: String(auditNote.prefix(280)),
+      createdAt: at,
+      updatedAt: at
+    )
+    try await db.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO operations_commands
+            (id, action, status, requested_by_did, audit_note, created_at, updated_at)
+          VALUES (?, ?, 'queued', ?, ?, ?, ?)
+          """,
+        arguments: [
+          command.id, action.rawValue, operatorDid, command.auditNote, Self.iso(at), Self.iso(at),
+        ]
+      )
+    }
+    return command
+  }
+
+  public func listCommands(limit: Int) async throws -> [OperationsWorkerCommand] {
+    try await db.read { database in
+      try Row.fetchAll(
+        database,
+        sql: "SELECT * FROM operations_commands ORDER BY created_at DESC LIMIT ?",
+        arguments: [max(1, min(limit, 250))]
+      ).compactMap(Self.command)
+    }
+  }
+
+  public func claimNextCommand(
+    action: OperationsCommandAction,
+    workerId: String,
+    at: Date
+  ) async throws -> OperationsWorkerCommand? {
+    let staleBefore = at.addingTimeInterval(-60)
+    return try await db.write { database -> OperationsWorkerCommand? in
+      guard let id = try String.fetchOne(
+        database,
+        sql: """
+          SELECT id FROM operations_commands
+          WHERE action = ? AND (status = 'queued' OR (status = 'running' AND updated_at < ?))
+          ORDER BY created_at LIMIT 1
+          """,
+        arguments: [action.rawValue, Self.iso(staleBefore)]
+      ) else { return nil }
+      try database.execute(
+        sql: """
+          UPDATE operations_commands SET status = 'running', claimed_by = ?, updated_at = ?
+          WHERE id = ? AND (status = 'queued' OR (status = 'running' AND updated_at < ?))
+          """,
+        arguments: [workerId, Self.iso(at), id, Self.iso(staleBefore)]
+      )
+      guard database.changesCount == 1,
+        let row = try Row.fetchOne(database, sql: "SELECT * FROM operations_commands WHERE id = ?", arguments: [id])
+      else { return nil }
+      return Self.command(row)
+    }
+  }
+
+  public func completeCommand(
+    id: String,
+    status: OperationsCommandStatus,
+    failureReason: String?,
+    at: Date
+  ) async throws {
+    precondition(status == .completed || status == .failed)
+    try await db.write { database in
+      try database.execute(
+        sql: """
+          UPDATE operations_commands
+          SET status = ?, failure_reason = ?, updated_at = ?, completed_at = ?
+          WHERE id = ? AND status = 'running'
+          """,
+        arguments: [status.rawValue, failureReason, Self.iso(at), Self.iso(at), id]
+      )
+    }
+  }
+
   public func markStreamReceived(
     source: String,
     cursor: Int64,
@@ -792,6 +917,36 @@ public actor SQLiteOperationsStore: OperationsStore {
     )
   }
 
+  private static func jetstreamEndpoint(_ row: Row) -> JetstreamEndpointState? {
+    guard
+      let role = JetstreamEndpointRole(rawValue: row["role"]),
+      let state = IngestionConnectionState(rawValue: row["connection_state"]),
+      let updatedAt = date(row["updated_at"])
+    else { return nil }
+    return JetstreamEndpointState(
+      id: row["id"], displayName: row["display_name"], host: row["host"], role: role,
+      connectionState: state, lastConnectedAt: date(row["last_connected_at"]),
+      lastDisconnectedAt: date(row["last_disconnected_at"]), lastError: row["last_error"],
+      connectionAttempts: row["connection_attempts"], failoverCount: row["failover_count"],
+      updatedAt: updatedAt
+    )
+  }
+
+  private static func command(_ row: Row) -> OperationsWorkerCommand? {
+    guard
+      let action = OperationsCommandAction(rawValue: row["action"]),
+      let status = OperationsCommandStatus(rawValue: row["status"]),
+      let createdAt = date(row["created_at"]),
+      let updatedAt = date(row["updated_at"])
+    else { return nil }
+    return OperationsWorkerCommand(
+      id: row["id"], action: action, status: status,
+      requestedByDid: row["requested_by_did"], auditNote: row["audit_note"],
+      claimedBy: row["claimed_by"], failureReason: row["failure_reason"],
+      createdAt: createdAt, updatedAt: updatedAt, completedAt: date(row["completed_at"])
+    )
+  }
+
   private static func gap(_ row: Row) -> IngestionGap? {
     guard
       let status = IngestionGapStatus(rawValue: row["status"]),
@@ -919,6 +1074,21 @@ private enum Schema {
       last_committed_event_at TEXT, last_committed_at TEXT, queue_depth INTEGER NOT NULL DEFAULT 0,
       heartbeat_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS appview_jetstream_endpoints (
+      id TEXT PRIMARY KEY, display_name TEXT NOT NULL, host TEXT NOT NULL, role TEXT NOT NULL,
+      connection_state TEXT NOT NULL DEFAULT 'unknown', last_connected_at TEXT,
+      last_disconnected_at TEXT, last_error TEXT, connection_attempts INTEGER NOT NULL DEFAULT 0,
+      failover_count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS operations_commands (
+      id TEXT PRIMARY KEY, action TEXT NOT NULL, status TEXT NOT NULL,
+      requested_by_did TEXT NOT NULL, audit_note TEXT NOT NULL, claimed_by TEXT,
+      failure_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_operations_commands_claim
+      ON operations_commands (action, status, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_operations_commands_one_active_action
+      ON operations_commands (action) WHERE status IN ('queued', 'running');
     CREATE TABLE IF NOT EXISTS appview_ingestion_gaps (
       id TEXT PRIMARY KEY, source TEXT NOT NULL, start_cursor INTEGER, end_cursor INTEGER,
       start_time TEXT, end_time TEXT, reason TEXT NOT NULL, status TEXT NOT NULL,

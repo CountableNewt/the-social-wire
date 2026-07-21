@@ -6,6 +6,59 @@ import Testing
 
 @Suite("SQLiteOperationsStore")
 struct SQLiteOperationsStoreTests {
+  @Test("Jetstream endpoint state and reconnect commands are durable")
+  func jetstreamRecoveryControlLifecycle() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("operations-\(UUID().uuidString).sqlite")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = try SQLiteOperationsStore(path: url.path, logger: Logger(label: "operations.test"))
+    let now = Date()
+
+    try await store.upsertJetstreamEndpoint(
+      JetstreamEndpointState(
+        id: "jetstream1.us-east.bsky.network",
+        displayName: "Jetstream 1",
+        host: "jetstream1.us-east.bsky.network",
+        role: .active,
+        connectionState: .connected,
+        lastConnectedAt: now,
+        connectionAttempts: 2,
+        failoverCount: 1,
+        updatedAt: now
+      )
+    )
+    let endpoint = try #require(await store.listJetstreamEndpoints().first)
+    #expect(endpoint.role == .active)
+    #expect(endpoint.connectionAttempts == 2)
+
+    let command = try await store.createCommand(
+      action: .reconnectJetstream,
+      operatorDid: "did:plc:operator",
+      auditNote: "Reconnect stalled ingestion",
+      at: now
+    )
+    let claimed = try #require(
+      await store.claimNextCommand(
+        action: .reconnectJetstream,
+        workerId: "worker-1",
+        at: now.addingTimeInterval(1)
+      )
+    )
+    #expect(claimed.id == command.id)
+    #expect(claimed.status == .running)
+    #expect(claimed.claimedBy == "worker-1")
+
+    try await store.completeCommand(
+      id: command.id,
+      status: .completed,
+      failureReason: nil,
+      at: now.addingTimeInterval(2)
+    )
+    let completed = try #require(await store.listCommands(limit: 10).first)
+    #expect(completed.status == .completed)
+    #expect(completed.completedAt != nil)
+  }
+
   @Test("Received and committed cursors advance independently and never regress")
   func checkpointsDoNotRegress() async throws {
     let url = FileManager.default.temporaryDirectory
