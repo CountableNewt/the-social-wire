@@ -3,15 +3,11 @@ import { OperatorActionDialog } from "@/components/operations/operator-action-di
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { backfillProgressPercent } from "@/lib/backfill-progress"
 import type { Backfill, EnvironmentName } from "@/lib/operations-types"
 
 export function BackfillRow({ job, environment }: { job: Backfill; environment: EnvironmentName }) {
-  const progress =
-    job.estimatedCount > 0
-      ? Math.round((job.processedCount / job.estimatedCount) * 100)
-      : job.status === "completed"
-        ? 100
-        : 0
+  const progress = Math.round(backfillProgressPercent(job))
   const action = job.status === "running" ? "pause" : job.status === "paused" ? "resume" : undefined
   return (
     <TableRow>

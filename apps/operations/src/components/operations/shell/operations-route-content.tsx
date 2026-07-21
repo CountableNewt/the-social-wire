@@ -35,7 +35,12 @@ export function OperationsRouteContent({
       <div className="grid gap-3">
         <LiveStream data={data} />
         <CollectionTable />
-        <GapsTable gaps={data.gaps} onSelect={onSelectGap} onInvestigate={onInvestigateGap} />
+        <GapsTable
+          gaps={data.gaps}
+          backfills={data.backfills}
+          onSelect={onSelectGap}
+          onInvestigate={onInvestigateGap}
+        />
       </div>
     )
   if (current === "appview")
@@ -47,7 +52,15 @@ export function OperationsRouteContent({
       </div>
     )
   if (current === "gaps")
-    return <GapsTable gaps={data.gaps} onSelect={onSelectGap} onInvestigate={onInvestigateGap} expanded />
+    return (
+      <GapsTable
+        gaps={data.gaps}
+        backfills={data.backfills}
+        onSelect={onSelectGap}
+        onInvestigate={onInvestigateGap}
+        expanded
+      />
+    )
   if (current === "backfills") return <BackfillsTable backfills={data.backfills} environment={environment} expanded />
   if (current === "alerts") return <AlertsTable data={data} environment={environment} />
   if (current === "runbooks") return <Runbooks runbooks={runbooks} />
@@ -62,7 +75,12 @@ export function OperationsRouteContent({
       <DatabaseObservability overview={data} />
       <CollectionHealth />
       <div className="flex w-full flex-col gap-3">
-        <GapsTable gaps={data.gaps} onSelect={onSelectGap} onInvestigate={onInvestigateGap} />
+        <GapsTable
+          gaps={data.gaps}
+          backfills={data.backfills}
+          onSelect={onSelectGap}
+          onInvestigate={onInvestigateGap}
+        />
         <BackfillsTable backfills={data.backfills} environment={environment} />
       </div>
     </div>

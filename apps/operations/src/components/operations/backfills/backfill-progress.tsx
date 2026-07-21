@@ -4,6 +4,7 @@ import { BackfillDetail } from "@/components/operations/backfills/backfill-detai
 import { BackfillMetric } from "@/components/operations/backfills/backfill-metric"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
+import { backfillProgressPercent } from "@/lib/backfill-progress"
 import type { Backfill } from "@/lib/operations-types"
 
 const terminalStatuses = new Set<Backfill["status"]>(["completed", "failed", "cancelled"])
@@ -13,12 +14,7 @@ export function isBackfillTerminal(status: Backfill["status"]) {
 }
 
 export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshing: boolean }) {
-  const exactProgress =
-    job.estimatedCount > 0
-      ? Math.min(100, (job.processedCount / job.estimatedCount) * 100)
-      : job.status === "completed"
-        ? 100
-        : 0
+  const exactProgress = backfillProgressPercent(job)
   const progressLabel = exactProgress > 0 && exactProgress < 1 ? "<1%" : `${Math.round(exactProgress)}%`
   const active = !isBackfillTerminal(job.status)
   const waitingForWorker = job.status === "queued"

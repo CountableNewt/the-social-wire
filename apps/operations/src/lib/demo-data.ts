@@ -76,6 +76,22 @@ export const demoOverview: Overview = {
       failedCount: 12,
       reconciledCount: 0,
     },
+    {
+      id: "gap-20250514-004",
+      source: "jetstream",
+      startCursor: 1747487651123000,
+      endCursor: 1747487656123000,
+      reason: "consumer_restart",
+      status: "resolved",
+      collections: ["app.skyreader.feed.subscription"],
+      detectedAt: iso(172800),
+      updatedAt: iso(82000),
+      backfillJobId: "bf-20250516-005",
+      discoveredCount: 512991,
+      processedCount: 512991,
+      failedCount: 0,
+      reconciledCount: 512991,
+    },
   ],
   backfills: [
     {
@@ -127,6 +143,7 @@ export const demoOverview: Overview = {
     },
     {
       id: "bf-20250516-005",
+      gapId: "gap-20250514-004",
       sourceMode: "pds_reconciliation",
       status: "completed",
       collections: ["app.skyreader.feed.subscription"],

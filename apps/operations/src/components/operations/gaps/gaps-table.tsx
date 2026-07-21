@@ -1,24 +1,24 @@
 import { ExternalLink } from "lucide-react"
 import Link from "next/link"
-import { DataColumnHeaders } from "@/components/operations/data-column-headers"
-import { GapCollectionScope } from "@/components/operations/gaps/gap-collection-scope"
+import { GapTable } from "@/components/operations/gaps/gap-table"
 import { OperationsSection } from "@/components/operations/operations-section"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
-import type { Gap } from "@/lib/operations-types"
+import { partitionGapsByBackfillCompletion } from "@/lib/gap-sections"
+import type { Backfill, Gap } from "@/lib/operations-types"
 
 export function GapsTable({
   gaps,
+  backfills,
   onSelect,
   onInvestigate,
-  expanded,
+  expanded = false,
 }: {
   gaps: Gap[]
+  backfills: Backfill[]
   onSelect: (gap: Gap) => void
   onInvestigate: (gap: Gap) => void
   expanded?: boolean
 }) {
+  const { activeGaps, backfilledGaps } = partitionGapsByBackfillCompletion(gaps, backfills)
   const action = expanded ? undefined : (
     <Link href="/gaps" className="text-[10px] text-primary">
       View All Gaps <ExternalLink className="inline size-3" />
@@ -26,49 +26,27 @@ export function GapsTable({
   )
 
   return (
-    <OperationsSection title={`Known Gaps (${gaps.length})`} action={action}>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <DataColumnHeaders
-              labels={["Status", "Cursor / Time Range (μs)", "Reason", "Detected", "Affected Collections", "Action"]}
-            />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {gaps.map((gap) => (
-            <TableRow key={gap.id}>
-              <TableCell>
-                <Badge
-                  tone={gap.status === "confirmed" ? "danger" : gap.status === "backfilling" ? "warning" : "neutral"}
-                >
-                  {gap.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="font-mono">
-                {gap.startCursor ?? "—"} ..
-                <br />
-                {gap.endCursor ?? "—"}
-              </TableCell>
-              <TableCell>{gap.reason.replaceAll("_", " ")}</TableCell>
-              <TableCell>{new Date(gap.detectedAt).toLocaleString()}</TableCell>
-              <TableCell>
-                <GapCollectionScope collections={gap.collections} />
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1.5">
-                  <Button size="sm" variant="outline" onClick={() => onInvestigate(gap)}>
-                    Investigate
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => onSelect(gap)}>
-                    Backfill
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </OperationsSection>
+    <div className="grid gap-3">
+      <OperationsSection title={`Active Gaps (${activeGaps.length})`} action={action}>
+        <GapTable
+          gaps={activeGaps}
+          onSelect={onSelect}
+          onInvestigate={onInvestigate}
+          allowBackfill
+          emptyMessage="No active gaps."
+        />
+      </OperationsSection>
+      {expanded ? (
+        <OperationsSection title={`Backfilled Gaps (${backfilledGaps.length})`}>
+          <GapTable
+            gaps={backfilledGaps}
+            onSelect={onSelect}
+            onInvestigate={onInvestigate}
+            allowBackfill={false}
+            emptyMessage="No backfilled gaps."
+          />
+        </OperationsSection>
+      ) : null}
+    </div>
   )
 }

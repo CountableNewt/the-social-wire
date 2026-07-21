@@ -43,10 +43,11 @@ describe("BackfillProgress", () => {
   })
 
   it("stops describing terminal jobs as live", () => {
-    render(<BackfillProgress job={{ ...job, status: "completed", processedCount: 1000 }} refreshing={false} />)
+    render(<BackfillProgress job={{ ...job, status: "completed", processedCount: 0 }} refreshing={false} />)
 
     expect(screen.getByText("Final Status")).toBeTruthy()
     expect(screen.getByText("100%")).toBeTruthy()
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100")
     expect(isBackfillTerminal("completed")).toBe(true)
     expect(isBackfillTerminal("running")).toBe(false)
   })
