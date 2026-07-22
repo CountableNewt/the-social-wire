@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it } from "bun:test"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import {
   Sidebar,
   SidebarContent,
@@ -10,6 +10,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+
+afterEach(cleanup)
 
 describe("Sidebar", () => {
   it("keeps the toggle footer inside the viewport-height flex layout", () => {
