@@ -13,6 +13,7 @@ export function partitionGapsByBackfillCompletion(gaps: Gap[], backfills: Backfi
 
   const activeGaps: Gap[] = []
   const backfilledGaps: Gap[] = []
+  const inactiveGaps: Gap[] = []
 
   for (const gap of gaps) {
     const hasCompletedBackfill =
@@ -21,8 +22,9 @@ export function partitionGapsByBackfillCompletion(gaps: Gap[], backfills: Backfi
       (gap.status === "resolved" && gap.backfillJobId !== undefined)
 
     if (hasCompletedBackfill) backfilledGaps.push(gap)
+    else if (gap.status === "resolved" || gap.status === "ignored") inactiveGaps.push(gap)
     else activeGaps.push(gap)
   }
 
-  return { activeGaps, backfilledGaps }
+  return { activeGaps, backfilledGaps, inactiveGaps }
 }

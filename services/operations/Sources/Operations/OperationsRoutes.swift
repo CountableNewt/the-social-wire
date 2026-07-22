@@ -27,23 +27,25 @@ struct OperationsRoutes {
         throw HTTPError(.serviceUnavailable, message: "Recovery mutations are disabled")
       }
       guard let operatorDid = context.authContext?.did else { throw HTTPError(.unauthorized) }
-      let mutation = try await request.decode(as: OperatorMutationRequest.self, context: context)
-      try validate(mutation)
+      let mutation = try await request.decode(as: ReconnectJetstreamRequest.self, context: context)
+      try validateProductionConfirmation(mutation.environmentConfirmation)
       let active = try await store.listCommands(limit: 250).contains {
         $0.action == .reconnectJetstream && ($0.status == .queued || $0.status == .running)
       }
       guard !active else {
         throw HTTPError(.conflict, message: "A Jetstream reconnect is already in progress")
       }
+      let connectionState = try await store.fetchStreamState(source: "jetstream")?.connectionState.rawValue ?? "unknown"
+      let auditContext = "Jetstream state: \(connectionState)"
       let command = try await store.createCommand(
         action: .reconnectJetstream,
         operatorDid: operatorDid,
-        auditNote: mutation.auditNote,
+        auditNote: auditContext,
         at: Date()
       )
       try await store.recordAudit(
         operatorDid: operatorDid, action: "jetstream.reconnect_requested", targetType: "command",
-        targetId: command.id, note: mutation.auditNote, at: Date())
+        targetId: command.id, note: auditContext, at: Date())
       return command
     }
     group.get("/v1/operations/appview") { _, _ async throws -> AppViewOperationsResponse in
@@ -214,9 +216,11 @@ struct OperationsRoutes {
     guard request.auditNote.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 else {
       throw HTTPError(.badRequest, message: "An operator audit note is required")
     }
-    if config.environment.lowercased() == "production",
-      request.environmentConfirmation != "PRODUCTION"
-    {
+    try validateProductionConfirmation(request.environmentConfirmation)
+  }
+
+  private func validateProductionConfirmation(_ confirmation: String?) throws {
+    if config.environment.lowercased() == "production", confirmation != "PRODUCTION" {
       throw HTTPError(.badRequest, message: "Production confirmation is required")
     }
   }
@@ -229,6 +233,9 @@ struct GapUpdateRequest: Codable, Sendable {
 }
 struct OperatorMutationRequest: Codable, Sendable {
   let auditNote: String
+  let environmentConfirmation: String?
+}
+struct ReconnectJetstreamRequest: Codable, Sendable {
   let environmentConfirmation: String?
 }
 struct OperationsServiceListResponse: Codable, Sendable { let services: [OperationsServiceState] }

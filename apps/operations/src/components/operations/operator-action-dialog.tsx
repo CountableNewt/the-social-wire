@@ -24,10 +24,12 @@ export function OperatorActionDialog({
   environment,
   path,
   label,
+  auditNoteRequired = true,
 }: {
   environment: EnvironmentName
   path: string
   label: string
+  auditNoteRequired?: boolean
 }) {
   const { session } = useOperationsAuth()
   const queryClient = useQueryClient()
@@ -38,14 +40,19 @@ export function OperatorActionDialog({
     mutationFn: () =>
       operationsRequest(session, path, {
         method: "POST",
-        body: JSON.stringify({ auditNote, environmentConfirmation: confirmation || undefined }),
+        body: JSON.stringify({
+          ...(auditNoteRequired ? { auditNote } : {}),
+          environmentConfirmation: confirmation || undefined,
+        }),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["operations-overview", environment] })
       setOpen(false)
     },
   })
-  const allowed = auditNote.trim().length >= 8 && (environment !== "production" || confirmation === "PRODUCTION")
+  const allowed =
+    (!auditNoteRequired || auditNote.trim().length >= 8) &&
+    (environment !== "production" || confirmation === "PRODUCTION")
   return (
     <AlertDialog
       open={open}
@@ -63,21 +70,25 @@ export function OperatorActionDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="text-sm font-semibold">{label}?</AlertDialogTitle>
           <AlertDialogDescription className="mt-2 text-xs text-muted-foreground">
-            This operator action is immutable in the audit history.
+            {auditNoteRequired
+              ? "This operator action is immutable in the audit history."
+              : "The current Jetstream connection state and this operator action are recorded automatically."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid gap-3 py-3">
-          <Field>
-            <FieldLabel htmlFor={`audit-${label}`}>Operator Audit Note</FieldLabel>
-            <Textarea
-              id={`audit-${label}`}
-              value={auditNote}
-              maxLength={280}
-              onChange={(event) => setAuditNote(event.target.value)}
-              placeholder="Explain why this action is required"
-            />
-            <FieldDescription>{auditNote.length} / 280</FieldDescription>
-          </Field>
+          {auditNoteRequired ? (
+            <Field>
+              <FieldLabel htmlFor={`audit-${label}`}>Operator Audit Note</FieldLabel>
+              <Textarea
+                id={`audit-${label}`}
+                value={auditNote}
+                maxLength={280}
+                onChange={(event) => setAuditNote(event.target.value)}
+                placeholder="Explain why this action is required"
+              />
+              <FieldDescription>{auditNote.length} / 280</FieldDescription>
+            </Field>
+          ) : null}
           {environment === "production" ? (
             <Field>
               <FieldLabel htmlFor={`confirm-${label}`}>Production Confirmation</FieldLabel>

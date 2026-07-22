@@ -3,6 +3,7 @@ import * as React from "react"
 import { Menu, PanelLeftClose } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Tooltip } from "@/components/ui/tooltip"
 
 const SidebarContext = React.createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
   open: true,
@@ -69,9 +70,10 @@ export function SidebarNavButton({
   onClick?: () => void
 }) {
   const { open } = React.useContext(SidebarContext)
-  return (
+  const button = (
     <button
       onClick={onClick}
+      aria-label={open ? undefined : String(children)}
       className={cn(
         "flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs hover:bg-muted",
         active && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
@@ -81,4 +83,5 @@ export function SidebarNavButton({
       {open ? <span>{children}</span> : null}
     </button>
   )
+  return open ? button : <Tooltip label={children} side="right">{button}</Tooltip>
 }

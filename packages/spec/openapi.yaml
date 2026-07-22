@@ -1152,14 +1152,11 @@ paths:
       summary: Queue an audited Jetstream reconnect and post-connect gap assessment
       tags: [Operations]
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [auditNote]
               properties:
-                auditNote: { type: string, minLength: 8, maxLength: 280 }
                 environmentConfirmation: { type: string }
       responses:
         "200": { description: Queued reconnect command. }

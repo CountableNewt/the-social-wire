@@ -18,7 +18,7 @@ export function GapsTable({
   onInvestigate: (gap: Gap) => void
   expanded?: boolean
 }) {
-  const { activeGaps, backfilledGaps } = partitionGapsByBackfillCompletion(gaps, backfills)
+  const { activeGaps, backfilledGaps, inactiveGaps } = partitionGapsByBackfillCompletion(gaps, backfills)
   const action = expanded ? undefined : (
     <Link href="/gaps" className="text-[10px] text-primary">
       View All Gaps <ExternalLink className="inline size-3" />
@@ -37,15 +37,26 @@ export function GapsTable({
         />
       </OperationsSection>
       {expanded ? (
-        <OperationsSection title={`Backfilled Gaps (${backfilledGaps.length})`}>
-          <GapTable
-            gaps={backfilledGaps}
-            onSelect={onSelect}
-            onInvestigate={onInvestigate}
-            allowBackfill={false}
-            emptyMessage="No backfilled gaps."
-          />
-        </OperationsSection>
+        <>
+          <OperationsSection title={`Backfilled Gaps (${backfilledGaps.length})`}>
+            <GapTable
+              gaps={backfilledGaps}
+              onSelect={onSelect}
+              onInvestigate={onInvestigate}
+              allowBackfill={false}
+              emptyMessage="No backfilled gaps."
+            />
+          </OperationsSection>
+          <OperationsSection title={`Resolved / Ignored Gaps (${inactiveGaps.length})`}>
+            <GapTable
+              gaps={inactiveGaps}
+              onSelect={onSelect}
+              onInvestigate={onInvestigate}
+              allowBackfill={false}
+              emptyMessage="No resolved or ignored gaps."
+            />
+          </OperationsSection>
+        </>
       ) : null}
     </div>
   )

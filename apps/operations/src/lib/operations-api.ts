@@ -43,14 +43,13 @@ export async function operationsRequest<T>(session: OAuthSession | null, path: s
         refreshedAt: new Date().toISOString(),
       } as T
     if (path === "/v1/operations/ingestion/reconnect" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { auditNote: string }
       const createdAt = new Date().toISOString()
       demoReconnectCommand = {
         id: `command-demo-${Date.now()}`,
         action: "reconnect_jetstream",
         status: "queued",
         requestedByDid: "did:plc:demo-operator",
-        auditNote: body.auditNote,
+        auditNote: `Jetstream state: ${demoOverview.ingestion?.connectionState ?? "unknown"}`,
         createdAt,
         updatedAt: createdAt,
       }

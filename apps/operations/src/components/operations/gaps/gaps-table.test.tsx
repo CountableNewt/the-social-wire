@@ -68,4 +68,23 @@ describe("GapsTable", () => {
     expect(within(backfilledSection!).queryByRole("button", { name: "Backfill" })).toBeNull()
     expect(within(backfilledSection!).getByText("resolved")).toBeTruthy()
   })
+
+  it("keeps resolved gaps without backfills out of active gaps and in expanded history", () => {
+    const resolvedGap = { ...activeGap, id: "gap-resolved", status: "resolved" as const }
+    render(
+      <GapsTable
+        gaps={[activeGap, resolvedGap]}
+        backfills={[]}
+        onSelect={mock()}
+        onInvestigate={mock()}
+        expanded
+      />,
+    )
+
+    const activeSection = screen.getByRole("heading", { name: "Active Gaps (1)" }).closest("section")
+    const inactiveSection = screen.getByRole("heading", { name: "Resolved / Ignored Gaps (1)" }).closest("section")
+
+    expect(within(activeSection!).queryByText("resolved")).toBeNull()
+    expect(within(inactiveSection!).getByText("resolved")).toBeTruthy()
+  })
 })

@@ -13,16 +13,28 @@ type TooltipChildProps = {
 
 type TooltipPosition = {
   left: number
-  placement: "bottom" | "top"
+  placement: "bottom" | "right" | "top"
   top: number
 }
 
-export function Tooltip({ label, children }: { label: React.ReactNode; children: React.ReactElement<TooltipChildProps> }) {
+export function Tooltip({
+  label,
+  children,
+  side = "auto",
+}: {
+  label: React.ReactNode
+  children: React.ReactElement<TooltipChildProps>
+  side?: "auto" | "right"
+}) {
   const descriptionId = React.useId()
   const [position, setPosition] = React.useState<TooltipPosition | null>(null)
 
   const show = (element: HTMLElement) => {
     const bounds = element.getBoundingClientRect()
+    if (side === "right") {
+      setPosition({ left: bounds.right + 6, placement: "right", top: bounds.top + bounds.height / 2 })
+      return
+    }
     const placement = bounds.top < 72 ? "bottom" : "top"
     setPosition({
       left: bounds.left + bounds.width / 2,
@@ -64,7 +76,12 @@ export function Tooltip({ label, children }: { label: React.ReactNode; children:
               style={{
                 left: position.left,
                 top: position.top,
-                transform: position.placement === "top" ? "translate(-50%, -100%)" : "translateX(-50%)",
+                transform:
+                  position.placement === "top"
+                    ? "translate(-50%, -100%)"
+                    : position.placement === "right"
+                      ? "translateY(-50%)"
+                      : "translateX(-50%)",
               }}
             >
               {label}

@@ -61,4 +61,14 @@ describe("partitionGapsByBackfillCompletion", () => {
 
     expect(result.backfilledGaps).toEqual([resolvedGap])
   })
+
+  it("keeps resolved and ignored gaps out of the active list without losing their history", () => {
+    const resolvedGap = gap({ id: "gap-resolved", status: "resolved" })
+    const ignoredGap = gap({ id: "gap-ignored", status: "ignored" })
+    const result = partitionGapsByBackfillCompletion([resolvedGap, ignoredGap], [])
+
+    expect(result.activeGaps).toEqual([])
+    expect(result.backfilledGaps).toEqual([])
+    expect(result.inactiveGaps).toEqual([resolvedGap, ignoredGap])
+  })
 })

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { LiveStream } from "@/components/operations/dashboard/live-stream"
 import { OperationsAuthProvider } from "@/lib/auth-context"
@@ -43,6 +43,15 @@ describe("LiveStream", () => {
     expect(screen.getByText("active")).toBeTruthy()
     expect(screen.getByText("standby")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Reconnect Jetstream" })).toBeTruthy()
+  })
+
+  it("does not require an operator reason to reconnect a disconnected Jetstream", () => {
+    renderStream({ ...demoOverview, ingestion: { ...demoOverview.ingestion!, connectionState: "disconnected" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect Jetstream" }))
+    const dialog = screen.getByRole("dialog", { name: "Reconnect Jetstream?" })
+    expect(within(dialog).queryByLabelText("Operator Audit Note")).toBeNull()
+    expect(within(dialog).getByRole("button", { name: "Reconnect Jetstream" }).hasAttribute("disabled")).toBe(false)
   })
 
   it("shows reconnect progress instead of offering a duplicate command", () => {

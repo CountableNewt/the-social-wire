@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarInset,
+  SidebarNavButton,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
@@ -36,5 +37,27 @@ describe("Sidebar", () => {
     expect(aside.parentElement?.className).toContain("h-[calc(100svh-var(--operations-banner-height,0rem))]")
     expect(screen.getByRole("main").className).toContain("overflow-y-auto")
     expect(screen.getByRole("main").className).toContain("overscroll-contain")
+  })
+
+  it("shows navigation titles on hover when collapsed", () => {
+    render(
+      <SidebarProvider>
+        <Sidebar>
+          <SidebarContent>
+            <SidebarNavButton icon={<span>O</span>}>Overview</SidebarNavButton>
+          </SidebarContent>
+          <SidebarFooter>
+            <SidebarTrigger />
+          </SidebarFooter>
+        </Sidebar>
+      </SidebarProvider>,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Sidebar" }))
+    const navigationButton = screen.getByRole("button", { name: "Overview" })
+    fireEvent.mouseEnter(navigationButton)
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Overview")
+    expect(screen.getByRole("tooltip").getAttribute("data-placement")).toBe("right")
   })
 })

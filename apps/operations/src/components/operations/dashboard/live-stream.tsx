@@ -60,6 +60,7 @@ export function LiveStream({ data, environment }: { data: Overview; environment:
             environment={environment}
             path="/v1/operations/ingestion/reconnect"
             label="Reconnect Jetstream"
+            auditNoteRequired={false}
           />
         )
       }

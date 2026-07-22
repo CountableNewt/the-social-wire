@@ -29,6 +29,7 @@ function AlertRecoveryAction({
         environment={environment}
         path="/v1/operations/ingestion/reconnect"
         label="Reconnect Jetstream"
+        auditNoteRequired={false}
       />
     )
   }
