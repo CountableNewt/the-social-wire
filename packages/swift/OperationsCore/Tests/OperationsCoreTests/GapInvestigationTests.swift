@@ -61,7 +61,8 @@ struct GapInvestigationTests {
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("operations-investigation-\(UUID().uuidString).sqlite")
     defer { try? FileManager.default.removeItem(at: url) }
-    let store = try SQLiteOperationsStore(path: url.path, logger: Logger(label: "investigation.test"))
+    let store = try SQLiteOperationsStore(
+      path: url.path, environment: "dev", logger: Logger(label: "investigation.test"))
     let now = Date()
     try await store.recordEvent(
       OperationsEvent(
@@ -106,6 +107,7 @@ struct GapInvestigationTests {
     let cursor = Int64(date.timeIntervalSince1970 * 1_000_000)
     return IngestionGap(
       id: "gap-1",
+      environment: "local",
       source: "jetstream",
       startCursor: cursor - 1_000_000,
       endCursor: cursor,
@@ -120,7 +122,8 @@ struct GapInvestigationTests {
       discoveredCount: 0,
       processedCount: 0,
       failedCount: 0,
-      reconciledCount: 0
+      reconciledCount: 0,
+      version: 0
     )
   }
 }

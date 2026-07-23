@@ -5,14 +5,11 @@ import { BackfillFailureReason } from "@/components/operations/backfills/backfil
 import { BackfillMetric } from "@/components/operations/backfills/backfill-metric"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { backfillProgressEvidence } from "@/lib/backfill-progress"
+import { isBackfillTerminal } from "@/lib/backfill-lifecycle"
+import { backfillProgressEvidence, backfillRateLimitLabel } from "@/lib/backfill-progress"
 import type { Backfill } from "@/lib/operations-types"
 
-const terminalStatuses = new Set<Backfill["status"]>(["completed", "failed", "cancelled"])
-
-export function isBackfillTerminal(status: Backfill["status"]) {
-  return terminalStatuses.has(status)
-}
+export { isBackfillTerminal } from "@/lib/backfill-lifecycle"
 
 export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshing: boolean }) {
   const progress = backfillProgressEvidence(job)
@@ -42,7 +39,7 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
           <div className="text-right text-[9px] text-muted-foreground">
             <p className="flex items-center justify-end gap-1">
               {active ? (
-                <span className={refreshing ? "animate-spin" : undefined}>
+                <span className={refreshing ? "motion-safe:animate-spin" : undefined}>
                   <RefreshCw className="size-3" />
                 </span>
               ) : null}
@@ -59,7 +56,8 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
           </span>
         </div>
         <Progress
-          value={progress.boundedPercent}
+          value={progress.percentOfEstimate === null ? null : progress.boundedPercent}
+          ariaLabel={`Backfill ${job.id} progress`}
           ariaValueText={progressLabel}
           className="mt-2 h-2"
         />
@@ -105,6 +103,36 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
         </Alert>
       ) : null}
 
+      {job.sourceMode === "pds_reconciliation" ? (
+        <Alert variant="warning" className="mt-4">
+          <AlertTitle>PDS Diagnostic Limitation</AlertTitle>
+          <AlertDescription>
+            Results cover currently enumerable records for {job.authorDids.length} scoped author DID
+            {job.authorDids.length === 1 ? "" : "s"}. Historical deletes cannot be proven.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {job.verificationStatus === "required" || job.verificationStatus === "failed" ? (
+        <Alert variant="warning" className="mt-4">
+          <AlertTitle>Verification Required</AlertTitle>
+          <AlertDescription>
+            This run cannot resolve its linked gap automatically. Review exact scope, failures, truncation, and an
+            authoritative Tap resync before resolution.
+            {job.verificationReason ? ` Reason: ${job.verificationReason}.` : ""}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {job.scopeTruncated ? (
+        <Alert variant="warning" className="mt-4">
+          <AlertTitle>Recovery Scope Was Truncated</AlertTitle>
+          <AlertDescription>
+            This job did not inspect its entire requested scope and cannot establish completeness.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <section className="mt-4">
         <h3 className="text-xs font-semibold">Backfill Progress</h3>
         <dl className="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border text-[10px]">
@@ -115,9 +143,31 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
             tone={job.failedCount > 0 ? "danger" : undefined}
           />
           <BackfillMetric label="Reconciled" value={job.reconciledCount.toLocaleString()} />
-          <BackfillMetric label="Configured Rate Limit" value={`≤ ${job.rateLimit.toLocaleString()} events/s`} />
+          <BackfillMetric label="Configured Rate Limit" value={backfillRateLimitLabel(job)} />
         </dl>
       </section>
+
+      {job.authorResults?.length ? (
+        <section className="mt-4">
+          <h3 className="text-xs font-semibold">Per-Author Diagnostic Results</h3>
+          <div className="mt-2 grid gap-2">
+            {job.authorResults.map((result) => (
+              <article key={`${result.did}-${result.collection}`} className="rounded-md border p-2 text-[10px]">
+                <p className="break-all font-mono font-medium">{result.did}</p>
+                <p className="mt-1 break-all font-mono text-muted-foreground">{result.collection}</p>
+                <p className="mt-2">
+                  {result.discoveredCount.toLocaleString()} discovered · {result.processedCount.toLocaleString()} processed ·{" "}
+                  {result.failedCount.toLocaleString()} failed · {result.status}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {result.capped ? "scope cap reached" : result.truncated ? "truncated response" : "complete response"}
+                </p>
+                {result.error ? <p role="alert" className="mt-1 text-destructive">{result.error}</p> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-4">
         <h3 className="text-xs font-semibold">Checkpoint</h3>
@@ -128,6 +178,8 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
             label="Lease Expires"
             value={job.leaseExpiresAt ? new Date(job.leaseExpiresAt).toLocaleString() : "—"}
           />
+          <BackfillDetail label="Verification Status" value={job.verificationStatus.replaceAll("_", " ")} />
+          <BackfillDetail label="Validation Watermark" value={job.validationWatermark ?? "Not recorded"} mono />
         </dl>
       </section>
 
@@ -135,8 +187,19 @@ export function BackfillProgress({ job, refreshing }: { job: Backfill; refreshin
         <h3 className="text-xs font-semibold">Queued Request</h3>
         <dl className="mt-2 divide-y rounded-md border text-[10px]">
           <BackfillDetail label="Job ID" value={job.id} mono />
+          <BackfillDetail
+            label="Source Mode"
+            value={
+              job.sourceMode === "tap_verified_resync"
+                ? "Tap verified resync"
+                : job.sourceMode === "jetstream_replay"
+                  ? "Jetstream replay · unverified"
+                  : "PDS diagnostic reconciliation"
+            }
+          />
           <BackfillDetail label="Range (μs)" value={`${job.startCursor ?? "—"} .. ${job.endCursor ?? "—"}`} mono />
           <BackfillDetail label="Collections" value={job.collections.join(", ") || "PDS reconciliation"} mono />
+          {job.authorDids.length ? <BackfillDetail label="Author DIDs" value={job.authorDids.join(", ")} mono /> : null}
           <BackfillDetail label="Requested" value={new Date(job.createdAt).toLocaleString()} />
         </dl>
       </section>

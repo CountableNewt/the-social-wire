@@ -40,15 +40,17 @@ public enum GatewayCORSPolicy {
     let dpopHeader = HTTPField.Name("DPoP")!
     let requestIdHeader = HTTPField.Name("X-Request-ID")!
     let traceparentHeader = HTTPField.Name("traceparent")!
+    let idempotencyKeyHeader = HTTPField.Name("Idempotency-Key")!
     let upstreamDpopHeader = HTTPField.Name(ATProtoUpstreamDPoP.headerName)!
     let latrGatewayDpopHeader = HTTPField.Name(LatrGatewayUpstreamDPoP.headerName)!
     return CORSMiddleware(
       allowOrigin: allowOrigin,
       allowHeaders: [
         .accept, .authorization, .contentType, .origin, .ifNoneMatch,
-        dpopHeader, requestIdHeader, traceparentHeader, upstreamDpopHeader, latrGatewayDpopHeader,
+        dpopHeader, requestIdHeader, traceparentHeader, idempotencyKeyHeader,
+        upstreamDpopHeader, latrGatewayDpopHeader,
       ],
-      allowMethods: [.get, .post, .put, .delete, .head, .options],
+      allowMethods: [.get, .post, .put, .patch, .delete, .head, .options],
       allowCredentials: true,
       maxAge: .seconds(3600)
     )

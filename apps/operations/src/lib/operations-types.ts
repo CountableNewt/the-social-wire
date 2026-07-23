@@ -1,7 +1,54 @@
 export type Health = "healthy" | "degraded" | "unhealthy" | "unknown"
+export type EvidenceAccuracy = "exact" | "sampled" | "estimated" | "unavailable"
+export type EnvironmentName = "dev" | "prod"
+export type EvidenceEnvelope = {
+  source: string
+  accuracy: EvidenceAccuracy
+  generatedAt: string
+  indexedThrough?: string
+  ageSeconds: number
+  validUntil: string
+  coverage?: number
+  lastSuccessfulAt?: string
+  degradedReason?: string
+}
+export type OverviewEvidence = Record<string, EvidenceEnvelope> & {
+  services: EvidenceEnvelope
+  ingestion: EvidenceEnvelope
+  database: EvidenceEnvelope
+}
+export type Capability = {
+  enabled: boolean
+  disabledReason?: string
+}
+export type RecoveryModeCapabilities = {
+  tapVerifiedResync: Capability
+  jetstreamReplay: Capability
+  pdsReconciliation: Capability
+}
+export type OperationsCapabilities = {
+  environment: EnvironmentName
+  telemetry: Capability
+  recovery: Capability
+  recoveryModes: RecoveryModeCapabilities
+  alertDelivery: Capability
+  generatedAt: string
+  eventStream: Capability & {
+    path: string
+    retryMilliseconds: number
+    fallbackPollMilliseconds: number
+  }
+}
+export type OperationsCounts = {
+  activeGaps: number
+  activeBackfills: number
+  attentionBackfills: number
+  completedBackfills: number
+  unresolvedAlerts: number
+}
 export type ServiceState = {
   service: string
-  environment: string
+  environment: EnvironmentName
   instanceId: string
   liveness: Health
   readiness: Health
@@ -25,7 +72,16 @@ export type StreamState = {
   lastCommittedEventAt?: string
   lastCommittedAt?: string
   queueDepth: number
+  queueCapacity?: number
+  queueOverflowTotal?: number
+  queueEvidence?: EvidenceEnvelope
+  transportHeartbeatAt?: string
+  lastIndexedMutationAt?: string
+  projectionWatermark?: string
+  validationWatermark?: string
   heartbeatAt: string
+  version: number
+  environment: EnvironmentName
 }
 export type JetstreamEndpoint = {
   id: string
@@ -39,18 +95,23 @@ export type JetstreamEndpoint = {
   connectionAttempts: number
   failoverCount: number
   updatedAt: string
+  version: number
+  environment: EnvironmentName
 }
 export type OperationsCommand = {
   id: string
   action: "reconnect_jetstream"
   status: "queued" | "running" | "completed" | "failed"
   requestedByDid: string
-  auditNote: string
+  auditNote?: string
   claimedBy?: string
+  leaseExpiresAt?: string
   failureReason?: string
   createdAt: string
   updatedAt: string
   completedAt?: string
+  version: number
+  environment: EnvironmentName
 }
 export type Gap = {
   id: string
@@ -60,7 +121,14 @@ export type Gap = {
   startTime?: string
   endTime?: string
   reason: string
-  status: "suspected" | "confirmed" | "backfill_queued" | "backfilling" | "resolved" | "ignored"
+  status:
+    | "suspected"
+    | "confirmed"
+    | "backfill_queued"
+    | "backfilling"
+    | "verification_required"
+    | "resolved"
+    | "ignored"
   collections: string[]
   detectedAt: string
   updatedAt: string
@@ -69,6 +137,8 @@ export type Gap = {
   processedCount: number
   failedCount: number
   reconciledCount: number
+  version: number
+  environment: EnvironmentName
 }
 export type GapCauseAssessment = {
   title: string
@@ -98,7 +168,7 @@ export type GapInvestigation = {
 export type Backfill = {
   id: string
   gapId?: string
-  sourceMode: "jetstream_replay" | "pds_reconciliation"
+  sourceMode: "tap_verified_resync" | "jetstream_replay" | "pds_reconciliation"
   status: "queued" | "running" | "paused" | "completed" | "failed" | "cancelled"
   startCursor?: number
   endCursor?: number
@@ -113,17 +183,35 @@ export type Backfill = {
   failedCount: number
   reconciledCount: number
   requestedByDid: string
-  auditNote: string
+  auditNote?: string
   failureReason?: string
   leaseOwner?: string
   leaseExpiresAt?: string
   createdAt: string
   updatedAt: string
   completedAt?: string
+  version: number
+  environment: EnvironmentName
+  verificationStatus: "pending" | "required" | "verified" | "failed"
+  verificationReason?: string
+  scopeTruncated: boolean
+  validationWatermark?: string
+  authorResults: Array<{
+    did: string
+    collection: string
+    discoveredCount: number
+    processedCount: number
+    failedCount: number
+    capped: boolean
+    truncated: boolean
+    status: "succeeded" | "partial" | "failed" | "cancelled" | "unsupported"
+    error?: string
+  }>
 }
 export type Alert = {
   id: string
   rule: string
+  conditionKey: string
   severity: string
   status: "open" | "acknowledged" | "resolved"
   summary: string
@@ -135,9 +223,14 @@ export type Alert = {
   resolvedByDid?: string
   deliveryAttempts: number
   lastDeliveryError?: string
+  version: number
+  environment: EnvironmentName
+  nextDeliveryAt?: string
+  deliveryDeadLetteredAt?: string
 }
 export type Span = {
   id: string
+  environment: EnvironmentName
   traceId: string
   parentSpanId?: string
   service: string
@@ -148,8 +241,19 @@ export type Span = {
   attributes: Record<string, string>
   expiresAt: string
 }
-export type TraceListResponse = { spans: Span[] }
+export type TraceListResponse = {
+  traces: Span[]
+  nextCursor?: string | null
+  totalCount: number
+  truncated: boolean
+  evidence: EvidenceEnvelope
+}
+export type MetricListResponse = {
+  rollups: MetricRollup[]
+  evidence: EvidenceEnvelope
+}
 export type MetricRollup = {
+  environment: EnvironmentName
   bucketStart: string
   metricName: string
   dimensions: Record<string, string>
@@ -165,15 +269,21 @@ export type DatabaseObservabilitySnapshot = {
   maxConnections: number
   transactionsTotal: number
   estimatedRecords: number
-  cacheHitRatio: number
+  cacheHitRatio?: number
   statsResetAt?: string
   topTables: DatabaseTableRecordCount[]
+  connectedBackends: number
+  activeQueries: number
+  transactionRatePerSecond?: number
+  observedAt: string
+  evidenceAgeSeconds: number
 }
 export type Overview = {
   services: ServiceState[]
   ingestion?: StreamState
-  jetstreamEndpoints?: JetstreamEndpoint[]
-  commands?: OperationsCommand[]
+  ingestionSources: StreamState[]
+  jetstreamEndpoints: JetstreamEndpoint[]
+  commands: OperationsCommand[]
   gaps: Gap[]
   backfills: Backfill[]
   alerts: Alert[]
@@ -181,11 +291,13 @@ export type Overview = {
   metricRollups: MetricRollup[]
   database?: DatabaseObservabilitySnapshot
   refreshedAt: string
+  evidence: OverviewEvidence
+  capabilities: OperationsCapabilities
+  counts: OperationsCounts
 }
-export type EnvironmentName = "development" | "production"
 export type BackfillDryRun = {
   gapId?: string
-  sourceMode: "jetstream_replay" | "pds_reconciliation"
+  sourceMode: "tap_verified_resync" | "jetstream_replay" | "pds_reconciliation"
   startCursor?: number
   endCursor?: number
   collections: string[]
@@ -200,4 +312,55 @@ export type DryRunResult = {
   snapshotEndCursor?: number
   conflicts: string[]
   unresolvedDeletesWarning: boolean
+  requestFingerprint: string
+  validUntil: string
+  methodology: string
+  confidence: string
+  estimateKind: "observed" | "modeled"
+  uncertainty?: { lowerBound: number; upperBound: number } | null
+}
+
+export type PageInfo = { nextCursor?: string; totalCount?: number }
+export type GapListResponse = {
+  gaps: Gap[]
+  nextCursor?: string | null
+  totalCount: number
+  evidence: EvidenceEnvelope
+}
+export type BackfillListResponse = {
+  backfills: Backfill[]
+  nextCursor?: string | null
+  totalCount: number
+  evidence: EvidenceEnvelope
+}
+export type AlertListResponse = {
+  alerts: Alert[]
+  nextCursor?: string | null
+  totalCount: number
+  evidence: EvidenceEnvelope
+}
+export type CommandListResponse = {
+  commands: OperationsCommand[]
+  nextCursor?: string | null
+  totalCount: number
+  evidence: EvidenceEnvelope
+}
+export type EndpointListResponse = {
+  endpoints: JetstreamEndpoint[]
+  nextCursor?: string | null
+  totalCount: number
+  evidence: EvidenceEnvelope
+}
+export type ServiceListResponse = {
+  services: ServiceState[]
+  evidence: EvidenceEnvelope
+}
+export type IngestionResponse = {
+  state?: StreamState
+  sources: StreamState[]
+  evidence: EvidenceEnvelope
+}
+export type AppViewOperationsResponse = {
+  services: ServiceState[]
+  evidence: EvidenceEnvelope
 }

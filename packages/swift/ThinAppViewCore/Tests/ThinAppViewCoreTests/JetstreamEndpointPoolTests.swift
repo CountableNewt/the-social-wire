@@ -38,6 +38,7 @@ struct JetstreamEndpointPoolTests {
   @Test("post-reconnect assessment only reports observed receive-to-commit backlog")
   func postReconnectGapAssessment() {
     let caughtUp = IngestionStreamState(
+      environment: "test",
       source: "jetstream",
       connectionState: .connected,
       lastReceivedCursor: 2_000,
@@ -47,6 +48,7 @@ struct JetstreamEndpointPoolTests {
     #expect(JetstreamGapDetector.postReconnectCandidate(state: caughtUp) == nil)
 
     let behind = IngestionStreamState(
+      environment: "test",
       source: "jetstream",
       connectionState: .connected,
       lastReceivedCursor: 2_500,

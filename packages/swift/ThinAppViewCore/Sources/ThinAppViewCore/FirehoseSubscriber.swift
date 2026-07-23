@@ -4,6 +4,8 @@ import OperationsCore
 
 /// Consumes Jetstream commits in receive order and advances the durable cursor only after indexing succeeds.
 actor FirehoseSubscriber {
+  private static let reconnectProgressTimeout: TimeInterval = 30
+
   private var endpointPool: JetstreamEndpointPool
   private var endpointStates: [String: JetstreamEndpointState]
   private let indexer: ThinAppViewIndexer
@@ -15,7 +17,13 @@ actor FirehoseSubscriber {
   private let logger: Logger
   private var suspectedGapEndCursor: Int64?
   private var pendingReconnectCommand: OperationsWorkerCommand?
+  private var pendingReconnectProgress: JetstreamReconnectProgressGate?
+  private var pendingReconnectTimeoutTask: Task<Void, Never>?
   private var pendingReconnectFailures = 0
+  private var queueDepth = 0
+  private var queueCapacity = 4_096
+  private var queueDropped: Int64 = 0
+  private var lastQueueMetricAt = Date.distantPast
 
   init(
     relayURLs: [String],
@@ -35,6 +43,7 @@ actor FirehoseSubscriber {
           endpoint.id,
           JetstreamEndpointState(
             id: endpoint.id,
+            environment: environment,
             displayName: endpoint.displayName,
             host: endpoint.host,
             role: index == 0 ? .active : .standby,
@@ -58,12 +67,7 @@ actor FirehoseSubscriber {
       do {
         try await consumeOnce()
       } catch let request as ManualJetstreamReconnectRequest {
-        pendingReconnectCommand = request.command
-        pendingReconnectFailures = 0
-        logger.notice(
-          "Operator requested Jetstream reconnect",
-          metadata: ["command_id": .string(request.command.id)]
-        )
+        await beginPendingReconnect(request.command, at: Date())
       } catch {
         let now = Date()
         await markActiveEndpointDisconnected(error: error, at: now)
@@ -112,7 +116,9 @@ actor FirehoseSubscriber {
         try await FirehoseLinuxWebSocket.consume(
           relayURL: url,
           logger: logger,
-          onConnected: { await self.didConnect(endpointId: endpoint.id, at: Date()) }
+          onConnected: { await self.didConnect(endpointId: endpoint.id, at: Date()) },
+          onHeartbeat: { await self.didReceiveTransportHeartbeat(at: Date()) },
+          onQueueObservation: { await self.observeQueue($0) }
         ) { text in
           try await self.handleMessage(text)
         }
@@ -121,7 +127,9 @@ actor FirehoseSubscriber {
           relayURL: url,
           logger: logger,
           isCancelled: { Task.isCancelled },
-          onConnected: { await self.didConnect(endpointId: endpoint.id, at: Date()) }
+          onConnected: { await self.didConnect(endpointId: endpoint.id, at: Date()) },
+          onHeartbeat: { await self.didReceiveTransportHeartbeat(at: Date()) },
+          onQueueObservation: { await self.observeQueue($0) }
         ) { text in
           try await self.handleMessage(text)
         }
@@ -157,10 +165,14 @@ actor FirehoseSubscriber {
   }
 
   private func beginConnectionAttempt(endpoint: JetstreamEndpoint, at: Date) async {
+    pendingReconnectTimeoutTask?.cancel()
+    pendingReconnectTimeoutTask = nil
+    pendingReconnectProgress?.beginConnectionAttempt()
     for configured in endpointPool.endpoints {
       let previous = endpointStates[configured.id]
       endpointStates[configured.id] = JetstreamEndpointState(
         id: configured.id,
+        environment: environment,
         displayName: configured.displayName,
         host: configured.host,
         role: configured.id == endpoint.id ? .active : .standby,
@@ -179,7 +191,8 @@ actor FirehoseSubscriber {
   private func didConnect(endpointId: String, at: Date) async {
     guard endpointPool.active.id == endpointId, let previous = endpointStates[endpointId] else { return }
     endpointStates[endpointId] = JetstreamEndpointState(
-      id: previous.id, displayName: previous.displayName, host: previous.host, role: .active,
+      id: previous.id, environment: environment,
+      displayName: previous.displayName, host: previous.host, role: .active,
       connectionState: .connected, lastConnectedAt: at,
       lastDisconnectedAt: previous.lastDisconnectedAt, lastError: nil,
       connectionAttempts: previous.connectionAttempts, failoverCount: previous.failoverCount,
@@ -188,26 +201,20 @@ actor FirehoseSubscriber {
     try? await operationsStore?.markStreamConnected(source: "jetstream", at: at)
     await persistEndpointStates()
     await emitEvent("jetstream.connected", attributes: ["endpoint": previous.host])
+    pendingReconnectProgress?.didConnect(at: at)
+    schedulePendingReconnectProgressTimeout(connectedAt: at)
+  }
 
-    if let command = pendingReconnectCommand {
-      await assessPostReconnectGap(at: at)
-      try? await operationsStore?.completeCommand(
-        id: command.id, status: .completed, failureReason: nil, at: at)
-      try? await operationsStore?.recordAudit(
-        operatorDid: "system:worker", action: "command.completed", targetType: "command",
-        targetId: command.id, note: "Jetstream reconnected and durable cursor gap assessment completed.",
-        at: at
-      )
-      pendingReconnectCommand = nil
-      pendingReconnectFailures = 0
-    }
+  private func didReceiveTransportHeartbeat(at: Date) async {
+    try? await operationsStore?.markStreamTransportHeartbeat(source: "jetstream", at: at)
   }
 
   private func markActiveEndpointDisconnected(error: Error, at: Date) async {
     let endpoint = endpointPool.active
     let previous = endpointStates[endpoint.id]
     endpointStates[endpoint.id] = JetstreamEndpointState(
-      id: endpoint.id, displayName: endpoint.displayName, host: endpoint.host, role: .standby,
+      id: endpoint.id, environment: environment,
+      displayName: endpoint.displayName, host: endpoint.host, role: .standby,
       connectionState: .disconnected, lastConnectedAt: previous?.lastConnectedAt,
       lastDisconnectedAt: at, lastError: OperationsRedactor.errorCategory(error),
       connectionAttempts: previous?.connectionAttempts ?? 0,
@@ -223,15 +230,24 @@ actor FirehoseSubscriber {
     pendingReconnectFailures += 1
     guard pendingReconnectFailures >= endpointPool.endpoints.count else { return }
     let failure = "all_jetstream_endpoints_unavailable"
-    try? await operationsStore?.completeCommand(
-      id: command.id, status: .failed, failureReason: failure, at: at)
-    try? await operationsStore?.recordAudit(
-      operatorDid: "system:worker", action: "command.failed", targetType: "command",
-      targetId: command.id,
-      note: "Reconnect failed after every configured Jetstream endpoint returned \(OperationsRedactor.errorCategory(error)).",
-      at: at
-    )
+    if let operationsStore {
+      do {
+        _ = try await operationsStore.completeCommand(
+          id: command.id, status: .failed, failureReason: failure, workerId: instanceId,
+          expectedVersion: command.version, requestId: reconnectRequestId(command),
+          note: "Reconnect failed after every configured Jetstream endpoint returned \(OperationsRedactor.errorCategory(error)).",
+          at: at)
+      } catch {
+        logger.warning("Rejected stale reconnect failure completion", metadata: [
+          "command_id": .string(command.id),
+          "error_type": .string(OperationsRedactor.errorCategory(error)),
+        ])
+      }
+    }
     pendingReconnectCommand = nil
+    pendingReconnectProgress = nil
+    pendingReconnectTimeoutTask?.cancel()
+    pendingReconnectTimeoutTask = nil
     pendingReconnectFailures = 0
   }
 
@@ -242,15 +258,146 @@ actor FirehoseSubscriber {
     }
   }
 
-  private func assessPostReconnectGap(at: Date) async {
-    guard let operationsStore,
-      let state = try? await operationsStore.fetchStreamState(source: "jetstream"),
-      let candidate = JetstreamGapDetector.postReconnectCandidate(state: state)
-    else { return }
-    await recordGap(candidate, collections: [], at: at)
+  private func beginPendingReconnect(_ command: OperationsWorkerCommand, at: Date) async {
+    guard let operationsStore else { return }
+    do {
+      let state = try await operationsStore.fetchStreamState(source: "jetstream")
+      pendingReconnectCommand = command
+      pendingReconnectProgress = JetstreamReconnectProgressGate(state: state)
+      pendingReconnectTimeoutTask?.cancel()
+      pendingReconnectTimeoutTask = nil
+      pendingReconnectFailures = 0
+      logger.notice(
+        "Operator requested Jetstream reconnect",
+        metadata: ["command_id": .string(command.id)]
+      )
+    } catch {
+      let failure = "reconnect_baseline_unavailable"
+      do {
+        _ = try await operationsStore.completeCommand(
+          id: command.id, status: .failed, failureReason: failure, workerId: instanceId,
+          expectedVersion: command.version, requestId: reconnectRequestId(command),
+          note: "Reconnect could not capture a durable pre-connection cursor baseline.", at: at)
+      } catch {
+        logger.warning("Rejected stale reconnect baseline failure completion", metadata: [
+          "command_id": .string(command.id),
+          "error_type": .string(OperationsRedactor.errorCategory(error)),
+        ])
+      }
+    }
   }
 
-  private func handleMessage(_ text: String) async throws {
+  private func completePendingReconnectAfterProgress(cursor: Int64, at: Date) async {
+    guard let command = pendingReconnectCommand,
+      let progress = pendingReconnectProgress,
+      progress.permitsCompletion(receivedCursor: cursor, committedCursor: cursor),
+      let operationsStore
+    else { return }
+
+    do {
+      try await assessPostReconnectGap(at: at, store: operationsStore)
+      _ = try await operationsStore.completeCommand(
+        id: command.id, status: .completed, failureReason: nil, workerId: instanceId,
+        expectedVersion: command.version, requestId: reconnectRequestId(command),
+        note: "Jetstream reconnected, committed a post-handshake cursor, and completed gap assessment.",
+        at: at)
+      pendingReconnectCommand = nil
+      pendingReconnectProgress = nil
+      pendingReconnectTimeoutTask?.cancel()
+      pendingReconnectTimeoutTask = nil
+      pendingReconnectFailures = 0
+    } catch {
+      logger.error(
+        "Reconnect made cursor progress but could not complete gap assessment",
+        metadata: [
+          "command_id": .string(command.id),
+          "error_type": .string(OperationsRedactor.errorCategory(error)),
+        ]
+      )
+      await emitEvent(
+        "jetstream.reconnect_assessment_failed",
+        attributes: ["error_type": OperationsRedactor.errorCategory(error)]
+      )
+    }
+  }
+
+  private func schedulePendingReconnectProgressTimeout(connectedAt: Date) {
+    guard let command = pendingReconnectCommand else { return }
+    pendingReconnectTimeoutTask?.cancel()
+    pendingReconnectTimeoutTask = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .seconds(Self.reconnectProgressTimeout))
+      } catch {
+        return
+      }
+      await self?.failPendingReconnectForNoProgress(
+        commandId: command.id,
+        connectedAt: connectedAt,
+        at: Date()
+      )
+    }
+  }
+
+  private func failPendingReconnectForNoProgress(
+    commandId: String,
+    connectedAt: Date,
+    at: Date
+  ) async {
+    guard let command = pendingReconnectCommand, command.id == commandId,
+      pendingReconnectProgress?.connectedAt == connectedAt,
+      let operationsStore
+    else { return }
+    let failure = "post_reconnect_cursor_progress_timeout"
+    do {
+      _ = try await operationsStore.completeCommand(
+        id: commandId,
+        status: .failed,
+        failureReason: failure,
+        workerId: instanceId,
+        expectedVersion: command.version,
+        requestId: reconnectRequestId(command),
+        note: "Reconnect established transport but observed no durable cursor progress within the bounded window.",
+        at: at)
+    } catch {
+      logger.warning("Rejected stale reconnect timeout completion", metadata: [
+        "command_id": .string(command.id),
+        "error_type": .string(OperationsRedactor.errorCategory(error)),
+      ])
+    }
+    await emitEvent("jetstream.reconnect_progress_timeout")
+    pendingReconnectCommand = nil
+    pendingReconnectProgress = nil
+    pendingReconnectTimeoutTask?.cancel()
+    pendingReconnectTimeoutTask = nil
+    pendingReconnectFailures = 0
+  }
+
+  private func reconnectRequestId(_ command: OperationsWorkerCommand) -> String {
+    "reconnect:\(command.id):\(command.version)"
+  }
+
+  private func assessPostReconnectGap(
+    at: Date,
+    store: any OperationsStore
+  ) async throws {
+    guard let state = try await store.fetchStreamState(source: "jetstream") else {
+      throw JetstreamReconnectAssessmentError.streamStateUnavailable
+    }
+    guard let candidate = JetstreamGapDetector.postReconnectCandidate(state: state) else { return }
+    let existingGaps = try await store.listGaps(limit: 250)
+    guard !existingGaps.contains(where: { candidate.isCovered(by: $0) }) else { return }
+    let gap = try await store.createGap(
+      source: "jetstream",
+      startCursor: candidate.startCursor,
+      endCursor: candidate.endCursor,
+      reason: candidate.reason,
+      collections: [],
+      detectedAt: at
+    )
+    suspectedGapEndCursor = max(suspectedGapEndCursor ?? gap.endCursor ?? 0, gap.endCursor ?? 0)
+  }
+
+  func handleMessage(_ text: String) async throws {
     guard
       let data = text.data(using: .utf8),
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -271,7 +418,7 @@ actor FirehoseSubscriber {
       cursor: cursor,
       eventAt: eventTime,
       receivedAt: now,
-      queueDepth: 0
+      queueDepth: queueDepth
     )
 
     let cid = (commit["cid"] as? String) ?? ""
@@ -279,7 +426,7 @@ actor FirehoseSubscriber {
     let recordJSON = (try? JSONSerialization.data(withJSONObject: recordObject)) ?? Data("{}".utf8)
 
     do {
-      try await indexer.handleCommit(
+      let indexingOutcome = try await indexer.handleCommitWithOutcome(
         repoDid: did,
         collection: collection,
         rkey: rkey,
@@ -295,15 +442,28 @@ actor FirehoseSubscriber {
         cursor: cursor,
         eventAt: eventTime,
         committedAt: Date(),
-        queueDepth: 0
+        queueDepth: queueDepth
       )
-      try await resolveRecoveredGaps(through: cursor, at: Date())
+      if indexingOutcome.didMutateProjection {
+        try? await operationsStore?.markStreamIndexedMutation(source: "jetstream", at: Date())
+        try? await operationsStore?.markStreamProjectionWatermark(
+          source: "jetstream",
+          watermark: "cursor:\(cursor)",
+          at: Date()
+        )
+      }
+      await confirmSuspectedGapsAfterProgress(through: cursor, at: Date())
+      await completePendingReconnectAfterProgress(cursor: cursor, at: Date())
       let duration = Date().timeIntervalSince(startedAt)
-      await emitMetric("socialwire.ingestion.events_total", value: 1, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
-      await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "success", "ingestion_mode": "live"])
+      let indexingResult = indexingOutcome.didMutateProjection ? "indexed" : "skipped"
+      if indexingOutcome.didMutateProjection {
+        await emitMetric("socialwire.ingestion.events_total", value: 1, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
+        await emitMetric("socialwire.ingestion.db_write_duration_seconds", value: duration, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
+      }
+      await emitMetric("socialwire.ingestion.processed_events_total", value: 1, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live", "indexing_result": indexingResult])
+      await emitMetric("socialwire.ingestion.results_total", value: 1, dimensions: ["collection": collection, "operation": operation, "result": "success", "ingestion_mode": "live", "indexing_result": indexingResult])
       await emitMetric("socialwire.ingestion.commit_lag_seconds", value: Date().timeIntervalSince(eventTime), dimensions: ["collection": collection, "ingestion_mode": "live"])
-      await emitMetric("socialwire.ingestion.db_write_duration_seconds", value: duration, dimensions: ["collection": collection, "operation": operation, "ingestion_mode": "live"])
-      await emitEvent("commit.committed", attributes: ["collection": collection, "operation": operation])
+      await emitEvent("commit.committed", attributes: ["collection": collection, "operation": operation, "indexing_result": indexingResult])
       if Int.random(in: 0..<100) < 5 { await emitSpan(startedAt: startedAt, duration: duration, status: "ok", collection: collection, operation: operation) }
     } catch {
       try? await operationsStore?.recordRecoveryFailure(
@@ -330,6 +490,43 @@ actor FirehoseSubscriber {
     _ = await telemetry?.enqueue(.metric(.init(name: name, value: value, dimensions: bounded)))
   }
 
+  private func observeQueue(_ observation: BoundedQueueObservation) async {
+    let previousDropped = queueDropped
+    queueDepth = observation.depth
+    queueCapacity = observation.capacity
+    queueDropped = observation.dropped
+    let now = Date()
+    guard
+      queueDropped > previousDropped
+        || now.timeIntervalSince(lastQueueMetricAt) >= 1
+    else { return }
+    lastQueueMetricAt = now
+    try? await operationsStore?.recordStreamQueueObservation(
+      source: "jetstream",
+      depth: queueDepth,
+      capacity: queueCapacity,
+      overflowTotal: queueDropped,
+      observedAt: now
+    )
+    await emitMetric(
+      "socialwire.ingestion.queue_depth",
+      value: Double(queueDepth),
+      dimensions: ["ingestion_source": "jetstream"]
+    )
+    await emitMetric(
+      "socialwire.ingestion.queue_capacity",
+      value: Double(queueCapacity),
+      dimensions: ["ingestion_source": "jetstream"]
+    )
+    if queueDropped > previousDropped {
+      await emitMetric(
+        "socialwire.ingestion.queue_dropped_total",
+        value: Double(queueDropped - previousDropped),
+        dimensions: ["ingestion_source": "jetstream"]
+      )
+    }
+  }
+
   private func emitEvent(_ name: String, attributes: [String: String] = [:]) async {
     var bounded = attributes
     if let collection = bounded["collection"] { bounded["collection"] = Self.collectionDimension(collection) }
@@ -339,6 +536,7 @@ actor FirehoseSubscriber {
   private func emitSpan(startedAt: Date, duration: TimeInterval, status: String, collection: String, operation: String) async {
     let trace = TraceContext(sampled: true)
     _ = await telemetry?.enqueue(.span(.init(
+      environment: environment,
       traceId: trace.traceId,
       service: "appview-worker",
       name: "worker.index.commit",
@@ -401,24 +599,44 @@ actor FirehoseSubscriber {
     suspectedGapEndCursor = max(suspectedGapEndCursor ?? gap.endCursor ?? 0, gap.endCursor ?? 0)
   }
 
-  private func resolveRecoveredGaps(through cursor: Int64, at: Date) async throws {
+  private func confirmSuspectedGapsAfterProgress(through cursor: Int64, at: Date) async {
     guard let target = suspectedGapEndCursor, cursor >= target, let operationsStore else { return }
-    let resolvedIds = try await operationsStore.resolveSuspectedGaps(
-      source: "jetstream",
+    await JetstreamGapProgressAssessment.confirmSuspectedGaps(
+      store: operationsStore,
       through: cursor,
       at: at
     )
-    for id in resolvedIds {
-      try await operationsStore.recordAudit(
+    suspectedGapEndCursor = nil
+  }
+}
+
+enum JetstreamGapProgressAssessment {
+  /// Transport progress proves that the connection advanced, not that every repository mutation
+  /// (especially deletes) was recovered. It may confirm a suspected gap but can never resolve it.
+  static func confirmSuspectedGaps(
+    store: any OperationsStore,
+    through cursor: Int64,
+    at: Date
+  ) async {
+    guard
+      let page = try? await store.listGaps(view: .active, limit: 250, before: nil)
+    else { return }
+    for gap in page.items where
+      gap.source == "jetstream"
+        && gap.status == .suspected
+        && gap.endCursor.map({ $0 <= cursor }) == true
+    {
+      _ = try? await store.transitionGap(
+        id: gap.id,
+        to: .confirmed,
+        expectedVersion: gap.version,
         operatorDid: "system:worker",
-        action: "gap.auto_resolved",
-        targetType: "gap",
-        targetId: id,
-        note: "Live ingestion committed through the suspected cursor range.",
+        idempotencyKey: "jetstream-progress:\(gap.id):\(gap.version):confirmed",
+        requestId: nil,
+        note: "Transport progressed through the suspected range; mutation completeness remains unverified.",
         at: at
       )
     }
-    suspectedGapEndCursor = nil
   }
 }
 
@@ -429,7 +647,8 @@ struct JetstreamGapCandidate: Equatable, Sendable {
 
   func isCovered(by gap: IngestionGap) -> Bool {
     guard gap.source == "jetstream",
-      [.suspected, .confirmed, .backfillQueued, .backfilling].contains(gap.status),
+      [.suspected, .confirmed, .backfillQueued, .backfilling, .verificationRequired]
+        .contains(gap.status),
       let existingStart = gap.startCursor,
       let existingEnd = gap.endCursor
     else { return false }
@@ -505,6 +724,9 @@ enum FirehoseSubscriberError: Error, CustomStringConvertible {
 
 struct FirehoseQueueOverflowError: Error {}
 struct FirehoseConnectionClosedError: Error {}
+private enum JetstreamReconnectAssessmentError: Error {
+  case streamStateUnavailable
+}
 
 private enum FirehoseCycleResult: Sendable {
   case streamEnded

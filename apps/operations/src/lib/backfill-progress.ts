@@ -1,5 +1,10 @@
 import type { Backfill } from "@/lib/operations-types"
 
+export function backfillRateLimitLabel(job: Pick<Backfill, "rateLimit" | "sourceMode">) {
+  const unit = job.sourceMode === "pds_reconciliation" ? "PDS requests/s" : "source events/s"
+  return `≤ ${job.rateLimit.toLocaleString()} ${unit}`
+}
+
 export type BackfillProgressEvidence = {
   observedCount: number | null
   estimatedCount: number | null

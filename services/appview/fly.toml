@@ -14,6 +14,7 @@ primary_region = 'ord'
   wait_timeout = '10m0s'
 
 [env]
+  APP_ENV = 'dev'
   ENABLE_THIN_APPVIEW = 'true'
   PORT = '8081'
 
@@ -29,7 +30,7 @@ primary_region = 'ord'
     timeout = '10s'
     grace_period = '1m0s'
     method = 'GET'
-    path = '/health'
+    path = '/readyz'
 
 [[vm]]
   memory = '1gb'

@@ -20,12 +20,12 @@ export function OperatorMenu({ operator, onSignOut }: { operator: string; onSign
     <Menu.Root>
       <Menu.Trigger
         aria-label="Operator Menu"
-        className="hidden items-center gap-2 rounded-md border-l py-1 pl-3 pr-1 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring md:flex"
+        className="flex min-h-11 items-center gap-2 rounded-md border-l py-1 pl-2 pr-1 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring md:pl-3"
       >
         <span className="grid size-7 place-items-center rounded-full bg-primary text-[10px] text-primary-foreground">
           OP
         </span>
-        <span className="max-w-32">
+        <span className="hidden max-w-32 md:block">
           <span className="block truncate text-[10px] font-medium">Operator</span>
           <span className="block truncate text-[9px] text-muted-foreground">{operator}</span>
         </span>
@@ -41,7 +41,7 @@ export function OperatorMenu({ operator, onSignOut }: { operator: string; onSign
             <Menu.Item
               disabled={signingOut}
               onClick={() => void signOut()}
-              className="mt-1 flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive outline-none select-none focus:bg-destructive/10 data-disabled:pointer-events-none data-disabled:opacity-50"
+              className="mt-1 flex min-h-11 cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive outline-none select-none focus:bg-destructive/10 data-disabled:pointer-events-none data-disabled:opacity-50"
             >
               <LogOut className="size-3.5" />
               {signingOut ? "Logging Out…" : "Log Out"}

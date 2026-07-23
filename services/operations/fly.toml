@@ -6,6 +6,7 @@ primary_region = 'ord'
   context = '../..'
 
 [env]
+  APP_ENV = 'dev'
   PORT = '8083'
   OPERATIONS_TELEMETRY_ENABLED = 'true'
   OPERATIONS_RECOVERY_ENABLED = 'true'

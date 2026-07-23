@@ -13,7 +13,7 @@ const buttonVariants = cva(
         destructive: "bg-destructive text-white hover:bg-destructive/90",
         link: "text-primary underline-offset-4 hover:underline",
       },
-      size: { default: "h-8 px-3", sm: "h-7 px-2.5", icon: "size-8" },
+      size: { default: "min-h-11 px-4", sm: "min-h-11 px-3", icon: "size-11" },
     },
     defaultVariants: { variant: "default", size: "default" },
   },

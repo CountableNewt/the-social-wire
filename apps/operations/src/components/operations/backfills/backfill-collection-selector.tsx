@@ -1,13 +1,21 @@
-import { BACKFILL_COLLECTION_OPTIONS } from "@/lib/backfill-collections"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { LEGACY_DIAGNOSTIC_COLLECTIONS } from "@/lib/backfill-collections"
 
 export function BackfillCollectionSelector({
   onValueChange,
   value,
+  options,
+  legacyCollections = [],
 }: {
   onValueChange: (value: string[]) => void
   value: readonly string[]
+  options: readonly string[]
+  legacyCollections?: readonly string[]
 }) {
-  const options = Array.from(new Set([...BACKFILL_COLLECTION_OPTIONS, ...value]))
+  const legacy = legacyCollections.filter((collection) => LEGACY_DIAGNOSTIC_COLLECTIONS.has(collection))
+  const unsupported = legacyCollections.filter(
+    (collection) => !options.includes(collection) && !LEGACY_DIAGNOSTIC_COLLECTIONS.has(collection),
+  )
 
   return (
     <fieldset className="grid gap-1.5 rounded-md border p-2">
@@ -31,6 +39,22 @@ export function BackfillCollectionSelector({
         <p role="alert" className="mt-1 text-[10px] text-destructive">
           Scope unknown. Select at least one collection before running a dry-run.
         </p>
+      ) : null}
+      {legacy.length ? (
+        <Alert variant="warning" className="mt-2">
+          <AlertTitle>Legacy Diagnostic Scope Withheld</AlertTitle>
+          <AlertDescription>
+            {legacy.join(", ")} is not a registered recovery collection and cannot be selected here.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {unsupported.length ? (
+        <Alert variant="warning" className="mt-2">
+          <AlertTitle>Unsupported for This Source</AlertTitle>
+          <AlertDescription>
+            {unsupported.join(", ")} is outside this source mode&apos;s registered recovery coverage and is withheld.
+          </AlertDescription>
+        </Alert>
       ) : null}
     </fieldset>
   )

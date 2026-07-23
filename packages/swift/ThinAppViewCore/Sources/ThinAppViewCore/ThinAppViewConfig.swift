@@ -2,12 +2,18 @@ import Foundation
 
 /// Environment-driven configuration for the GDPR-safe thin AppView index.
 public struct ThinAppViewConfig: Sendable {
-public static let contentCollections: [String] = [
+public static let canonicalContentCollections: [String] = [
     "site.standard.document",
-    "com.standard.document",
     "site.standard.entry",
+  ]
+
+  /// Retained only for legacy discovery/cleanup. New recovery and Tap filters use canonical NSIDs.
+  public static let legacyContentCollections: [String] = [
+    "com.standard.document",
     "com.standard.entry",
   ]
+
+  public static let contentCollections = canonicalContentCollections + legacyContentCollections
 
 public static let graphSubscriptionCollection = "site.standard.graph.subscription"
 

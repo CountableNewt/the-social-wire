@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { DataColumnHeaders } from "@/components/operations/data-column-headers"
 import { OperationsSection } from "@/components/operations/operations-section"
+import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
 import { useOperationsAuth } from "@/lib/auth-context"
 import { fetchTraceSpans } from "@/lib/operations-api"
@@ -24,37 +25,56 @@ export function TraceDetail({ traceId }: { traceId?: string }) {
       </p>
     )
 
-  const spans = trace.data?.spans ?? []
+  const spans = trace.data?.traces ?? []
   if (spans.length === 0)
     return <p className="text-xs text-muted-foreground">No recorded spans were found for trace {traceId}.</p>
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <OperationsSection title={<span className="font-mono">Trace {traceId} · Recorded Spans ({spans.length})</span>}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <DataColumnHeaders
-                labels={["Time", "Span ID", "Parent Span", "Service", "Operation", "Duration", "Status"]}
-              />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {spans.map((span) => (
-              <TableRow key={span.id}>
-                <TableCell className="font-mono">{new Date(span.startedAt).toLocaleTimeString()}</TableCell>
-                <TableCell className="font-mono">{span.id}</TableCell>
-                <TableCell className="font-mono">{span.parentSpanId ?? "—"}</TableCell>
-                <TableCell>{span.service}</TableCell>
-                <TableCell className="font-mono">{span.name}</TableCell>
-                <TableCell className="font-mono">{span.durationMs.toLocaleString()} ms</TableCell>
-                <TableCell className={span.status === "error" ? "text-destructive" : "ops-success"}>
-                  {span.status}
-                </TableCell>
+        <div className="grid gap-2 p-3 md:hidden">
+          {spans.map((span) => (
+            <article key={span.id} className="rounded-md border bg-background p-3">
+              <header className="flex items-start justify-between gap-3">
+                <h3 className="break-all font-mono text-xs font-semibold">{span.name}</h3>
+                <Badge tone={span.status === "error" ? "danger" : "success"}>{span.status}</Badge>
+              </header>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                <div><dt className="text-muted-foreground">Service</dt><dd className="mt-0.5">{span.service}</dd></div>
+                <div><dt className="text-muted-foreground">Duration</dt><dd className="mt-0.5 font-mono">{span.durationMs.toLocaleString()} ms</dd></div>
+                <div><dt className="text-muted-foreground">Observed</dt><dd className="mt-0.5">{new Date(span.startedAt).toLocaleString()}</dd></div>
+                <div><dt className="text-muted-foreground">Parent Span</dt><dd className="mt-0.5 break-all font-mono">{span.parentSpanId ?? "—"}</dd></div>
+                <div className="col-span-2"><dt className="text-muted-foreground">Span ID</dt><dd className="mt-0.5 break-all font-mono">{span.id}</dd></div>
+              </dl>
+            </article>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <DataColumnHeaders
+                  labels={["Time", "Span ID", "Parent Span", "Service", "Operation", "Duration", "Status"]}
+                />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {spans.map((span) => (
+                <TableRow key={span.id}>
+                  <TableCell className="font-mono">{new Date(span.startedAt).toLocaleTimeString()}</TableCell>
+                  <TableCell className="font-mono">{span.id}</TableCell>
+                  <TableCell className="font-mono">{span.parentSpanId ?? "—"}</TableCell>
+                  <TableCell>{span.service}</TableCell>
+                  <TableCell className="font-mono">{span.name}</TableCell>
+                  <TableCell className="font-mono">{span.durationMs.toLocaleString()} ms</TableCell>
+                  <TableCell className={span.status === "error" ? "text-destructive" : "ops-success"}>
+                    {span.status}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </OperationsSection>
       <OperationsSection title="Recorded Span Attributes">
         <div className="divide-y">

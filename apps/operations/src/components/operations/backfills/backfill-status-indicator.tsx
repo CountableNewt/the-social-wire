@@ -17,7 +17,7 @@ export function BackfillStatusIndicator({ status }: { status: Backfill["status"]
     <Badge tone={tone}>
       <span className="relative mr-1.5 flex size-2" aria-hidden="true">
         {active ? (
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-50" />
+          <span className="absolute inline-flex size-full rounded-full bg-current opacity-50 motion-safe:animate-ping" />
         ) : null}
         <span className="relative inline-flex size-2 rounded-full bg-current" />
       </span>

@@ -10,7 +10,7 @@ struct OperationsTelemetryBufferTests {
     let path = FileManager.default.temporaryDirectory
       .appendingPathComponent("operations-buffer-\(UUID().uuidString).sqlite").path
     let logger = Logger(label: "operations-buffer-tests")
-    let store = try SQLiteOperationsStore(path: path, logger: logger)
+    let store = try SQLiteOperationsStore(path: path, environment: "dev", logger: logger)
     let buffer = OperationsTelemetryBuffer(store: store, capacity: 1, logger: logger)
 
     let first = await buffer.enqueue(.metric(.init(name: "socialwire.test", value: 1, dimensions: [:])))
@@ -20,5 +20,22 @@ struct OperationsTelemetryBufferTests {
     #expect(!second)
     #expect(await buffer.pendingCount() == 1)
     #expect(await buffer.droppedCount == 1)
+  }
+
+  @Test("an idle exporter stops promptly when cancelled")
+  func idleExporterCancellation() async {
+    let logger = Logger(label: "operations-buffer-cancellation-tests")
+    let buffer = OperationsTelemetryBuffer(
+      capacity: 1, logger: logger,
+      exporter: { _ in })
+    let task = Task { await buffer.runForever() }
+
+    try? await Task.sleep(for: .milliseconds(10))
+    let clock = ContinuousClock()
+    let started = clock.now
+    task.cancel()
+    await task.value
+
+    #expect(started.duration(to: clock.now) < .seconds(1))
   }
 }

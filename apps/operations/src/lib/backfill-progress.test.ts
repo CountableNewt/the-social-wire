@@ -4,10 +4,13 @@ import type { Backfill } from "@/lib/operations-types"
 
 const job: Backfill = {
   id: "bf-test-001",
+  environment: "dev",
+  version: 1,
   sourceMode: "jetstream_replay",
   status: "running",
   collections: ["site.standard.document"],
   authorDids: [],
+  authorResults: [],
   batchSize: 1000,
   rateLimit: 500,
   maxConcurrency: 4,
@@ -19,6 +22,8 @@ const job: Backfill = {
   auditNote: "Recover gap",
   createdAt: "2026-07-20T20:00:00.000Z",
   updatedAt: "2026-07-20T20:00:30.000Z",
+  verificationStatus: "required",
+  scopeTruncated: false,
 }
 
 describe("backfillProgressPercent", () => {

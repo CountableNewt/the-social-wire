@@ -12,6 +12,7 @@ primary_region = 'ord'
   wait_timeout = '10m0s'
 
 [env]
+  APP_ENV = 'dev'
   PORT = '8080'
   OPERATIONS_BASE_URL = 'https://the-social-wire-dev-operations.fly.dev'
   OAUTH_OPERATIONS_ORIGIN = 'https://operations.testing.thesocialwire.app'
@@ -35,7 +36,7 @@ primary_region = 'ord'
     timeout = '10s'
     grace_period = '1m0s'
     method = 'GET'
-    path = '/health'
+    path = '/readyz'
 
 [[vm]]
   memory = '1gb'

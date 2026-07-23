@@ -40,7 +40,7 @@ export function GapInvestigationEvidenceRow({
           {evidence.traceId ? (
             <Link
               href={`/traces/${evidence.traceId}`}
-              className="inline-flex items-center gap-1 text-[9px] text-primary"
+              className="ops-touch-link gap-1 text-[9px] text-primary"
             >
               Open Trace <ExternalLink className="size-2.5" />
             </Link>

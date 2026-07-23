@@ -15,11 +15,13 @@ export function GapInvestigationSheet({
   open,
   onOpenChange,
   onBackfill,
+  mutationsEnabled = true,
 }: {
   gap?: Gap
   open: boolean
   onOpenChange: (open: boolean) => void
   onBackfill: (gap: Gap) => void
+  mutationsEnabled?: boolean
 }) {
   const auth = useOperationsAuth()
   const investigation = useQuery({
@@ -57,7 +59,23 @@ export function GapInvestigationSheet({
         {investigation.data ? (
           <SheetFooter className="flex items-center justify-between gap-3">
             <p className="text-[10px] text-muted-foreground">Review evidence before choosing recovery scope.</p>
-            <Button onClick={() => onBackfill(investigation.data.gap)}>
+            <Button
+              disabled={
+                !mutationsEnabled ||
+                investigation.data.gap.version === undefined ||
+                !["confirmed", "verification_required"].includes(investigation.data.gap.status)
+              }
+              title={
+                !mutationsEnabled
+                  ? "Recovery mutations are disabled"
+                  : investigation.data.gap.version === undefined
+                    ? "Gap version evidence is unavailable"
+                    : !["confirmed", "verification_required"].includes(investigation.data.gap.status)
+                      ? "This gap is not in a recoverable lifecycle state"
+                      : undefined
+              }
+              onClick={() => onBackfill(investigation.data.gap)}
+            >
               Backfill This Gap <ArrowRight />
             </Button>
           </SheetFooter>
