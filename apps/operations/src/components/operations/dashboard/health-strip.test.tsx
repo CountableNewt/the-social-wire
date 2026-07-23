@@ -78,6 +78,24 @@ describe("HealthStrip", () => {
     expect(screen.getByText("Ingestion Freshness").nextElementSibling?.textContent).toBe("Unknown")
   })
 
+  it("shows Reconnecting instead of Disconnected for a recent transition", () => {
+    render(
+      <HealthStrip
+        overview={{
+          ...demoOverview,
+          services: demoOverview.services.map((service) => ({ ...service, freshness: "healthy" })),
+          ingestion: {
+            ...demoOverview.ingestion!,
+            connectionState: "disconnected",
+            lastDisconnectAt: demoOverview.refreshedAt,
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByText("Ingestion Freshness").nextElementSibling?.textContent).toBe("Reconnecting")
+  })
+
   it("does not infer transport health from a fresh generic ingestion heartbeat", () => {
     render(
       <HealthStrip

@@ -9,6 +9,44 @@ export type HealthEvidence = {
 }
 
 export const requiredOperationsServices = ["gateway", "appview", "appview-worker", "operations"] as const
+export const TRANSPORT_HEARTBEAT_FRESHNESS_SECONDS = 45
+export const CONNECTION_DISCONNECT_GRACE_SECONDS = 90
+
+export type EffectiveConnectionState = "connected" | "disconnected" | "reconnecting" | "unknown"
+
+export function effectiveConnectionState({
+  connectionState,
+  transportHeartbeatAt,
+  lastDisconnectedAt,
+  referenceTime,
+}: {
+  connectionState: EffectiveConnectionState | undefined
+  transportHeartbeatAt?: string
+  lastDisconnectedAt?: string
+  referenceTime: string
+}): EffectiveConnectionState {
+  const transportAge = elapsedSeconds(transportHeartbeatAt, referenceTime)
+
+  if (connectionState === "disconnected") {
+    const disconnectAge = elapsedSeconds(lastDisconnectedAt, referenceTime)
+    if (
+      (disconnectAge !== null && disconnectAge <= CONNECTION_DISCONNECT_GRACE_SECONDS) ||
+      (disconnectAge === null &&
+        transportAge !== null &&
+        transportAge <= TRANSPORT_HEARTBEAT_FRESHNESS_SECONDS)
+    )
+      return "reconnecting"
+    return disconnectAge === null ? "unknown" : "disconnected"
+  }
+
+  if (
+    transportAge === null ||
+    transportAge > TRANSPORT_HEARTBEAT_FRESHNESS_SECONDS
+  )
+    return "unknown"
+
+  return connectionState ?? "unknown"
+}
 
 export function boundedNonNegativeNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
@@ -80,12 +118,12 @@ export function overallSystemHealth(overview: Overview, reference = overview.ref
     serviceHealthEvidence(overview.services, "freshness", reference, ["appview-worker"]).state,
     serviceHealthEvidence(overview.services, "completeness", reference, ["appview-worker"]).state,
   ]
-  const streamAge = elapsedSeconds(
-    overview.ingestion?.transportHeartbeatAt,
-    reference,
-  )
-  const connectionState =
-    streamAge !== null && streamAge <= 45 ? overview.ingestion?.connectionState : "unknown"
+  const connectionState = effectiveConnectionState({
+    connectionState: overview.ingestion?.connectionState,
+    transportHeartbeatAt: overview.ingestion?.transportHeartbeatAt,
+    lastDisconnectedAt: overview.ingestion?.lastDisconnectAt,
+    referenceTime: reference,
+  })
   if (
     connectionState === "disconnected" ||
     overview.alerts.some((alert) => alert.status === "open" && alert.severity === "critical") ||

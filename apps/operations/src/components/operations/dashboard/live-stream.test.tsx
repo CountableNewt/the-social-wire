@@ -29,8 +29,28 @@ describe("LiveStream", () => {
     expect(screen.queryByText("410 ms / 1.82 s")).toBeNull()
   })
 
-  it("reflects disconnected state instead of a fixed connected badge", () => {
-    renderStream({ ...demoOverview, ingestion: { ...demoOverview.ingestion!, connectionState: "disconnected" } })
+  it("treats a recent disconnect as reconnecting while polling can bridge the gap", () => {
+    renderStream({
+      ...demoOverview,
+      ingestion: {
+        ...demoOverview.ingestion!,
+        connectionState: "disconnected",
+        lastDisconnectAt: demoOverview.refreshedAt,
+      },
+    })
+
+    expect(screen.getByText("● reconnecting")).toBeTruthy()
+  })
+
+  it("reports disconnected after the reconnecting grace period expires", () => {
+    renderStream({
+      ...demoOverview,
+      ingestion: {
+        ...demoOverview.ingestion!,
+        connectionState: "disconnected",
+        lastDisconnectAt: new Date(new Date(demoOverview.refreshedAt).getTime() - 120_000).toISOString(),
+      },
+    })
 
     expect(screen.getByText("● disconnected")).toBeTruthy()
   })

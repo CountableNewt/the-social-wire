@@ -1,5 +1,10 @@
 import { Activity, CheckCircle2, Clock3, Database, TriangleAlert } from "lucide-react"
-import { elapsedSeconds, healthLabel, serviceHealthEvidence } from "@/lib/observability-values"
+import {
+  effectiveConnectionState,
+  elapsedSeconds,
+  healthLabel,
+  serviceHealthEvidence,
+} from "@/lib/observability-values"
 import type { Overview } from "@/lib/operations-types"
 
 export function HealthStrip({ overview, referenceTime = overview.refreshedAt }: { overview: Overview; referenceTime?: string }) {
@@ -17,8 +22,12 @@ export function HealthStrip({ overview, referenceTime = overview.refreshedAt }: 
     overview.ingestion?.transportHeartbeatAt,
     referenceTime,
   )
-  const connectionState =
-    transportAge !== null && transportAge <= 45 ? overview.ingestion?.connectionState : "unknown"
+  const connectionState = effectiveConnectionState({
+    connectionState: overview.ingestion?.connectionState,
+    transportHeartbeatAt: overview.ingestion?.transportHeartbeatAt,
+    lastDisconnectedAt: overview.ingestion?.lastDisconnectAt,
+    referenceTime,
+  })
   const activeGaps =
     overview.counts?.activeGaps ?? (overview.gaps ?? []).filter((gap) => !["resolved", "ignored"].includes(gap.status)).length
   const ingestionFresh =
@@ -27,6 +36,8 @@ export function HealthStrip({ overview, referenceTime = overview.refreshedAt }: 
   const freshnessLabel =
     connectionState === "disconnected"
         ? "Disconnected"
+        : connectionState === "reconnecting"
+          ? "Reconnecting"
         : connectionState === "unknown"
           ? "Unknown"
         : workerFreshness.state !== "healthy"

@@ -14,3 +14,21 @@ test("ages a previously connected endpoint to Unknown", () => {
   expect(screen.getAllByText("Expired").length).toBe(endpoints.length)
   expect(screen.queryByText("connected")).toBeNull()
 })
+
+test("shows a recently failed endpoint as reconnecting during the grace period", () => {
+  const endpoint = {
+    ...demoOverview.jetstreamEndpoints![0]!,
+    connectionState: "disconnected" as const,
+    lastDisconnectedAt: demoOverview.refreshedAt,
+    updatedAt: demoOverview.refreshedAt,
+  }
+  render(
+    <JetstreamEndpointStatus
+      endpoints={[endpoint]}
+      reference={demoOverview.refreshedAt}
+    />,
+  )
+
+  expect(screen.getByText("reconnecting")).toBeTruthy()
+  expect(screen.queryByText("disconnected")).toBeNull()
+})

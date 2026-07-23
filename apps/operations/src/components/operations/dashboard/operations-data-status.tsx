@@ -38,7 +38,11 @@ export function OperationsDataStatus({
         Age {freshness.ageSeconds === null ? "unknown" : `${Math.round(freshness.ageSeconds)}s`}
         {freshness.evidence ? ` · ${freshness.evidence.source} · ${freshness.evidence.accuracy}` : ""}
       </span>
-      {eventStreamState !== "disabled" ? <span className="text-muted-foreground">Event stream: {eventStreamState}</span> : null}
+      {eventStreamState !== "disabled" ? (
+        <span className="text-muted-foreground">
+          Event updates: {eventStreamState === "reconnecting" ? "polling fallback" : eventStreamState}
+        </span>
+      ) : null}
     </div>
   )
 }

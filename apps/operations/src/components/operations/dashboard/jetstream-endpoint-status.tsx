@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import type { JetstreamEndpoint } from "@/lib/operations-types"
-import { elapsedSeconds } from "@/lib/observability-values"
+import { effectiveConnectionState, elapsedSeconds } from "@/lib/observability-values"
 
 function timestamp(value?: string) {
   return value ? new Date(value).toLocaleString() : "—"
@@ -14,7 +14,12 @@ export function JetstreamEndpointStatus({ endpoints, reference }: { endpoints: J
     <div className="grid border-t md:grid-cols-2">
       {endpoints.map((endpoint) => {
         const fresh = (elapsedSeconds(endpoint.updatedAt, reference) ?? Number.POSITIVE_INFINITY) <= 45
-        const effectiveState = fresh ? endpoint.connectionState : "unknown"
+        const effectiveState = effectiveConnectionState({
+          connectionState: endpoint.connectionState,
+          transportHeartbeatAt: fresh ? endpoint.updatedAt : undefined,
+          lastDisconnectedAt: endpoint.lastDisconnectedAt,
+          referenceTime: reference,
+        })
         const tone =
           effectiveState === "connected"
             ? "success"

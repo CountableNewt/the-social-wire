@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { elapsedSeconds, overallSystemHealth, serviceHealthEvidence } from "@/lib/observability-values"
+import {
+  effectiveConnectionState,
+  elapsedSeconds,
+  overallSystemHealth,
+  serviceHealthEvidence,
+} from "@/lib/observability-values"
 import { demoOverview } from "@/lib/demo-data"
 
 describe("observability values", () => {
@@ -34,6 +39,45 @@ describe("observability values", () => {
     expect(elapsedSeconds("2026-07-20T20:00:00.000Z", "2026-07-20T20:00:05.000Z")).toBe(5)
     expect(elapsedSeconds("invalid", "2026-07-20T20:00:05.000Z")).toBeNull()
     expect(elapsedSeconds("2026-07-20T20:00:05.000Z", "2026-07-20T20:00:00.000Z")).toBeNull()
+  })
+
+  it("uses a reconnecting grace period before reporting a sustained disconnect", () => {
+    const referenceTime = "2026-07-23T05:02:00.000Z"
+    expect(effectiveConnectionState({
+      connectionState: "disconnected",
+      transportHeartbeatAt: "2026-07-23T05:01:40.000Z",
+      lastDisconnectedAt: "2026-07-23T05:01:30.000Z",
+      referenceTime,
+    })).toBe("reconnecting")
+    expect(effectiveConnectionState({
+      connectionState: "disconnected",
+      transportHeartbeatAt: "2026-07-23T04:59:00.000Z",
+      lastDisconnectedAt: "2026-07-23T04:59:00.000Z",
+      referenceTime,
+    })).toBe("disconnected")
+  })
+
+  it("does not invent a disconnect when transition evidence is missing", () => {
+    expect(effectiveConnectionState({
+      connectionState: "disconnected",
+      referenceTime: "2026-07-23T05:02:00.000Z",
+    })).toBe("unknown")
+  })
+
+  it("degrades rather than failing global health during the reconnecting grace period", () => {
+    const services = allHealthyServices()
+    const reference = demoOverview.refreshedAt
+    expect(overallSystemHealth({
+      ...demoOverview,
+      services,
+      ingestion: {
+        ...demoOverview.ingestion!,
+        connectionState: "disconnected",
+        lastDisconnectAt: reference,
+      },
+      alerts: [],
+      counts: { ...demoOverview.counts, activeGaps: 0, unresolvedAlerts: 0 },
+    }, reference)).toBe("degraded")
   })
 
   it("ages the overall system state to unknown against current time", () => {

@@ -3,7 +3,11 @@ import Link from "next/link"
 import { JetstreamEndpointStatus } from "@/components/operations/dashboard/jetstream-endpoint-status"
 import { OperatorActionDialog } from "@/components/operations/operator-action-dialog"
 import { Badge } from "@/components/ui/badge"
-import { boundedNonNegativeInteger, elapsedSeconds } from "@/lib/observability-values"
+import {
+  boundedNonNegativeInteger,
+  effectiveConnectionState,
+  elapsedSeconds,
+} from "@/lib/observability-values"
 import { jetstreamStateForOverview } from "@/lib/operations-policy"
 import type { EnvironmentName, Overview } from "@/lib/operations-types"
 
@@ -46,9 +50,12 @@ export function LiveStream({
   const receivedCursor = boundedNonNegativeInteger(state?.lastReceivedCursor)
   const committedCursor = boundedNonNegativeInteger(state?.lastCommittedCursor)
   const cursorDelta = receivedCursor !== null && committedCursor !== null ? receivedCursor - committedCursor : null
-  const transportAge = elapsedSeconds(state?.transportHeartbeatAt, referenceTime)
-  const connectionState =
-    transportAge !== null && transportAge <= 45 ? (state?.connectionState ?? "unknown") : "unknown"
+  const connectionState = effectiveConnectionState({
+    connectionState: state?.connectionState,
+    transportHeartbeatAt: state?.transportHeartbeatAt,
+    lastDisconnectedAt: state?.lastDisconnectAt,
+    referenceTime,
+  })
   const connectionTone =
     connectionState === "connected" ? "success" : connectionState === "unknown" ? "neutral" : "danger"
   const referenceMs = new Date(referenceTime).getTime()
@@ -129,9 +136,12 @@ export function LiveStream({
         {data.ingestionSources.length ? (
           <div className="grid gap-px border-t bg-border sm:grid-cols-2 xl:grid-cols-4">
             {data.ingestionSources.map((source) => {
-              const heartbeatAge = elapsedSeconds(source.transportHeartbeatAt, referenceTime)
-              const sourceState =
-                heartbeatAge !== null && heartbeatAge <= 45 ? source.connectionState : "unknown"
+              const sourceState = effectiveConnectionState({
+                connectionState: source.connectionState,
+                transportHeartbeatAt: source.transportHeartbeatAt,
+                lastDisconnectedAt: source.lastDisconnectAt,
+                referenceTime,
+              })
               return (
                 <article key={source.source} className="min-w-0 bg-background p-3">
                   <div className="flex items-start justify-between gap-2">
