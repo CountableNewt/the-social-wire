@@ -215,13 +215,22 @@ public enum BackfillRequestFingerprint {
   }
 
   public static func canonicalRequest(_ request: BackfillDryRunRequest) -> String {
-    [
-      request.gapId ?? "", request.sourceMode.rawValue,
-      request.startCursor.map(String.init) ?? "", request.endCursor.map(String.init) ?? "",
-      request.collections.sorted().joined(separator: ","),
-      request.authorDids.sorted().joined(separator: ","), String(request.batchSize),
-      String(request.rateLimit), String(request.maxConcurrency),
-    ].joined(separator: "|")
+    let startCursor = request.startCursor.map { String($0) } ?? ""
+    let endCursor = request.endCursor.map { String($0) } ?? ""
+    let collections = request.collections.sorted().joined(separator: ",")
+    let authorDids = request.authorDids.sorted().joined(separator: ",")
+    let components: [String] = [
+      request.gapId ?? "",
+      request.sourceMode.rawValue,
+      startCursor,
+      endCursor,
+      collections,
+      authorDids,
+      String(request.batchSize),
+      String(request.rateLimit),
+      String(request.maxConcurrency),
+    ]
+    return components.joined(separator: "|")
   }
 
   private static func signatureHex(
