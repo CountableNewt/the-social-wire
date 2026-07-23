@@ -2107,7 +2107,10 @@ public actor PostgresOperationsStore: OperationsStore {
     guard !signals.isEmpty else { return }
     var prepared: [PreparedTelemetry] = []
     prepared.reserveCapacity(signals.count)
-    for signal in signals {
+    // Every writer must acquire rollup index keys in the same order. Without this ordering,
+    // concurrent batches containing the same metrics in different sequences can deadlock while
+    // PostgreSQL resolves their ON CONFLICT updates.
+    for signal in OperationsTelemetrySignalOrder.sorted(signals) {
       switch signal {
       case .metric(let sample):
         if let sampleEnvironment = sample.dimensions["environment"], sampleEnvironment != environment {
