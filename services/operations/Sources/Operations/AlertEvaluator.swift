@@ -83,15 +83,23 @@ struct AlertEvaluator {
     let backlogObservedAt = [transportObservedAt, queueObservedAt].compactMap { $0 }.min()
     let backlogValidUntil = [transportValidUntil, queueEvidence?.validUntil]
       .compactMap { $0 }.min()
-    let backlogEvidence = [
-      "cursor_delta_microseconds": cursorDelta.map(String.init) ?? "unknown",
-      "role": authoritySource == "jetstream" ? "authority" : "supplemental_unverified",
-      "transport_heartbeat_at": transportObservedAt?.ISO8601Format() ?? "none",
-      "queue_observed_at": queueObservedAt?.ISO8601Format() ?? "none",
-      "queue_depth": jetstreamState.map { String($0.queueDepth) } ?? "unknown",
-      "queue_capacity": jetstreamState?.queueCapacity.map(String.init) ?? "unknown",
-      "observedAt": backlogObservedAt?.ISO8601Format() ?? "none",
-      "validUntil": backlogValidUntil?.ISO8601Format() ?? "none",
+    let cursorDeltaValue = cursorDelta.map { String($0) } ?? "unknown"
+    let role = authoritySource == "jetstream" ? "authority" : "supplemental_unverified"
+    let transportHeartbeat = transportObservedAt?.ISO8601Format() ?? "none"
+    let queueObserved = queueObservedAt?.ISO8601Format() ?? "none"
+    let queueDepth = jetstreamState.map { String($0.queueDepth) } ?? "unknown"
+    let queueCapacity = jetstreamState?.queueCapacity.map { String($0) } ?? "unknown"
+    let backlogObserved = backlogObservedAt?.ISO8601Format() ?? "none"
+    let backlogValid = backlogValidUntil?.ISO8601Format() ?? "none"
+    let backlogEvidence: [String: String] = [
+      "cursor_delta_microseconds": cursorDeltaValue,
+      "role": role,
+      "transport_heartbeat_at": transportHeartbeat,
+      "queue_observed_at": queueObserved,
+      "queue_depth": queueDepth,
+      "queue_capacity": queueCapacity,
+      "observedAt": backlogObserved,
+      "validUntil": backlogValid,
     ]
     let jetstreamSeverity = authoritySource == "jetstream" ? "critical" : "warning"
     try await reconcile(

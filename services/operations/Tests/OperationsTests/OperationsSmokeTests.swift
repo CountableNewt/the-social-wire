@@ -357,6 +357,10 @@ func jetstreamBacklogRequiresCurrentEvidence() async throws {
   try await evaluator.evaluate(at: now)
   let active = try await store.listAlerts(view: .active, limit: 250, before: nil).items
   let backlog = try #require(active.first { $0.conditionKey == "jetstream:commit_backlog" })
+  #expect(backlog.evidence["cursor_delta_microseconds"] == "99")
+  #expect(backlog.evidence["role"] == "authority")
+  #expect(backlog.evidence["queue_depth"] == "1")
+  #expect(backlog.evidence["queue_capacity"] == "256")
   #expect(backlog.evidence["observedAt"] == now.ISO8601Format())
   #expect(backlog.evidence["validUntil"] == now.addingTimeInterval(15).ISO8601Format())
 
