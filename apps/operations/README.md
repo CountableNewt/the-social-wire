@@ -5,7 +5,7 @@ Dedicated operator console for ingestion health, AppView observability, gaps, ba
 ## Local Development
 
 ```sh
-bun --cwd apps/operations dev
+APP_ENV=dev bun --cwd apps/operations dev
 ```
 
 Set `NEXT_PUBLIC_OPERATIONS_DEMO_MODE=1` for the explicit local demo dataset. Normal operation uses ATProto browser OAuth and the Gateway origins below.
@@ -19,4 +19,4 @@ Set `NEXT_PUBLIC_OPERATIONS_DEMO_MODE=1` for the explicit local demo dataset. No
 
 Deploy Development and Production as separate Vercel projects rooted at `apps/operations`. Configure a fixed `APP_ENV`, its corresponding Gateway origin, and the operator DID allowlist per project; the console does not switch environments at runtime. Hosted deployments use the public Gateway's `/operations-oauth-client-metadata.json` document so OAuth works when the Vercel UI deployment is protected. The same-origin `/operations-client-metadata.json` route remains available as a fallback.
 
-Backfill creation is dry-run-first. Every operator mutation requires an audit note, and Production additionally requires the exact `PRODUCTION` confirmation. Authorization is enforced by the operations service DID allowlist.
+Backfill creation is dry-run-first. Operator notes are optional; every mutation carries idempotency and expected-version evidence, and Production additionally requires the exact `PRODUCTION` confirmation. Authorization is enforced by the operations service DID allowlist.

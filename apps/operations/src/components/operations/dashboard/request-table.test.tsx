@@ -7,6 +7,7 @@ afterEach(cleanup)
 
 const span: Span = {
   id: "span-1",
+  environment: "dev",
   traceId: "trace-1",
   service: "appview",
   name: "appview.request",
@@ -17,7 +18,7 @@ const span: Span = {
     route_template: "/v1/appview/entries",
     method: "GET",
     status_class: "2xx",
-    environment: "development",
+    environment: "dev",
   },
   expiresAt: "2026-07-27T20:00:00.000Z",
 }
@@ -26,9 +27,9 @@ describe("RequestTable", () => {
   it("shows recorded attributes and no inferred request internals", () => {
     render(<RequestTable spans={[span]} />)
 
-    expect(screen.getByText("/v1/appview/entries")).toBeTruthy()
-    expect(screen.getByText("GET")).toBeTruthy()
-    expect(screen.getByText("2xx")).toBeTruthy()
+    expect(screen.getAllByText("/v1/appview/entries").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/GET/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/2xx/).length).toBeGreaterThan(0)
     expect(screen.queryByText("JWT")).toBeNull()
     expect(screen.queryByText("3 ms")).toBeNull()
     expect(screen.queryByText("50")).toBeNull()

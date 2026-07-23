@@ -13,8 +13,8 @@ describe("BackfillReadiness", () => {
           dryRunComplete: true,
           dryRunConflictFree: true,
           reviewed: false,
-          environment: "production",
-          environmentConfirmation: "production",
+          environment: "prod",
+          environmentConfirmation: "prod",
           pending: false,
         }}
       />,
@@ -34,7 +34,7 @@ describe("BackfillReadiness", () => {
           dryRunComplete: true,
           dryRunConflictFree: true,
           reviewed: true,
-          environment: "development",
+          environment: "dev",
           environmentConfirmation: "",
           pending: false,
         }}

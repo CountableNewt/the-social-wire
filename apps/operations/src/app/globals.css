@@ -120,6 +120,22 @@
   .ops-panel { @apply rounded-md border bg-card shadow-[0_1px_2px_oklch(0_0_0/0.12)]; }
   .ops-label { @apply text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground; }
   .ops-mono { @apply font-mono tabular-nums; }
+  .ops-touch-link { @apply inline-flex min-h-11 items-center rounded-sm px-2; }
   .ops-success { color: var(--success); }
   .ops-warning { color: var(--warning); }
+}
+
+@keyframes ops-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(150%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

@@ -13,6 +13,7 @@ const files = [
   "finding-last-safe-checkpoint.md",
   "confirming-and-scoping-a-gap.md",
   "running-and-validating-backfills.md",
+  "tap-shadow-and-cutover.md",
   "appview-latency-errors.md",
   "client-cache-versus-appview-staleness.md",
   "disabling-rollback-telemetry.md",

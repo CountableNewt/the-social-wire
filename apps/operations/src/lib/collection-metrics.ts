@@ -1,4 +1,4 @@
-import type { MetricRollup } from "@/lib/operations-types"
+import type { EvidenceEnvelope, MetricRollup } from "@/lib/operations-types"
 
 const EVENTS_TOTAL = "socialwire.ingestion.events_total"
 const RESULTS_TOTAL = "socialwire.ingestion.results_total"
@@ -6,6 +6,10 @@ const COMMIT_DURATION = "socialwire.ingestion.db_write_duration_seconds"
 const COMMIT_LAG = "socialwire.ingestion.commit_lag_seconds"
 
 export type MetricPoint = { timestamp: number; value: number | null }
+
+export function metricWindowReference(overviewRefreshedAt: string, evidence?: EvidenceEnvelope) {
+  return evidence?.generatedAt ?? overviewRefreshedAt
+}
 
 export type CollectionMetricRow = {
   collection: string
@@ -146,15 +150,16 @@ export function collectionMetricRows(rollups: MetricRollup[], refreshedAt?: stri
 
   return [...rows.values()]
     .map((row) => {
-      const observed = observedTimestamps(row)
+      const eventObserved = new Set(row.allOperationsRate.keys())
+      const resultObserved = new Set([...row.acceptedRate.keys(), ...row.failedRate.keys()])
       return {
         collection: row.collection,
-        createRate: counterRate(row.createRate, timestamps, observed),
-        updateRate: counterRate(row.updateRate, timestamps, observed),
-        deleteRate: counterRate(row.deleteRate, timestamps, observed),
-        allOperationsRate: counterRate(row.allOperationsRate, timestamps, observed),
-        acceptedRate: counterRate(row.acceptedRate, timestamps, observed),
-        failedRate: counterRate(row.failedRate, timestamps, observed),
+        createRate: counterRate(row.createRate, timestamps, eventObserved),
+        updateRate: counterRate(row.updateRate, timestamps, eventObserved),
+        deleteRate: counterRate(row.deleteRate, timestamps, eventObserved),
+        allOperationsRate: counterRate(row.allOperationsRate, timestamps, eventObserved),
+        acceptedRate: counterRate(row.acceptedRate, timestamps, resultObserved),
+        failedRate: counterRate(row.failedRate, timestamps, resultObserved),
         averageCommitMilliseconds: average(row.averageCommitMilliseconds, timestamps, 1_000),
         maximumCommitMilliseconds: maximum(row.maximumCommitMilliseconds, timestamps, 1_000),
         averageLagSeconds: average(row.averageLagSeconds, timestamps),
@@ -173,4 +178,20 @@ export function latestMetricValue(points: MetricPoint[]) {
 
 export function currentMetricValue(points: MetricPoint[]) {
   return points.at(-1)?.value ?? null
+}
+
+export function metricSampleCount(
+  rollups: MetricRollup[],
+  collection: string,
+  metricName: string,
+): number | undefined {
+  const matchingRollups = rollups.filter(
+    (rollup) =>
+      rollup.metricName === metricName &&
+      rollup.dimensions.collection === collection &&
+      rollup.dimensions.ingestion_mode === "live",
+  )
+
+  if (matchingRollups.length === 0) return undefined
+  return matchingRollups.reduce((total, rollup) => total + rollup.sampleCount, 0)
 }

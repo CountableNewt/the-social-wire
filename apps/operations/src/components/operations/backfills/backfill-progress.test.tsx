@@ -7,6 +7,8 @@ afterEach(cleanup)
 
 const job: Backfill = {
   id: "bf-test-001",
+  environment: "dev",
+  version: 1,
   gapId: "gap-test-001",
   sourceMode: "jetstream_replay",
   status: "running",
@@ -15,6 +17,7 @@ const job: Backfill = {
   checkpointCursor: 150,
   collections: ["site.standard.document"],
   authorDids: [],
+  authorResults: [],
   batchSize: 1000,
   rateLimit: 500,
   maxConcurrency: 4,
@@ -28,6 +31,8 @@ const job: Backfill = {
   leaseExpiresAt: "2026-07-20T20:01:00.000Z",
   createdAt: "2026-07-20T20:00:00.000Z",
   updatedAt: "2026-07-20T20:00:30.000Z",
+  verificationStatus: "required",
+  scopeTruncated: false,
 }
 
 describe("BackfillProgress", () => {
@@ -39,7 +44,8 @@ describe("BackfillProgress", () => {
     expect(screen.getByText("500 observed / ~1,000 estimated")).toBeTruthy()
     expect(screen.getByText("Live Updates Every 2 Seconds")).toBeTruthy()
     expect(screen.getByText("worker-01")).toBeTruthy()
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50")
+    const progressbar = screen.getByRole("progressbar", { name: "Backfill bf-test-001 progress" })
+    expect(progressbar.getAttribute("aria-valuenow")).toBe("50")
   })
 
   it("stops describing terminal jobs as live", () => {
@@ -82,10 +88,41 @@ describe("BackfillProgress", () => {
     expect(screen.getByText("Failure Reason: upstream unavailable")).toBeTruthy()
   })
 
+  it("renders durable per-author diagnostic scope and outcome evidence", () => {
+    render(
+      <BackfillProgress
+        job={{
+          ...job,
+          sourceMode: "pds_reconciliation",
+          authorDids: ["did:plc:author"],
+          authorResults: [
+            {
+              did: "did:plc:author",
+              collection: "site.standard.document",
+              discoveredCount: 12,
+              processedCount: 10,
+              failedCount: 2,
+              capped: true,
+              truncated: true,
+              status: "partial",
+              error: "rate_limit_exhausted",
+            },
+          ],
+        }}
+        refreshing={false}
+      />,
+    )
+
+    expect(screen.getByText("12 discovered · 10 processed · 2 failed · partial")).toBeTruthy()
+    expect(screen.getByText("scope cap reached")).toBeTruthy()
+    expect(screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("rate_limit_exhausted"))).toBe(true)
+  })
+
   it("withholds progress when counts are invalid", () => {
     render(<BackfillProgress job={{ ...job, processedCount: -1 }} refreshing={false} />)
 
     expect(screen.getByText("Not Measurable")).toBeTruthy()
     expect(screen.getByText("Invalid Progress Telemetry")).toBeTruthy()
+    expect(screen.getByRole("progressbar", { name: "Backfill bf-test-001 progress" }).hasAttribute("aria-valuenow")).toBe(false)
   })
 })

@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 export type SelectOption = {
   label: string
   value: string
+  disabled?: boolean
 }
 
 export function Select({
@@ -44,8 +45,9 @@ export function Select({
                 <SelectPrimitive.Item
                   key={option.value}
                   value={option.value}
+                  disabled={option.disabled}
                   onClick={() => onValueChange(option.value)}
-                  className="relative flex cursor-default select-none items-center rounded-sm py-2 pl-2.5 pr-8 outline-none data-highlighted:bg-muted data-selected:text-primary"
+                  className="relative flex cursor-default select-none items-center rounded-sm py-2 pl-2.5 pr-8 outline-none data-disabled:opacity-50 data-highlighted:bg-muted data-selected:text-primary"
                 >
                   <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                   <SelectPrimitive.ItemIndicator className="absolute right-2.5">

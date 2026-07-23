@@ -1,7 +1,12 @@
-import type { EnvironmentName, Span } from "@/lib/operations-types"
+import type { EnvironmentName, Overview, Span } from "@/lib/operations-types"
+
+export function jetstreamStateForOverview(overview: Overview) {
+  return overview.ingestionSources.find((state) => state.source.toLowerCase() === "jetstream")
+    ?? (overview.ingestion?.source.toLowerCase() === "jetstream" ? overview.ingestion : undefined)
+}
 
 export function productionConfirmationMatches(environment: EnvironmentName, value: string) {
-  return environment !== "production" || value === "PRODUCTION"
+  return environment !== "prod" || value === "PRODUCTION"
 }
 
 export type BackfillReadinessInput = {
@@ -20,7 +25,7 @@ export function backfillReadiness(input: BackfillReadinessInput) {
     { id: "dry-run", label: "Dry-run completed for the current configuration", complete: input.dryRunComplete },
     { id: "conflicts", label: "Dry-run found no existing recovery or completed range", complete: input.dryRunConflictFree },
     { id: "reviewed", label: "Impact review acknowledged", complete: input.reviewed },
-    ...(input.environment === "production"
+    ...(input.environment === "prod"
       ? [
           {
             id: "production-confirmation",

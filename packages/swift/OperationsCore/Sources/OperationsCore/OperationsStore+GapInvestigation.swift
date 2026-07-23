@@ -2,7 +2,7 @@ import Foundation
 
 public extension OperationsStore {
   func investigateGap(id: String) async throws -> GapInvestigation? {
-    guard let gap = try await listGaps(limit: 250).first(where: { $0.id == id }) else { return nil }
+    guard let gap = try await fetchGap(id: id) else { return nil }
     let investigationWindow = GapInvestigationBuilder.window(for: gap)
     let events = try await listGapInvestigationEvents(
       startAt: investigationWindow.start,

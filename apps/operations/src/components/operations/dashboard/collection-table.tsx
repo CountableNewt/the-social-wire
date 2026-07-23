@@ -1,90 +1,82 @@
-import { DataColumnHeaders } from "@/components/operations/data-column-headers"
-import { MetricSparklineCell } from "@/components/operations/metric-sparkline-cell"
+import { EvidenceLineChart } from "@/components/operations/dashboard/evidence-line-chart"
 import { OperationsSection } from "@/components/operations/operations-section"
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
-import { collectionMetricRows } from "@/lib/collection-metrics"
-import type { MetricRollup } from "@/lib/operations-types"
+import { Badge } from "@/components/ui/badge"
+import { collectionMetricRows, currentMetricValue, metricSampleCount } from "@/lib/collection-metrics"
+import type { MetricPoint } from "@/lib/collection-metrics"
+import type { EvidenceEnvelope, MetricRollup } from "@/lib/operations-types"
 
-const formatRate = (value: number) =>
-  value < 1 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(value).toLocaleString()
-const formatMilliseconds = (value: number) => `${Math.round(value).toLocaleString()} ms`
+const formatIndexedRate = (value: number) =>
+  `${value < 1 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(value).toLocaleString()} indexed events/sec`
+const formatFailedRate = (value: number) =>
+  `${value < 1 ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(value).toLocaleString()} failed events/sec`
 
-export function CollectionTable({ metricRollups, refreshedAt }: { metricRollups: MetricRollup[]; refreshedAt: string }) {
+function observedValue(points: MetricPoint[], format = formatIndexedRate) {
+  const value = currentMetricValue(points)
+  return value === null ? "— Missing" : format(value)
+}
+
+export function CollectionTable({
+  metricRollups,
+  refreshedAt,
+  referenceTime = refreshedAt,
+  evidence,
+}: {
+  metricRollups: MetricRollup[]
+  refreshedAt: string
+  referenceTime?: string
+  evidence?: EvidenceEnvelope
+}) {
   const rows = collectionMetricRows(metricRollups, refreshedAt)
 
   return (
-    <OperationsSection title="Events / sec by Bounded Collection / Operation (15 minutes)">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <DataColumnHeaders
-              labels={[
-                "Collection",
-                "Create (eps)",
-                "Update (eps)",
-                "Delete (eps)",
-                "All Ops (eps)",
-                "Avg Commit Time (ms)",
-                "Max Commit Time (ms)",
-                "Errors (eps)",
-              ]}
-            />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                No collection metric history is available for the last 15 minutes.
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row) => (
-              <TableRow key={row.collection}>
-                <TableCell className="font-mono">{row.collection}</TableCell>
-                <TableCell>
-                  <MetricSparklineCell points={row.createRate} label={`${row.collection} create rate`} format={formatRate} />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell points={row.updateRate} label={`${row.collection} update rate`} format={formatRate} />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell points={row.deleteRate} label={`${row.collection} delete rate`} format={formatRate} />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell
-                    points={row.allOperationsRate}
-                    label={`${row.collection} all operation rate`}
-                    format={formatRate}
-                  />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell
-                    points={row.averageCommitMilliseconds}
-                    label={`${row.collection} average commit time`}
-                    format={formatMilliseconds}
-                  />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell
-                    points={row.maximumCommitMilliseconds}
-                    label={`${row.collection} maximum commit time`}
-                    format={formatMilliseconds}
-                  />
-                </TableCell>
-                <TableCell>
-                  <MetricSparklineCell
-                    points={row.failedRate}
-                    label={`${row.collection} error rate`}
-                    format={formatRate}
-                    tone="warning"
-                  />
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <OperationsSection
+      title="Indexed Events/sec. by Collection"
+      description="15 closed one-minute buckets. Missing buckets remain gaps; zero is shown only when it was observed."
+    >
+      {rows.length === 0 ? (
+        <p className="p-6 text-center text-xs text-muted-foreground">
+          No measured collection rollups are available for this window.
+        </p>
+      ) : (
+        <div className="grid gap-3 p-3 xl:grid-cols-2">
+          {rows.map((row) => (
+            <article key={row.collection} className="min-w-0 rounded-md border bg-muted/10 p-3">
+              <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="break-all font-mono text-xs font-semibold">{row.collection}</h3>
+                <Badge tone="info">Indexed, Not Received</Badge>
+              </header>
+              <EvidenceLineChart
+                points={row.allOperationsRate}
+                title="Indexed Events/sec."
+                unit="indexed events per second"
+                source="AppView Worker indexed-mutation rollups"
+                format={formatIndexedRate}
+                refreshedAt={refreshedAt}
+                referenceTime={referenceTime}
+                evidence={evidence}
+                sampleCount={metricSampleCount(
+                  metricRollups,
+                  row.collection,
+                  "socialwire.ingestion.events_total",
+                )}
+              />
+              <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
+                {[
+                  ["Create", observedValue(row.createRate)],
+                  ["Update", observedValue(row.updateRate)],
+                  ["Delete", observedValue(row.deleteRate)],
+                  ["Failed", observedValue(row.failedRate, formatFailedRate)],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-background p-2.5">
+                    <dt className="text-[9px] text-muted-foreground">{label} · latest closed bucket</dt>
+                    <dd className="mt-1 font-mono text-xs">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          ))}
+        </div>
+      )}
     </OperationsSection>
   )
 }

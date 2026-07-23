@@ -3,15 +3,17 @@ import {
   backfillReadiness,
   canQueueBackfill,
   filterTraces,
+  jetstreamStateForOverview,
   productionConfirmationMatches,
 } from "@/lib/operations-policy"
 import type { Span } from "@/lib/operations-types"
+import { demoOverview } from "@/lib/demo-data"
 
 describe("operations mutation safeguards", () => {
   test("requires the exact production environment confirmation", () => {
-    expect(productionConfirmationMatches("production", "production")).toBe(false)
-    expect(productionConfirmationMatches("production", "PRODUCTION")).toBe(true)
-    expect(productionConfirmationMatches("development", "")).toBe(true)
+    expect(productionConfirmationMatches("prod", "prod")).toBe(false)
+    expect(productionConfirmationMatches("prod", "PRODUCTION")).toBe(true)
+    expect(productionConfirmationMatches("dev", "")).toBe(true)
   })
 
   test("requires collection scope, dry-run, review, and an idle mutation", () => {
@@ -20,7 +22,7 @@ describe("operations mutation safeguards", () => {
       dryRunComplete: true,
       dryRunConflictFree: true,
       reviewed: true,
-      environment: "development" as const,
+      environment: "dev" as const,
       environmentConfirmation: "",
       pending: false,
     }
@@ -38,8 +40,8 @@ describe("operations mutation safeguards", () => {
       dryRunComplete: true,
       dryRunConflictFree: true,
       reviewed: false,
-      environment: "production",
-      environmentConfirmation: "production",
+      environment: "prod",
+      environmentConfirmation: "prod",
       pending: false,
     })
     expect(requirements.filter((requirement) => !requirement.complete).map((requirement) => requirement.id)).toEqual([
@@ -53,6 +55,7 @@ test("trace filtering searches bounded attributes", () => {
   const spans = [
     {
       id: "1",
+      environment: "dev",
       traceId: "abc",
       service: "appview",
       name: "appview.db.query",
@@ -65,4 +68,14 @@ test("trace filtering searches bounded attributes", () => {
   ] satisfies Span[]
   expect(filterTraces(spans, "sidebar")).toHaveLength(1)
   expect(filterTraces(spans, "raw-did")).toHaveLength(0)
+})
+
+test("selects supplemental Jetstream version when Tap is the ingestion authority", () => {
+  const jetstream = { ...demoOverview.ingestion!, source: "jetstream", version: 7 }
+  const tap = { ...demoOverview.ingestion!, source: "tap", version: 99 }
+  expect(jetstreamStateForOverview({
+    ...demoOverview,
+    ingestion: tap,
+    ingestionSources: [tap, jetstream],
+  })?.version).toBe(7)
 })

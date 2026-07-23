@@ -4,6 +4,8 @@ import type { Backfill, Gap } from "@/lib/operations-types"
 
 const gap = (overrides: Partial<Gap> = {}): Gap => ({
   id: "gap-1",
+  environment: "dev",
+  version: 1,
   source: "jetstream",
   reason: "consumer_restart",
   status: "confirmed",
@@ -19,11 +21,14 @@ const gap = (overrides: Partial<Gap> = {}): Gap => ({
 
 const backfill = (overrides: Partial<Backfill> = {}): Backfill => ({
   id: "backfill-1",
+  environment: "dev",
+  version: 1,
   gapId: "gap-1",
   sourceMode: "jetstream_replay",
   status: "completed",
   collections: ["site.standard.document"],
   authorDids: [],
+  authorResults: [],
   batchSize: 1000,
   rateLimit: 500,
   maxConcurrency: 4,
@@ -35,6 +40,8 @@ const backfill = (overrides: Partial<Backfill> = {}): Backfill => ({
   auditNote: "Recover gap",
   createdAt: "2026-07-20T20:00:00.000Z",
   updatedAt: "2026-07-20T20:00:30.000Z",
+  verificationStatus: "required",
+  scopeTruncated: false,
   ...overrides,
 })
 
