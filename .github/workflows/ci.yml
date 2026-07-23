@@ -507,7 +507,7 @@ jobs:
   deploy-appview-worker:
     name: Deploy AppView Worker (Fly.io)
     timeout-minutes: 20
-    needs: [changes, ci, test-appview-worker, supabase-validate, supabase-push-dev, supabase-push-prod]
+    needs: [changes, ci, test-appview-worker, deploy-tap, supabase-validate, supabase-push-dev, supabase-push-prod]
     if: |
       always() &&
       github.event_name == 'push' &&
@@ -517,6 +517,8 @@ jobs:
       needs.ci.result == 'success' &&
       needs.test-appview-worker.result != 'failure' &&
       needs.test-appview-worker.result != 'cancelled' &&
+      needs.deploy-tap.result != 'failure' &&
+      needs.deploy-tap.result != 'cancelled' &&
       needs.supabase-validate.result != 'failure' &&
       needs.supabase-validate.result != 'cancelled' &&
       needs.supabase-push-dev.result != 'failure' &&
@@ -524,6 +526,7 @@ jobs:
       needs.supabase-push-prod.result != 'failure' &&
       needs.supabase-push-prod.result != 'cancelled' &&
       (needs.test-appview-worker.result == 'success' || needs.test-appview-worker.result == 'skipped') &&
+      (needs.deploy-tap.result == 'success' || needs.deploy-tap.result == 'skipped') &&
       (needs.supabase-validate.result == 'success' || needs.supabase-validate.result == 'skipped') &&
       (needs.supabase-push-dev.result == 'success' || needs.supabase-push-dev.result == 'skipped') &&
       (needs.supabase-push-prod.result == 'success' || needs.supabase-push-prod.result == 'skipped')
@@ -542,6 +545,30 @@ jobs:
           FLY_APPVIEW_WORKER_APP_DEV: ${{ secrets.FLY_APPVIEW_WORKER_APP_DEV }}
           FLY_APPVIEW_WORKER_APP_PROD: ${{ secrets.FLY_APPVIEW_WORKER_APP_PROD }}
         run: bash scripts/fly-deploy-appview-worker.sh "${{ github.ref_name }}"
+
+  deploy-tap:
+    name: Deploy Tap (Fly.io)
+    timeout-minutes: 20
+    needs: [changes, ci, test-tap-image]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref_name == 'dev' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.tap == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.test-tap-image.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Deploy Tap to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_ORG: ${{ secrets.FLY_ORG }}
+        run: bash scripts/fly-deploy-tap.sh "${{ github.ref_name }}"
 
   # Production stays manual until the Tap shadow/burn-in and release-approval gates pass.
   deploy-operations:

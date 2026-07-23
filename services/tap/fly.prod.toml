@@ -16,6 +16,8 @@ primary_region = 'ams'
   TAP_FULL_NETWORK = 'false'
   TAP_NO_REPLAY = 'false'
   TAP_LOG_LEVEL = 'info'
+  # Indigo Tap defaults to 32 connections; keep headroom in the shared session pool.
+  TAP_MAX_DB_CONNS = '1'
   TAP_METRICS_LISTEN = ':2481'
   TAP_RELAY_URL = 'https://relay1.us-east.bsky.network'
 
