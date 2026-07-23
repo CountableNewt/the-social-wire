@@ -11,6 +11,7 @@ primary_region = 'ord'
 [env]
   APP_ENV = 'dev'
   ENABLE_THIN_APPVIEW = 'true'
+  POSTGRES_MAX_CONNECTIONS = '2'
   OPERATIONS_RECOVERY_ENABLED = 'true'
   # Change to 'shadow' only after the dev Tap app and matching password secret are provisioned.
   TAP_CONSUMER_MODE = 'disabled'

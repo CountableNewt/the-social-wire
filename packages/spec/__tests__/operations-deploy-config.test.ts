@@ -15,6 +15,16 @@ const manualDeploy = readFileSync(
   join(repositoryRoot, ".github/workflows/deploy.yml"),
   "utf8"
 );
+const databaseClients = [
+  "services/gateway/fly.toml",
+  "services/gateway/fly.prod.toml",
+  "services/appview/fly.toml",
+  "services/appview/fly.prod.toml",
+  "services/appview-worker/fly.toml",
+  "services/appview-worker/fly.prod.toml",
+  "services/operations/fly.toml",
+  "services/operations/fly.prod.toml",
+];
 
 describe("Operations deployment database configuration", () => {
   it("stages the canonical database URL before deploying Operations", () => {
@@ -34,5 +44,12 @@ describe("Operations deployment database configuration", () => {
     expect(manualDeploy).toContain(
       "SUPABASE_DATABASE_URL: ${{ inputs.branch == 'main' && secrets.SUPABASE_PROD_DATABASE_URL || secrets.SUPABASE_DEV_DATABASE_URL }}"
     );
+  });
+
+  it("budgets Fly connection pools below the shared Supabase session limit", () => {
+    for (const path of databaseClients) {
+      const config = readFileSync(join(repositoryRoot, path), "utf8");
+      expect(config).toContain("POSTGRES_MAX_CONNECTIONS = '2'");
+    }
   });
 });

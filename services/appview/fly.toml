@@ -16,6 +16,7 @@ primary_region = 'ord'
 [env]
   APP_ENV = 'dev'
   ENABLE_THIN_APPVIEW = 'true'
+  POSTGRES_MAX_CONNECTIONS = '2'
   PORT = '8081'
 
 [http_service]

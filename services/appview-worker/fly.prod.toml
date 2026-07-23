@@ -15,6 +15,7 @@ primary_region = 'ams'
 [env]
   APP_ENV = 'prod'
   ENABLE_THIN_APPVIEW = 'true'
+  POSTGRES_MAX_CONNECTIONS = '2'
   OPERATIONS_RECOVERY_ENABLED = 'false'
   # Production remains disabled until the dev parity gate and production Tap provisioning pass.
   TAP_CONSUMER_MODE = 'disabled'

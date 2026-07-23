@@ -14,6 +14,7 @@ primary_region = 'ams'
 
 [env]
   APP_ENV = 'prod'
+  POSTGRES_MAX_CONNECTIONS = '2'
   PORT = '8080'
   OPERATIONS_BASE_URL = 'https://the-social-wire-prod-operations.fly.dev'
   OAUTH_OPERATIONS_ORIGIN = 'https://operations.thesocialwire.app'

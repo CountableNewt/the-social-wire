@@ -7,6 +7,7 @@ primary_region = 'ord'
 
 [env]
   APP_ENV = 'prod'
+  POSTGRES_MAX_CONNECTIONS = '2'
   PORT = '8083'
   OPERATIONS_TELEMETRY_ENABLED = 'true'
   OPERATIONS_RECOVERY_ENABLED = 'false'
