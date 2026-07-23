@@ -390,8 +390,8 @@ public actor PostgresOperationsStore: OperationsStore {
              last_disconnected_at, last_error, connection_attempts, failover_count, updated_at, version
       FROM appview_jetstream_endpoints
       WHERE environment = \(environment)
-        AND (\(beforeDate) IS NULL OR updated_at < \(beforeDate)
-          OR (updated_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR updated_at < \(beforeDate)::timestamptz
+          OR (updated_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY updated_at DESC, id DESC
       LIMIT \(limit + 1)
       """,
@@ -543,8 +543,8 @@ public actor PostgresOperationsStore: OperationsStore {
              created_at, updated_at, completed_at, version
       FROM operations_commands
       WHERE environment = \(environment)
-        AND (\(beforeDate) IS NULL OR created_at < \(beforeDate)
-          OR (created_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR created_at < \(beforeDate)::timestamptz
+          OR (created_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY created_at DESC, id DESC
       LIMIT \(boundedLimit + 1)
       """,
@@ -781,8 +781,8 @@ public actor PostgresOperationsStore: OperationsStore {
         AND (\(view.rawValue) = 'all'
           OR (\(view.rawValue) = 'active' AND status NOT IN ('resolved', 'ignored'))
           OR (\(view.rawValue) = 'history' AND status IN ('resolved', 'ignored')))
-        AND (\(beforeDate) IS NULL OR detected_at < \(beforeDate)
-          OR (detected_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR detected_at < \(beforeDate)::timestamptz
+          OR (detected_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY detected_at DESC, id DESC
       LIMIT \(limit + 1)
       """,
@@ -1186,8 +1186,8 @@ public actor PostgresOperationsStore: OperationsStore {
           OR (\(view.rawValue) = 'active' AND status IN ('queued', 'running', 'paused'))
           OR (\(view.rawValue) = 'attention' AND status IN ('failed', 'cancelled'))
           OR (\(view.rawValue) = 'history' AND status = 'completed'))
-        AND (\(beforeDate) IS NULL OR created_at < \(beforeDate)
-          OR (created_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR created_at < \(beforeDate)::timestamptz
+          OR (created_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY created_at DESC, id DESC
       LIMIT \(limit + 1)
       """,
@@ -1574,8 +1574,8 @@ public actor PostgresOperationsStore: OperationsStore {
       FROM operations_alerts
       WHERE environment = \(environment)
         AND status = ANY(\(statuses))
-        AND (\(beforeDate) IS NULL OR opened_at < \(beforeDate)
-          OR (opened_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR opened_at < \(beforeDate)::timestamptz
+          OR (opened_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY opened_at DESC, id DESC
       LIMIT \(limit + 1)
       """,
@@ -1966,8 +1966,8 @@ public actor PostgresOperationsStore: OperationsStore {
              attributes::text, expires_at
       FROM operations_trace_spans
       WHERE environment = \(environment) AND started_at >= \(startAt) AND started_at <= \(endAt)
-        AND (\(beforeDate) IS NULL OR started_at < \(beforeDate)
-          OR (started_at = \(beforeDate) AND id < \(beforeId)))
+        AND (\(beforeDate)::timestamptz IS NULL OR started_at < \(beforeDate)::timestamptz
+          OR (started_at = \(beforeDate)::timestamptz AND id < \(beforeId)::text))
       ORDER BY started_at DESC, id DESC LIMIT \(limit + 1)
       """, logger: logger)
     var decoded: [TraceSpan] = []
@@ -2046,8 +2046,8 @@ public actor PostgresOperationsStore: OperationsStore {
       SELECT bucket_start, metric_name, dimensions::text, sample_count, value_sum, value_min, value_max
       FROM operations_metric_rollups
       WHERE environment = \(environment) AND bucket_start >= \(startAt) AND bucket_start <= \(endAt)
-        AND (\(metricName) IS NULL OR metric_name = \(metricName))
-        AND (\(collection) IS NULL OR dimensions->>'collection' = \(collection))
+        AND (\(metricName)::text IS NULL OR metric_name = \(metricName)::text)
+        AND (\(collection)::text IS NULL OR dimensions->>'collection' = \(collection)::text)
       ORDER BY bucket_start ASC, metric_name ASC, dimensions_hash ASC
       LIMIT \(max(1, min(limit, 10_000)))
       """, logger: logger)
@@ -2291,7 +2291,7 @@ public actor PostgresOperationsStore: OperationsStore {
 
   public func cleanupExpired(at: Date, batchSize: Int) async throws -> Int {
     let rows = try await pool.query(
-      "SELECT operations_cleanup_expired(\(environment), \(at), \(max(1, min(batchSize, 10_000))))::bigint",
+      "SELECT operations_cleanup_expired(\(environment), \(at), \(max(1, min(batchSize, 10_000)))::integer)::bigint",
       logger: logger)
     for try await row in rows { return Int(try row.decode(Int64.self)) }
     return 0
@@ -2531,7 +2531,7 @@ public actor PostgresOperationsStore: OperationsStore {
         failed_count = COALESCE(\(failed), failed_count),
         reconciled_count = COALESCE(\(reconciled), reconciled_count),
         verification_status = COALESCE(\(verificationStatus), verification_status),
-        verification_reason = CASE WHEN \(verificationStatus) IS NULL THEN verification_reason ELSE \(verificationReason) END,
+        verification_reason = CASE WHEN \(verificationStatus)::text IS NULL THEN verification_reason ELSE \(verificationReason) END,
         scope_truncated = COALESCE(\(scopeTruncated), scope_truncated),
         validation_watermark = COALESCE(\(validationWatermark), validation_watermark),
         lease_expires_at = \(leaseUntil), updated_at = \(at), version = version + 1
