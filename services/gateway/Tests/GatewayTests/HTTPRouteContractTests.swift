@@ -152,7 +152,7 @@ struct HTTPRouteContractTests {
     }
   }
 
-  @Test("protected route preflight allows Operations mutation and tracing contract")
+  @Test("protected route preflight allows Operations mutation, tracing, and event resume contract")
   func protectedRoutePreflight() async throws {
     try await withSingletonHTTPClient { client in
       let dbPath =
@@ -181,7 +181,7 @@ struct HTTPRouteContractTests {
         headers[.origin] = "https://operations.testing.thesocialwire.app"
         headers[.accessControlRequestMethod] = "PATCH"
         headers[.accessControlRequestHeaders] =
-          "authorization,dpop,traceparent,x-request-id,idempotency-key"
+          "authorization,dpop,traceparent,x-request-id,idempotency-key,last-event-id"
         let response = try await c.execute(
           uri: "/v1/sync/preferences",
           method: .options,
@@ -200,6 +200,7 @@ struct HTTPRouteContractTests {
           "authorization",
           "dpop",
           "idempotency-key",
+          "last-event-id",
           "traceparent",
           "x-request-id",
         ]))
