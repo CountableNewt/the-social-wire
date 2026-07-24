@@ -18,6 +18,8 @@ primary_region = 'ams'
   TAP_LOG_LEVEL = 'info'
   # Indigo Tap defaults to 32 connections; keep headroom in the shared session pool.
   TAP_MAX_DB_CONNS = '1'
+  # Repo CARs are held in memory during resync; serialize them to bound peak memory.
+  TAP_RESYNC_PARALLELISM = '1'
   TAP_METRICS_LISTEN = ':2481'
   TAP_RELAY_URL = 'https://relay1.us-east.bsky.network'
 
@@ -29,6 +31,6 @@ primary_region = 'ams'
   grace_period = '30s'
 
 [[vm]]
-  memory = '1gb'
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1

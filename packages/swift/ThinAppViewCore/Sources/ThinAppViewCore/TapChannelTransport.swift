@@ -8,6 +8,7 @@ import NIOPosix
 import WebSocketKit
 
 enum TapChannelTransport {
+  private static let maxFrameSize = 2 * 1_024 * 1_024
   private static let pingInterval = TimeAmount.seconds(15)
   private static let pongTimeout: TimeInterval = 35
   private static let watchdogPollInterval: TimeInterval = 5
@@ -29,12 +30,18 @@ enum TapChannelTransport {
     let socketBox = TapWebSocketBox()
     var headers = HTTPHeaders()
     headers.add(name: "Authorization", value: basicAuthorization(password: adminPassword))
+    let clientConfiguration = WebSocketClient.Configuration(maxFrameSize: maxFrameSize)
 
     do {
       try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
           let resumed = TapContinuationGuard()
-          WebSocket.connect(to: channelURL, headers: headers, on: group) { socket in
+          WebSocket.connect(
+            to: channelURL,
+            headers: headers,
+            configuration: clientConfiguration,
+            on: group
+          ) { socket in
             socketBox.set(socket)
             Task { await onConnected() }
             let pongDeadline = WebSocketPongDeadline(connectedAt: Date())
@@ -71,7 +78,9 @@ enum TapChannelTransport {
             let pump = BoundedSequentialMessagePump(
               capacity: queueCapacity,
               handleMessage: { text in
-                try await handleMessage(text, acknowledge)
+                try await TapMessageRetry.run {
+                  try await handleMessage(text, acknowledge)
+                }
               },
               onFailure: { error in
                 resumed.resumeOnce(continuation, with: .failure(error))
@@ -92,9 +101,12 @@ enum TapChannelTransport {
                 return
               }
             }
-            socket.onClose.whenComplete { result in
+            socket.onClose.whenComplete { _ in
               socketBox.stopWatchdog()
-              resumed.resumeOnce(continuation, with: result.map { _ in () })
+              resumed.resumeOnce(
+                continuation,
+                with: .failure(TapChannelTransportError.connectionClosed)
+              )
             }
           }.whenFailure { error in
             resumed.resumeOnce(continuation, with: .failure(error))
@@ -221,8 +233,10 @@ enum TapChannelTransport {
           }
           guard let text else { continue }
           await onQueueObservation(BoundedQueueObservation(depth: 1, capacity: 1, dropped: 0))
-          try await handleMessage(text) { eventId in
-            try await task.send(.string("{\"type\":\"ack\",\"id\":\(eventId)}"))
+          try await TapMessageRetry.run {
+            try await handleMessage(text) { eventId in
+              try await task.send(.string("{\"type\":\"ack\",\"id\":\(eventId)}"))
+            }
           }
           await onQueueObservation(BoundedQueueObservation(depth: 0, capacity: 1, dropped: 0))
         }
@@ -248,4 +262,5 @@ enum TapChannelTransport {
 enum TapChannelTransportError: Error {
   case invalidURL
   case queueOverflow
+  case connectionClosed
 }

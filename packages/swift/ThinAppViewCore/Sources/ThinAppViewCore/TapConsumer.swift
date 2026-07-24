@@ -428,7 +428,7 @@ public actor TapConsumer {
       accountStatus: accountStatus,
       pdsBase: preservePdsBase ? previous?.pdsBase : nil,
       lastEventId: max(previous?.lastEventId ?? eventId, eventId),
-      lastEventLive: eventLive ?? previous?.lastEventLive,
+      lastEventLive: eventLive ?? previous?.lastEventLive ?? false,
       parityStatus: parity.status,
       matchedEventCount: (previous?.matchedEventCount ?? 0) + matchedIncrement,
       mismatchedEventCount: (previous?.mismatchedEventCount ?? 0) + mismatchIncrement,

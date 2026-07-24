@@ -1126,7 +1126,7 @@ public init(pool: PostgresClient, logger: Logger) {
     for try await row in rows {
       let decoded = try row.decode(
         (
-          String?, String, String?, Int64?, Bool?, String, Int64, Int64,
+          String?, String, String?, Int64?, Bool, String, Int64, Int64,
           String?, Date?, Date?, Date
         ).self
       )

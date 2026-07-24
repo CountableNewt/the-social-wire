@@ -169,7 +169,7 @@ public struct TapRepositorySyncState: Sendable, Equatable {
   public let accountStatus: TapAccountStatus
   public let pdsBase: String?
   public let lastEventId: Int64?
-  public let lastEventLive: Bool?
+  public let lastEventLive: Bool
   public let parityStatus: TapParityStatus
   public let matchedEventCount: Int64
   public let mismatchedEventCount: Int64
@@ -185,7 +185,7 @@ public struct TapRepositorySyncState: Sendable, Equatable {
     accountStatus: TapAccountStatus,
     pdsBase: String?,
     lastEventId: Int64?,
-    lastEventLive: Bool?,
+    lastEventLive: Bool,
     parityStatus: TapParityStatus,
     matchedEventCount: Int64,
     mismatchedEventCount: Int64,
