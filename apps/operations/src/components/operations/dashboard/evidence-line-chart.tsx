@@ -33,6 +33,7 @@ export function EvidenceLineChart({
   referenceTime = refreshedAt,
   sampleCount,
   evidence,
+  showFreshnessBadge = true,
 }: {
   points: MetricPoint[]
   title: string
@@ -45,6 +46,7 @@ export function EvidenceLineChart({
   referenceTime?: string
   sampleCount?: number
   evidence?: EvidenceEnvelope
+  showFreshnessBadge?: boolean
 }) {
   const model = evidenceChartModel(points, WIDTH, HEIGHT, PADDING, threshold)
   const stroke = tone === "warning" ? "var(--warning)" : "var(--primary)"
@@ -85,7 +87,11 @@ export function EvidenceLineChart({
         </div>
         <div className="text-right">
           <p className="font-mono text-base font-semibold">{model.latest === null ? "— Missing" : format(model.latest)}</p>
-          <Badge tone={freshness === "Fresh" ? "success" : freshness === "Partial" ? "warning" : "danger"}>{freshness}</Badge>
+          {showFreshnessBadge ? (
+            <Badge tone={freshness === "Fresh" ? "success" : freshness === "Partial" ? "warning" : "danger"}>
+              {freshness}
+            </Badge>
+          ) : null}
         </div>
       </header>
       <svg

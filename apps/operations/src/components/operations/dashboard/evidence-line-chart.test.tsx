@@ -74,6 +74,23 @@ test("ages previously fresh chart evidence against current time", () => {
   expect(screen.getByText("Stale")).toBeTruthy()
 })
 
+test("can defer freshness status to a section-level indicator", () => {
+  render(
+    <EvidenceLineChart
+      title="Average Database Commit Duration"
+      unit="milliseconds"
+      source="AppView Worker database-write duration rollups"
+      format={(value) => `${value} ms`}
+      refreshedAt="2026-07-22T01:03:00Z"
+      points={[{ timestamp: Date.UTC(2026, 6, 22, 1, 2), value: 4 }]}
+      showFreshnessBadge={false}
+    />,
+  )
+
+  expect(screen.queryByText("Fresh")).toBeNull()
+  expect(screen.getByText("Latest bucket age: 0s")).toBeTruthy()
+})
+
 test("uses non-duplicated truthful ticks for an observed all-zero series", () => {
   render(
     <EvidenceLineChart
