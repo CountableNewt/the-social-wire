@@ -3,6 +3,7 @@ import {
   collectionMetricRows,
   currentMetricValue,
   latestMetricValue,
+  MONITORED_COLLECTIONS,
   metricWindowReference,
   metricSampleCount,
 } from "@/lib/collection-metrics"
@@ -113,6 +114,18 @@ describe("collectionMetricRows", () => {
     expect(windowReference).toBe(metricsGeneratedAt)
     expect(rows[0]?.createRate.at(-1)?.timestamp).toBe(Date.parse("2026-07-22T12:14:00.000Z"))
     expect(rows[0]?.createRate.at(-1)?.value).toBe(2)
+  })
+
+  it("keeps the monitored lexicon inventory visible and stable when telemetry is missing", () => {
+    const rows = collectionMetricRows(
+      [rollup({ dimensions: { collection: "site.standard.entry", operation: "create", ingestion_mode: "live" } })],
+      "2026-07-20T20:02:00.000Z",
+      MONITORED_COLLECTIONS,
+    )
+
+    expect(rows.map((row) => row.collection)).toEqual([...MONITORED_COLLECTIONS])
+    expect(rows[0]?.allOperationsRate.every(({ value }) => value === null)).toBe(true)
+    expect(latestMetricValue(rows[1]!.allOperationsRate)).toBe(2)
   })
 
   it("rejects negative metric rollups at the display boundary", () => {

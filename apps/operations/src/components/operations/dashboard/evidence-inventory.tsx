@@ -2,6 +2,27 @@ import { OperationsSection } from "@/components/operations/operations-section"
 import { Badge } from "@/components/ui/badge"
 import type { Overview } from "@/lib/operations-types"
 
+const EVIDENCE_SECTION_ORDER = [
+  "overview",
+  "services",
+  "ingestion",
+  "database",
+  "metrics",
+  "commands",
+  "endpoints",
+] as const
+
+export function orderedEvidenceEntries(evidence: Overview["evidence"]) {
+  const order = new Map(EVIDENCE_SECTION_ORDER.map((section, index) => [section, index]))
+  return Object.entries(evidence ?? {}).sort(([left], [right]) => {
+    const leftOrder = order.get(left as (typeof EVIDENCE_SECTION_ORDER)[number])
+    const rightOrder = order.get(right as (typeof EVIDENCE_SECTION_ORDER)[number])
+    if (leftOrder !== undefined || rightOrder !== undefined)
+      return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+    return left.localeCompare(right)
+  })
+}
+
 export function evidenceAgeAtReference(
   baseAgeSeconds: number,
   generatedAt: string,
@@ -14,7 +35,7 @@ export function evidenceAgeAtReference(
 }
 
 export function EvidenceInventory({ overview, referenceTime = overview.refreshedAt }: { overview: Overview; referenceTime?: string }) {
-  const entries = Object.entries(overview.evidence ?? {})
+  const entries = orderedEvidenceEntries(overview.evidence)
   return (
     <OperationsSection
       title="Evidence Inventory"

@@ -5,6 +5,14 @@ const RESULTS_TOTAL = "socialwire.ingestion.results_total"
 const COMMIT_DURATION = "socialwire.ingestion.db_write_duration_seconds"
 const COMMIT_LAG = "socialwire.ingestion.commit_lag_seconds"
 
+export const MONITORED_COLLECTIONS = [
+  "site.standard.document",
+  "site.standard.entry",
+  "site.standard.graph.subscription",
+  "app.skyreader.feed.subscription",
+  "app.thesocialwire.entryReadState",
+] as const
+
 export type MetricPoint = { timestamp: number; value: number | null }
 
 export function metricWindowReference(overviewRefreshedAt: string, evidence?: EvidenceEnvelope) {
@@ -111,8 +119,13 @@ function metricTimestamps(rows: Map<string, MutableCollectionMetricRow>, refresh
   )
 }
 
-export function collectionMetricRows(rollups: MetricRollup[], refreshedAt?: string): CollectionMetricRow[] {
+export function collectionMetricRows(
+  rollups: MetricRollup[],
+  refreshedAt?: string,
+  collectionInventory: readonly string[] = [],
+): CollectionMetricRow[] {
   const rows = new Map<string, MutableCollectionMetricRow>()
+  collectionInventory.forEach((collection) => rows.set(collection, emptyRow(collection)))
 
   for (const rollup of rollups) {
     const collection = rollup.dimensions.collection
@@ -148,6 +161,7 @@ export function collectionMetricRows(rollups: MetricRollup[], refreshedAt?: stri
 
   const timestamps = metricTimestamps(rows, refreshedAt)
 
+  const inventoryOrder = new Map(collectionInventory.map((collection, index) => [collection, index]))
   return [...rows.values()]
     .map((row) => {
       const eventObserved = new Set(row.allOperationsRate.keys())
@@ -166,10 +180,13 @@ export function collectionMetricRows(rollups: MetricRollup[], refreshedAt?: stri
         maximumLagSeconds: maximum(row.maximumLagSeconds, timestamps),
       }
     })
-    .sort(
-      (left, right) =>
-        (latestMetricValue(right.allOperationsRate) ?? 0) - (latestMetricValue(left.allOperationsRate) ?? 0),
-    )
+    .sort((left, right) => {
+      const leftOrder = inventoryOrder.get(left.collection)
+      const rightOrder = inventoryOrder.get(right.collection)
+      if (leftOrder !== undefined || rightOrder !== undefined)
+        return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+      return left.collection.localeCompare(right.collection)
+    })
 }
 
 export function latestMetricValue(points: MetricPoint[]) {

@@ -1,7 +1,12 @@
 import { EvidenceLineChart } from "@/components/operations/dashboard/evidence-line-chart"
 import { OperationsSection } from "@/components/operations/operations-section"
 import { Badge } from "@/components/ui/badge"
-import { collectionMetricRows, currentMetricValue, metricSampleCount } from "@/lib/collection-metrics"
+import {
+  collectionMetricRows,
+  currentMetricValue,
+  metricSampleCount,
+  MONITORED_COLLECTIONS,
+} from "@/lib/collection-metrics"
 import type { MetricPoint } from "@/lib/collection-metrics"
 import type { EvidenceEnvelope, MetricRollup } from "@/lib/operations-types"
 
@@ -26,7 +31,7 @@ export function CollectionTable({
   referenceTime?: string
   evidence?: EvidenceEnvelope
 }) {
-  const rows = collectionMetricRows(metricRollups, refreshedAt)
+  const rows = collectionMetricRows(metricRollups, refreshedAt, MONITORED_COLLECTIONS)
 
   return (
     <OperationsSection

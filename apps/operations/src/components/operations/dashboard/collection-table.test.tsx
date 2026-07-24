@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import { CollectionTable } from "@/components/operations/dashboard/collection-table"
+import { MONITORED_COLLECTIONS } from "@/lib/collection-metrics"
 import type { EvidenceEnvelope, MetricRollup } from "@/lib/operations-types"
 
 afterEach(cleanup)
@@ -50,6 +51,10 @@ describe("CollectionTable", () => {
     )
 
     expect(screen.getByText("1 failed events/sec")).toBeTruthy()
-    expect(screen.getByText(/Source: AppView Worker indexed-mutation rollups/)).toBeTruthy()
+    expect(screen.getAllByText(/Source: AppView Worker indexed-mutation rollups/)).toHaveLength(
+      MONITORED_COLLECTIONS.length,
+    )
+    for (const collection of MONITORED_COLLECTIONS)
+      expect(screen.getByText(collection)).toBeTruthy()
   })
 })
