@@ -7,6 +7,9 @@ struct SidebarExpandedSnapshot: Equatable {
     var subscribedPublicationsSectionExpanded: Bool
     var followingPublicationsSectionExpanded: Bool
     var expandedFolderRkeys: Set<String>
+    var readLaterFeedExpanded = true
+    var financeFeedExpanded = true
+    var sportsFeedExpanded = true
 
     static func `default`() -> Self {
         Self(
@@ -60,7 +63,10 @@ enum SidebarExpandedKeysStorage {
                 keys.contains(subscribedPublicationsSectionKey) || legacyPublicationsExpanded,
             followingPublicationsSectionExpanded:
                 keys.contains(followingPublicationsSectionKey) || legacyPublicationsExpanded,
-            expandedFolderRkeys: expandedFolderRkeys
+            expandedFolderRkeys: expandedFolderRkeys,
+            readLaterFeedExpanded: !keys.contains("__sidebar_collapsed:read-later"),
+            financeFeedExpanded: !keys.contains("__sidebar_collapsed:finance"),
+            sportsFeedExpanded: !keys.contains("__sidebar_collapsed:sports")
         )
     }
 
@@ -68,6 +74,9 @@ enum SidebarExpandedKeysStorage {
         guard !viewerDid.isEmpty else { return }
 
         var keys: [String] = []
+        if !snapshot.readLaterFeedExpanded { keys.append("__sidebar_collapsed:read-later") }
+        if !snapshot.financeFeedExpanded { keys.append("__sidebar_collapsed:finance") }
+        if !snapshot.sportsFeedExpanded { keys.append("__sidebar_collapsed:sports") }
         if snapshot.subscribedFeedExpanded {
             keys.append(subscribedFeedKey)
         }

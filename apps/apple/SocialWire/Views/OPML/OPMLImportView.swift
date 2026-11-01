@@ -6,32 +6,15 @@ struct OPMLImportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model = OPMLImportModel()
     @State private var showingImporter = false
-    @State private var destination: OPMLImportDestination
-    @State private var privateFeeds = false
     @State private var refreshingExisting = false
 
-    init(initialDestination: OPMLImportDestination = .publications) {
-        _destination = State(initialValue: initialDestination)
-    }
-
     private var selectionIdentity: String {
-        "\(appModel.viewerDID ?? "")|\(destination.rawValue)|\(privateFeeds)"
+        appModel.viewerDID ?? ""
     }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Picker("Import To", selection: $destination) {
-                        ForEach(OPMLImportDestination.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    if destination == .podcasts { Toggle("Private Feeds", isOn: $privateFeeds) }
-                } footer: {
-                    Text(destination == .podcasts
-                         ? (privateFeeds ? "Private podcast feeds stay in your account. No public PDS subscriptions are created." : "Import audio podcast feeds. Select Private Feeds for subscriber-only or credential-bearing URLs.")
-                         : "Import RSS or Atom publications into your reading library.")
-                }
-                .disabled(model.isImporting || refreshingExisting)
                 if refreshingExisting { ProgressView("Checking Existing Subscriptions") }
                 if model.feeds.isEmpty {
                     ContentUnavailableView(
@@ -45,7 +28,7 @@ struct OPMLImportView: View {
                             Toggle(isOn: selectionBinding(for: feed)) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(feed.title)
-                                    Text(destination == .podcasts && privateFeeds ? (URL(string: feed.feedURL)?.host ?? "Private Feed") : feed.feedURL)
+                                    Text(feed.feedURL)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
@@ -161,20 +144,11 @@ struct OPMLImportView: View {
 
     private func importFeeds(_ feeds: [OPMLFeed]) {
         guard !feeds.isEmpty, let viewer = appModel.viewerDID else { return }
-        let destination = destination
-        let privateFeeds = privateFeeds
         model.beginImport(total: feeds.count)
         Task {
             guard appModel.viewerDID == viewer else { return }
-            let failures: [OPMLImportFailure]
-            if destination == .podcasts {
-                failures = await appModel.podcasts.importOPMLFeeds(feeds, privateFeeds: privateFeeds, currentViewer: { appModel.viewerDID }) { completed, _ in
-                    if appModel.viewerDID == viewer { model.noteProgress(completed) }
-                }
-            } else {
-                failures = await appModel.importOPMLFeeds(feeds) { completed, _ in
-                    if appModel.viewerDID == viewer { model.noteProgress(completed) }
-                }
+            let failures = await appModel.importOPMLFeeds(feeds) { completed, _ in
+                if appModel.viewerDID == viewer { model.noteProgress(completed) }
             }
             guard appModel.viewerDID == viewer else { return }
             let failedURLs = Set(failures.map { $0.feed.feedURL })
@@ -184,7 +158,6 @@ struct OPMLImportView: View {
     }
 
     private func existingURLs() async throws -> Set<String> {
-        if destination == .podcasts { return try await appModel.podcasts.existingOPMLFeedURLs(privateFeeds: privateFeeds) }
         return await appModel.existingSkyreaderFeedURLs()
     }
 

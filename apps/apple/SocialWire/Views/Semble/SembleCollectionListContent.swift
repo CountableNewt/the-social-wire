@@ -50,7 +50,7 @@ struct SembleCollectionListContent: View {
                         Divider()
                     }
 
-                    List(appModel.sembleItems) { item in
+                    List(appModel.filteredSembleItems) { item in
                         Button {
                             onItemTap(item)
                         } label: {

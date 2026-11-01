@@ -1,3 +1,4 @@
+import { algorithmicFeedsEnabled } from "@/lib/algorithmicFeeds";
 import { floatingGlassClasses } from "@/components/shared/floatingChromeStyles";
 import Image from "next/image";
 import Link from "next/link";
@@ -52,7 +53,7 @@ const workflowItems = [
 
 export default function Home() {
   const listeningEnabled = podcastsEnabled();
-  const features = [...workflowItems, {
+  const features = [...workflowItems.filter(item => item.title !== "Topics" || algorithmicFeedsEnabled()), {
     title: "Podcasts",
     description: listeningEnabled
       ? "Listen to RSS and AT Protocol podcasts with chapters, transcripts, playback controls, and offline downloads."

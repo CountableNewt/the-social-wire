@@ -4,7 +4,6 @@ enum NewsPrimaryFeed: String, CaseIterable, Codable, Identifiable, Hashable, Sen
     case wire
     case circle
     case finance
-    case podcasts
     case sports
     case subscribed
     case following
@@ -16,7 +15,6 @@ enum NewsPrimaryFeed: String, CaseIterable, Codable, Identifiable, Hashable, Sen
         case .wire: "The Wire"
         case .circle: "Your Circle"
         case .finance: "Finance"
-        case .podcasts: "Podcasts"
         case .sports: "Sports"
         case .subscribed: "Subscribed"
         case .following: "Following"
@@ -28,7 +26,6 @@ enum NewsPrimaryFeed: String, CaseIterable, Codable, Identifiable, Hashable, Sen
         case .wire: "newspaper"
         case .circle: "person.2.wave.2"
         case .finance: "chart.line.uptrend.xyaxis"
-        case .podcasts: "headphones"
         case .sports: "sportscourt"
         case .subscribed: "tray.full"
         case .following: "person.2"
@@ -40,7 +37,6 @@ enum NewsPrimaryFeed: String, CaseIterable, Codable, Identifiable, Hashable, Sen
         case .wire: .wire
         case .circle: .circle
         case .finance: .finance
-        case .podcasts: .podcasts
         case .sports: .sports
         case .subscribed, .following: .library
         }
@@ -49,9 +45,25 @@ enum NewsPrimaryFeed: String, CaseIterable, Codable, Identifiable, Hashable, Sen
     var readerListSource: ReaderListSource? {
         switch self {
         case .wire: .wire
-        case .circle, .finance, .sports, .podcasts: nil
+        case .circle, .finance, .sports: nil
         case .subscribed: .subscribed
         case .following: .following
+        }
+    }
+
+    // Re-enable only alongside rebuilt backend indices and serving gates.
+    static var algorithmicFeedsEnabled: Bool {
+        #if SOCIALWIRE_ALGORITHMIC_FEEDS_ENABLED
+        true
+        #else
+        false
+        #endif
+    }
+
+    var isAvailable: Bool {
+        switch self {
+        case .wire, .circle, .finance, .sports: Self.algorithmicFeedsEnabled
+        case .subscribed, .following: true
         }
     }
 

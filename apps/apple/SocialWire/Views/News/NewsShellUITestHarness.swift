@@ -94,16 +94,10 @@ struct NewsShellUITestHarness: View {
             } else {
                 ProgressView()
                     .task {
-                        if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset-tabs") {
-                            NewsSectionPreferences().save(viewerDID: nil)
-                        }
                         fixtureModel.feedPreferences = ReaderFeedPreferences(
                             visibleFeeds: [.readLater, .archive, .subscribed, .following],
                             feedsWithUnreadCounts: [], showWire: false, showCircle: false)
-                        if ProcessInfo.processInfo.arguments.contains("--ui-testing-quill-social") {
-                            do { try fixtureModel.social.configureQuillFixture() }
-                            catch { assertionFailure("Quill fixture failed: \(error)") }
-                        }
+
                         if ProcessInfo.processInfo.arguments.contains("--ui-testing-sidebar-publications") {
                             configureSidebarPublications()
                         }
@@ -117,7 +111,12 @@ struct NewsShellUITestHarness: View {
                                     uri: "at://did:plc:fixture/app.standard-reader.list/main",
                                     name: "Fixture List", description: "Stories From Fixture Publications",
                                     creatorDid: "did:plc:fixture", publications: [Self.fixturePublication.publicationId],
-                                    publicationDetails: nil, users: [], owned: true, saved: true)],
+                                    publicationDetails: nil, users: [], owned: true, saved: true)] +
+                                    (ProcessInfo.processInfo.arguments.contains("--ui-testing-list-swipes") ? [
+                                        StandardReaderList(uri: "at://did:plc:fixture/app.standard-reader.list/second",
+                                            name: "Second List", description: nil, creatorDid: "did:plc:fixture",
+                                            publications: [], publicationDetails: nil, users: [], owned: true, saved: true)
+                                    ] : []),
                                 entries: [Self.entry(index: 1)])
                             if ProcessInfo.processInfo.arguments.contains("--ui-testing-empty-lists") {
                                 fixtureModel.standardReaderLists.configureFixture(lists: [], entries: [])
@@ -143,7 +142,7 @@ struct NewsShellUITestHarness: View {
     }
 
     private func configureSidebarPublications() {
-        let rows = ["Subscribed Publication", "Following Publication"].enumerated().map { index, title in
+        let rows = ["Subscribed Publication", "Following Publication", "Folder Publication"].enumerated().map { index, title in
             SidebarPublicationRowDTO(
                 publicationId: "at://did:plc:fixture/site.standard.publication/\(index)",
                 subscriptionPublicationId: nil, authorDid: "did:plc:fixture", authorHandle: "fixture.example",
@@ -153,7 +152,18 @@ struct NewsShellUITestHarness: View {
                     publicationScopeAtUris: [], publicationSiteUrls: []), unreadCount: 0)
         }
         let projection = PublicationSidebarResponseDTO(
-            viewerDid: "did:plc:fixture", folders: nil, publicationPrefs: nil, folderSections: nil,
+            viewerDid: "did:plc:fixture",
+            folders: [PublicationFolderDTO(
+                uri: "at://did:plc:fixture/app.thesocialwire.folder/fixture-folder",
+                rkey: "fixture-folder",
+                value: ["name": .string("Fixture Folder"), "createdAt": .string("2026-10-26T00:00:00Z")]
+            )],
+            publicationPrefs: nil,
+            folderSections: [PublicationFolderSectionDTO(
+                folderRkey: "fixture-folder",
+                folderUri: "at://did:plc:fixture/app.thesocialwire.folder/fixture-folder",
+                publications: [rows[2]]
+            )],
             allPublicationRows: rows, myPublications: [], subscribedUnfoldered: [rows[0]],
             followingTabPublications: [rows[1]], enrollAuthorDids: [],
             refreshedAt: "2026-10-26T00:00:00Z", unreadCountsByPublicationId: nil)
@@ -161,6 +171,8 @@ struct NewsShellUITestHarness: View {
             kind: .sidebarPriority, sidebarPriority: projection, sidebarSection: nil, unreadCounts: nil,
             selectedPublication: nil, entriesPage: nil, sidebarFolders: nil, lists: nil,
             warning: nil, error: nil, done: nil))
+        fixtureModel.sidebarSubscribedFeedExpanded = true
+        fixtureModel.sidebarExpandedFolderRkeys.insert("fixture-folder")
         fixtureModel.sidebarSubscribedPublicationsSectionExpanded = true
         fixtureModel.sidebarFollowingPublicationsSectionExpanded = true
     }

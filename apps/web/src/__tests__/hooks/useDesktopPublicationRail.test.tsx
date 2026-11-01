@@ -8,12 +8,12 @@ const listeners = new Set<() => void>();
 beforeEach(() => {
   desktop = false;
   Object.defineProperty(window, "matchMedia", { configurable: true, value: (query: string) => {
-    expect(query).toBe("(min-width: 1024px)");
+    expect(query).toBe("(min-width: 1280px)");
     return { matches: desktop, addEventListener: (_event: string, listener: () => void) => listeners.add(listener), removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener) };
   } });
 });
 afterEach(() => { cleanup(); listeners.clear(); if (originalMedia) Object.defineProperty(window, "matchMedia", originalMedia); else Reflect.deleteProperty(window, "matchMedia"); });
-it("moves the publication rail at the lg breakpoint and unsubscribes on unmount", () => {
+it("moves the publication rail at the xl breakpoint shared with Topics and unsubscribes on unmount", () => {
   const { result, unmount } = renderHook(() => useDesktopPublicationRail());
   expect(result.current).toBe(false);
   act(() => { desktop = true; listeners.forEach(listener => listener()); });

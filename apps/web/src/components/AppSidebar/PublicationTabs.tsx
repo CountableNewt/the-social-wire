@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Network, Newspaper, Rss, Users } from "lucide-react";
 
 import {
@@ -8,6 +9,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
 } from "@/components/ui/sidebar";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type { ReaderNavigationFeed } from "@/lib/feedPreferences";
@@ -17,6 +19,8 @@ import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
 import { WireBetaBadge } from "@/components/Wire/WireBetaBadge";
 
 export function PublicationTabs({
+  subscribedChildren,
+  followingChildren,
   visibleFeeds,
   activeTab,
   onTabChange,
@@ -31,6 +35,8 @@ export function PublicationTabs({
   circleActive = false,
   onCircleSelect,
 }: {
+  subscribedChildren?: ReactNode;
+  followingChildren?: ReactNode;
   visibleFeeds?: ReadonlySet<ReaderNavigationFeed>;
   activeTab: PublicationTab | null;
   onTabChange: (tab: PublicationTab) => void;
@@ -45,6 +51,7 @@ export function PublicationTabs({
   circleActive?: boolean;
   onCircleSelect?: () => void;
 }) {
+  const nested = !!(subscribedChildren || followingChildren);
   if (
     visibleFeeds &&
     !["wire", "circle", "subscribed", "following"].some((feed) =>
@@ -57,16 +64,17 @@ export function PublicationTabs({
       <SidebarGroupLabel>News</SidebarGroupLabel>
       <SidebarMenu
         className="gap-0.5"
-        role="tablist"
+        role={nested ? undefined : "tablist"}
         aria-label="Publication Source"
       >
         {visibleFeeds?.has("wire") !== false ? (
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
-              role="tab"
+              role={nested ? undefined : "tab"}
               aria-label="The Wire, Beta"
-              aria-selected={wireActive}
+              aria-selected={nested ? undefined : wireActive}
+              aria-current={nested && wireActive ? "page" : undefined}
               isActive={wireActive}
               onClick={onWireSelect}
             >
@@ -80,14 +88,16 @@ export function PublicationTabs({
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
-              role="tab"
+              role={nested ? undefined : "tab"}
               aria-label="Your Circle, Beta"
-              aria-selected={circleActive}
+              className="gap-1.5"
+              aria-selected={nested ? undefined : circleActive}
+              aria-current={nested && circleActive ? "page" : undefined}
               isActive={circleActive}
               onClick={onCircleSelect}
             >
               <Network />
-              <span>Your Circle</span>
+              <span className="whitespace-nowrap">Your&nbsp;Circle</span>
               <WireBetaBadge className="ml-auto" />
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -102,8 +112,9 @@ export function PublicationTabs({
             >
               <SidebarMenuButton
                 type="button"
-                role="tab"
-                aria-selected={activeTab === "subscribed"}
+                role={nested ? undefined : "tab"}
+                aria-selected={nested ? undefined : activeTab === "subscribed"}
+                aria-current={nested && activeTab === "subscribed" ? "page" : undefined}
                 isActive={activeTab === "subscribed"}
                 onClick={() => onTabChange("subscribed")}
               >
@@ -114,6 +125,11 @@ export function PublicationTabs({
                 ) : null}
               </SidebarMenuButton>
             </SidebarReadBulkMenuWrap>
+            {subscribedChildren ? (
+              <SidebarMenuSub className="pl-4" aria-label="Subscribed Sources">
+                {subscribedChildren}
+              </SidebarMenuSub>
+            ) : null}
           </SidebarMenuItem>
         ) : null}
         {visibleFeeds?.has("following") !== false ? (
@@ -126,8 +142,9 @@ export function PublicationTabs({
             >
               <SidebarMenuButton
                 type="button"
-                role="tab"
-                aria-selected={activeTab === "following"}
+                role={nested ? undefined : "tab"}
+                aria-selected={nested ? undefined : activeTab === "following"}
+                aria-current={nested && activeTab === "following" ? "page" : undefined}
                 isActive={activeTab === "following"}
                 onClick={() => onTabChange("following")}
               >
@@ -138,6 +155,11 @@ export function PublicationTabs({
                 ) : null}
               </SidebarMenuButton>
             </SidebarReadBulkMenuWrap>
+            {followingChildren ? (
+              <SidebarMenuSub className="pl-4" aria-label="Following Sources">
+                {followingChildren}
+              </SidebarMenuSub>
+            ) : null}
           </SidebarMenuItem>
         ) : null}
       </SidebarMenu>

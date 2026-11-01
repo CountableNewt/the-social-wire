@@ -12,6 +12,7 @@ import type { WirePage } from "@/lib/wireFeedClient";
 import type { WireEditionPage } from "@/lib/wireEditionClient";
 import type { CircleEditionPage } from "@/lib/circleFeedClient";
 
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
 const realAuth = { ...await import("@/hooks/useAuth") };
 const realWire = { ...await import("@/lib/wireFeedClient") };
 const realEdition = { ...await import("@/lib/wireEditionClient") };
@@ -52,6 +53,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true";
   oauth = session("did:plc:alice");
   requests.length = 0;
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -82,6 +84,8 @@ beforeEach(() => {
   }));
 });
 afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
   cleanup();
   queryClient.clear();
   mock.module("@/hooks/useAuth", () => realAuth);

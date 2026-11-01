@@ -111,7 +111,6 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
         "repo:app.thesocialwire.wireFeedback?action=create&action=update&action=delete",
         "include:site.standard.authSocial",
         "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete",
-        "repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete",
         "include:app.userinput.authFull",
         "blob:*/*",
         "repo:site.standard.graph.subscription?action=create&action=update&action=delete",
@@ -155,6 +154,8 @@ final class ATProtoOAuthService: NSObject, ASWebAuthenticationPresentationContex
     private let keychain: any OAuthSessionStoring
     @ObservationIgnored private let tokenTransport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     @ObservationIgnored private var refreshTask: Task<AuthSession, Error>?
+    /// Stable through access/refresh token rotation; replaced for each explicit login or logout.
+    var loginIdentity: UUID { sessionRevision }
     @ObservationIgnored private var sessionRevision = UUID()
     private let resolver = ATProtoResolver()
 

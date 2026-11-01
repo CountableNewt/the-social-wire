@@ -24,6 +24,40 @@ struct NewsSceneModelTests {
         return (model, transport)
     }
 
+    @Test("Sidebar disclosure choices survive model recreation and are restored only once")
+    func sidebarDisclosureChoicesRemainStable() async throws {
+        let (model, _) = try await wireFixture(replies: [])
+        let storageKey = SidebarExpandedKeysStorage.storageKey
+        let prior = UserDefaults.standard.string(forKey: storageKey)
+        defer {
+            model.authService.signOut()
+            if let prior {
+                UserDefaults.standard.set(prior, forKey: storageKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: storageKey)
+            }
+        }
+
+        model[sidebarFeedExpanded: .readLater] = false
+        model[sidebarFeedExpanded: .finance] = false
+        model[sidebarFeedExpanded: .sports] = true
+        model[sidebarFeedExpanded: .subscribed] = true
+
+        let restored = SocialWireAppModel(authService: model.authService)
+        restored[sidebarFeedExpanded: .subscribed] = true
+        #expect(!restored[sidebarFeedExpanded: .readLater])
+        #expect(!restored[sidebarFeedExpanded: .finance])
+        #expect(restored[sidebarFeedExpanded: .sports])
+
+        // A stale persisted snapshot must not replace choices in the live model.
+        SidebarExpandedKeysStorage.save(viewerDid: "did:plc:test", snapshot: .default())
+        restored[sidebarFeedExpanded: .sports] = false
+        #expect(!restored[sidebarFeedExpanded: .readLater])
+        #expect(!restored[sidebarFeedExpanded: .finance])
+        #expect(restored[sidebarFeedExpanded: .subscribed])
+        #expect(!restored[sidebarFeedExpanded: .sports])
+    }
+
     @Test("Selecting Wire schedules no detached feed load before the destination task")
     func wireSelectionDoesNotSpawnRequest() async throws {
         let (model, transport) = try await wireFixture(replies: [])
@@ -55,9 +89,25 @@ struct NewsSceneModelTests {
         #expect(!model.isLoadingEntries)
     }
 
+    @Test("Retired feed values do not discard the remaining configured feeds")
+    func retiredFeedPreferencesPreserveOtherFeeds() throws {
+        let viewer = "podcast-removal-\(UUID().uuidString)"
+        let configuredKey = "the-social-wire.primary-feeds.v1.\(viewer)"
+        let lastKey = "the-social-wire.last-primary-feed.v1.\(viewer)"
+        defer {
+            UserDefaults.standard.removeObject(forKey: configuredKey)
+            UserDefaults.standard.removeObject(forKey: lastKey)
+        }
+        UserDefaults.standard.set(try JSONEncoder().encode(["sports", "podcasts", "following"]), forKey: configuredKey)
+        UserDefaults.standard.set("podcasts", forKey: lastKey)
+        #expect(NewsPrimaryFeedStorage.configuredFeeds(viewerDID: viewer) == [.sports, .following])
+        #expect(NewsPrimaryFeedStorage.lastFeed(viewerDID: viewer) == nil)
+        #expect(!NewsTab.allCases.contains { $0.rawValue == "podcasts" })
+    }
+
     @Test("Tabs keep their editorial order while gated destinations are omitted")
     func availableTabOrder() {
-        #expect(NewsTab.available(wire: true, circle: true, finance: true, sports: true, podcasts: true) == NewsTab.allCases)
+        #expect(NewsTab.available(wire: true, circle: true, finance: true, sports: true) == NewsTab.allCases)
         #expect(
             NewsTab.available(wire: false, circle: false)
                 == [.library, .saved, .search]
@@ -96,12 +146,30 @@ struct NewsSceneModelTests {
         ).contains(.circle))
     }
 
-    @Test("Primary slots stay stable while catalogs load and honor resolved gates")
+    @Test("Suspension preserves reader feeds and hides every algorithmic destination")
+    func algorithmicFeedSuspension() {
+        for feed in [NewsPrimaryFeed.wire, .circle, .finance, .sports] {
+            #expect(feed.isAvailable == NewsPrimaryFeed.algorithmicFeedsEnabled)
+        }
+        #expect(NewsPrimaryFeed.subscribed.isAvailable)
+        #expect(NewsPrimaryFeed.following.isAvailable)
+        let model = SocialWireAppModel()
+        if !NewsPrimaryFeed.algorithmicFeedsEnabled {
+            #expect(!model.visiblePrimaryTabFeedChoices.contains(.wire))
+            #expect(!model.visiblePrimaryTabFeedChoices.contains(.circle))
+            #expect(!model.visiblePrimaryTabFeedChoices.contains(.finance))
+            #expect(!model.visiblePrimaryTabFeedChoices.contains(.sports))
+            #expect(model.feedPreferences.showWire)
+            #expect(model.feedPreferences.showCircle)
+        }
+    }
+
+    @Test("Primary slots honor suspension and resolved catalog gates")
     func primarySlotsRespectCatalogAvailability() {
         let model = SocialWireAppModel()
         model.loadPrimaryTabPreferences()
-        #expect(model.primaryTabFeeds.contains(.wire))
-        #expect(model.primaryTabFeeds.contains(.circle))
+        #expect(model.primaryTabFeeds.contains(.wire) == NewsPrimaryFeed.algorithmicFeedsEnabled)
+        #expect(model.primaryTabFeeds.contains(.circle) == NewsPrimaryFeed.algorithmicFeedsEnabled)
 
         model.wireCatalog = WireFeedCatalog(
             enabled: true, available: true, title: "The Wire", subtitle: "",
@@ -112,7 +180,7 @@ struct NewsSceneModelTests {
             supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
         )
         model.loadPrimaryTabPreferences()
-        #expect(model.primaryTabFeeds.contains(.wire))
+        #expect(model.primaryTabFeeds.contains(.wire) == NewsPrimaryFeed.algorithmicFeedsEnabled)
         #expect(!model.primaryTabFeeds.contains(.circle))
 
         model.circleCatalog = CircleFeedCatalog(
@@ -122,34 +190,7 @@ struct NewsSceneModelTests {
         model.feedPreferences.showWire = false
         model.loadPrimaryTabPreferences()
         #expect(!model.primaryTabFeeds.contains(.wire))
-        #expect(model.primaryTabFeeds.contains(.circle))
-    }
-
-    @Test("Podcast navigation honors section visibility while preserving other destinations")
-    func podcastNavigationHonorsVisibility() {
-        var preferences = ReaderFeedPreferences.defaults
-        let visible = NewsTab.available(
-            preferences: preferences, wireCatalog: nil, circleCatalog: nil,
-            podcastsAvailable: true
-        )
-        #expect(visible.contains(.podcasts))
-        preferences.showPodcasts = false
-        let hidden = NewsTab.available(
-            preferences: preferences, wireCatalog: nil, circleCatalog: nil,
-            podcastsAvailable: true
-        )
-        #expect(hidden == visible.filter { $0 != .podcasts })
-
-        let suiteName = "NewsSceneModelTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let scene = NewsSceneModel(defaults: defaults)
-        scene.updateContext(viewerDID: "did:plc:viewer", availableTabs: visible)
-        scene.select(.podcasts, availableTabs: visible)
-        scene.navigate(to: .settings, in: .podcasts)
-        scene.updateContext(viewerDID: "did:plc:viewer", availableTabs: hidden)
-        #expect(scene.selectedTab == .wire)
-        #expect(scene.activeRoute == .settings)
+        #expect(model.primaryTabFeeds.contains(.circle) == NewsPrimaryFeed.algorithmicFeedsEnabled)
     }
 
     @Test("Other feed settings preserve hidden Social and Podcast sections")

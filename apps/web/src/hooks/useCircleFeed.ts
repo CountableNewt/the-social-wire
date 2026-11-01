@@ -1,5 +1,6 @@
 "use client";
 
+import { algorithmicFeedsEnabled } from "@/lib/algorithmicFeeds";
 import { isExpiredFeedCursor } from "@/lib/feedResponseError";
 import { useExpiredFeedCursorRecovery } from "@/hooks/useExpiredFeedCursorRecovery";
 
@@ -44,7 +45,7 @@ export function useCircleCatalog() {
       if (!oauthSession) throw new Error("Your Circle requires sign-in.");
       return getCircleCatalog({ oauthSession, signal });
     },
-    enabled: !isLoading && Boolean(session && oauthSession),
+    enabled: algorithmicFeedsEnabled() && !isLoading && Boolean(session && oauthSession),
     staleTime: 5 * 60_000,
     retry: (count, error) => !isExpiredFeedCursor(error) && count < 1,
   });

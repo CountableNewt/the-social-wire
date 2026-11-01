@@ -2,8 +2,13 @@ import SwiftUI
 
 struct StandardReaderListsWorkspace: View {
     @Environment(SocialWireAppModel.self) private var appModel
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+    @Binding var isProfilePresented: Bool
     var usesExternalSidebar = false
-    var onShowSidebar: (() -> Void)?
+    var showsProfileButton = true
+    @State private var listPage = ""
     @State private var compactColumn = NavigationSplitViewColumn.sidebar
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var showingManagement = false
@@ -18,7 +23,13 @@ struct StandardReaderListsWorkspace: View {
 
     var body: some View {
         workspaceColumns
-        .task(id: appModel.viewerDID) { await model.load() }
+        .task(id: appModel.viewerDID) {
+            await model.load()
+            if model.selectedList == nil, let first = model.lists.first {
+                await model.select(first)
+            }
+            listPage = model.selectedList?.uri ?? ""
+        }
         .sheet(isPresented: $showingManagement) {
             StandardReaderListsManagementView(model: model, publications: availablePublications)
         }
@@ -47,7 +58,8 @@ struct StandardReaderListsWorkspace: View {
             openedEntryID = nil
             Task { await model.loadFeed() }
         }
-        .onChange(of: model.selectedList?.uri) { _, _ in
+        .onChange(of: model.selectedList?.uri) { _, uri in
+            listPage = uri ?? ""
             settleDeferredRead()
             entryOpenRevision += 1
         }
@@ -74,60 +86,136 @@ struct StandardReaderListsWorkspace: View {
 
     @ViewBuilder
     private var workspaceColumns: some View {
-        if usesExternalSidebar {
-            NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            NavigationStack {
                 Group {
-                    if model.selectedList == nil { listsColumn }
-                    else { articlesColumn }
+                    if model.selectedList != nil {
+                        listFeedPages
+                    } else {
+                        listsColumn
+                    }
                 }
-                .navigationTitle(model.selectedList?.name ?? "Lists")
+                .navigationTitle("Lists")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { managementButton }
+                .navigationDestination(isPresented: Binding(
+                    get: { compactColumn == .detail },
+                    set: { if !$0 { compactColumn = .content } }
+                )) {
+                    readerColumn
+                }
+            }
+        } else {
+            expandedColumns
+        }
+        #else
+        expandedColumns
+        #endif
+    }
+
+    private var listFeedPages: some View {
+        VStack(spacing: 0) {
+            NewsFeedPills(
+                items: model.lists.map {
+                    NewsNavigationItem(slot: .standardList($0.uri), title: $0.name, systemImage: "list.bullet")
+                },
+                selection: Binding(
+                    get: { .standardList(listPage) },
+                    set: { if case .standardList(let uri) = $0 { listPage = uri } }
+                )
+            )
+            pagedArticles
+        }
+    }
+
+    @ViewBuilder
+    private var expandedColumns: some View {
+        if usesExternalSidebar {
+            NavigationSplitView {
+                articlesColumn
+                    .navigationTitle(model.selectedList?.name ?? "Lists")
+                    .toolbar { managementButton }
             } detail: {
                 readerColumn
                     .toolbar {
-                        ToolbarItem(placement: sidebarLeadingPlacement) {
-                            if let onShowSidebar { NewsSidebarButton(action: onShowSidebar) }
+                        if showsProfileButton {
+                            ToolbarItem(placement: profilePlacement) {
+                                Button { isProfilePresented = true } label: { ViewerProfileAvatar(size: 30) }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Profile")
+                            }
                         }
                     }
             }
         } else {
-            NavigationSplitView(preferredCompactColumn: $compactColumn) {
-                listsColumn
-                    .navigationTitle("Lists")
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
-                    .toolbar { managementButton }
-            } content: {
-                articlesColumn
-                    .toolbar {
-                        ToolbarItem(placement: sidebarLeadingPlacement) {
-                            if let onShowSidebar { NewsSidebarButton(action: onShowSidebar) }
-                        }
-                    }
-                    .navigationTitle(model.selectedList?.name ?? "Articles")
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 380, max: 520)
-            } detail: {
-                readerColumn
-                    .toolbar {
-                        ToolbarItem(placement: sidebarLeadingPlacement) {
-                            if let onShowSidebar { NewsSidebarButton(action: onShowSidebar) }
-                        }
-                    }
-            }
+            standaloneColumns
         }
     }
 
-    private var sidebarLeadingPlacement: ToolbarItemPlacement {
+    private var standaloneColumns: some View {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
+            listsColumn
+                .navigationTitle("Lists")
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
+                .toolbar { managementButton }
+        } content: {
+            articlesColumn
+            .navigationTitle(model.selectedList?.name ?? "Articles")
+            .navigationSplitViewColumnWidth(min: 260, ideal: 380, max: 520)
+        } detail: {
+            readerColumn
+        }
+    }
+
+    @ViewBuilder
+    private var pagedArticles: some View {
         #if os(iOS)
-        .topBarLeading
+        if let selected = model.selectedList {
+            TabView(selection: $listPage) {
+                ForEach(model.lists) { list in
+                    Group {
+                        if list.uri == listPage, list.uri == model.selectedList?.uri {
+                            articlesColumn
+                        } else {
+                            ProgressView("Loading Articles")
+                        }
+                    }
+                    .tag(list.uri)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onAppear { listPage = selected.uri }
+            .task(id: listPage) {
+                guard let list = model.lists.first(where: { $0.uri == listPage }),
+                      list.uri != model.selectedList?.uri else { return }
+                openedEntryID = nil
+                await model.select(list)
+            }
+        } else {
+            articlesColumn
+        }
         #else
-        .navigation
+        articlesColumn
+        #endif
+    }
+
+    private var profilePlacement: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarTrailing
+        #else
+        .primaryAction
         #endif
     }
 
     @ToolbarContentBuilder
     private var managementButton: some ToolbarContent {
-        ToolbarItem(placement: sidebarLeadingPlacement) {
-            if let onShowSidebar { NewsSidebarButton(action: onShowSidebar) }
+        if showsProfileButton && !usesExternalSidebar {
+            ToolbarItem(placement: profilePlacement) {
+                Button { isProfilePresented = true } label: { ViewerProfileAvatar(size: 30) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Profile")
+            }
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Manage Lists", systemImage: "plus") { showingManagement = true }

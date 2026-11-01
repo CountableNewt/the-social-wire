@@ -17,6 +17,7 @@ import { rkeyFromURI } from "@/lib/pdsClient";
 import { SidebarMenuItem, SidebarMenuSub } from "@/components/ui/sidebar";
 
 export type SidebarFoldersSectionProps = {
+  inline?: boolean;
   folders: RepoRecord<FolderRecord>[];
   folderMap: Map<string, DiscoveredPublication[]>;
   foldersListLoading: boolean;
@@ -33,6 +34,7 @@ export type SidebarFoldersSectionProps = {
 };
 
 function SidebarFoldersSectionInner({
+  inline = false,
   folders,
   folderMap,
   foldersListLoading,
@@ -47,6 +49,46 @@ function SidebarFoldersSectionInner({
   publicationUnreadCounts,
   allFolderedPublicationsForBulk,
 }: SidebarFoldersSectionProps) {
+  const entries = (
+    <>
+      {foldersListLoading ? (
+        <SidebarSubMenuSkeletonRows count={2} />
+      ) : (
+        folders.map((f) => {
+          const rkey = rkeyFromURI(f.uri);
+          const expandKey = folderExpandKey(rkey);
+          return (
+            <FolderBranch
+              key={f.uri}
+              expandKey={expandKey}
+              folderUri={f.uri}
+              folder={f.value}
+              isActive={
+                selectedFolderUri === f.uri || selectedFolderUri === rkey
+              }
+              expanded={effectiveExpandedKeys.has(expandKey)}
+              onToggleExpanded={() => onToggleFolder(expandKey)}
+              onSelectFolder={() => onSelectFolder(f.uri, rkey)}
+              publications={folderMap.get(rkey) ?? []}
+              emptyLabel="No publications in this folder."
+              selectedPubId={selectedPubId}
+              onSelectPub={onSelectPub}
+              folders={folders}
+              prefsMap={prefsMap}
+              sidebarTab="subscribed"
+              publicationUnreadCounts={publicationUnreadCounts}
+              publicationsLoading={folderPublicationsLoading}
+            />
+          );
+        })
+      )}
+      <SidebarMenuItem>
+        <NewFolderDialog />
+      </SidebarMenuItem>
+    </>
+  );
+  if (inline) return entries;
+
   return (
     <SidebarMenuItem>
       <SidebarReadBulkMenuWrap
@@ -63,40 +105,7 @@ function SidebarFoldersSectionInner({
         </div>
       </SidebarReadBulkMenuWrap>
       <SidebarMenuSub aria-label="Folders">
-        {foldersListLoading ? (
-          <SidebarSubMenuSkeletonRows count={2} />
-        ) : (
-          folders.map((f) => {
-            const rkey = rkeyFromURI(f.uri);
-            const expandKey = folderExpandKey(rkey);
-            return (
-              <FolderBranch
-                key={f.uri}
-                expandKey={expandKey}
-                folderUri={f.uri}
-                folder={f.value}
-                isActive={
-                  selectedFolderUri === f.uri || selectedFolderUri === rkey
-                }
-                expanded={effectiveExpandedKeys.has(expandKey)}
-                onToggleExpanded={() => onToggleFolder(expandKey)}
-                onSelectFolder={() => onSelectFolder(f.uri, rkey)}
-                publications={folderMap.get(rkey) ?? []}
-                emptyLabel="No publications in this folder."
-                selectedPubId={selectedPubId}
-                onSelectPub={onSelectPub}
-                folders={folders}
-                prefsMap={prefsMap}
-                sidebarTab="subscribed"
-                publicationUnreadCounts={publicationUnreadCounts}
-                publicationsLoading={folderPublicationsLoading}
-              />
-            );
-          })
-        )}
-        <SidebarMenuItem>
-          <NewFolderDialog />
-        </SidebarMenuItem>
+        {entries}
       </SidebarMenuSub>
     </SidebarMenuItem>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { algorithmicFeedsEnabled, isAlgorithmicFeed } from "@/lib/algorithmicFeeds";
 import { Switch } from "@/components/ui/switch";
 import type { FeedDisplayPreferences } from "@/lib/feedPreferences";
 
@@ -23,7 +24,7 @@ export function DiscoveryFeedDisplaySettings({
   isPending,
   onVisibilityChange,
 }: DiscoveryFeedDisplaySettingsProps) {
-  return feeds.map(({ id, label, preference }) => (
+  return feeds.filter(({ id }) => algorithmicFeedsEnabled() || !isAlgorithmicFeed(id)).map(({ id, label, preference }) => (
     <div
       key={id}
       className="grid min-h-12 grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center py-2 text-sm"

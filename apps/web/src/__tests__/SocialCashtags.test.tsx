@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, expect, it, mock } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SocialCashtags } from "@/components/Social/SocialCashtags";
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
 const oldFlag = process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED;
 const oldObserver = Object.getOwnPropertyDescriptor(globalThis, "IntersectionObserver");
 const oldMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
 let intersect: IntersectionObserverCallback;
 let reduce: boolean;
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true";
   process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED = "true";
   reduce = false;
   document.documentElement.classList.remove("dark");
@@ -19,6 +21,8 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "IntersectionObserver", { configurable: true, value: Observer });
 });
 afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
   cleanup();
   if (oldFlag === undefined) delete process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED; else process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED = oldFlag;
   if (oldObserver) Object.defineProperty(globalThis, "IntersectionObserver", oldObserver); else Reflect.deleteProperty(globalThis, "IntersectionObserver");
@@ -57,4 +61,10 @@ it("keeps provider interactions from opening the containing post", async () => {
   await act(async () => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
   fireEvent.click(view.container.querySelector("tv-ticker-tape")!);
   expect(open).not.toHaveBeenCalled();
+});
+
+it("does not load Finance widgets while algorithmic feeds are suspended", () => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "false";
+  const { container } = render(<SocialCashtags record={record} />);
+  expect(container.childElementCount).toBe(0);
 });

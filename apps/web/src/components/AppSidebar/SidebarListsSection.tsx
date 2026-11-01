@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Plus, Search } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
+  SidebarMenuSub,
 } from "@/components/ui/sidebar";
 import { SearchStandardReaderListsDialog } from "./SearchStandardReaderListsDialog";
 import { StandardReaderListRow } from "./StandardReaderListRow";
@@ -20,6 +21,7 @@ import type { StandardReaderListPublication } from "@/lib/standardReaderListsCli
 import type { StandardReaderList } from "@/lib/standardReaderListsClient";
 
 export type SidebarListsSectionProps = {
+  selectedPublications?: ReactNode;
   lists: StandardReaderList[];
   creatorResults: StandardReaderList[];
   selectedUri: string | null;
@@ -41,6 +43,7 @@ export type SidebarListsSectionProps = {
 const iconButtonClass =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 export function SidebarListsSection({
+  selectedPublications,
   lists,
   creatorResults,
   selectedUri,
@@ -178,28 +181,36 @@ export function SidebarListsSection({
           </SidebarMenuItem>
         ) : null}
         {lists.map((list) => (
-          <StandardReaderListRow
-            key={list.uri}
-            list={list}
-            selected={selectedUri === list.uri}
-            saving={saving}
-            onSelect={onSelect}
-            onRequestRemove={(uri) => setConfirmation({ uri, kind: "remove" })}
-            onRequestDelete={
-              onDelete
-                ? (uri) => setConfirmation({ uri, kind: "delete" })
-                : undefined
-            }
-            onCopy={async (url) => {
-              setCopyStatus(null);
-              const success = await run(async () => {
-                if (!navigator.clipboard?.writeText)
-                  throw new Error("Couldn't Copy This Link. Try Again.");
-                await navigator.clipboard.writeText(url);
-              });
-              if (success) setCopyStatus("List Link Copied.");
-            }}
-          />
+          <Fragment key={list.uri}>
+            <StandardReaderListRow
+              list={list}
+              selected={selectedUri === list.uri}
+              saving={saving}
+              onSelect={onSelect}
+              onRequestRemove={(uri) => setConfirmation({ uri, kind: "remove" })}
+              onRequestDelete={
+                onDelete
+                  ? (uri) => setConfirmation({ uri, kind: "delete" })
+                  : undefined
+              }
+              onCopy={async (url) => {
+                setCopyStatus(null);
+                const success = await run(async () => {
+                  if (!navigator.clipboard?.writeText)
+                    throw new Error("Couldn't Copy This Link. Try Again.");
+                  await navigator.clipboard.writeText(url);
+                });
+                if (success) setCopyStatus("List Link Copied.");
+              }}
+            />
+            {selectedUri === list.uri && selectedPublications ? (
+              <SidebarMenuItem>
+                <SidebarMenuSub className="pl-4" aria-label={`${list.name} Publications`}>
+                  {selectedPublications}
+                </SidebarMenuSub>
+              </SidebarMenuItem>
+            ) : null}
+          </Fragment>
         ))}
       </SidebarMenu>
       {confirmation ? (

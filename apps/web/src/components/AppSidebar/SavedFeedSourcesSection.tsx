@@ -11,10 +11,12 @@ import {
 import type { SavedFeedSource } from "@/lib/savedFeedSources";
 
 export function SavedFeedSourcesSection({
+  showHeading = true,
   sources,
   selectedSource,
   onSelectSource,
 }: {
+  showHeading?: boolean;
   sources: SavedFeedSource[];
   selectedSource: string | null;
   onSelectSource: (sourceKey: string) => void;
@@ -22,7 +24,7 @@ export function SavedFeedSourcesSection({
   if (sources.length === 0) return null;
   return (
     <>
-      <SidebarGroupLabel>Publications</SidebarGroupLabel>
+      {showHeading ? <SidebarGroupLabel>Publications</SidebarGroupLabel> : null}
       <SidebarMenu aria-label="Saved Feed Publications">
         {sources.map((source) => (
           <SidebarMenuItem key={source.key}>

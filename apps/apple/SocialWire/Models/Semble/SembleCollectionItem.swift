@@ -36,6 +36,11 @@ struct SembleCollectionItem: Codable, Equatable, Identifiable, Sendable {
         unlinkAvailable = try container.decodeIfPresent(Bool.self, forKey: .unlinkAvailable) ?? false
     }
 
+    var sourceHost: String? {
+        guard let url, let host = URL(string: url)?.host?.lowercased() else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if let url, let host = URL(string: url)?.host { return host }

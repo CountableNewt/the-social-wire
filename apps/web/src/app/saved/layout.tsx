@@ -58,7 +58,7 @@ export default function SavedLayout({ children }: { children: React.ReactNode })
           />
         </Suspense>
         <SidebarInset
-          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} ${usingSemble ? "" : "lg:mr-64"}`}
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} ${usingSemble ? "" : "xl:mr-64"}`}
         >
           <FeedHeader title={title} />
           <main data-feed-header-shell="true" className="flex min-h-0 flex-1 overflow-hidden">{children}</main>

@@ -13,10 +13,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
   SidebarResizeHandle,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { floatingSidebarClassName } from "@/components/shared/floatingSidebarStyles";
+import { FloatingChromeSurface } from "@/components/shared/FloatingChromeSurface";
+import { floatingSidebarLayoutClassName } from "@/components/shared/floatingSidebarStyles";
 import { Avatar } from "@/components/shared/Avatar";
 import { SidebarFoldersSection } from "./SidebarFoldersSection";
 import { SidebarListPublicationsSection } from "./SidebarListPublicationsSection";
@@ -78,6 +80,7 @@ import { useDeferredFeedCatalogs } from "@/hooks/useDeferredFeedCatalogs";
 import { useFinanceCatalog } from "@/hooks/useFinanceCatalog";
 import { topicNavigationIsVisible } from "@/lib/topicNavigationVisibility";
 import { useSportsCatalog } from "@/hooks/useSportsCatalog";
+import { algorithmicFeedsEnabled } from "@/lib/algorithmicFeeds";
 import { useWireFeedCatalog } from "@/hooks/useWireFeed";
 import {
   loadReaderFeedSelection,
@@ -185,10 +188,11 @@ export function AppSidebar({
   const dummyCatalogs = isDummyReaderDataEnabled();
   const deferredCatalogsReady = useDeferredFeedCatalogs(!dummyCatalogs) || dummyCatalogs;
   const selectedEditorialFeed = pathname.startsWith("/read") ? searchParams.get("feed") : null;
-  const wireCatalog = useWireFeedCatalog({ enabled: deferredCatalogsReady || selectedEditorialFeed === "wire" });
-  const sportsCatalog = useSportsCatalog({ enabled: deferredCatalogsReady || selectedEditorialFeed === "sports" });
-  const financeCatalog = useFinanceCatalog({ enabled: deferredCatalogsReady || selectedEditorialFeed === "finance" });
+  const wireCatalog = useWireFeedCatalog({ enabled: algorithmicFeedsEnabled() && (deferredCatalogsReady || selectedEditorialFeed === "wire") });
+  const sportsCatalog = useSportsCatalog({ enabled: algorithmicFeedsEnabled() && (deferredCatalogsReady || selectedEditorialFeed === "sports") });
+  const financeCatalog = useFinanceCatalog({ enabled: algorithmicFeedsEnabled() && (deferredCatalogsReady || selectedEditorialFeed === "finance") });
   const wireNavigationEnabled =
+    algorithmicFeedsEnabled() &&
     feedPreferences.showWire &&
     wireCatalog.data?.enabled === true &&
     wireCatalog.data.available === true;
@@ -199,7 +203,7 @@ export function AppSidebar({
         : [],
     [publicationSidebarProjection],
   );
-  const savedSources = useMemo(
+  const activeSavedSources = useMemo(
     () =>
       savedFeedSources(
         usingSemble
@@ -210,6 +214,14 @@ export function AppSidebar({
         savedSidebarRows,
       ),
     [archivedLinks, pathname, savedLinks, savedSidebarRows, usingSemble],
+  );
+  const readLaterSources = useMemo(
+    () => savedFeedSources(usingSemble ? [] : savedLinks, savedSidebarRows),
+    [savedLinks, savedSidebarRows, usingSemble],
+  );
+  const archiveSources = useMemo(
+    () => savedFeedSources(usingSemble ? [] : archivedLinks, savedSidebarRows),
+    [archivedLinks, savedSidebarRows, usingSemble],
   );
   const selectedSavedSource = searchParams.get("source");
   const selectedFolderRkey = searchParams.get("folder");
@@ -466,16 +478,20 @@ export function AppSidebar({
       ? feedPreferences.visibleFeeds
       : DEFAULT_FEED_DISPLAY_PREFERENCES.visibleFeeds,
   );
+  if (!algorithmicFeedsEnabled()) {
+    for (const feed of ["wire", "circle", "finance", "sports"] as const) visible.delete(feed);
+  }
   const displayPreferences = clientHydrated ? feedPreferences : DEFAULT_FEED_DISPLAY_PREFERENCES;
-  if (displayPreferences.showWire) visible.add("wire");
-  if (displayPreferences.showCircle) visible.add("circle");
-  if (topicNavigationIsVisible(displayPreferences.showSports, sportsCatalog.confirmedEnabled)) visible.add("sports");
-  if (topicNavigationIsVisible(displayPreferences.showFinance, financeCatalog.data?.enabled)) visible.add("finance");
+  if (algorithmicFeedsEnabled() && displayPreferences.showWire) visible.add("wire");
+  if (algorithmicFeedsEnabled() && displayPreferences.showCircle) visible.add("circle");
+  if (algorithmicFeedsEnabled() && topicNavigationIsVisible(displayPreferences.showSports, sportsCatalog.confirmedEnabled)) visible.add("sports");
+  if (algorithmicFeedsEnabled() && topicNavigationIsVisible(displayPreferences.showFinance, financeCatalog.data?.enabled)) visible.add("finance");
 
   if (displayPreferences.showPodcasts && podcastsEnabled()) visible.add("podcasts");
   if (displayPreferences.showSocial) visible.add("social");
 
   const selectTopLevelFeed = (feed: ReaderNavigationFeed) => {
+    setOpenMobile(false);
     if (feed === "social") { setOpenMobile(false); router.push("/social"); return; }
     if (feed === "podcasts") { setOpenMobile(false); router.push("/podcasts"); return; }
     setSelectedFolderUri(null);
@@ -518,11 +534,116 @@ export function AppSidebar({
     }
   }, [currentFeed, setPublicationTab]);
 
+  const selectPublication = (publicationId: string) => {
+    setOpenMobile(false);
+    onSelectPub(publicationId);
+  };
+  const subscribedSources = (
+    <>
+      <SidebarFoldersSection
+        inline={!desktopPublicationRail}
+        folders={folders}
+        folderMap={folderMap}
+        foldersListLoading={foldersListLoading}
+        folderPublicationsLoading={folderPublicationsLoading}
+        effectiveExpandedKeys={effectiveExpandedKeys}
+        selectedFolderUri={currentFeed === "subscribed" ? searchParams.get("folder") ?? selectedFolderUri : null}
+        selectedPubId={selectedPubId}
+        onSelectPub={publicationId => {
+          setPublicationTab("subscribed");
+          selectPublication(publicationId);
+        }}
+        onToggleFolder={toggleSidebarExpandedKey}
+        onSelectFolder={(folderUri, folderRkey) => {
+          setOpenMobile(false);
+          setPublicationTab("subscribed");
+          setSelectedFolderUri(folderUri);
+          router.push(
+            `/read?folder=${encodeURIComponent(folderRkey)}`,
+          );
+        }}
+        prefsMap={prefsMap}
+        publicationUnreadCounts={publicationUnreadCounts}
+        allFolderedPublicationsForBulk={allFolderedPublicationsForBulk}
+      />
+      <SidebarPublicationsSection
+        inline={!desktopPublicationRail}
+        publications={unfolderedPubs}
+        publicationUnreadCounts={publicationUnreadCounts}
+        selectedPubId={selectedPubId}
+        onSelectPub={publicationId => {
+          setPublicationTab("subscribed");
+          selectPublication(publicationId);
+        }}
+        folders={folders}
+        prefsMap={prefsMap}
+        sidebarTab="subscribed"
+        listLoading={subscribedPublicationsLoading}
+        readBulkMarkAllReadConfirmation={
+          <>
+            This marks every cached article in Publications (sources not in a
+            folder) as read. Entries that have not been loaded yet stay unchanged
+            until you open them.
+          </>
+        }
+      />
+    </>
+  );
+  const followingSources = (
+    <SidebarPublicationsSection
+      inline={!desktopPublicationRail}
+      publications={followingTabPublications}
+      publicationUnreadCounts={publicationUnreadCounts}
+      selectedPubId={selectedPubId}
+      onSelectPub={publicationId => {
+        setPublicationTab("following");
+        selectPublication(publicationId);
+      }}
+      folders={folders}
+      prefsMap={prefsMap}
+      sidebarTab="following"
+      listLoading={followingPublicationsLoading}
+      readBulkMarkAllReadConfirmation={
+        <>
+          This marks every cached article from publications you follow as read.
+          Entries that have not been loaded yet stay unchanged until you open
+          them.
+        </>
+      }
+      gatewayMarkAllReadScopes={[{ kind: "following" }]}
+    />
+  );
+  const listSources = (
+    <SidebarListPublicationsSection
+      list={selectedList.data}
+      loading={selectedList.isPending}
+      error={selectedList.error instanceof Error ? selectedList.error.message : null}
+      selectedPubId={selectedPubId}
+      onSelectPub={selectPublication}
+      onRetry={() => { void selectedList.refetch(); }}
+    />
+  );
+  const savedSourceTree = (archive: boolean) => (
+    <SidebarMenuSub className="pl-4" aria-label={archive ? "Archive Publications" : "Read Later Publications"}>
+      <SidebarMenuItem>
+        <SavedFeedSourcesSection
+          sources={archive ? archiveSources : readLaterSources}
+          selectedSource={(archive ? pathname.startsWith("/archive") : pathname.startsWith("/saved")) ? selectedSavedSource : null}
+          showHeading={false}
+          onSelectSource={sourceKey => {
+            setOpenMobile(false);
+            router.push(`${archive ? "/archive" : "/saved"}?source=${encodeURIComponent(sourceKey)}`);
+          }}
+        />
+      </SidebarMenuItem>
+    </SidebarMenuSub>
+  );
+
   const publicationsRail = showPublicationsRail && (selectedListUri || (
         currentFeed !== "wire" &&
         currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts")) ? (
-        <div className={`${floatingSidebarClassName} mx-2 flex flex-col self-stretch lg:self-start gap-0 group-data-[collapsible=icon]:overflow-hidden lg:fixed lg:mx-0 lg:bottom-4 lg:right-4 lg:top-[calc(var(--environment-banner-height,0px)+1rem)] lg:z-30 lg:w-60 lg:h-auto lg:max-h-[calc(100svh-var(--environment-banner-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain`}>
-          <div className="hidden shrink-0 items-center px-2 pb-2 lg:flex">
+        <FloatingChromeSurface className={`${floatingSidebarLayoutClassName} mx-2 flex flex-col self-stretch xl:self-start gap-0 group-data-[collapsible=icon]:overflow-hidden xl:fixed xl:mx-0 xl:bottom-4 xl:right-4 xl:top-[calc(var(--environment-banner-height,0px)+1rem)] xl:z-30 xl:w-60 xl:h-auto xl:max-h-[calc(100svh-var(--environment-banner-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain`}>
+          <div className="hidden shrink-0 items-center px-2 pb-2 xl:flex">
             <p className="text-base font-bold text-sidebar-foreground">
               Publications
             </p>
@@ -537,18 +658,11 @@ export function AppSidebar({
             ) : null}
             <SidebarMenu className="gap-1">
               {selectedListUri ? (
-                <SidebarListPublicationsSection
-                  list={selectedList.data}
-                  loading={selectedList.isPending}
-                  error={selectedList.error instanceof Error ? selectedList.error.message : null}
-                  selectedPubId={selectedPubId}
-                  onSelectPub={(publicationId) => { setOpenMobile(false); onSelectPub(publicationId); }}
-                  onRetry={() => { void selectedList.refetch(); }}
-                />
+                listSources
               ) : pathname.startsWith("/saved") ||
               pathname.startsWith("/archive") ? (
                 <SavedFeedSourcesSection
-                  sources={savedSources}
+                  sources={activeSavedSources}
                   selectedSource={selectedSavedSource}
                   onSelectSource={(sourceKey) =>
                     router.push(
@@ -557,70 +671,13 @@ export function AppSidebar({
                   }
                 />
               ) : currentFeed === "subscribed" ? (
-                <>
-                  <SidebarFoldersSection
-                    folders={folders}
-                    folderMap={folderMap}
-                    foldersListLoading={foldersListLoading}
-                    folderPublicationsLoading={folderPublicationsLoading}
-                    effectiveExpandedKeys={effectiveExpandedKeys}
-                    selectedFolderUri={
-                      searchParams.get("folder") ?? selectedFolderUri
-                    }
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    onToggleFolder={toggleSidebarExpandedKey}
-                    onSelectFolder={(folderUri, folderRkey) => {
-                      setSelectedFolderUri(folderUri);
-                      router.push(
-                        `/read?folder=${encodeURIComponent(folderRkey)}`,
-                      );
-                    }}
-                    prefsMap={prefsMap}
-                    publicationUnreadCounts={publicationUnreadCounts}
-                    allFolderedPublicationsForBulk={allFolderedPublicationsForBulk}
-                  />
-                  <SidebarPublicationsSection
-                    publications={unfolderedPubs}
-                    publicationUnreadCounts={publicationUnreadCounts}
-                    selectedPubId={selectedPubId}
-                    onSelectPub={onSelectPub}
-                    folders={folders}
-                    prefsMap={prefsMap}
-                    sidebarTab="subscribed"
-                    listLoading={subscribedPublicationsLoading}
-                    readBulkMarkAllReadConfirmation={
-                      <>
-                        This marks every cached article in Publications (sources not in a
-                        folder) as read. Entries that have not been loaded yet stay unchanged
-                        until you open them.
-                      </>
-                    }
-                  />
-                </>
+                subscribedSources
               ) : (
-                <SidebarPublicationsSection
-                  publications={followingTabPublications}
-                  publicationUnreadCounts={publicationUnreadCounts}
-                  selectedPubId={selectedPubId}
-                  onSelectPub={onSelectPub}
-                  folders={folders}
-                  prefsMap={prefsMap}
-                  sidebarTab="following"
-                  listLoading={followingPublicationsLoading}
-                  readBulkMarkAllReadConfirmation={
-                    <>
-                      This marks every cached article from publications you follow as read.
-                      Entries that have not been loaded yet stay unchanged until you open
-                      them.
-                    </>
-                  }
-                  gatewayMarkAllReadScopes={[{ kind: "following" }]}
-                />
+                followingSources
               )}
             </SidebarMenu>
           </SidebarGroup>
-        </div>
+        </FloatingChromeSurface>
         ) : null;
 
   return (
@@ -633,7 +690,7 @@ export function AppSidebar({
 
       <SidebarContent className="overflow-y-auto overflow-x-hidden">
         <div className="shrink-0">
-          {visible.has("readLater") || visible.has("archive") ? (
+          {visible.has("readLater") || (!usingSemble && visible.has("archive")) ? (
           <SidebarGroup className="pb-1">
             <SidebarGroupLabel>
               {usingSemble
@@ -660,14 +717,15 @@ export function AppSidebar({
                   <span>
                     {usingSemble
                       ? configuredReadLater.sembleConnection?.collectionName || "Saved"
-                      : "Saved"}
+                      : "Read Later"}
                   </span>
                   <ReadLaterSidebarBadge
                     count={displayedReadLaterUnread}
                   />
                 </SidebarMenuButton>
+                {!desktopPublicationRail && !usingSemble ? savedSourceTree(false) : null}
               </SidebarMenuItem> : null}
-              {visible.has("archive") ? <SidebarMenuItem>
+              {!usingSemble && visible.has("archive") ? <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
                   tooltip="Archived Read Later Links"
@@ -681,6 +739,7 @@ export function AppSidebar({
                     count={displayedArchiveUnread}
                   />
                 </SidebarMenuButton>
+                {!desktopPublicationRail ? savedSourceTree(true) : null}
               </SidebarMenuItem> : null}
             </SidebarMenu>
           </SidebarGroup>
@@ -695,6 +754,8 @@ export function AppSidebar({
           /> : null}
           <SidebarAudioSection enabled={visible.has("podcasts")} active={currentFeed === "podcasts"} onSelect={() => selectTopLevelFeed("podcasts")} />
           <PublicationTabs
+            subscribedChildren={!desktopPublicationRail ? subscribedSources : undefined}
+            followingChildren={!desktopPublicationRail ? followingSources : undefined}
             visibleFeeds={visible}
             activeTab={
               currentFeed === "subscribed" || currentFeed === "following"
@@ -714,6 +775,8 @@ export function AppSidebar({
             onCircleSelect={() => selectTopLevelFeed("circle")}
           />
           <SidebarTopicsSection
+            compact={!desktopPublicationRail}
+            onNavigate={href => { setOpenMobile(false); router.push(href); }}
             visibleFeeds={visible}
             sportsEnabled={visible.has("sports")}
             sportsActive={currentFeed === "sports"}
@@ -724,6 +787,7 @@ export function AppSidebar({
           <SidebarToolsSection pathname={pathname} onNavigate={href => { setOpenMobile(false); router.push(href); }} />
           <SidebarListsSection
             key={session?.did || "signed-out"}
+            selectedPublications={!desktopPublicationRail && selectedListUri ? listSources : undefined}
             lists={readerLists.lists}
             creatorResults={creatorResults}
             selectedUri={selectedListUri}
@@ -755,7 +819,6 @@ export function AppSidebar({
             onRefresh={readerLists.refresh}
           />
         </div>
-        {!desktopPublicationRail ? publicationsRail : null}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border/70 px-2 py-3">
@@ -821,12 +884,12 @@ export function AppSidebar({
       currentFeed={currentFeed}
       listsActive={!!selectedListUri}
       onOpenLists={() => setOpenMobile(true)}
-      visibleFeeds={visible}
+      visibleFeeds={usingSemble ? new Set([...visible].filter(feed => feed !== "archive")) : visible}
       onSelect={selectTopLevelFeed}
       readLaterLabel={
         usingSemble
           ? configuredReadLater.sembleConnection?.collectionName || "Saved"
-          : "Saved"
+          : "Read Later"
       }
     />
     </>

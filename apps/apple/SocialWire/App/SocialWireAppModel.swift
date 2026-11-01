@@ -16,12 +16,9 @@ final class SocialWireAppModel {
     let userInputFeedbackService: UserInputFeedbackService
     private let rss = RSSService()
     private let gateway: SocialWireGatewayClient
-    let podcasts: PodcastLibraryModel
     let sportsTopic: SportsTopicModel
     let standardReaderLists: StandardReaderListsModel
-    private(set) var social: SocialWorkspaceModel
-    @ObservationIgnored private var socialSessionScope: SocialSessionScope
-    @ObservationIgnored private let socialTransport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    @ObservationIgnored private var readerSessionIdentity: ReaderSessionIdentity
     let readStateSync: PDSReadStateSyncService
     private let latrGateway: LatrGatewayClient
     private var readerCacheCoordinator: ReaderCacheCoordinator?
@@ -62,6 +59,9 @@ final class SocialWireAppModel {
     var feedSelection: FeedSelection = .topLevel(.subscribed)
     var publicationSidebarTab: PublicationSidebarTab = .subscribed
     var readerListSource: ReaderListSource = .subscribed
+    var sidebarReadLaterFeedExpanded = true
+    var sidebarFinanceFeedExpanded = true
+    var sidebarSportsFeedExpanded = true
     var sidebarSubscribedFeedExpanded = false
     var sidebarFollowingFeedExpanded = false
     var sidebarFoldersSectionExpanded = false
@@ -244,35 +244,31 @@ final class SocialWireAppModel {
         publicationsService = PublicationService(xrpc: xrpc)
         userInputFeedbackService = UserInputFeedbackService(auth: authService, xrpc: xrpc)
         gateway = SocialWireGatewayClient(auth: authService, urlSession: gatewayURLSession, transport: gatewayTransport)
-        let socialTransport = xrpcTransport ?? { try await URLSession.shared.data(for: $0) }
-        self.socialTransport = socialTransport
-        let socialScope = SocialSessionScope(viewerDID: authService.session?.did, auth: authService)
-        socialSessionScope = socialScope
-        let socialXRPC = XRPCClient(auth: authService, resolver: resolver, transport: socialScope.transport(using: socialTransport))
-        social = SocialWorkspaceModel(xrpc: socialXRPC, publicationService: PublicationService(xrpc: socialXRPC), gateway: gateway, viewerDID: authService.session?.did)
-        podcasts = PodcastLibraryModel(gateway: gateway, xrpc: xrpc)
+        readerSessionIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         sportsTopic = SportsTopicModel(gateway: gateway, xrpc: xrpc)
         standardReaderLists = StandardReaderListsModel(gateway: gateway, xrpc: xrpc)
         readStateSync = PDSReadStateSyncService(xrpc: xrpc, gateway: gateway)
         latrGateway = LatrGatewayClient(auth: authService)
         authService.setSessionChangeHandler { [weak self] session in
-            if self?.socialSessionScope.viewerDID != session?.did {
-                self?.invalidateReaderRequests()
-                self?.sidebarRefreshRevision += 1
-                self?.restoredFeedViewerDID = nil
-                self?.pendingRestoredFeedSelection = nil
-                self?.pendingRestorationRevision = nil
-                self?.bootstrapCoordinator.reset()
-                self?.isLoading = false
-                self?.sidebarFetching = false
-                self?.folderPublicationsLoading = false
+            if let self, !self.readerSessionIdentity.matches(session: session, loginIdentity: self.authService.loginIdentity) {
+                self.invalidateReaderRequests()
+                self.sidebarRefreshRevision += 1
+                self.restoredFeedViewerDID = nil
+                self.pendingRestoredFeedSelection = nil
+                self.pendingRestorationRevision = nil
+                self.bootstrapCoordinator.reset()
+                self.isLoading = false
+                self.sidebarFetching = false
+                self.folderPublicationsLoading = false
             }
             self?.articleSocialStateContextID = UUID()
             self?.articleSocialStateLoadingKeys = []
             self?.isSignedIn = session != nil
             self?.sportsTopic.bind(viewer: session?.did)
             self?.standardReaderLists.bind(viewer: session?.did)
-            self?.bindSocialWorkspace(viewerDID: session?.did)
+            if let self {
+                self.readerSessionIdentity = ReaderSessionIdentity(session: session, loginIdentity: self.authService.loginIdentity)
+            }
         }
         readerFilter = ReaderFilter.loadSaved()
         applyReaderListSource(initialReaderListSource ?? ReaderListSourceStorage.load(), persist: false)
@@ -336,7 +332,7 @@ final class SocialWireAppModel {
 
     var visibleReaderListSources: [ReaderListSource] {
         var sources = feedPreferences.visibleFeeds
-        if feedPreferences.showWire && wireCatalog?.isAvailable == true {
+        if NewsPrimaryFeed.algorithmicFeedsEnabled && feedPreferences.showWire && wireCatalog?.isAvailable == true {
             sources.insert(.wire, at: 0)
         }
         return sources
@@ -851,17 +847,6 @@ final class SocialWireAppModel {
         }
     }
 
-    private func bindSocialWorkspace(viewerDID: String?) {
-        if socialSessionScope.viewerDID != viewerDID {
-            socialSessionScope.invalidate()
-            let scope = SocialSessionScope(viewerDID: viewerDID, auth: authService)
-            socialSessionScope = scope
-            let client = XRPCClient(auth: authService, resolver: resolver, transport: scope.transport(using: socialTransport))
-            social = SocialWorkspaceModel(xrpc: client, publicationService: PublicationService(xrpc: client), gateway: gateway, viewerDID: viewerDID)
-        }
-        social.proEntitlement.bind(viewerDID: viewerDID)
-    }
-
     func signOut() {
         invalidateReaderRequests()
         sidebarRefreshRevision += 1
@@ -959,6 +944,9 @@ final class SocialWireAppModel {
         cachedFolderSections = nil
         cachedFolderRows = nil
         sidebarExpandedKeysViewerDid = nil
+        sidebarReadLaterFeedExpanded = true
+        sidebarFinanceFeedExpanded = true
+        sidebarSportsFeedExpanded = true
         sidebarSubscribedFeedExpanded = false
         sidebarFollowingFeedExpanded = false
         sidebarFoldersSectionExpanded = false
@@ -972,7 +960,31 @@ final class SocialWireAppModel {
         rebuildSidebarTreeViewModel()
     }
 
+    subscript(sidebarFeedExpanded slot: NewsTabSlot) -> Bool {
+        get {
+            switch slot {
+            case .readLater: sidebarReadLaterFeedExpanded
+            case .subscribed: sidebarSubscribedFeedExpanded
+            case .finance: sidebarFinanceFeedExpanded
+            case .sports: sidebarSportsFeedExpanded
+            default: false
+            }
+        }
+        set {
+            if let viewerDID { loadSidebarExpandedKeys(for: viewerDID) }
+            switch slot {
+            case .readLater: sidebarReadLaterFeedExpanded = newValue
+            case .subscribed: sidebarSubscribedFeedExpanded = newValue
+            case .finance: sidebarFinanceFeedExpanded = newValue
+            case .sports: sidebarSportsFeedExpanded = newValue
+            default: return
+            }
+            persistSidebarExpandedKeysIfLoaded()
+        }
+    }
+
     func toggleSidebarFolderExpanded(rkey: String) {
+        if let viewerDID { loadSidebarExpandedKeys(for: viewerDID) }
         if sidebarExpandedFolderRkeys.contains(rkey) {
             sidebarExpandedFolderRkeys.remove(rkey)
         } else {
@@ -986,6 +998,8 @@ final class SocialWireAppModel {
     }
 
     private func loadSidebarExpandedKeys(for viewerDid: String) {
+        // Refreshing feed data must not overwrite the current disclosure choices.
+        guard sidebarExpandedKeysViewerDid != viewerDid else { return }
         isLoadingSidebarExpandedKeys = true
         defer { isLoadingSidebarExpandedKeys = false }
 
@@ -997,6 +1011,9 @@ final class SocialWireAppModel {
         sidebarSubscribedPublicationsSectionExpanded = snapshot.subscribedPublicationsSectionExpanded
         sidebarFollowingPublicationsSectionExpanded = snapshot.followingPublicationsSectionExpanded
         sidebarExpandedFolderRkeys = snapshot.expandedFolderRkeys
+        sidebarReadLaterFeedExpanded = snapshot.readLaterFeedExpanded
+        sidebarFinanceFeedExpanded = snapshot.financeFeedExpanded
+        sidebarSportsFeedExpanded = snapshot.sportsFeedExpanded
     }
 
     private func persistSidebarExpandedKeysIfLoaded() {
@@ -1011,7 +1028,10 @@ final class SocialWireAppModel {
                 foldersSectionExpanded: sidebarFoldersSectionExpanded,
                 subscribedPublicationsSectionExpanded: sidebarSubscribedPublicationsSectionExpanded,
                 followingPublicationsSectionExpanded: sidebarFollowingPublicationsSectionExpanded,
-                expandedFolderRkeys: sidebarExpandedFolderRkeys
+                expandedFolderRkeys: sidebarExpandedFolderRkeys,
+                readLaterFeedExpanded: sidebarReadLaterFeedExpanded,
+                financeFeedExpanded: sidebarFinanceFeedExpanded,
+                sportsFeedExpanded: sidebarSportsFeedExpanded
             )
         )
     }
@@ -1279,6 +1299,7 @@ final class SocialWireAppModel {
     }
 
     func refreshWireCatalog() async {
+        guard NewsPrimaryFeed.algorithmicFeedsEnabled else { return }
         let viewer = viewerDID
         do {
             let catalog = try await gateway.fetchFeedCatalog()
@@ -1496,6 +1517,7 @@ final class SocialWireAppModel {
     }
 
     func refreshCircleCatalog() async {
+        guard NewsPrimaryFeed.algorithmicFeedsEnabled else { return }
         guard isSignedIn else {
             circleCatalog = nil
             return
@@ -1656,13 +1678,12 @@ final class SocialWireAppModel {
 
     var visiblePrimaryTabFeedChoices: [NewsPrimaryFeed] {
         NewsPrimaryFeed.allCases.filter { feed in
-            switch feed {
+            guard feed.isAvailable else { return false }
+            return switch feed {
             case .wire:
                 feedPreferences.showWire && wireCatalog?.isAvailable != false
             case .finance:
                 feedPreferences.showFinance && wireCatalog?.financeAvailable != false
-            case .podcasts:
-                feedPreferences.showPodcasts && podcasts.available
             case .sports:
                 feedPreferences.showSports && wireCatalog?.sportsAvailable != false
             case .circle:
@@ -1707,9 +1728,6 @@ final class SocialWireAppModel {
         await setDiscoveryFeedVisible(visible, keyPath: \.showSocial)
     }
 
-    func setPodcastsVisible(_ visible: Bool) async {
-        await setDiscoveryFeedVisible(visible, keyPath: \.showPodcasts)
-    }
 
     func setSportsVisible(_ visible: Bool) async {
         await setDiscoveryFeedVisible(visible, keyPath: \.showSports)
@@ -1764,6 +1782,7 @@ final class SocialWireAppModel {
     }
 
     func loadFinanceFeeds() async {
+        guard NewsPrimaryFeed.algorithmicFeedsEnabled else { return }
         guard let viewerDID else { return }
         let context = financeContextEpoch
         do {
@@ -3733,9 +3752,16 @@ final class SocialWireAppModel {
     }
 
     var currentSavedFeedSources: [SavedFeedSource] {
+        savedFeedSources(for: readerListSource)
+    }
+
+    func savedFeedSources(for source: ReaderListSource) -> [SavedFeedSource] {
+        if isSembleReadLaterEnabled {
+            return source == .readLater ? sembleFeedSources : []
+        }
         var models: [String: SavedLinkPublicationChipModel] = [:]
         var counts: [String: Int] = [:]
-        for save in currentSavedLinks {
+        for save in source == .archive ? archivedSavedLinks : savedLinks {
             guard let key = savedFeedSourceKey(for: save),
                   let model = resolvedSavedLinkPublicationChip(for: save)
             else { continue }

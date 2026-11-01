@@ -4,7 +4,6 @@ enum NewsTabSlot: Hashable {
     case wire
     case circle
     case finance
-    case podcasts
     case sports
     case subscribed
     case following
@@ -17,7 +16,6 @@ enum NewsTabSlot: Hashable {
         case .wire: self = .wire
         case .circle: self = .circle
         case .finance: self = .finance
-        case .podcasts: self = .podcasts
         case .sports: self = .sports
         case .subscribed: self = .subscribed
         case .following: self = .following
@@ -29,7 +27,6 @@ enum NewsTabSlot: Hashable {
         case .wire: .wire
         case .circle: .circle
         case .finance: .finance
-        case .podcasts: .podcasts
         case .sports: .sports
         case .subscribed: .subscribed
         case .following: .following
@@ -41,7 +38,7 @@ enum NewsTabSlot: Hashable {
         switch self {
         case .readLater: .readLater
         case .archive: .archive
-        case .wire, .circle, .finance, .podcasts, .sports, .subscribed, .following, .standardList: nil
+        case .wire, .circle, .finance, .sports, .subscribed, .following, .standardList: nil
         }
     }
 }

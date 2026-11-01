@@ -8,6 +8,7 @@ const FinanceExperience = dynamic(() => import("@/components/FinanceExperience")
 import { useEffect, useState } from "react";
 import { navigateTopicFeed } from "@/lib/topicFeedNavigation";
 import ReadPubPage from "./[...pubId]/ReadPubPage";
+import { algorithmicFeedsEnabled, availableReaderFeed } from "@/lib/algorithmicFeeds";
 import { useWireFeedCatalog } from "@/hooks/useWireFeed";
 import {
   isReaderFeedSelection,
@@ -28,8 +29,9 @@ function ReadIndexContent() {
   const router = useRouter();
   const list = params.get("list");
   const folder = params.get("folder");
-  const feed = params.get("feed");
-  const catalog = useWireFeedCatalog({ enabled: feed === "wire" });
+  const requestedFeed = params.get("feed");
+  const feed = availableReaderFeed(requestedFeed);
+  const catalog = useWireFeedCatalog({ enabled: algorithmicFeedsEnabled() && feed === "wire" });
   const [selectionState, setSelectionState] = useState<{
     loaded: boolean;
     feed: ReaderFeedSelection | null;
@@ -43,7 +45,11 @@ function ReadIndexContent() {
       }),
     );
   }, []);
-  const rememberedFeed = selectionState.feed;
+  const rememberedFeed = availableReaderFeed(selectionState.feed);
+
+  useEffect(() => {
+    if (!list && !folder && requestedFeed !== feed) router.replace(`/read?feed=${feed}`);
+  }, [requestedFeed, feed, list, folder, router]);
 
   useEffect(() => {
     if (!selectionState.loaded || list || folder || feed || !rememberedFeed) return;

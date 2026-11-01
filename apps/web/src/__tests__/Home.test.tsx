@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import Home from "@/app/page";
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
 const originalFlag = process.env.NEXT_PUBLIC_PODCASTS_ENABLED;
 afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
   cleanup();
   if (originalFlag === undefined) delete process.env.NEXT_PUBLIC_PODCASTS_ENABLED;
   else process.env.NEXT_PUBLIC_PODCASTS_ENABLED = originalFlag;
 });
 describe("Landing page feature availability", () => {
   it("features the live reader, topics, lists and enabled podcast listener", () => {
+    process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true";
     process.env.NEXT_PUBLIC_PODCASTS_ENABLED = "true";
     render(<Home />);
     const cards = screen.getAllByRole("article");
@@ -33,4 +37,11 @@ describe("Landing page feature availability", () => {
     expect(screen.getByRole("link", { name: "Continue with ATProto" }).getAttribute("href")).toBe("/login");
     expect(document.body.textContent).not.toContain("without duplicating rules");
   });
+});
+
+it("does not advertise suspended topics", () => {
+  delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  render(<Home />);
+  expect(screen.queryByRole("heading", { name: "Topics" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Follow Publications" })).toBeDefined();
 });

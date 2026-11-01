@@ -9,6 +9,13 @@ import * as ReadLaterPreferences from "@/hooks/useReadLaterPreferences";
 import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import { findReadLaterService } from "@/lib/readLaterServices";
 
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+beforeEach(() => { process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true"; });
+afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
+});
+
 const setHideFinanceCrypto = mock((hidden: boolean) => hidden);
 const setFeedVisible = mock(() => undefined);
 const setFeedUnreadCountVisible = mock(() => undefined);
@@ -77,4 +84,11 @@ test("Finance crypto control is available independently of feed visibility", () 
   expect(screen.getByRole("switch", { name: "Hide Crypto in Finance" }).getAttribute("aria-checked")).toBe("false");
   expect(screen.getByText("Exclude cryptocurrency stories and interests from Finance.")).toBeDefined();
   expect(setFeedVisible).not.toHaveBeenCalled();
+});
+
+test("hides Finance preferences during suspension", () => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "false";
+  render(<FeedSettingsSection />);
+  expect(screen.queryByRole("heading", { name: "Finance" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Hide Crypto in Finance" })).toBeNull();
 });

@@ -7,6 +7,8 @@ import * as ReadPublicationPage from "@/app/read/[...pubId]/ReadPubPage";
 import ReadIndexPage from "@/app/read/page";
 import { CircleNewsExperience } from "@/components/Circle/CircleNewsExperience";
 
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+let route = "circle";
 const replace = mock(() => undefined);
 const refetchCatalog = mock(() => Promise.resolve());
 const refetchEdition = mock(() => Promise.resolve());
@@ -15,6 +17,8 @@ let state: ReturnType<typeof CircleHooks.useCircleEdition>;
 
 describe("Circle read route integration", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true";
+    route = "circle";
     replace.mockClear();
     refetchCatalog.mockClear();
     refetchEdition.mockClear();
@@ -27,8 +31,8 @@ describe("Circle read route integration", () => {
       isLoading: false, isRefetching: false, isError: false,
       refetch: refetchEdition,
     } as unknown as typeof state;
-    const search = spyOn(Navigation, "useSearchParams").mockReturnValue(
-      new URLSearchParams("feed=circle") as ReturnType<typeof Navigation.useSearchParams>);
+    const search = spyOn(Navigation, "useSearchParams").mockImplementation(() =>
+      new URLSearchParams(`feed=${route}`) as ReturnType<typeof Navigation.useSearchParams>);
     const router = spyOn(Navigation, "useRouter").mockReturnValue(
       { replace } as unknown as ReturnType<typeof Navigation.useRouter>);
     const wire = spyOn(WireHooks, "useWireFeedCatalog").mockReturnValue(
@@ -42,9 +46,23 @@ describe("Circle read route integration", () => {
   });
 
   afterEach(() => {
+    if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+    else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
     cleanup();
     for (const restore of restores.splice(0).reverse()) restore();
   });
+
+  for (const feed of ["wire", "circle", "finance", "sports"]) {
+    it(`redirects a suspended ${feed} route before mounting its experience`, async () => {
+      process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "false";
+      route = feed;
+      await act(async () => { render(<ReadIndexPage />); });
+      expect(screen.getByText("Other Feed")).toBeDefined();
+      expect(replace).toHaveBeenCalledWith("/read?feed=subscribed");
+      expect(WireHooks.useWireFeedCatalog).toHaveBeenLastCalledWith({ enabled: false });
+      expect(CircleHooks.useCircleEdition).not.toHaveBeenCalled();
+    });
+  }
 
   it("lets unavailable corpus reach the explanatory Circle view and retry its catalog", async () => {
     await act(async () => { render(<ReadIndexPage />); });

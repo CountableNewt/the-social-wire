@@ -30,9 +30,6 @@ struct RootView: View {
             }
 #endif
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { PodcastPlayerView() }
-        .environment(appModel.podcasts)
-        .task(id: appModel.viewerDID) { await appModel.podcasts.configure(viewer: appModel.viewerDID) }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .task {
@@ -46,7 +43,6 @@ struct RootView: View {
             guard phase == .active, appModel.isSignedIn else { return }
             Task {
                 await appModel.syncCrossClientReadState()
-                if appModel.podcasts.available { await appModel.podcasts.sync() }
             }
         }
         .alert("Something went wrong", isPresented: Binding(

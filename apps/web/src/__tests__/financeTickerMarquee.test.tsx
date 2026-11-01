@@ -4,6 +4,7 @@ import { FinanceTickerMarquee } from "@/components/FinanceTickerMarquee";
 import { financeTickerSymbols } from "@/lib/financeTickerSymbols";
 import type { FinanceFeedDefinition } from "@/lib/financeFeedClient";
 
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
 const originalFlag = process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED;
 const originalObserver = globalThis.IntersectionObserver;
 const originalMedia = window.matchMedia;
@@ -17,6 +18,7 @@ const feed = (instrumentIDs: string[], kind: FinanceFeedDefinition["kind"] = "in
 const appleID = "fin_3a1bcf8223e43dac49e2c7f51ed38c6e";
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true";
     process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED = "true";
     reduced = false;
     intersections.clear();
@@ -32,6 +34,8 @@ beforeEach(() => {
     Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ get matches() { return reduced; }, addEventListener(_event: string, callback: () => void) { motionChange = callback; }, removeEventListener() {} }) });
 });
 afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
     cleanup();
     process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED = originalFlag;
     Object.defineProperty(globalThis, "IntersectionObserver", { configurable: true, value: originalObserver });
@@ -152,4 +156,10 @@ describe("Finance Ticker Marquee", () => {
         expect(container.querySelectorAll("tv-ticker-tape")).toHaveLength(1);
         expect(container.querySelector("script")).toBeNull();
     });
+});
+
+it("does not mount the Finance ticker during suspension", () => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "false";
+  const { container } = render(<FinanceTickerMarquee hidden={false} />);
+  expect(container.childElementCount).toBe(0);
 });

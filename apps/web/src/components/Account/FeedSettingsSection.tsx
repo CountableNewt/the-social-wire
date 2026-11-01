@@ -1,5 +1,7 @@
 "use client";
 
+import { algorithmicFeedsEnabled } from "@/lib/algorithmicFeeds";
+
 import { PDSReadStateSettingsSection } from "@/components/Account/PDSReadStateSettingsSection";
 import { Switch } from "@/components/ui/switch";
 import { DiscoveryFeedDisplaySettings } from "@/components/Account/DiscoveryFeedDisplaySettings";
@@ -72,7 +74,7 @@ export function FeedSettingsSection() {
             />
           </div>
         </section>
-        <section className="rounded-2xl border bg-card p-4 shadow-[var(--soft-elevation)]">
+        {algorithmicFeedsEnabled() ? <section className="rounded-2xl border bg-card p-4 shadow-[var(--soft-elevation)]">
           <h2 className="text-sm font-bold">Finance</h2>
           <div className="mt-3 flex min-h-12 items-center justify-between gap-4">
             <div className="min-w-0">
@@ -85,7 +87,7 @@ export function FeedSettingsSection() {
               disabled={isPending} onCheckedChange={setHideFinanceCrypto}
               aria-label="Hide Crypto in Finance" />
           </div>
-        </section>
+        </section> : null}
         <section className="rounded-2xl border bg-card p-4 shadow-[var(--soft-elevation)]">
           <h2 className="text-sm font-bold">Feed Display</h2>
           <div className="mt-3 grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center border-b pb-2 text-xs font-semibold text-muted-foreground">

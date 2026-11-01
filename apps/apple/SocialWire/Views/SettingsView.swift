@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(iOS)
-import QuillSocialUI
-#endif
 
 struct SettingsView: View {
     @Environment(SocialWireAppModel.self) private var appModel
@@ -43,16 +40,6 @@ struct SettingsView: View {
                 }
                 Toggle("Bold Text", isOn: $boldText)
             }
-
-            #if os(iOS)
-            if let socialModel = appModel.social.quill {
-                Section("Social") {
-                    NavigationLink("Social Settings") {
-                        QuillSocialSettingsView(model: socialModel)
-                    }
-                }
-            }
-            #endif
 
             Section("Articles") {
                 Picker(
@@ -152,70 +139,65 @@ struct SettingsView: View {
             }
 
             Section("Feed Display") {
-                FeedDisplayPicker(
-                    title: "The Wire",
-                    supportsCount: false,
-                    canHide: true,
-                    selection: Binding(
-                        get: {
-                            .current(
-                                isVisible: appModel.feedPreferences.showWire,
-                                showsCount: false
-                            )
-                        },
-                        set: { option in
-                            Task { await appModel.setWireVisible(option != .hideFeed) }
-                        }
+                if NewsPrimaryFeed.algorithmicFeedsEnabled {
+                    FeedDisplayPicker(
+                        title: "The Wire",
+                        supportsCount: false,
+                        canHide: true,
+                        selection: Binding(
+                            get: {
+                                .current(
+                                    isVisible: appModel.feedPreferences.showWire,
+                                    showsCount: false
+                                )
+                            },
+                            set: { option in
+                                Task { await appModel.setWireVisible(option != .hideFeed) }
+                            }
+                        )
                     )
-                )
-                .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
 
-                FeedDisplayPicker(
-                    title: "Your Circle",
-                    supportsCount: false,
-                    canHide: true,
-                    selection: Binding(
-                        get: {
-                            .current(
-                                isVisible: appModel.feedPreferences.showCircle,
-                                showsCount: false
-                            )
-                        },
-                        set: { option in
-                            Task { await appModel.setCircleVisible(option != .hideFeed) }
-                        }
+                    FeedDisplayPicker(
+                        title: "Your Circle",
+                        supportsCount: false,
+                        canHide: true,
+                        selection: Binding(
+                            get: {
+                                .current(
+                                    isVisible: appModel.feedPreferences.showCircle,
+                                    showsCount: false
+                                )
+                            },
+                            set: { option in
+                                Task { await appModel.setCircleVisible(option != .hideFeed) }
+                            }
+                        )
                     )
-                )
-                .disabled(appModel.isSavingDiscoveryFeedVisibility)
-
-                FeedDisplayPicker(title: "Finance", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showFinance, showsCount: false) },
-                        set: { option in Task { await appModel.setFinanceVisible(option != .hideFeed) } }))
                     .disabled(appModel.isSavingDiscoveryFeedVisibility)
-                FeedDisplayPicker(title: "Sports", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSports, showsCount: false) },
-                        set: { option in Task { await appModel.setSportsVisible(option != .hideFeed) } }))
-                FeedDisplayPicker(title: "Social", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSocial, showsCount: false) },
-                        set: { option in Task { await appModel.setSocialVisible(option != .hideFeed) } }))
-                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
-                FeedDisplayPicker(title: "Podcasts", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showPodcasts, showsCount: false) },
-                        set: { option in Task { await appModel.setPodcastsVisible(option != .hideFeed) } }))
-                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
-                Toggle("Hide Sports Scores", isOn: Binding(
-                    get: { appModel.feedPreferences.hideSportsScores },
-                    set: { value in Task { await appModel.setSportsScoresHidden(value) } }))
-                Text("Hides event scores and results. Article headlines and images may reveal results.")
-                    .font(.caption).foregroundStyle(.secondary)
 
-                Toggle("Hide Finance Performance Data", isOn: Binding(
-                    get: { appModel.feedPreferences.hideFinancePerformance },
-                    set: { value in Task { await appModel.setFinancePerformanceHidden(value) } }))
+                    FeedDisplayPicker(title: "Finance", supportsCount: false, canHide: true,
+                        selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showFinance, showsCount: false) },
+                            set: { option in Task { await appModel.setFinanceVisible(option != .hideFeed) } }))
+                        .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    FeedDisplayPicker(title: "Sports", supportsCount: false, canHide: true,
+                        selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSports, showsCount: false) },
+                            set: { option in Task { await appModel.setSportsVisible(option != .hideFeed) } }))
+                        .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    Toggle("Hide Sports Scores", isOn: Binding(
+                        get: { appModel.feedPreferences.hideSportsScores },
+                        set: { value in Task { await appModel.setSportsScoresHidden(value) } }))
+                    Text("Hides event scores and results. Article headlines and images may reveal results.")
+                        .font(.caption).foregroundStyle(.secondary)
 
-                Toggle("Hide Crypto", isOn: Binding(
-                    get: { appModel.feedPreferences.hideFinanceCrypto },
-                    set: { value in Task { await appModel.setFinanceCryptoHidden(value) } }))
+                    Toggle("Hide Finance Performance Data", isOn: Binding(
+                        get: { appModel.feedPreferences.hideFinancePerformance },
+                        set: { value in Task { await appModel.setFinancePerformanceHidden(value) } }))
+
+                    Toggle("Hide Crypto", isOn: Binding(
+                        get: { appModel.feedPreferences.hideFinanceCrypto },
+                        set: { value in Task { await appModel.setFinanceCryptoHidden(value) } }))
+                }
 
                 if let error = appModel.discoveryFeedSaveError {
                     Text(error)

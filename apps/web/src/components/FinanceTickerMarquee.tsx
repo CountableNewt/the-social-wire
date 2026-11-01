@@ -1,5 +1,6 @@
 "use client";
 
+import { algorithmicFeedsEnabled } from "@/lib/algorithmicFeeds";
 import { floatingGlassClasses } from "@/components/shared/floatingChromeStyles";
 import { useEffect, useRef, useState } from "react";
 import type { FinanceFeedDefinition } from "@/lib/financeFeedClient";
@@ -13,7 +14,7 @@ export function FinanceTickerMarquee({ feed, hidden }: { feed?: FinanceFeedDefin
     const [reducedMotion, setReducedMotion] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
     const [theme, setTheme] = useState(() => typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light");
     const symbols = financeTickerSymbols(feed);
-    const enabled = !hidden && process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED === "true" && symbols.length > 0;
+    const enabled = algorithmicFeedsEnabled() && !hidden && process.env.NEXT_PUBLIC_FINANCE_TICKER_ENABLED === "true" && symbols.length > 0;
 
     useEffect(() => {
         const observer = new window.MutationObserver(() => setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light"));

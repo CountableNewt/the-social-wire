@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element -- Remote PDS media preserve publisher formats. */
 import {
   AppBskyEmbedExternal,
   AppBskyEmbedImages,
@@ -11,6 +10,7 @@ import {
   type ModerationOpts,
 } from "@atproto/api";
 import { moderateSocialPost } from "./socialModeration";
+import { SocialExternalEmbed } from "./SocialExternalEmbed";
 import { SocialVideoPlayer } from "./SocialVideoPlayer";
 import { SocialImageGallery } from "./SocialImageGallery";
 import { SocialRichText } from "./SocialRichText";
@@ -53,34 +53,7 @@ export function SocialPostEmbed({
     if (gif) return <SocialImageGallery images={[gif]} />;
     const youtube = socialYouTubePlayerUrl(href);
     if (youtube) return <SocialYouTubeEmbed external={embed.external} href={href} src={youtube} />;
-    const thumb = socialHttpsUrl(embed.external.thumb);
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block overflow-hidden rounded-xl border bg-muted/30 hover:bg-muted/60"
-      >
-        {thumb ? (
-          <img
-            src={thumb}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            className="mx-auto block h-auto max-h-60 w-auto max-w-full"
-          />
-        ) : null}
-        <div className="flex flex-col gap-1 p-3">
-          <p className="text-sm font-medium">{embed.external.title}</p>
-          <p className="line-clamp-3 text-sm text-muted-foreground">
-            {embed.external.description}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {new URL(href).hostname}
-          </p>
-        </div>
-      </a>
-    );
+    return <SocialExternalEmbed external={embed.external} href={href} />;
   }
   if (AppBskyEmbedVideo.isView(embed)) {
     const src = socialHttpsUrl(embed.playlist);

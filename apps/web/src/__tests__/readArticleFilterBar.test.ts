@@ -9,9 +9,18 @@ import * as BulkRead from "@/hooks/useCachedBulkReadActions";
 import * as Hydration from "@/hooks/useClientHydrated";
 import * as WireEdition from "@/hooks/useWireEdition";
 import * as WireFeed from "@/hooks/useWireFeed";
+import * as Auth from "@/hooks/useAuth";
+import * as ReadAge from "@/hooks/useFeedReadAgeActions";
 import * as Circle from "@/hooks/useCircleFeed";
 import { ReadArticleFilterBar } from "@/app/read/ReadArticleFilterBar";
 import { SidebarProvider } from "@/components/ui/sidebar";
+
+const originalAlgorithmicFlag = process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+beforeEach(() => { process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "true"; });
+afterEach(() => {
+  if (originalAlgorithmicFlag === undefined) delete process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED;
+  else process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = originalAlgorithmicFlag;
+});
 
 const restores: (() => void)[] = [];
 let feed = "wire";
@@ -31,6 +40,8 @@ beforeEach(() => {
   });
   const wireState = { isRefreshingFirstPage: false, isLoading: false, viewerModerationRetryUnavailable: false, retryTheWire: retryWire };
   const spies = [
+    spyOn(Auth, "useAuth").mockReturnValue({ session: null } as ReturnType<typeof Auth.useAuth>),
+    spyOn(ReadAge, "useFeedReadAgeActions").mockReturnValue({ loadOptions: mock(async () => []), markBefore: mock(async () => undefined) } as unknown as ReturnType<typeof ReadAge.useFeedReadAgeActions>),
     spyOn(Navigation, "usePathname").mockReturnValue("/read"),
     spyOn(Navigation, "useSearchParams").mockImplementation(() => new URLSearchParams({ feed }) as unknown as ReturnType<typeof Navigation.useSearchParams>),
     spyOn(ReadRoute, "useReadRoute").mockReturnValue({ articleListFilter: "all" } as unknown as ReturnType<typeof ReadRoute.useReadRoute>),
@@ -74,4 +85,14 @@ describe("read feed header", () => {
     fireEvent.click(screen.getByRole("button", { name: `Refresh ${title}` }));
     expect(routeFeed === "circle" ? retryCircle : retryWire).toHaveBeenCalledTimes(1);
   });
+});
+
+it("does not activate feed requests from a suspended query", () => {
+  process.env.NEXT_PUBLIC_ALGORITHMIC_FEEDS_ENABLED = "false";
+  feed = "circle";
+  render(createElement(SidebarProvider, null, createElement(ReadArticleFilterBar)));
+  expect(WireEdition.useWireEdition).toHaveBeenLastCalledWith({ enabled: false });
+  expect(WireFeed.useWireFeedEntries).toHaveBeenLastCalledWith({ enabled: false });
+  expect(Circle.useCircleEdition).toHaveBeenLastCalledWith({ enabled: false });
+  expect(screen.queryByText("Your Circle")).toBeNull();
 });

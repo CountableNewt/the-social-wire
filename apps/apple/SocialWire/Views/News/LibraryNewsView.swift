@@ -23,7 +23,7 @@ struct LibraryNewsView: View {
             ContentUnavailableView(
                 "Select a Publication",
                 systemImage: "newspaper",
-                description: Text("Choose a folder or publication from the sidebar to browse its latest stories.")
+                description: Text("Choose a feed to browse its latest stories.")
             )
         }
     }

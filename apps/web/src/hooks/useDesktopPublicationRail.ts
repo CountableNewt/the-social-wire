@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-const DESKTOP_RAIL_QUERY = "(min-width: 1024px)";
+const DESKTOP_RAIL_QUERY = "(min-width: 1280px)";
 function subscribe(onChange: () => void) {
   const media = window.matchMedia(DESKTOP_RAIL_QUERY);
   media.addEventListener("change", onChange);

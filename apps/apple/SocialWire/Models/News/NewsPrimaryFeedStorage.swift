@@ -6,11 +6,11 @@ enum NewsPrimaryFeedStorage {
 
     static func configuredFeeds(viewerDID: String) -> [NewsPrimaryFeed] {
         guard let data = UserDefaults.standard.data(forKey: key(prefix: configuredPrefix, viewerDID: viewerDID)),
-              let feeds = try? JSONDecoder().decode([NewsPrimaryFeed].self, from: data)
+              let values = try? JSONDecoder().decode([String].self, from: data)
         else {
             return NewsPrimaryFeed.defaultFeeds
         }
-        return normalized(feeds)
+        return normalized(values.compactMap(NewsPrimaryFeed.init(rawValue:)))
     }
 
     static func saveConfiguredFeeds(_ feeds: [NewsPrimaryFeed], viewerDID: String) {

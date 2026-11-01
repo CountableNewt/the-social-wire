@@ -54,7 +54,7 @@ export default function ArchiveLayout({ children }: { children: React.ReactNode 
         <Suspense fallback={null}>
           <AppSidebar selectedPubId={null} onSelectPub={(pubId) => router.push(`/read/${encodeURIComponent(pubId)}`)} />
         </Suspense>
-        <SidebarInset className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} lg:mr-64`}>
+        <SidebarInset className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} xl:mr-64`}>
           <FeedHeader title="Archive" />
           <main data-feed-header-shell="true" className="flex min-h-0 flex-1 overflow-hidden">{children}</main>
         </SidebarInset>

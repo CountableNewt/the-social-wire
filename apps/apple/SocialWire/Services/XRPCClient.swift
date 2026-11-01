@@ -22,6 +22,8 @@ final class XRPCClient {
         self.transport = transport
     }
 
+    var currentViewerDID: String? { auth.session?.did }
+
     func currentDID() async throws -> String {
         try await auth.validSession().did
     }
@@ -168,8 +170,9 @@ final class XRPCClient {
     }
 
     /// Signed `com.atproto.repo.getRecord` for the signed-in user's repo. Returns **`nil`** when the record does not exist (404).
-    func authorizedRepoGetRecord<Value: Decodable>(collection: String, rkey: String) async throws -> RepoRecord<Value>? {
+    func authorizedRepoGetRecord<Value: Decodable>(collection: String, rkey: String, expectedViewer: String? = nil) async throws -> RepoRecord<Value>? {
         let session = try await auth.validSession()
+        if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
         let query: [String: String?] = [
             "repo": session.did,
             "collection": collection,
@@ -371,8 +374,43 @@ final class XRPCClient {
         return StrongRef(uri: response.uri, cid: response.cid)
     }
 
-    func uploadBlob(data: Data, mimeType: String) async throws -> ATProtoBlob {
+    /// A stable key makes retries safe even when the PDS committed but its response was lost.
+    /// Never overwrite a record occupying the key; reconcile only an exact matching payload.
+    func createRecordOnce(collection: String, rkey: String, record: [String: JSONValue], expectedViewer: String) async throws -> StrongRef {
+        func readback() async throws -> StrongRef? {
+            let existing: RepoRecord<[String: JSONValue]>? = try await authorizedRepoGetRecord(
+                collection: collection, rkey: rkey, expectedViewer: expectedViewer)
+            guard currentViewerDID == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+            guard let existing else { return nil }
+            guard existing.uri == "at://\(expectedViewer)/\(collection)/\(rkey)",
+                  existing.value == record, let cid = existing.cid, !cid.isEmpty else {
+                throw SocialWireError.badResponse("A Different Post Already Uses This Draft's Record Key.")
+            }
+            return StrongRef(uri: existing.uri, cid: cid)
+        }
+        if let reference = try await readback() { return reference }
         let session = try await auth.validSession()
+        guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+        do {
+            let response: CreateRecordResponse = try await authorizedPost(
+                session.pdsURL, method: "com.atproto.repo.createRecord",
+                body: CreateRecordRequest(repo: expectedViewer, collection: collection, record: AnyEncodable(record), rkey: rkey),
+                expectedViewer: expectedViewer)
+            guard currentViewerDID == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+            guard response.uri == "at://\(expectedViewer)/\(collection)/\(rkey)", !response.cid.isEmpty else {
+                throw SocialWireError.badResponse("The Published Post Response Was Invalid.")
+            }
+            return StrongRef(uri: response.uri, cid: response.cid)
+        } catch {
+            let failure = error
+            if let reference = try await readback() { return reference }
+            throw failure
+        }
+    }
+
+    func uploadBlob(data: Data, mimeType: String, expectedViewer: String? = nil) async throws -> ATProtoBlob {
+        let session = try await auth.validSession()
+        if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
         let url = try xrpcURL(base: session.pdsURL, method: "com.atproto.repo.uploadBlob")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -500,6 +538,7 @@ private struct CreateRecordRequest: Encodable {
     let repo: String
     let collection: String
     let record: AnyEncodable
+    var rkey: String? = nil
 }
 
 private struct CreateRecordResponse: Decodable {

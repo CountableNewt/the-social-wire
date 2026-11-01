@@ -2,14 +2,73 @@ import XCTest
 
 @MainActor
 final class NewsShellSmokeUITests: XCTestCase {
+    func testExpandedSidebarGroupsFeedsAndFolders() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs",
+                               "--ui-testing-regular-window", "--ui-testing-sidebar-publications",
+                               "--ui-testing-shell-routing", "--ui-testing-topics-lists"]
+        app.launch()
+        let sidebar = app.descendants(matching: .any)["news-root-sidebar"].firstMatch
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        let profile = app.buttons["Profile"].firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(profile.frame.midX, sidebar.frame.maxX)
+        XCTAssertFalse(app.buttons["news-sidebar-feed-Podcasts"].exists)
+        let folder = app.buttons["news-sidebar-folder-fixture-folder"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["news-sidebar-publication-at://did:plc:fixture/site.standard.publication/2"].exists)
+        let publication = app.buttons["news-sidebar-publication-at://did:plc:fixture/site.standard.publication/0"]
+        XCTAssertTrue(publication.exists)
+        publication.tap()
+        let scope = app.staticTexts["fixture-reader-scope"]
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "One Publication"), object: scope)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        folder.tap()
+        let folderSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "One Folder"), object: scope)
+        XCTAssertEqual(XCTWaiter.wait(for: [folderSelected], timeout: 5), .completed)
+        app.buttons["news-sidebar-feed-Subscribed"].firstMatch.tap()
+        let allSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "All Subscribed"), object: scope)
+        XCTAssertEqual(XCTWaiter.wait(for: [allSelected], timeout: 5), .completed)
+        let archive = app.buttons["news-sidebar-feed-Archive"]
+        XCTAssertTrue(archive.exists)
+        archive.tap()
+        XCTAssertTrue(content(for: "saved", in: app).waitForExistence(timeout: 5))
+    }
+
+    func testSectionPillsAndNativePaging() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs"]
+        app.launch()
+        let subscribed = app.buttons["news-feed-pill-Subscribed"].firstMatch
+        XCTAssertTrue(subscribed.waitForExistence(timeout: 5))
+        let navigationBar = app.navigationBars["Subscribed"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 3))
+        XCTAssertGreaterThanOrEqual(subscribed.frame.minY, navigationBar.frame.maxY - 1)
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 3))
+        selectRoot("Read Later", in: app)
+        let archive = app.buttons["news-feed-pill-Archive"].firstMatch
+        XCTAssertTrue(archive.waitForExistence(timeout: 5))
+        archive.tap()
+        XCTAssertTrue(archive.isSelected)
+        content(for: "saved", in: app).swipeRight()
+        let readLater = app.buttons["news-feed-pill-Read Later"].firstMatch
+        let selected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isSelected == true"), object: readLater
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        selectRoot("News", in: app)
+        XCTAssertTrue(subscribed.waitForExistence(timeout: 3))
+        XCTAssertTrue(subscribed.isSelected)
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 3))
+    }
+
     func testRealShellNavigationKeepsPublicationAndArchiveActionsReachable() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
-        let subscribed = tabButton("Subscribed", in: app)
-        XCTAssertTrue(subscribed.waitForExistence(timeout: 3))
-        XCTAssertTrue(subscribed.isHittable)
+        assertSelectedFeed("Subscribed", in: app)
         let add = app.buttons["Add"]
         XCTAssertTrue(add.waitForExistence(timeout: 3))
         add.tap()
@@ -17,38 +76,29 @@ final class NewsShellSmokeUITests: XCTestCase {
         app.buttons["Add Publication"].tap()
         XCTAssertTrue(app.navigationBars["Add Publication"].waitForExistence(timeout: 3))
         app.buttons["Cancel"].firstMatch.tap()
-        app.tabBars.buttons["Read Later"].tap()
-        let archive = tabButton("Archive", in: app)
-        XCTAssertTrue(archive.waitForExistence(timeout: 3))
-        archive.tap()
-        XCTAssertTrue(archive.isSelected)
+        selectRoot("Read Later", in: app)
+        selectFeed("Archive", in: app)
         XCTAssertTrue(content(for: "saved", in: app).waitForExistence(timeout: 3))
-
-        let readLater = app.navigationBars.buttons["Read Later"]
-        XCTAssertTrue(readLater.waitForExistence(timeout: 3))
-        readLater.tap()
-        XCTAssertTrue(readLater.isSelected)
-
-        app.tabBars.buttons["News"].tap()
-        subscribed.tap()
+        selectFeed("Read Later", in: app)
+        selectRoot("News", in: app)
+        selectFeed("Subscribed", in: app)
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 3))
         XCTAssertTrue(add.waitForExistence(timeout: 3))
     }
 
     func testRealShellReconcilesHydratedVisibilityAndPublicationSelection() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-shell-routing"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-shell-routing"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
-        let following = tabButton("Following", in: app)
-        XCTAssertTrue(following.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["news-feed-pill-Following"].waitForExistence(timeout: 3))
         app.buttons["fixture-hide-following"].tap()
-        XCTAssertTrue(following.waitForNonExistence(timeout: 3))
-        app.tabBars.buttons["Read Later"].tap()
+        XCTAssertTrue(app.buttons["news-feed-pill-Following"].waitForNonExistence(timeout: 3))
+        selectRoot("Read Later", in: app)
         XCTAssertTrue(content(for: "saved", in: app).waitForExistence(timeout: 3))
         app.buttons["fixture-select-publication"].tap()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(tabButton("Subscribed", in: app).isSelected)
+        assertSelectedFeed("Subscribed", in: app)
         XCTAssertTrue(app.staticTexts["A Short Headline"].waitForExistence(timeout: 5))
         let markRead = app.buttons["feed-mark-all-read"]
         XCTAssertTrue(markRead.waitForExistence(timeout: 3))
@@ -60,21 +110,9 @@ final class NewsShellSmokeUITests: XCTestCase {
         confirmation.buttons["Cancel"].tap()
     }
 
-    private func tabButton(_ label: String, in app: XCUIApplication) -> XCUIElement {
-        let tabBarButton = app.tabBars.buttons[label]
-        if tabBarButton.waitForExistence(timeout: 1) {
-            return tabBarButton
-        }
-        let button = app.buttons[label]
-        if button.waitForExistence(timeout: 1) {
-            return button
-        }
-        return app.descendants(matching: .any)[label].firstMatch
-    }
-
-    func testTopicsRemainReachableBeyondPrimaryTabs() {
+    func testTopicFeedsRemainReachableFromNativeTopicsTab() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-topics-lists"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
 
@@ -98,12 +136,12 @@ final class NewsShellSmokeUITests: XCTestCase {
 
     func testListsSelectionAndManagementRemainReachable() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-topics-lists"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
         selectDestination("Lists", in: app)
         XCTAssertTrue(content(for: "standardLists", in: app).waitForExistence(timeout: 5))
-        let fixtureList = app.buttons["lists.row.at://did:plc:fixture/app.standard-reader.list/main"]
+        let fixtureList = app.buttons.matching(NSPredicate(format: "identifier == %@ OR identifier == %@", "lists.row.at://did:plc:fixture/app.standard-reader.list/main", "news-feed-pill-Fixture List")).firstMatch
         XCTAssertTrue(fixtureList.waitForExistence(timeout: 5))
         fixtureList.tap()
         XCTAssertTrue(app.buttons["lists.entry.ui-story-1"].waitForExistence(timeout: 5))
@@ -150,7 +188,7 @@ final class NewsShellSmokeUITests: XCTestCase {
 
     func testEmptyListsManagementAndOtherDestinationsRemainReachable() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-topics-lists", "--ui-testing-empty-lists"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists", "--ui-testing-empty-lists"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
 
@@ -174,105 +212,61 @@ final class NewsShellSmokeUITests: XCTestCase {
         XCTAssertTrue(content(for: "saved", in: app).waitForExistence(timeout: 5))
     }
 
-    /// Follow compact root sections or regular-width sidebar destinations.
     private func selectDestination(_ label: String, in app: XCUIApplication) {
-        if label == "Lists", !app.tabBars.buttons["Lists"].exists {
-            let browse = app.tabBars.buttons["Browse"]
-            if browse.exists && browse.isHittable { browse.tap() }
-            let lists = app.buttons["news-tab-button-standardLists"]
-            let sidebar = app.collectionViews.firstMatch
-            for _ in 0..<8 {
-                if lists.exists && lists.isHittable { break }
-                if sidebar.exists { sidebar.swipeUp() }
-            }
-            guard lists.exists && lists.isHittable else {
-                XCTFail("Reader Lists is not reachable in the sidebar")
-                return
-            }
-            lists.tap()
-            return
-        }
-        let root: String? = switch label {
+        let root: String = switch label {
         case "Finance", "Sports": "Topics"
         case "Subscribed", "Following", "The Wire", "Your Circle": "News"
-        case "Archive": "Read Later"
-        default: nil
+        case "Archive", "Read Later": "Read Later"
+        case "Lists": "Lists"
+        default: label
         }
-        if let root, app.tabBars.buttons[root].exists {
-            let rootButton = app.tabBars.buttons[root]
-            guard waitUntilHittable(rootButton) else {
-                XCTFail("Unreachable root destination: \(root)")
-                return
-            }
-            rootButton.tap()
-            let selected = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "isSelected == true"), object: rootButton)
-            guard XCTWaiter.wait(for: [selected], timeout: 5) == .completed else {
-                XCTFail("Root destination did not become selected: \(root)")
-                return
-            }
+        selectRoot(root, in: app)
+        if label == "Lists" { return }
+        selectFeed(label, in: app)
+    }
+
+    private func selectFeed(_ title: String, in app: XCUIApplication) {
+        let option = app.buttons["news-feed-pill-\(title)"].firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        let pills = app.scrollViews["news-feed-pills"].firstMatch
+        if !option.isHittable { revealHorizontally(option, in: pills) }
+        XCTAssertTrue(waitUntilHittable(option))
+        option.tap()
+        assertSelectedFeed(title, in: app)
+    }
+
+    private func assertSelectedFeed(_ title: String, in app: XCUIApplication) {
+        let pill = app.buttons["news-feed-pill-\(title)"].firstMatch
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND isSelected == true"), object: pill)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+    }
+
+    private func selectRoot(_ title: String, in app: XCUIApplication) {
+        let tab = app.tabBars.buttons[title].firstMatch
+        if tab.exists && tab.isHittable { tab.tap(); return }
+        let sidebarFeed = switch title {
+        case "News": "Subscribed"
+        case "Topics": "Finance"
+        default: title
         }
-        func destination() -> XCUIElement {
-            let sidebarID: String? = switch label {
-            case "Finance": "finance"
-            case "Sports": "sports"
-            case "The Wire": "wire"
-            case "Your Circle": "circle"
-            case "Lists": "standardLists"
-            default: nil
-            }
-            if let sidebarID {
-                let sidebarButton = app.buttons["news-tab-button-\(sidebarID)"]
-                if sidebarButton.exists && sidebarButton.isHittable { return sidebarButton }
-            }
-            let tab = app.tabBars.buttons[label]
-            if tab.exists && tab.isHittable { return tab }
-            let capsule = app.navigationBars.buttons[label]
-            if capsule.exists {
-                let rail = app.navigationBars.scrollViews.firstMatch
-                if rail.exists { revealHorizontally(capsule, in: rail) }
-                if capsule.isHittable { return capsule }
-            }
-            // UIKit's compact More menu exposes destinations as cells with text
-            // descendants, so activate the row rather than its static label.
-            let cells = app.cells.containing(.staticText, identifier: label).allElementsBoundByIndex
-            if let row = cells.first(where: { $0.isHittable }) { return row }
-            let candidates = app.descendants(matching: .any)
-                .matching(identifier: label).allElementsBoundByIndex
-            if let visible = candidates.first(where: { $0.isHittable }) { return visible }
-            // A hidden sidebar row must not prevent opening the compact overflow menu.
-            return app.buttons["missing-destination-\(label)"]
+        let feed = app.buttons["news-sidebar-feed-\(sidebarFeed)"].firstMatch
+        if feed.exists && feed.isHittable { feed.tap(); return }
+        if title == "Lists" {
+            let list = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "news-sidebar-list-")).firstMatch
+            if list.exists && list.isHittable { list.tap(); return }
+            let manage = app.buttons["news-sidebar-lists"]
+            if manage.exists && manage.isHittable { manage.tap(); return }
         }
-        if !destination().exists {
-            // Grouped Topics can leave the floating top tab selected while hiding
-            // other topic destinations behind the adaptive iPad sidebar.
-            let toggles = [app.buttons["ToggleSideBar"], app.buttons["Toggle sidebar"]]
-            if let toggle = toggles.first(where: { $0.exists && $0.isHittable }) {
-                toggle.tap()
-            }
-        }
-        if !destination().exists {
-            let browse = app.tabBars.buttons["Browse"]
-            if browse.exists && browse.isHittable { browse.tap() }
-        }
-        if !destination().exists {
-            let more = app.tabBars.buttons["More"]
-            if more.exists && more.isHittable { more.tap() }
-        }
-        if root == "Topics", !destination().exists {
-            let topics = app.buttons["Topics"].firstMatch
-            if topics.exists && topics.isHittable { topics.tap() }
-        }
-        let target = destination()
-        guard target.waitForExistence(timeout: 3) else {
-            XCTFail("Missing destination: \(label)")
+        if let visible = app.buttons.matching(identifier: title).allElementsBoundByIndex.first(where: { $0.isHittable }) {
+            visible.tap()
             return
         }
-        guard waitUntilHittable(target) else {
-            XCTFail("Unreachable destination: \(label)")
-            return
-        }
-        target.tap()
+        let toggles = ["ToggleSidebar", "ToggleSideBar", "Toggle sidebar", "Show Sidebar"]
+        if let toggle = toggles.map({ app.buttons[$0].firstMatch }).first(where: { $0.exists && $0.isHittable }) { toggle.tap() }
+        let button = app.buttons[title].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(button))
+        button.tap()
     }
 
     private func dismissPicker(_ title: String, in app: XCUIApplication) -> Bool {
@@ -307,7 +301,7 @@ final class NewsShellSmokeUITests: XCTestCase {
 
     func testReadAgeMenuUsesAvailableDaysAndRequiresConfirmation() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-read-age"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-read-age"]
         app.launch()
         let markRead = app.buttons["feed-mark-all-read"]
         let result = app.staticTexts["feed-action-result"]
@@ -370,7 +364,7 @@ final class NewsShellSmokeUITests: XCTestCase {
 
     private func assertFeedCards(circle: Bool, largeText: Bool) {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-feed-cards"]
+        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-feed-cards"]
         if circle { app.launchArguments.append("--ui-testing-circle") }
         if largeText { app.launchArguments.append("--ui-testing-large-text") }
         app.launch()

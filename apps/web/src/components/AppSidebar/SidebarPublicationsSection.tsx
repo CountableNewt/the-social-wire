@@ -16,6 +16,7 @@ import type { GatewayMarkAllReadScope } from "@/lib/publicationProjectionClient"
 import { SidebarMenuSubItem } from "@/components/ui/sidebar";
 
 export type SidebarPublicationsSectionProps = {
+  inline?: boolean;
   publications: DiscoveredPublication[];
   publicationUnreadCounts: Map<string, number>;
   selectedPubId: string | null;
@@ -29,6 +30,7 @@ export type SidebarPublicationsSectionProps = {
 };
 
 function SidebarPublicationsSectionInner({
+  inline = false,
   publications,
   publicationUnreadCounts,
   selectedPubId,
@@ -45,15 +47,8 @@ function SidebarPublicationsSectionInner({
       ? "Subscribed Publications"
       : "Publications From Followed Accounts";
 
-  return (
-    <CollapsibleSidebarSubSection
-      title="Publications"
-      unreadCount={0}
-      subAriaLabel={subAriaLabel}
-      readBulkPublications={publications}
-      readBulkMarkAllReadConfirmation={readBulkMarkAllReadConfirmation}
-      gatewayMarkAllReadScopes={gatewayMarkAllReadScopes}
-    >
+  const entries = (
+    <>
       <PublicationMenuSubEntries
         publications={publications}
         publicationUnreadCounts={publicationUnreadCounts}
@@ -69,6 +64,20 @@ function SidebarPublicationsSectionInner({
           <AddPublicationDialog />
         </SidebarMenuSubItem>
       ) : null}
+    </>
+  );
+  if (inline) return entries;
+
+  return (
+    <CollapsibleSidebarSubSection
+      title="Publications"
+      unreadCount={0}
+      subAriaLabel={subAriaLabel}
+      readBulkPublications={publications}
+      readBulkMarkAllReadConfirmation={readBulkMarkAllReadConfirmation}
+      gatewayMarkAllReadScopes={gatewayMarkAllReadScopes}
+    >
+      {entries}
     </CollapsibleSidebarSubSection>
   );
 }
