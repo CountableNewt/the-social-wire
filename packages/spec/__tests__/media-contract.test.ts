@@ -14,8 +14,9 @@ test("Media projection contract stays authenticated, bounded, stateless and dura
   expect(route.responses["401"]).toBeDefined();
   expect(route.description).toContain("duration is unavailable");
   expect(route.description).toContain("retain its upstream cursor");
-  expect(read("services/gateway/internal/gateway/routes.go")).toContain('{Method: "POST", Path: "/v1/media/project", Target: "/v1/media/project", UpstreamMethod: "POST", Service: "appview"}');
-  expect(read("services/appview/internal/runtime/host.go")).toContain("media.Routes{}.Register(protectedMux)");
+  expect(read("services/gateway/Sources/Gateway/Routes/AppViewProxyRoutes.swift")).toContain('group.post("/v1/media/project")');
+  expect(read("services/appview/Sources/AppView/AppViewRouterBuilder.swift")).toContain("MediaProjectRoutes().register(on: protected)");
+  expect(read("services/appview/Sources/AppView/Media/MediaProjectRoutes.swift")).toContain('group.post("/v1/media/project")');
   for (const service of ["appview", "gateway"]) {
     const bruno = read(`services/${service}/bruno/Media/Project Media.bru`);
     expect(bruno).toContain("/v1/media/project");
