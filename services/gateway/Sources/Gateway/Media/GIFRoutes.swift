@@ -68,20 +68,28 @@ struct GIFRoutes {
     guard let auth = context.authContext, !auth.did.isEmpty,
       auth.did != GatewayInternalTrustAuthMiddleware.anonymousDiscoveryDID
     else { return error(.unauthorized, "Authentication required", privateResponse: true) }
+    let lease: SocialDraftAdmission.Lease
+    do { lease = try await admission.acquire(owner: auth.did, transfer: true) }
+    catch let failure as SocialDraftAdmission.Failure {
+      var response = error(failure == .limited ? .tooManyRequests : .serviceUnavailable, "GIF transfer unavailable", privateResponse: true)
+      response.headers[.retryAfter] = "1"
+      return response
+    }
+    let lifetime = PrivateDraftLease(admission: admission, lease: lease)
     let query = query(request)
     let ids = query.filter { $0.name == "id" }
     let renditions = query.filter { $0.name == "rendition" }
     guard query.count == 2, ids.count == 1, renditions.count == 1, let id = ids[0].value,
       GIFMediaPolicy.validID(id), let rendition = renditions[0].value,
       ["gif", "poster", "mp4", "webm"].contains(rendition)
-    else { return error(.badRequest, "Invalid GIF file selector", privateResponse: true) }
-    guard !catalog.apiKey.isEmpty else { return error(.serviceUnavailable, "GIF files unavailable", privateResponse: true) }
-    let lease: SocialDraftAdmission.Lease
-    do { lease = try await admission.acquire(owner: auth.did, transfer: true) }
-    catch let failure as SocialDraftAdmission.Failure {
-      return error(failure == .limited ? .tooManyRequests : .serviceUnavailable, "GIF transfer unavailable", privateResponse: true)
+    else {
+      await lifetime.release()
+      return error(.badRequest, "Invalid GIF file selector", privateResponse: true)
     }
-    let lifetime = PrivateDraftLease(admission: admission, lease: lease)
+    guard !catalog.apiKey.isEmpty else {
+      await lifetime.release()
+      return error(.serviceUnavailable, "GIF files unavailable", privateResponse: true)
+    }
     let deadline = ContinuousClock.now.advanced(by: .seconds(120))
     let expiry = Task { try? await ContinuousClock().sleep(until: deadline); if !Task.isCancelled { context.closeTransport() } }
     do {
