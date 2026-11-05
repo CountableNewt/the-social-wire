@@ -1,5 +1,5 @@
 {
-  "originHash" : "2020a2d209a7b0a3318aa6d6703acb7309614cd61cbedd91d232612d94108829",
+  "originHash" : "ec6f7c14b3b057dedf8feb8326c7ec7de2c566aca4f2144133d567de621cc082",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -273,7 +273,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/thin-app-view-core.git",
       "state" : {
-        "revision" : "3a5fbe44741fffb1c4ec8a81529f179a7df78f64"
+        "revision" : "dc0e90186485455db78ad0168d861d0dcc8fcae3"
       }
     },
     {
