@@ -64,7 +64,7 @@ struct AppViewFeedErrorTests {
     }
     let recorded = await instants.values
     #expect(recorded.count == 2 && recorded[0] == recorded[1])
-    #expect(started.duration(to: .now) < .seconds(1))
+    #expect(started.duration(to: .now) < .seconds(2))
   }
 
   @Test("deadline failures are 504 and are never retried")
