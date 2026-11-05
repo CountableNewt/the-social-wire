@@ -19,8 +19,8 @@ describe("schema readiness deployment contract", () => {
       const entrypoint = JSON.parse(dockerfile.match(/^ENTRYPOINT (.+)$/m)![1]);
       expect(entrypoint[0]).toBe("/usr/local/bin/schema-ready");
       expect(entrypoint.slice(-2)).toEqual(["--", `/usr/local/bin/${executable}`]);
-      // Every deployed Go consumer requires PostgreSQL; local SQLite is a retained
-      // Swift package test backend, never a service-image startup bypass.
+      // Every service image requires PostgreSQL; local SQLite remains a
+      // package development backend, never a service-image startup bypass.
       expect(entrypoint.includes("--allow-local-sqlite")).toBe(false);
       expect(dockerfile).toContain("COPY database/migrations /src/database/migrations");
       expect(dockerfile).toContain("--generate-manifest /src/database/migrations");
@@ -33,21 +33,22 @@ describe("schema readiness deployment contract", () => {
       const config = JSON.parse(read(`railway/${service}.json`));
       expect(config.deploy.startCommand).toBeUndefined();
       expect(config.build.watchPatterns).toContain("/database/migrations/**");
-      const watchesGate = config.build.watchPatterns.includes("/services/jetstream-ingest/**") ||
+      const nativeGate = ["/services/jetstream-ingest/Package.swift", "/services/jetstream-ingest/Package.resolved", "/services/jetstream-ingest/Sources/**"].every((path) => config.build.watchPatterns.includes(path));
+      const watchesGate = nativeGate || config.build.watchPatterns.includes("/services/jetstream-ingest/**") ||
         ["/services/jetstream-ingest/cmd/schema-ready/**", "/services/jetstream-ingest/internal/schemaready/**", "/services/jetstream-ingest/go.mod", "/services/jetstream-ingest/go.sum"].every((path) => config.build.watchPatterns.includes(path));
       expect(watchesGate).toBe(true);
       expect(config.deploy.healthcheckTimeout).toBeGreaterThan(90);
     });
   }
 
-  it("keeps both consolidated Go classes on the schema-gated image", () => {
+  it("keeps both consolidated Swift classes on the schema-gated image", () => {
     const iac = read(".railway/railway.ts");
     const build = iac.slice(iac.indexOf("const indexingBuild"), iac.indexOf("const longRunningDeploy"));
     const deploy = iac.slice(iac.indexOf("const longRunningDeploy"), iac.indexOf("export default"));
     expect(build).toContain('dockerfilePath: "/services/indexing-worker/Dockerfile"');
-    for (const path of ["/services/indexing-worker/**", "/packages/go/**", "/database/migrations/**",
-      "/services/jetstream-ingest/cmd/schema-ready/**", "/services/jetstream-ingest/internal/schemaready/**",
-      "/services/jetstream-ingest/go.mod", "/services/jetstream-ingest/go.sum"]) {
+    for (const path of ["/services/indexing-worker/**", "/database/migrations/**",
+      "/services/jetstream-ingest/Package.swift", "/services/jetstream-ingest/Package.resolved",
+      "/services/jetstream-ingest/Sources/**"]) {
       expect(build).toContain(`"${path}"`);
     }
     expect(iac.match(/build: indexingBuild/g)).toHaveLength(2);
@@ -55,16 +56,17 @@ describe("schema readiness deployment contract", () => {
     expect(deploy).toContain('healthcheckPath: "/startupz"');
     expect(Number(deploy.match(/healthcheckTimeout: (\d+)/)?.[1])).toBeGreaterThan(90);
     const dockerfile = read("services/indexing-worker/Dockerfile");
-    expect(dockerfile).toContain("FROM golang:");
-    expect(dockerfile).toContain("COPY packages/go /src/packages/go");
-    expect(dockerfile).toContain("./cmd/indexing-worker");
+    expect(dockerfile).toContain("FROM swift:6.4.2-jammy");
+    expect(dockerfile).toContain("--product IndexingWorker");
+    expect(dockerfile).toContain("--product retry-reconciliation");
+    expect(dockerfile).not.toContain("COPY packages/go");
   });
 
   it("keeps the consolidated IaC entrypoint and rebuild dependencies", () => {
     const iac = read(".railway/railway.ts");
     expect(iac).not.toContain("startCommand:");
-    expect(iac).toContain('"/services/jetstream-ingest/internal/schemaready/**"');
-    expect(iac).toContain('"/services/jetstream-ingest/cmd/schema-ready/**"');
+    expect(iac).toContain('"/services/jetstream-ingest/Sources/**"');
+    expect(iac).toContain('"/services/jetstream-ingest/Package.resolved"');
     expect(iac).toContain('"/database/migrations/**"');
   });
 

@@ -31,6 +31,42 @@ const railwayServices = [
 ] as const;
 
 describe("CI workflow configuration", () => {
+  it("checks only the active Swift runtime targets behind the required aggregate gate", () => {
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { needs?: string[]; if?: string; strategy?: { matrix: { service: string[] } }; env?: Record<string, string>; steps: { run?: string; env?: Record<string, string> }[] }>;
+    };
+    const backend = parsed.jobs["swift-active-backend"];
+    expect(backend.strategy?.matrix.service).toEqual(["gateway", "appview", "indexing-worker", "jetstream-ingest"]);
+    expect(backend.if).toContain("outputs.swift_backend == 'true'");
+    expect(backend.steps.some(step => step.run === "swift test --force-resolved-versions -j 2")).toBe(true);
+    expect(backend.env?.ANALYTICS_TEST_DATABASE_URL).toContain("socialwire_backend_test");
+    expect(backend.env?.SOCIAL_DRAFT_TEST_DATABASE_URL).toContain("socialwire_backend_test");
+    expect(backend.env?.TEST_SOCIAL_DRAFT_REDIS_URL).toBe("redis://127.0.0.1:6379");
+    expect(parsed.jobs.required.needs).toContain("swift-active-backend");
+    const gate = parsed.jobs.required.steps.find(step => step.run)!;
+    expect(gate.env?.SWIFT_BACKEND_RESULT).toContain("needs.swift-active-backend.result");
+  });
+  it("runs AppView PostgreSQL deadline contracts separately without dropping coverage", () => {
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { steps: { name?: string; run?: string; env?: Record<string, string>; "working-directory"?: string; if?: string; "continue-on-error"?: boolean }[] }>;
+    };
+    const steps = parsed.jobs["shared-swift"].steps;
+    const mainIndex = steps.findIndex(step => step.name === "Test retained AppView shared contracts");
+    expect(mainIndex).toBeGreaterThanOrEqual(0);
+    const main = steps[mainIndex];
+    const isolated = steps[mainIndex + 1];
+    // The exact skip leaves pure AppViewFeedQueryDeadlineTests in the main suite.
+    expect(main.run).toBe("swift test --skip PostgresFeedQueryDeadlineTests");
+    expect(isolated.run).toBe("swift test --skip-build --no-parallel --filter PostgresFeedQueryDeadlineTests");
+    for (const step of [main, isolated]) {
+      expect(step["working-directory"]).toBe("packages/swift/ThinAppViewCore");
+      expect(step.env?.THIN_APPVIEW_TEST_DATABASE_URL).toBe("postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable");
+      expect(step.env?.PODCAST_PRIVATE_TEST_DATABASE_URL).toBe(main.env?.PODCAST_PRIVATE_TEST_DATABASE_URL);
+      expect(step.if).toBeUndefined();
+      expect(step["continue-on-error"]).toBeUndefined();
+    }
+  });
+
   it("retires standalone Swift worker jobs while retaining API domain tests", () => {
     for (const name of ["charybdis", "wire-worker"]) {
       expect(workflow).not.toContain(`  ${name}:`);
@@ -40,8 +76,8 @@ describe("CI workflow configuration", () => {
       expect(workflow).toContain(path);
     }
   });
-  it("retires only Swift service commands while retaining all shared contract suites", () => {
-    for (const service of ["gateway", "appview", "operations", "wire-corpus-edge"]) {
+  it("keeps deactivated service commands out of Swift CI while retaining shared contract suites", () => {
+    for (const service of ["operations", "wire-corpus-edge"]) {
       expect(workflow).not.toMatch(new RegExp(`working-directory: services/${service}\\n\\s*(?:env:[\\s\\S]*?)?run: swift test`));
       expect(workflow).not.toContain(`services/${service}/.build`);
     }
@@ -52,21 +88,33 @@ describe("CI workflow configuration", () => {
     expect(workflow).toContain("Verify presentation-only read contract");
     expect(workflow).toContain("wire-corpus-serving-verifier-postgres.test.ts");
   });
-  it("packages and watches Go domains in every deployed Finance and Sports consumer", () => {
-    for (const image of ["indexing-worker", "appview", "wire-corpus-edge"]) {
+  it("packages active Swift services while preserving excluded corpus images", () => {
+    for (const image of ["gateway", "indexing-worker", "appview", "jetstream-ingest"]) {
       const dockerfile = readFileSync(join(repositoryRoot, `services/${image}/Dockerfile`), "utf8");
-      expect(dockerfile).toMatch(/^FROM golang:/m);
-      expect(dockerfile).not.toMatch(/^FROM swift:/m);
-      expect(dockerfile).toMatch(/^COPY packages\/go\/? (?:\/src\/)?packages\/go\/?$/m);
+      expect(dockerfile).toMatch(/^FROM swift:6\.4\.2-jammy/m);
+      expect(dockerfile).not.toMatch(/^FROM golang:/m);
+      expect(dockerfile).toContain("--force-resolved-versions");
+      expect(dockerfile).toContain("--product schema-ready");
+      expect(dockerfile).not.toContain("COPY packages/go");
     }
-    for (const configName of ["appview", "wire-corpus-edge"]) {
+    const excluded = readFileSync(join(repositoryRoot, "services/wire-corpus-edge/Dockerfile"), "utf8");
+    expect(excluded).toMatch(/^FROM golang:/m);
+    for (const configName of ["gateway", "appview"]) {
       const config = JSON.parse(readFileSync(join(repositoryRoot, `railway/${configName}.json`), "utf8"));
-      expect(config.build.watchPatterns).toContain("/packages/go/**");
-      expect(config.build.watchPatterns).not.toContain("/packages/swift/FinanceCore/**");
-      expect(config.build.watchPatterns).not.toContain("/packages/swift/SportsCore/**");
+      expect(config.build.watchPatterns).not.toContain("/packages/go/**");
+      expect(config.build.watchPatterns).toContain("/services/jetstream-ingest/Sources/**");
+      expect(config.build.watchPatterns).toContain("/services/jetstream-ingest/Package.resolved");
     }
     const indexingBuild = railwayInfrastructure.slice(railwayInfrastructure.indexOf("const indexingBuild"), railwayInfrastructure.indexOf("const longRunningDeploy"));
-    expect(indexingBuild).toContain('"/packages/go/**"');
+    expect(indexingBuild).toContain('"/services/jetstream-ingest/Sources/**"');
+    expect(indexingBuild).not.toContain('"/packages/go/**"');
+  });
+
+  it("keeps excluded domain runtime modes disabled in both deployment profiles", () => {
+    expect(railwayInfrastructure.match(/WIRE_FEED_MODE: "off"/g)).toHaveLength(4);
+    expect(railwayInfrastructure.match(/FINANCE_FEED_MODE: "off"/g)).toHaveLength(4);
+    expect(railwayInfrastructure.match(/SPORTS_FEED_MODE: "off"/g)).toHaveLength(4);
+    expect(railwayInfrastructure).not.toMatch(/(?:WIRE|FINANCE|SPORTS)_FEED_MODE: "(?:visible|shadow|api)"/);
   });
 
   it("keeps Finance and Sports selection ingestion in Development's explicit collection override", () => {
@@ -376,7 +424,7 @@ describe("CI workflow configuration", () => {
       expect(filter).toBeDefined();
       for (const watchPattern of config.build?.watchPatterns ?? []) {
         const path = watchPattern.slice(1);
-        const candidates = [filter, pathFilters.split("\n\n").find(block => block.startsWith("filter_changed go_packages "))].join("\n");
+        const candidates = [filter, ...["go_packages", "swift_backend"].map(name => pathFilters.split("\n\n").find(block => block.startsWith(`filter_changed ${name} `)))].join("\n");
         const coveredBySharedSwift = path.startsWith("packages/swift/") && candidates.includes("'packages/swift/**'");
         const coveredByService = ["gateway", "appview", "operations", "wire-corpus-edge"].some(service => path.startsWith(`services/${service}/`) && candidates.includes(`'services/${service}/**'`));
         const coveredByGlob = [...candidates.matchAll(/'([^']+)'/g)].some(match => new Bun.Glob(match[1]).match(path));
