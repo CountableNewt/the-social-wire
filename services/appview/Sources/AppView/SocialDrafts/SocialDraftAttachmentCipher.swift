@@ -7,11 +7,12 @@ struct SocialDraftAttachmentCipher: Sendable {
   static let maximumFileBytes = 100 << 20
   private static let chunkBytes = 64 << 10
   private static let magic = Data([0x54, 0x53, 0x57, 0x44, 0x41, 0x01])
-  private let key: SymmetricKey
+  private let keyData: Data
+  private var key: SymmetricKey { SymmetricKey(data: keyData) }
 
   init(key: Data) throws {
     guard key.count == 32 else { throw SocialDraftAttachmentError.invalidKey }
-    self.key = SymmetricKey(data: key)
+    self.keyData = key
   }
 
   func sealMetadata(_ data: Data, owner: String, assetID: String) throws -> Data {
