@@ -18,7 +18,7 @@ COPY services/gateway/Sources /src/services/gateway/Sources
 COPY services/gateway/Tests /src/services/gateway/Tests
 RUN swift build --package-path services/gateway -c release --product Gateway --force-resolved-versions -j 4 \
   && cp services/gateway/.build/release/Gateway /out/bin/Gateway \
-  && find services/gateway/.build/release/ -maxdepth 1 -type d -name '*.resources' -exec cp -a {} /out/bin/ \;
+  && find -L services/gateway/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
 
 FROM ubuntu:22.04
 RUN apt-get update \

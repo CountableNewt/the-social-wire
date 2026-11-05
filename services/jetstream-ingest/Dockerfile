@@ -15,7 +15,7 @@ COPY database/migrations /src/database/migrations
 RUN /out/bin/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
 RUN swift build --package-path services/jetstream-ingest -c release --product jetstream-ingest --force-resolved-versions -j 4 \
   && cp services/jetstream-ingest/.build/release/jetstream-ingest /out/bin/jetstream-ingest \
-  && find services/jetstream-ingest/.build/release/ -maxdepth 1 -type d -name '*.resources' -exec cp -a {} /out/bin/ \;
+  && find -L services/jetstream-ingest/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
 
 FROM ubuntu:22.04
 RUN apt-get update \
