@@ -24,6 +24,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.25.0"),
     .package(url: "https://github.com/apple/swift-crypto.git", from: "3.14.0"),
     .package(url: "https://github.com/soto-project/soto.git", exact: "7.17.0"),
+    .package(url: "https://github.com/scinfu/SwiftSoup.git", exact: "2.14.3"),
   ],
   targets: [
     .executableTarget(
@@ -47,6 +48,7 @@ let package = Package(
         .product(name: "NIOSSL", package: "swift-nio-ssl"),
         .product(name: "Crypto", package: "swift-crypto"),
         .product(name: "SotoS3", package: "soto"),
+        .product(name: "SwiftSoup", package: "SwiftSoup"),
       ],
       path: "Sources/AppView",
       swiftSettings: [

@@ -21,6 +21,15 @@ struct AppViewProxyRoutes {
   let logger: Logger
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
+    for path in ["/v1/publications/article-embed", "/xrpc/app.thesocialwire.publication.getArticleEmbed"] {
+      group.get(RouterPath(path)) { request, context async throws -> Response in
+        try await forward(request: request, context: context,
+          path: "/xrpc/app.thesocialwire.publication.getArticleEmbed", method: "GET")
+      }
+    }
+    group.post("/v1/media/project") { request, context async throws -> Response in
+      try await forward(request: request, context: context, path: "/v1/media/project", method: "POST")
+    }
     for path in ["/v1/podcasts/shows", "/v1/podcasts/episodes", "/v1/podcasts/transcript", "/v1/podcasts/state", "/v1/podcasts/analysis", "/v1/podcasts/clips", "/v1/podcasts/jobs"] {
       group.get(RouterPath(path)) { request, context async throws -> Response in
         try await forward(request: request, context: context, path: path, method: "GET")
@@ -340,7 +349,10 @@ struct AppViewProxyRoutes {
     }
     var headers = HTTPFields()
     headers[.contentType] = "application/json"
-    if path == "/v1/podcasts/search" || path.hasPrefix("/v1/analytics/") { headers[.cacheControl] = "private, no-store" }
+    if path == "/v1/podcasts/search" || path == "/v1/media/project" || path.hasPrefix("/v1/analytics/") { headers[.cacheControl] = "private, no-store" }
+    if path == "/xrpc/app.thesocialwire.publication.getArticleEmbed" {
+      headers[.cacheControl] = reply.headers.first(name: "Cache-Control") ?? "no-store"
+    }
     if let requestId = reply.headers.first(name: "X-Request-ID"),
       let requestIdHeader = HTTPField.Name("X-Request-ID")
     {
