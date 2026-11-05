@@ -218,12 +218,12 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: socialwire_backend_test
+          POSTGRES_DB: tsw_backend_test
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_backend_test"
+          --health-cmd "pg_isready -U postgres -d tsw_backend_test"
           --health-interval 2s
           --health-timeout 2s
           --health-retries 30
@@ -236,14 +236,14 @@ jobs:
           --health-timeout 2s
           --health-retries 20
     env:
-      TEST_GATEWAY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      TEST_GATEWAY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
       TEST_SOCIAL_DRAFT_REDIS_URL: redis://127.0.0.1:6379
       REDIS_INTEGRATION_URL: redis://127.0.0.1:6379
-      ANALYTICS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
-      SOCIAL_DRAFT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
-      THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
-      PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
-      INGRESS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      ANALYTICS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
+      SOCIAL_DRAFT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
+      THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
+      PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
+      INGRESS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
       - name: Install Linux Swift build dependencies
@@ -254,7 +254,7 @@ jobs:
       - name: Apply canonical migrations for backend tests
         uses: ./.github/actions/prepare-postgres
         with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test
+          database-url: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test
           postgres-container: ${{ job.services.postgres.id }}
       - uses: actions/cache@v5
         with:
