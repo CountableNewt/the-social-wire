@@ -68,6 +68,10 @@ enum AppViewRouterBuilder {
       .add(middleware: PDSReadStateReadinessMiddleware(store: thinAppViewStore as? any PDSReadStateLifecycleStoring, recovery: readStateRecovery))
       .add(middleware: LegacyReadStateMutationMiddleware())
 
+    MediaProjectRoutes().register(on: protected)
+    ArticleEmbedRoutes(resolver: ArticleEmbedResolver(reader: ArticleEmbedHTTPReader(http: httpClient,
+      repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient, plcURL: config.core.atprotoPLCURL, logger: logger))))
+      .register(on: protected)
     SocialDraftRoutes(service: socialDraftService).register(on: protected)
     if config.toolsEnabled, let analyticsStore {
       let reader = AnalyticsHTTPReader(repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient,
