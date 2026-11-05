@@ -53,6 +53,7 @@ var Routes = []Route{
 	{Method: "GET", Path: "/v1/semble/collections", Target: "/v1/semble/collections", UpstreamMethod: "GET", Service: "appview", Public: false, Optional: false, Streaming: false},
 	{Method: "GET", Path: "/v1/semble/collection", Target: "/v1/semble/collection", UpstreamMethod: "GET", Service: "appview", Public: false, Optional: false, Streaming: false},
 	{Method: "GET", Path: "/v1/semble/connections", Target: "/v1/semble/connections", UpstreamMethod: "GET", Service: "appview", Public: false, Optional: false, Streaming: false},
+	{Method: "GET", Path: "/xrpc/link.latr.preview.getOpenGraph", Target: "/xrpc/link.latr.preview.getOpenGraph", UpstreamMethod: "GET", Service: "latr", Public: false, Optional: false, Streaming: false},
 	{Method: "GET", Path: "/xrpc/link.latr.bookmarks.listBookmarks", Target: "/xrpc/link.latr.bookmarks.listBookmarks", UpstreamMethod: "GET", Service: "latr", Public: false, Optional: false, Streaming: false},
 	{Method: "GET", Path: "/xrpc/link.latr.bookmarks.listTags", Target: "/xrpc/link.latr.bookmarks.listTags", UpstreamMethod: "GET", Service: "latr", Public: false, Optional: false, Streaming: false},
 	{Method: "GET", Path: "/xrpc/link.latr.bookmarks.getBookmark", Target: "/xrpc/link.latr.bookmarks.getBookmark", UpstreamMethod: "GET", Service: "latr", Public: false, Optional: false, Streaming: false},

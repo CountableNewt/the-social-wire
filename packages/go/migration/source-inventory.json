@@ -11538,6 +11538,10 @@
           "sha256": "7393253807b1d36926618b93ad6c09a486aad7df14f185c73b055018eba3c028"
         },
         {
+          "path": "packages/lexicons/link/latr/preview/getOpenGraph.json",
+          "sha256": "02c7ad0116b849f60e51c551c7f83b8aa1793ff1d16763bcd21c7cf9646e5770"
+        },
+        {
           "path": "packages/lexicons/link/latr/saved/external.json",
           "sha256": "bb56d9601b50ca91ca32fb7d48a162109c45fbb4da4a991fb31836651c3e3077"
         },
@@ -11921,11 +11925,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "d38679c38b6e7f0deaaf496a15c3e6afec17d9b46c8580a1ce3f5081f88c0721"
+          "sha256": "01b20b0c398caa3f380def247d98a3cbd62a0bc88df72e968431b25e3c879b01"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "569140b141c4b780b9760e328d54dd8f0d3bdbf855c2d93307c72d9d814ffeac"
+          "sha256": "891e1f2b457dc646981606dfb162ba054b58e26d1afae9a169e9a27102365077"
         },
         {
           "path": "packages/spec/package.json",
