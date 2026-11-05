@@ -32,7 +32,8 @@ import Testing
     try await app.test(.live) { client in
       let port = try #require(client.port)
       let http = HTTPClient(eventLoopGroupProvider: .singleton)
-      let store = SocialDraftS3Store(configuration: .init(endpoint: "http://127.0.0.1:\(port)",
+      // HummingbirdTesting binds localhost, which may select IPv6 on Linux.
+      let store = SocialDraftS3Store(configuration: .init(endpoint: "http://localhost:\(port)",
         bucket: "fixture-bucket", accessKeyID: "fixture-access", secretAccessKey: "fixture-secret",
         region: "us-east-1", storageKey: Data(repeating: 1, count: 32)), http: http)
       do {
