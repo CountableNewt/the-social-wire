@@ -39,8 +39,8 @@ describe("CI workflow configuration", () => {
     expect(backend.strategy?.matrix.service).toEqual(["gateway", "appview", "indexing-worker", "jetstream-ingest"]);
     expect(backend.if).toContain("outputs.swift_backend == 'true'");
     expect(backend.steps.some(step => step.run === "swift test --force-resolved-versions -j 2")).toBe(true);
-    expect(backend.env?.ANALYTICS_TEST_DATABASE_URL).toContain("socialwire_backend_test");
-    expect(backend.env?.SOCIAL_DRAFT_TEST_DATABASE_URL).toContain("socialwire_backend_test");
+    expect(backend.env?.ANALYTICS_TEST_DATABASE_URL).toContain("tsw_backend_test");
+    expect(backend.env?.SOCIAL_DRAFT_TEST_DATABASE_URL).toContain("tsw_backend_test");
     expect(backend.env?.TEST_SOCIAL_DRAFT_REDIS_URL).toBe("redis://127.0.0.1:6379");
     expect(parsed.jobs.required.needs).toContain("swift-active-backend");
     const gate = parsed.jobs.required.steps.find(step => step.run)!;
