@@ -96,6 +96,8 @@ describe("CI workflow configuration", () => {
       expect(dockerfile).toContain("--force-resolved-versions");
       expect(dockerfile).toContain("--product schema-ready");
       expect(dockerfile).not.toContain("COPY packages/go");
+      expect(dockerfile).toContain("-name '*.resources'");
+      expect(dockerfile).toContain("-name '*.bundle'");
     }
     const excluded = readFileSync(join(repositoryRoot, "services/wire-corpus-edge/Dockerfile"), "utf8");
     expect(excluded).toMatch(/^FROM golang:/m);
