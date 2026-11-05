@@ -368,3 +368,38 @@ only durable job-cursor advancement resets retry pressure. A full Wire inbox
 holds the already-downloaded staging chunk and its existing rate reservation
 while waiting `WIRE_ADMISSION_PAUSE`; it does not reopen or redownload the archive.
 The retained canary deadline, cancellation, and lease-loss checks still apply.
+
+## Swift AppView Ingress Candidate
+
+`Package.swift` builds native `jetstream-ingest` and `schema-ready` executables.
+The Swift controller supports the active AppView lane and rejects enabled Wire
+lanes and Wire-only replay controls. It uses the existing database tables,
+source fingerprint, fenced lease, scoped inbox and checkpoint contracts. The
+Go Dockerfile and Railway/CI wiring remain unchanged pending migration review.
+
+The V2 client implements snapshot pagination, authenticated archive spooling,
+ETag/Range continuation, parallel segments and stripes, native zstd columnar and
+DAG-CBOR decoding, and the archive-to-live seam. Live WSS uses SwiftNIO and
+WebSocketKit on Darwin and Linux, including structured pre-upgrade cursor
+rejections and optional dictionary compression. A decode or staging failure
+stops later checkpoint advancement. PostgreSQL current-scope admission, poison
+evidence and byte budgets remain durable boundaries.
+
+Build hosts require `pkg-config` and the zstd development headers (`libzstd-dev`
+on Debian; `brew install zstd` on macOS). Runtime images need `libzstd1`. The
+xxHash v0.8.3 header used for the Jetstream metadata checksum retains its BSD
+license in `Sources/ArchiveChecksums/xxhash.h`.
+
+```sh
+swift build
+swift test
+# A disposable local database with all canonical migrations; never a hosted DB:
+INGRESS_TEST_DATABASE_URL=postgresql://test@127.0.0.1:5432/tsw_ingress swift test
+```
+
+The integration suite only accepts loopback databases whose names begin with
+`tsw_`. It exercises transaction rollback, whole-transaction serialization
+retry, lease fencing, scope filtering, poison evidence and migration receipts.
+Binary fixture provenance is recorded under `Tests/IngressCoreTests/Fixtures`.
+Linux image execution and a full provider-backed replay/live soak remain
+separate deployment acceptance checks.
