@@ -114,6 +114,25 @@ describe("CI path detection", () => {
     expect(result.get("go_packages")).toBe("true");
   });
 
+  it.each([
+    "services/gateway/Sources/Gateway/GatewayCommand.swift",
+    "services/appview/Package.swift",
+    "services/indexing-worker/Tests/WorkerTests/RuntimeTests.swift",
+    "services/jetstream-ingest/Sources/SchemaReady/SchemaReadyMain.swift",
+    "services/gateway/Dockerfile",
+    "railway/appview.json",
+  ])("requires the Swift backend matrix for active runtime changes: %s", (path) => {
+    expect(detect(repositoryWithChange(path), "pull_request").get("swift_backend")).toBe("true");
+  });
+
+  it.each([
+    "services/operations/Sources/Operations/Command.swift",
+    "services/wire-corpus-edge/Package.swift",
+    "services/wire-worker/README.md",
+  ])("does not add inactive services to the Swift migration: %s", (path) => {
+    expect(detect(repositoryWithChange(path), "pull_request").get("swift_backend")).toBe("false");
+  });
+
   it("checks every schema-ready consumer when the local Go module changes", () => {
     const result = detect(repositoryWithChange("packages/go/go.mod"), "pull_request");
     for (const job of ["go_packages", "indexing_worker", "jetstream_ingest", "wire_ingest", "podcast_worker"]) {
@@ -258,7 +277,7 @@ describe("CI path detection", () => {
     ".github/workflows/validated-merge.yml", ".github/actions/prepare-postgres/action.yml"]) {
     it(`runs the full matrix when shared PostgreSQL preparation changes: ${path}`, () => {
       const output = detect(repositoryWithChange(path), "pull_request");
-      expect(output.size).toBe(16);
+      expect(output.size).toBe(17);
       expect([...output.values()].every(value => value === "true")).toBe(true);
     });
   }

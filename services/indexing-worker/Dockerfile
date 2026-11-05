@@ -1,35 +1,36 @@
-FROM golang:1.26-bookworm AS schema-ready-builder
-WORKDIR /src/services/jetstream-ingest
-# Keep the canonical migration gate in front of the worker runtime.
-COPY packages/go/go.mod packages/go/go.sum /src/packages/go/
-COPY services/jetstream-ingest/go.mod services/jetstream-ingest/go.sum ./
-RUN go mod download
-COPY services/jetstream-ingest/cmd/schema-ready ./cmd/schema-ready
-COPY services/jetstream-ingest/internal/schemaready ./internal/schemaready
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/schema-ready ./cmd/schema-ready
-COPY database/migrations /src/database/migrations
-RUN /out/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
-
-FROM golang:1.26-bookworm AS builder
-WORKDIR /src/services/indexing-worker
-COPY packages/go/go.mod packages/go/go.sum /src/packages/go/
-COPY services/indexing-worker/go.mod services/indexing-worker/go.sum ./
-RUN go mod download
-COPY packages/go /src/packages/go
-COPY services/indexing-worker/cmd ./cmd
-COPY services/indexing-worker/internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/IndexingWorker ./cmd/indexing-worker
-RUN cd /src/packages/go && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/retry-reconciliation ./cmd/retry-reconciliation
-
-FROM debian:bookworm-slim
+FROM swift:6.4.2-jammy AS builder
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev libzstd-dev pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# Copy canonical package inputs only; local SwiftPM mirrors must not enter images.
+COPY services/jetstream-ingest/Package.swift services/jetstream-ingest/Package.resolved /src/services/jetstream-ingest/
+COPY services/jetstream-ingest/Sources /src/services/jetstream-ingest/Sources
+COPY services/jetstream-ingest/Tests /src/services/jetstream-ingest/Tests
+RUN swift build --package-path services/jetstream-ingest -c release --product schema-ready --force-resolved-versions -j 4 \
+  && mkdir -p /out/lib /out/bin \
+  && cp services/jetstream-ingest/.build/release/schema-ready /out/bin/schema-ready \
+  && cp -a /usr/lib/swift/linux/*.so* /out/lib/
+COPY database/migrations /src/database/migrations
+RUN /out/bin/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
+COPY services/indexing-worker/Package.swift services/indexing-worker/Package.resolved /src/services/indexing-worker/
+COPY services/indexing-worker/Sources /src/services/indexing-worker/Sources
+COPY services/indexing-worker/Tests /src/services/indexing-worker/Tests
+RUN swift build --package-path services/indexing-worker -c release --product IndexingWorker --force-resolved-versions -j 4 \
+  && cp services/indexing-worker/.build/release/IndexingWorker /out/bin/IndexingWorker \
+  && swift build --package-path services/indexing-worker -c release --product retry-reconciliation --force-resolved-versions -j 4 \
+  && cp services/indexing-worker/.build/release/retry-reconciliation /out/bin/retry-reconciliation \
+  && find services/indexing-worker/.build/release/ -maxdepth 1 -type d -name '*.resources' -exec cp -a {} /out/bin/ \;
+
+FROM ubuntu:22.04
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates libssl3 libcurl4 libsqlite3-0 libicu70 libxml2 libzstd1 \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --no-create-home appuser
-COPY --from=builder /out/IndexingWorker /usr/local/bin/IndexingWorker
-COPY --from=builder /out/retry-reconciliation /usr/local/bin/retry-reconciliation
-COPY --from=schema-ready-builder /out/schema-ready /usr/local/bin/schema-ready
-COPY --from=schema-ready-builder /out/required-migrations.txt /etc/socialwire/required-migrations.txt
+COPY --from=builder /out/lib/ /usr/lib/swift/linux/
+ENV LD_LIBRARY_PATH=/usr/lib/swift/linux
+COPY --from=builder /out/bin/ /usr/local/bin/
+COPY --from=builder /out/required-migrations.txt /etc/socialwire/required-migrations.txt
 USER appuser
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/schema-ready", "--", "/usr/local/bin/IndexingWorker"]
