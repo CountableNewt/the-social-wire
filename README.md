@@ -38,13 +38,13 @@ the-social-wire/
   services/
     gateway/         # OAuth, sync, PDS writes, AppView proxy (Hummingbird; Railway)
     appview/         # Publication sidebar + Thin AppView read index (Railway)
-    jetstream-ingest/ # Replicated multi-lane Ingress Controller (Go; Railway)
-    indexing-worker/ # Projection Pool / Coordinator shared runtime (Go; Railway)
+    jetstream-ingest/ # Replicated multi-lane Ingress Controller (Swift; Railway)
+    indexing-worker/ # Projection Pool / Coordinator shared runtime (Swift; Railway)
     operations/      # Operations control plane (Railway)
   packages/
     lexicons/        # record schemas plus app.thesocialwire.* service XRPC lexicons
     spec/            # OpenAPI 3.1 compatibility contract + endpoint manifest
-    swift/           # GatewayCore, OperationsCore, SocialWireRedis, ThinAppViewCore
+    swift/           # Native ReadStateCore; ignored historical contract checkouts
   database/
     migrations/      # Provider-neutral Postgres migration history
   docs/
@@ -57,8 +57,8 @@ the-social-wire/
 | Tool | Version |
 |------|---------|
 | [Bun](https://bun.sh) | Matches root [`package.json`](package.json) `packageManager` (currently 1.3.x) |
-| [Swift](https://swift.org/install) | 6.2+ for service/package test parity (CI uses 6.2.4) |
-| [Go](https://go.dev/dl/) | 1.26.5 for the Jetstream V2 ingress service |
+| [Swift](https://swift.org/install) | 6.4.2 for active backend services |
+| [Go](https://go.dev/dl/) | 1.26.6 for retained Go parity suites and excluded services |
 | [Railway CLI](https://docs.railway.com/guides/cli) | Latest (hosted operations and migration access) |
 | [Xcode](https://developer.apple.com/xcode/) | 16+ (for iOS) |
 
@@ -97,11 +97,11 @@ DATABASE_URL='postgresql://…' bash scripts/apply-database-migrations.sh
 # AppView (sidebar + Thin AppView reads)
 (cd services/appview && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true GATEWAY_APPVIEW_INTERNAL_SECRET=local-development-only swift run AppView)
 
-# Go AppView candidate (requires explicit PostgreSQL, including APP_ENV=local; no SQLite fallback)
-(cd services/appview && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true GATEWAY_APPVIEW_INTERNAL_SECRET=local-development-only go run ./cmd/appview)
+# Replicated projection role (active AppView durable inbox)
+(cd services/indexing-worker && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative swift run IndexingWorker)
 
-# Replicated projection role (AppView + Wire durable inboxes)
-(cd services/indexing-worker && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative go run ./cmd/indexing-worker)
+# Coordinator uses the same package with INDEXING_WORKER_ROLE=coordinator.
+# Ingress Controller configuration/protocol details: services/jetstream-ingest/README.md
 ```
 
 ### Running tests
@@ -116,10 +116,9 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 (cd services/gateway && swift test)
 (cd services/appview && swift test)
 (cd packages/swift/ThinAppViewCore && swift test)
-(cd services/indexing-worker && go test -race ./...)
+(cd services/indexing-worker && swift test --force-resolved-versions)
 (cd packages/swift/OperationsCore && swift test)
-(cd services/operations && swift test)
-(cd services/jetstream-ingest && go test ./... && go vet ./...)
+(cd services/jetstream-ingest && swift test --force-resolved-versions)
 
 # iOS — Cmd+U in Xcode (see docs/test-plans/apple.md)
 ```
@@ -145,7 +144,11 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 | Optional disposable cache/coordination | Private Railway Redis (currently selected in Development and Production) |
 | CI/CD | GitHub Actions validates source; Railway deploys through its Git integration |
 
-Projection Pool and Coordinator use the repository-local Go runtime. Retired Swift worker executables remain recoverable from Git rollback revisions; serving services keep their shared Swift packages. See [the replicated indexing design](docs/architecture/indexing-services.md).
+The active backend builds Swift runtimes with version-pinned remote packages.
+Operations and dormant corpus-edge services are excluded from this migration.
+Old Go sources remain as parity references during cutover; active Dockerfiles
+build native Swift products. See [shared packages](docs/architecture/extracted-swift-packages.md)
+and [the replicated indexing design](docs/architecture/indexing-services.md).
 
 See [docs/architecture/overview.md](docs/architecture/overview.md) for the full architecture narrative.
 

@@ -1,7 +1,8 @@
-# Extracted Swift Reference Packages
+# Shared Swift Packages
 
-The backend runs Go. The seven former backend Swift packages now live in public,
-history-preserving repositories:
+The active Gateway, App View, Ingress Controller, Projection Pool, and Coordinator
+runtimes build with Swift 6.4.2. Web and iOS retain their existing client stacks.
+Shared backend packages remain separate, history-preserving repositories:
 
 | Package | Repository |
 | --- | --- |
@@ -15,13 +16,30 @@ history-preserving repositories:
 
 `ReadStateCore` remains tracked here because the Apple app imports it. The
 standalone ThinAppViewCore repository includes a documented snapshot of that
-dependency, preserving independent package builds without moving the active
-Apple package. Each extracted repository records the source revision and
+dependency and exports its `ReadStateCore` product for the server dependency graph,
+preserving independent builds without moving the active Apple package. Each extracted repository records the source revision and
 digests in `SOURCE_PROVENANCE.json`, preserves the license and package history,
 and provides its own Swift CI. Database and OAuth test fixtures are bundled
 where needed; four fixture-path changes are documented in provenance.
 
-## Contract Checks
+## Runtime Dependencies
+
+Each active service owns a `Package.swift` and committed `Package.resolved`.
+Docker builds and CI use `--force-resolved-versions`. Runtime pins are independent
+from the historical Swift/Go parity oracle below; changing one does not silently
+rewrite the other. Local SwiftPM mirrors are development-only and excluded from
+Git and images. Publish package commits before publishing service pins so a clean
+checkout can resolve every dependency.
+
+The native ingress package also builds `schema-ready`, used by all four active
+images to validate canonical database migration receipts before starting. The
+dedicated Database Migrator retains schema ownership. Operations and dormant
+corpus-edge services are outside this migration and keep their existing sources.
+The retired standalone Tap, Charybdis, and Wire workers remain retired.
+
+Track this migration and its acceptance checks in [GitHub #782](https://github.com/Stygian-Tech/the-social-wire/issues/782).
+
+## Historical Contract Checks
 
 Existing Swift/Go ranking and edition parity, historical source specifications,
 and retained Swift contract suites still run. Bootstrap their immutable
@@ -39,8 +57,9 @@ status and refuses to overwrite local work. To update a pin, review the new
 package revision, preserve any existing checkout changes, replace that generated
 checkout deliberately, run bootstrap, and regenerate the source inventory.
 
-The Jetstream SDK golden fixture is now owned by the Go service under
-`services/jetstream-ingest/internal/ingest/testdata`.
+The original Go Jetstream golden fixture remains under
+`services/jetstream-ingest/internal/ingest/testdata`; native ingress protocol
+fixtures and provenance live under `services/jetstream-ingest/Tests`.
 
 Extracting source packages does not reduce deployed Go runtime memory. Memory
 work is tracked separately in TSW-154; extraction is TSW-153.

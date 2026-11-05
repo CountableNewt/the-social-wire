@@ -29,6 +29,7 @@ jobs:
       apple: ${{ steps.filter.outputs.apple }}
       redis: ${{ steps.filter.outputs.redis }}
       shared_swift: ${{ steps.filter.outputs.shared_swift }}
+      swift_backend: ${{ steps.filter.outputs.swift_backend }}
       go_packages: ${{ steps.filter.outputs.go_packages }}
       jetstream_ingest: ${{ steps.filter.outputs.jetstream_ingest }}
       wire_ingest: ${{ steps.filter.outputs.wire_ingest }}
@@ -198,6 +199,75 @@ jobs:
         run: swift test
         env:
           REDIS_INTEGRATION_URL: redis://127.0.0.1:6379
+
+  swift-active-backend:
+    name: Swift Backend (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.swift_backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, appview, indexing-worker, jetstream-ingest]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: socialwire_backend_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d socialwire_backend_test"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+      redis:
+        image: redis:8.2.8-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 20
+    env:
+      TEST_GATEWAY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      TEST_SOCIAL_DRAFT_REDIS_URL: redis://127.0.0.1:6379
+      REDIS_INTEGRATION_URL: redis://127.0.0.1:6379
+      ANALYTICS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      SOCIAL_DRAFT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+      INGRESS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Linux Swift build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libxml2-dev libssl-dev libzstd-dev pkg-config
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.4.2"
+      - name: Apply canonical migrations for backend tests
+        uses: ./.github/actions/prepare-postgres
+        with:
+          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_backend_test
+          postgres-container: ${{ job.services.postgres.id }}
+      - uses: actions/cache@v5
+        with:
+          path: services/${{ matrix.service }}/.build
+          key: ${{ runner.os }}-swift-active-6.4.2-${{ matrix.service }}-${{ hashFiles('services/**/Package.resolved') }}
+      - name: Test active Swift backend
+        working-directory: services/${{ matrix.service }}
+        run: swift test --force-resolved-versions -j 2
+      - name: Test the shared AppView package at the service's actual pin
+        if: matrix.service == 'appview'
+        working-directory: services/appview
+        run: swift test --package-path .build/checkouts/thin-app-view-core --force-resolved-versions -j 2
+
+      - name: Test the Redis package at the service's actual pin
+        if: matrix.service == 'gateway'
+        working-directory: services/gateway
+        run: swift test --package-path .build/checkouts/social-wire-redis --force-resolved-versions -j 2
 
   shared-swift:
     name: Retained Swift Contracts
@@ -720,6 +790,7 @@ jobs:
       - apple
       - redis
       - shared-swift
+      - swift-active-backend
       - go-packages
       - jetstream-ingest
       - wire-ingest
@@ -742,6 +813,7 @@ jobs:
           APPLE_FLAG: ${{ needs.changes.outputs.apple }}
           REDIS_FLAG: ${{ needs.changes.outputs.redis }}
           SHARED_SWIFT_FLAG: ${{ needs.changes.outputs.shared_swift }}
+          SWIFT_BACKEND_FLAG: ${{ needs.changes.outputs.swift_backend }}
           GO_PACKAGES_FLAG: ${{ needs.changes.outputs.go_packages }}
           JETSTREAM_INGEST_FLAG: ${{ needs.changes.outputs.jetstream_ingest }}
           WIRE_INGEST_FLAG: ${{ needs.changes.outputs.wire_ingest }}
@@ -758,6 +830,7 @@ jobs:
           APPLE_RESULT: ${{ needs.apple.result }}
           REDIS_RESULT: ${{ needs.redis.result }}
           SHARED_SWIFT_RESULT: ${{ needs.shared-swift.result }}
+          SWIFT_BACKEND_RESULT: ${{ needs.swift-active-backend.result }}
           GO_PACKAGES_RESULT: ${{ needs.go-packages.result }}
           JETSTREAM_INGEST_RESULT: ${{ needs.jetstream-ingest.result }}
           WIRE_INGEST_RESULT: ${{ needs.wire-ingest.result }}
@@ -799,6 +872,7 @@ jobs:
           check "$APPLE_FLAG" "$APPLE_RESULT" "Apple"
           check "$REDIS_FLAG" "$REDIS_RESULT" "SocialWire Redis"
           check "$SHARED_SWIFT_FLAG" "$SHARED_SWIFT_RESULT" "Retained Swift Contracts"
+          check "$SWIFT_BACKEND_FLAG" "$SWIFT_BACKEND_RESULT" "Active Swift Backends"
           check "$GO_PACKAGES_FLAG" "$GO_PACKAGES_RESULT" "Repository-local Go Packages"
           check "$JETSTREAM_INGEST_FLAG" "$JETSTREAM_INGEST_RESULT" "Jetstream V2 Ingest"
           check "$WIRE_INGEST_FLAG" "$WIRE_INGEST_RESULT" "The Wire Global Ingest"
