@@ -69,6 +69,7 @@ apps/apple/*.xcodeproj/project.xcworkspace/xcuserdata/*/UserInterfaceState.xcuse
 
 # Revision-pinned Swift reference contracts; bootstrap with scripts/go/check-out-swift-contracts.py.
 **/.swiftpm/configuration/mirrors.json
+/services/*/Packages/
 /packages/swift/OperationsCore/
 /packages/swift/SocialWireRedis/
 /packages/swift/WireCore/

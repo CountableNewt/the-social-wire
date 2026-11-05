@@ -7,7 +7,7 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
-    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "228e17fa3b576f61a999c376d2193d78d1122ad8"),
+    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "27257830777afbef4969f84b9baa9d5148b1fd2f"),
     .package(url: "https://github.com/Stygian-Tech/operations-core.git", revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),
     .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "ffa868f979283cff6ce207e0dbb422ff2ea45136"),
     .package(url: "https://github.com/Stygian-Tech/social-wire-redis.git", revision: "313305b98919ac8075313044b6d867c13650a329"),
@@ -48,6 +48,8 @@ let package = Package(
       dependencies: [
         "Gateway",
         .product(name: "GatewayCore", package: "gateway-core"),
+        .product(name: "ThinAppViewCore", package: "thin-app-view-core"),
+        .product(name: "PostgresNIO", package: "postgres-nio"),
         .product(name: "SocialWireRedis", package: "social-wire-redis"),
         .product(name: "AsyncHTTPClient", package: "async-http-client"),
         .product(name: "HummingbirdTesting", package: "hummingbird"),

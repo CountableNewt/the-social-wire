@@ -11,6 +11,7 @@ enum GatewayRouterBuilder {
     httpClient: HTTPClient,
     cache: any PdsRepoRecordCacheStore,
     wireLimiter: WireRequestLimiter = WireRequestLimiter(),
+    socialDraftAdmission: SocialDraftAdmission = SocialDraftAdmission(),
     ingestionHealth: GatewayIngestionHealth? = nil,
     operationsStore: (any OperationsStore)? = nil,
     telemetry: OperationsTelemetryBuffer? = nil,
@@ -72,6 +73,9 @@ enum GatewayRouterBuilder {
     let optionalAuthentication = router.group()
       .add(middleware: XRPCErrorMiddleware())
       .add(middleware: OptionalATProtoAuthMiddleware(strict: authMiddleware))
+    let entitlements = GatewayEntitlements(gatingEnabled: config.proGatingEnabled, proDIDs: config.proDIDs)
+    SubscriptionRoutes(entitlements: entitlements).register(on: protected)
+    GIFRoutes(catalog: GIFCatalogService(apiKey: config.klipyAPIKey, httpClient: httpClient), limiter: wireLimiter, admission: socialDraftAdmission).register(on: protected)
 
     let prefs = PreferenceSyncService(
       httpClient: httpClient,
@@ -91,6 +95,11 @@ enum GatewayRouterBuilder {
     ).register(on: protected)
 
     if let appViewBase = config.appViewBaseURL {
+      if config.toolsEnabled {
+        AnalyticsProxyRoutes(proxy: AppViewProxyRoutes(baseURL: appViewBase, internalSecret: config.core.gatewayAppViewInternalSecret, httpClient: httpClient, logger: logger), entitlements: entitlements).register(on: protected)
+      }
+      SocialDraftProxyRoutes(baseURL: appViewBase, internalSecret: config.core.gatewayAppViewInternalSecret,
+        httpClient: httpClient, admission: socialDraftAdmission).register(on: protected)
       PodcastMediaProxyRoutes(baseURL: appViewBase, internalSecret: config.core.gatewayAppViewInternalSecret,
         httpClient: httpClient).register(on: protected, router: router)
       AppViewProxyRoutes(
