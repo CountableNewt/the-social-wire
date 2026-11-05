@@ -61,7 +61,9 @@ public struct IngressConfiguration: Sendable {
     let namespaced =
       env["JETSTREAM_APPVIEW_ENABLED"] != nil || env["JETSTREAM_WIRE_ENABLED"] != nil
       || env["JETSTREAM_WIRE_LANES"] != nil
-    guard !(try bool("JETSTREAM_WIRE_ENABLED")), get("JETSTREAM_WIRE_LANES").isEmpty,
+    // Hosted environments retain selectors for disabled Wire lanes. As in Go,
+    // those settings are inert until Wire is enabled.
+    guard !(try bool("JETSTREAM_WIRE_ENABLED")),
       get("JETSTREAM_PIPELINE_MODE", "publication-author-viewer-v1")
         == "publication-author-viewer-v1"
     else {
