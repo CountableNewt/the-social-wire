@@ -20,7 +20,7 @@ RUN swift build --package-path services/indexing-worker -c release --product Ind
   && cp services/indexing-worker/.build/release/IndexingWorker /out/bin/IndexingWorker \
   && swift build --package-path services/indexing-worker -c release --product retry-reconciliation --force-resolved-versions -j 4 \
   && cp services/indexing-worker/.build/release/retry-reconciliation /out/bin/retry-reconciliation \
-  && find services/indexing-worker/.build/release/ -maxdepth 1 -type d -name '*.resources' -exec cp -a {} /out/bin/ \;
+  && find -L services/indexing-worker/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
 
 FROM ubuntu:22.04
 RUN apt-get update \

@@ -18,7 +18,7 @@ COPY services/appview/Sources /src/services/appview/Sources
 COPY services/appview/Tests /src/services/appview/Tests
 RUN swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4 \
   && cp services/appview/.build/release/AppView /out/bin/AppView \
-  && find services/appview/.build/release/ -maxdepth 1 -type d -name '*.resources' -exec cp -a {} /out/bin/ \;
+  && find -L services/appview/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
 
 FROM ubuntu:22.04
 RUN apt-get update \
