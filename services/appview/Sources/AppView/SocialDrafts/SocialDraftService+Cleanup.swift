@@ -6,10 +6,12 @@ extension SocialDraftService {
     guard (1...1000).contains(limit) else { throw SocialDraftStorageError.invalid }
     let lease = try admission.acquire(owner: "")
     defer { withExtendedLifetime(lease) {} }
+    let sweepDeadline = ContinuousClock.now.advanced(by: .seconds(30))
     var completed = 0
     var retryFailed = false
     for _ in 0..<limit {
       try Task.checkCancellation()
+      guard ContinuousClock.now < sweepDeadline else { break }
       // A claimed job must persist its retry even if the sweep is cancelled.
       // This independent task is always joined before returning. S3 delete is
       // bounded to 5s; each SQL operation and the idle transaction are bounded.
