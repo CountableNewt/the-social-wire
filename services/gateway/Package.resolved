@@ -1,5 +1,5 @@
 {
-  "originHash" : "b1510b7bc6ee1e5fed75eab2a23b62cce42fff5cc4dbf2ee9660a6a4bc3b2c21",
+  "originHash" : "3d07466173efa84b455219551a1fffe12a15b6089fd6f827fccf35362df5328e",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -32,7 +32,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/gateway-core.git",
       "state" : {
-        "revision" : "228e17fa3b576f61a999c376d2193d78d1122ad8"
+        "revision" : "27257830777afbef4969f84b9baa9d5148b1fd2f"
       }
     },
     {

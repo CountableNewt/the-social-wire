@@ -1,5 +1,6 @@
 ## Learned User Preferences
 
+- **Issue Tracking And Remote Ownership:** GitHub issues are the current tracker for planning, progress, bugs, dependencies, and PR links. This overrides older Linear workflow instructions: the Linear skill is deprecated for routine work, and Linear updates or authentication are required only when explicitly requested. Preserve historical references; the active Swift migration is tracked in GitHub issue #782. GitHub remains the canonical remote until a separately requested migration to Tangled supplies a destination.
 - Never create git commits or push to remote unless explicitly asked; when asked, stage only files changed for the current task, exclude unrelated edits, use a short conventional commit message, and push the active branch (often `main`).
 - Prefer Swift Testing over XCTest for Swift tests (API, worker, packages, iOS) wherever the toolchain supports it.
 - Prefer atomic source files: one type or view per file, grouped by folder—not large multi-type files.

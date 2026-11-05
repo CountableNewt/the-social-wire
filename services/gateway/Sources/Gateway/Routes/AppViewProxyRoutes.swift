@@ -242,7 +242,7 @@ struct AppViewProxyRoutes {
     }
   }
 
-  private func forward(
+  func forward(
     request: Request,
     context: GatewayRequestContext,
     path: String,
@@ -340,7 +340,7 @@ struct AppViewProxyRoutes {
     }
     var headers = HTTPFields()
     headers[.contentType] = "application/json"
-    if path == "/v1/podcasts/search" { headers[.cacheControl] = "private, no-store" }
+    if path == "/v1/podcasts/search" || path.hasPrefix("/v1/analytics/") { headers[.cacheControl] = "private, no-store" }
     if let requestId = reply.headers.first(name: "X-Request-ID"),
       let requestIdHeader = HTTPField.Name("X-Request-ID")
     {

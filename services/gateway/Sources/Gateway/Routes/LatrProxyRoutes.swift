@@ -24,6 +24,9 @@ struct LatrProxyRoutes {
   ]
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
+    group.get("/xrpc/link.latr.preview.getOpenGraph") { request, context async throws -> Response in
+      try await forward(request: request, context: context, path: "/xrpc/link.latr.preview.getOpenGraph", method: "GET")
+    }
     group.get("/xrpc/link.latr.bookmarks.listBookmarks") { request, context async throws -> Response in
       try await forward(
         request: request,
@@ -213,20 +216,7 @@ struct LatrProxyRoutes {
 
 private extension HTTPResponse.Status {
   static func from(code: Int) -> HTTPResponse.Status? {
-    switch code {
-    case 200: .ok
-    case 201: .created
-    case 204: .noContent
-    case 304: .notModified
-    case 400: .badRequest
-    case 401: .unauthorized
-    case 403: .forbidden
-    case 404: .notFound
-    case 500: .internalServerError
-    case 502: .badGateway
-    case 503: .serviceUnavailable
-    case 504: .gatewayTimeout
-    default: nil
-    }
+    guard (100...599).contains(code) else { return nil }
+    return HTTPResponse.Status(code: code)
   }
 }

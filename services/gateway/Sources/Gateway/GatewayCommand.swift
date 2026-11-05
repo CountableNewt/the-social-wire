@@ -70,7 +70,8 @@ struct Serve: AsyncParsableCommand {
           from: environment,
           default: .sqlite
         )
-        let redisRuntime = pdsCacheBackend == .redis
+        let redisRequired = environment["REDIS_URL"]?.isEmpty == false
+        let redisRuntime = pdsCacheBackend == .redis || redisRequired
           ? RedisPdsRepoRecordCacheRuntime.make(
             environment: environment,
             appEnvironment: config.core.appEnv.rawValue,
@@ -86,7 +87,7 @@ struct Serve: AsyncParsableCommand {
         } else {
           try SQLiteCache(path: path, logger: logger)
         }
-        await redisRuntime?.installResolutionCache()
+        if pdsCacheBackend == .redis { await redisRuntime?.installResolutionCache() }
         let heartbeat = OperationsHeartbeatJob(
           store: operationsStore,
           service: "gateway",
@@ -104,6 +105,7 @@ struct Serve: AsyncParsableCommand {
             redis: redisRuntime?.client,
             environment: config.core.appEnv.rawValue
           ),
+          socialDraftAdmission: SocialDraftAdmission(redis: redisRuntime?.client, requiresRedis: redisRequired, environment: config.core.appEnv.rawValue),
           ingestionHealth: ingestionHealth,
           operationsStore: operationsStore,
           telemetry: operationsConfig.enabled ? telemetry : nil,
@@ -139,7 +141,8 @@ struct Serve: AsyncParsableCommand {
           from: environment,
           default: .postgres
         )
-        let redisRuntime = pdsCacheBackend == .redis
+        let redisRequired = environment["REDIS_URL"]?.isEmpty == false
+        let redisRuntime = pdsCacheBackend == .redis || redisRequired
           ? RedisPdsRepoRecordCacheRuntime.make(
             environment: environment,
             appEnvironment: config.core.appEnv.rawValue,
@@ -153,7 +156,7 @@ struct Serve: AsyncParsableCommand {
         let cache: any PdsRepoRecordCacheStore = pdsCacheBackend == .redis
           ? redisRuntime?.store ?? UnavailablePdsRepoRecordCacheStore()
           : PostgresCache(pool: pgPool, logger: logger)
-        await redisRuntime?.installResolutionCache()
+        if pdsCacheBackend == .redis { await redisRuntime?.installResolutionCache() }
         let heartbeat = OperationsHeartbeatJob(
           store: operationsStore,
           service: "gateway",
@@ -171,6 +174,7 @@ struct Serve: AsyncParsableCommand {
             redis: redisRuntime?.client,
             environment: config.core.appEnv.rawValue
           ),
+          socialDraftAdmission: SocialDraftAdmission(redis: redisRuntime?.client, requiresRedis: redisRequired, environment: config.core.appEnv.rawValue),
           ingestionHealth: ingestionHealth,
           operationsStore: operationsStore,
           telemetry: operationsConfig.enabled ? telemetry : nil,
