@@ -89,13 +89,23 @@ struct SocialDraftStorageTests {
       let router = Router(context: GatewayRequestContext.self)
       router.add(middleware: SocialDraftTestAuth(owner: owner))
       SocialDraftRoutes(service: service, transferSeconds: 0.1).register(on: router.group())
+      router.get("/fixture-ready") { _, _ -> HTTPResponse.Status in .noContent }
       let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
       try await app.test(.live) { client in
         let port = try #require(client.port)
         let http = HTTPClient(eventLoopGroupProvider: .singleton)
+        // Establish the same client's connection before measuring the route's
+        // deadline, so connection setup cannot masquerade as server cancellation.
+        do {
+          let ready = try await http.execute(
+            HTTPClientRequest(url: "http://localhost:\(port)/fixture-ready"), timeout: .seconds(3))
+          #expect(ready.status == .noContent)
+          _ = try await ready.body.collect(upTo: 1024)
+        } catch { try? await http.shutdown(); throw error }
         let (stream, continuation) = AsyncThrowingStream<ByteBuffer, Error>.makeStream()
         continuation.yield(ByteBuffer(bytes: [0x89]))
-        var request = HTTPClientRequest(url: "http://127.0.0.1:\(port)/xrpc/app.thesocialwire.socialDraft.uploadAttachment")
+        // Match the actual hostname selected by HummingbirdTesting .live.
+        var request = HTTPClientRequest(url: "http://localhost:\(port)/xrpc/app.thesocialwire.socialDraft.uploadAttachment")
         request.method = .POST
         request.headers.add(name: "Content-Type", value: "application/octet-stream")
         request.headers.add(name: "X-Social-Draft-Upload-Id", value: input.assetId)
@@ -105,7 +115,10 @@ struct SocialDraftStorageTests {
           let response = try await http.execute(request, timeout: .seconds(3))
           _ = try await response.body.collect(upTo: 4096)
           Issue.record("Stalled upload unexpectedly succeeded")
-        } catch { #expect(started.duration(to: .now) < .seconds(2)) }
+        } catch {
+          #expect(error as? HTTPClientError != .deadlineExceeded)
+          #expect(started.duration(to: .now) < .seconds(2))
+        }
         continuation.finish()
         try await http.shutdown()
         var released = false
