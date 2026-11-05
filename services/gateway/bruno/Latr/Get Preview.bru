@@ -1,0 +1,21 @@
+meta {
+  name: Get Preview
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/xrpc/link.latr.preview.getOpenGraph?url=https%3A%2F%2Fexample.com%2Farticle
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  X-Latr-Gateway-DPoP: {{latrGatewayDpopProof}}
+}
+
+docs {
+  Resolves title, description, thumbnail, site name, and author without changing the bookmark.
+}
