@@ -1,5 +1,5 @@
 {
-  "originHash" : "3d07466173efa84b455219551a1fffe12a15b6089fd6f827fccf35362df5328e",
+  "originHash" : "1f2ffe7c1c710e85ef605a2a2a36a2152c8dbe105e1331e15abc4805b47fe592",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -32,7 +32,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/gateway-core.git",
       "state" : {
-        "revision" : "27257830777afbef4969f84b9baa9d5148b1fd2f"
+        "revision" : "5c8c85d62bcb120d97c19008d4edefccd0f245cb"
       }
     },
     {
@@ -110,7 +110,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/social-wire-redis.git",
       "state" : {
-        "revision" : "313305b98919ac8075313044b6d867c13650a329"
+        "revision" : "b47429ade063d837039a0a144379200bc0487401"
       }
     },
     {
@@ -303,6 +303,14 @@
       }
     },
     {
+      "identity" : "swift-secp256k1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/21-DOT-DEV/swift-secp256k1.git",
+      "state" : {
+        "revision" : "bcd6dd8e615ce243eab7097f213c8c4b39305a2e"
+      }
+    },
+    {
       "identity" : "swift-service-context",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-service-context.git",
@@ -334,7 +342,16 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/thin-app-view-core.git",
       "state" : {
-        "revision" : "ffa868f979283cff6ce207e0dbb422ff2ea45136"
+        "revision" : "3a5fbe44741fffb1c4ec8a81529f179a7df78f64"
+      }
+    },
+    {
+      "identity" : "websocket-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vapor/websocket-kit.git",
+      "state" : {
+        "revision" : "90bbbdab3ede12c803cfbe91646f291c092517a3",
+        "version" : "2.16.2"
       }
     }
   ],

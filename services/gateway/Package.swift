@@ -7,10 +7,10 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
-    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "27257830777afbef4969f84b9baa9d5148b1fd2f"),
+    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "5c8c85d62bcb120d97c19008d4edefccd0f245cb"),
     .package(url: "https://github.com/Stygian-Tech/operations-core.git", revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),
-    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "ffa868f979283cff6ce207e0dbb422ff2ea45136"),
-    .package(url: "https://github.com/Stygian-Tech/social-wire-redis.git", revision: "313305b98919ac8075313044b6d867c13650a329"),
+    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "3a5fbe44741fffb1c4ec8a81529f179a7df78f64"),
+    .package(url: "https://github.com/Stygian-Tech/social-wire-redis.git", revision: "b47429ade063d837039a0a144379200bc0487401"),
     .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.6.0"),
     .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
     .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
