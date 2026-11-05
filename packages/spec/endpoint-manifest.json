@@ -4,6 +4,19 @@
   "entries": [
     {
       "surface": "openapi",
+      "method": "POST",
+      "path": "/v1/media/project",
+      "classification": "first-party-rest"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/v1/publications/article-embed",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.publication.getArticleEmbed"
+    },
+    {
+      "surface": "openapi",
       "method": "GET",
       "path": "/health",
       "classification": "operational"

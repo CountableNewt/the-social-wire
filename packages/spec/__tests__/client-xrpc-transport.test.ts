@@ -104,31 +104,27 @@ describe("client XRPC transport", () => {
     }
   });
 
-  it("forwards Gateway REST adapters to AppView XRPC upstream", () => {
+  it("forwards Gateway adapters to AppView XRPC upstream", () => {
     const source = readFileSync(
-      join(
-        REPO_ROOT,
-        "services/gateway/internal/gateway/routes.go"
-      ),
-      "utf8"
+      join(REPO_ROOT, "services/gateway/Sources/Gateway/Routes/AppViewProxyRoutes.swift"), "utf8"
     );
+    const registrations = source.split(/(?=^    (?:group\.(?:get|post|put|delete|patch)\(|for path in))/m);
     const proxyMigrations = clientMigrations.filter(
-      ({ xrpcNsid }) =>
-        xrpcNsid!.startsWith("app.thesocialwire.appview.") ||
+      ({ xrpcNsid }) => xrpcNsid!.startsWith("app.thesocialwire.appview.") ||
         xrpcNsid!.startsWith("app.thesocialwire.publication.")
     );
-
     for (const migration of proxyMigrations) {
-      const registration = source.split("\n").find((line) =>
-        line.includes(`Method: "${migration.method.toUpperCase()}"`) &&
-        line.includes(`Path: "${migration.path}"`)
+      const registration = registrations.find(block =>
+        block.includes(`group.${migration.method.toLowerCase()}("${migration.path}")`) ||
+        (block.startsWith("    for path in") && block.includes(`"${migration.path}"`) &&
+          block.includes(`group.${migration.method.toLowerCase()}(RouterPath(path))`))
       );
       expect(registration, `missing Gateway adapter for ${migration.path}`).toBeDefined();
       expect(registration, `${migration.path} must forward to XRPC`).toContain(
-        `Target: "/xrpc/${migration.xrpcNsid}"`
+        `path: "/xrpc/${migration.xrpcNsid}"`
       );
       expect(registration, `${migration.path} must use the Lexicon HTTP verb`).toContain(
-        `UpstreamMethod: "${/\.(get|list)[A-Z]/.test(migration.xrpcNsid!) ? "GET" : "POST"}`
+        `method: "${/\.(get|list)[A-Z]/.test(migration.xrpcNsid!) ? "GET" : "POST"}`
       );
     }
   });
