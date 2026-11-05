@@ -42,6 +42,10 @@ struct GatewayServiceConfig: Sendable {
   var financeFeedMode: WireFeedMode = .off
   var sportsFeedMode: WireFeedMode = .off
   var podcastsEnabled: Bool = false
+  var toolsEnabled: Bool = true
+  var proGatingEnabled: Bool = false
+  var proDIDs: Set<String> = []
+  var klipyAPIKey: String = ""
 
   enum CacheBackend: Sendable {
     case sqlite(path: String)
@@ -120,7 +124,14 @@ struct GatewayServiceConfig: Sendable {
       circleFeedMode: circleFeedMode,
       financeFeedMode: financeFeedMode,
       sportsFeedMode: sportsFeedMode,
-      podcastsEnabled: env["PODCASTS_ENABLED"]?.lowercased() == "true"
+      podcastsEnabled: env["PODCASTS_ENABLED"]?.lowercased() == "true",
+      toolsEnabled: env["TOOLS_ENABLED"].flatMap { raw in
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value.lowercased() == "true"
+      } ?? (core.appEnv != .prod),
+      proGatingEnabled: env["SOCIALWIRE_PRO_GATING_ENABLED"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true",
+      proDIDs: Set((env["SOCIALWIRE_PRO_DIDS"] ?? "").split { $0 == "," || $0.isWhitespace }.map(String.init)),
+      klipyAPIKey: [env["KLIPY_API_KEY"], env["KLIPPY_API_KEY"]].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? ""
     )
   }
 
