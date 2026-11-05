@@ -11929,7 +11929,7 @@
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "9792dbc724fb0293bee699427768540a1e91964317f8495c0b49efbe6ef3f2c2"
+          "sha256": "891e1f2b457dc646981606dfb162ba054b58e26d1afae9a169e9a27102365077"
         },
         {
           "path": "packages/spec/package.json",
