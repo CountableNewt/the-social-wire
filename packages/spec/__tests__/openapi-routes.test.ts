@@ -25,14 +25,14 @@ const OPERATIONS_PROXY_ROUTES = join(
   "proxy.go"
 );
 
-function collectGoFiles(dir: string): string[] {
+function collectRouterFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      files.push(...collectGoFiles(full));
-    } else if (entry.name.endsWith(".go") && !entry.name.endsWith("_test.go")) {
+      files.push(...collectRouterFiles(full));
+    } else if ((entry.name.endsWith(".go") && !entry.name.endsWith("_test.go")) || entry.name.endsWith(".swift")) {
       files.push(full);
     }
   }
@@ -52,10 +52,12 @@ describe("OpenAPI route drift", () => {
   it("documents paths registered in gateway and appview router sources", () => {
     const yaml = readFileSync(OPENAPI_PATH, "utf8");
     const routerSources = [
-      ...collectGoFiles(GATEWAY_SOURCES),
-      ...collectGoFiles(GATEWAY_CORE_SOURCES),
-      ...collectGoFiles(APPVIEW_SOURCES),
-      ...collectGoFiles(OPERATIONS_SOURCES),
+      ...collectRouterFiles(GATEWAY_SOURCES),
+      ...collectRouterFiles(GATEWAY_CORE_SOURCES),
+      ...collectRouterFiles(APPVIEW_SOURCES),
+      ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
+      ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
+      ...collectRouterFiles(OPERATIONS_SOURCES),
     ]
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
@@ -72,16 +74,18 @@ describe("OpenAPI route drift", () => {
   it("documents every directly registered literal /v1 path", () => {
     const documented = new Set(extractOpenAPIPaths(readFileSync(OPENAPI_PATH, "utf8")));
     const routeFiles = [
-      ...collectGoFiles(GATEWAY_SOURCES),
-      ...collectGoFiles(GATEWAY_CORE_SOURCES),
-      ...collectGoFiles(APPVIEW_SOURCES),
-      ...collectGoFiles(OPERATIONS_SOURCES),
+      ...collectRouterFiles(GATEWAY_SOURCES),
+      ...collectRouterFiles(GATEWAY_CORE_SOURCES),
+      ...collectRouterFiles(APPVIEW_SOURCES),
+      ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
+      ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
+      ...collectRouterFiles(OPERATIONS_SOURCES),
     ];
     const directlyRegistered = routeFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");
-      return [...source.matchAll(/(?:Handle(?:Func)?\("(?:GET|POST|PUT|DELETE|PATCH) |register\(mux, "(?:GET|POST|PUT|DELETE|PATCH)", ")([^"\n]+)"/g)]
+      return [...source.matchAll(/(?:Handle(?:Func)?\("(?:GET|POST|PUT|DELETE|PATCH) |register\(mux, "(?:GET|POST|PUT|DELETE|PATCH)", "|\.(?:get|post|put|delete|patch)\(")([^"\n]+)"/g)]
         .map((match) => match[1]!)
-        .filter((path) => path.startsWith("/v1/") && !path.endsWith("/"))
+        .filter((path) => path.startsWith("/v1/") && !path.endsWith("/") && !path.includes("\\("))
         .map((path) => path.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, "{$1}"));
     });
 
@@ -353,7 +357,7 @@ describe("OpenAPI route drift", () => {
     expect(service).toContain("status: 201");
     expect(service).toContain("status: 202");
     expect(service).toContain("status = 202");
-    expect(collectGoFiles(OPERATIONS_SOURCES).map(file => readFileSync(file, "utf8")).join("\n")).toContain("HTTPError{410,");
+    expect(collectRouterFiles(OPERATIONS_SOURCES).map(file => readFileSync(file, "utf8")).join("\n")).toContain("HTTPError{410,");
     expect(readFileSync(join(OPERATIONS_SOURCES, "http_handler.go"), "utf8")).toContain("HTTPError{404,");
     expect(proxy).toContain("w.WriteHeader(reply.StatusCode)");
     expect(proxy.match(/w\.WriteHeader\(reply\.StatusCode\)/g)).toHaveLength(2);
