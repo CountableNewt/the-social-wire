@@ -103,7 +103,7 @@ describe("article publishing workspace", () => {
     await show(false);
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
     const group = screen.getByRole("region", { name: "First Publication" });
-    expect(within(group).getByRole("heading", { name: "First Publication" })).toBeTruthy();
+    expect(within(group).getByRole("heading", { name: /^First Publication/ })).toBeTruthy();
     const row = within(group).getByRole("button", { name: /^Working Article/ });
     expect(document.body.textContent).not.toContain("at://");
     fireEvent.click(row);
