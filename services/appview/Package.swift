@@ -7,9 +7,9 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
-    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "de267683ab72cf66a2dd52208382f35c03b80425"),
+    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "d4002e42387de17765429513136cfc59e437df33"),
     .package(url: "https://github.com/Stygian-Tech/operations-core.git", revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),
-    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "dc0e90186485455db78ad0168d861d0dcc8fcae3"),
+    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "a2d852857b8680832cf7dabddac42e1800db5954"),
     .package(url: "https://github.com/Stygian-Tech/wire-core.git", revision: "a37340974f2d26d92faa70bfb048ab0681017b28"),
     .package(url: "https://github.com/Stygian-Tech/finance-core.git", revision: "0509d93c44d2958622471e2a452317407e699cc2"),
     .package(url: "https://github.com/Stygian-Tech/sports-core.git", revision: "dab4c7a598265077260feee6589fc09903731084"),
