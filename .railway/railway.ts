@@ -59,8 +59,9 @@ const developmentProfile = {
   projection: {
     POSTGRES_MAX_CONNECTIONS: "8",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "16",
-    WIRE_FEED_MODE: "shadow",
-    SPORTS_FEED_MODE: "visible",
+    WIRE_FEED_MODE: "off",
+    FINANCE_FEED_MODE: "off",
+    SPORTS_FEED_MODE: "off",
     SPORTS_EVENTS_ENABLED: "false",
     WIRE_INBOX_SOURCE_GENERATIONS: "wire-global-v6-dev-publication-finance-live-20261001",
     WIRE_INBOX_CONCURRENCY: "24",
@@ -75,8 +76,9 @@ const developmentProfile = {
     WIRE_GENERATION_RETENTION_SECONDS: "7200",
     POSTGRES_MAX_CONNECTIONS: "16",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "32",
-    WIRE_FEED_MODE: "shadow",
-    SPORTS_FEED_MODE: "visible",
+    WIRE_FEED_MODE: "off",
+    FINANCE_FEED_MODE: "off",
+    SPORTS_FEED_MODE: "off",
     SPORTS_EVENTS_ENABLED: "false",
     WIRE_INBOX_SOURCE_GENERATIONS: "wire-global-v6-dev-publication-finance-live-20261001",
     WIRE_INBOX_CONCURRENCY: "48",
@@ -180,7 +182,10 @@ const productionProfile = {
   projection: {
     POSTGRES_MAX_CONNECTIONS: "8",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "8",
-    WIRE_FEED_MODE: "api",
+    WIRE_FEED_MODE: "off",
+    FINANCE_FEED_MODE: "off",
+    SPORTS_FEED_MODE: "off",
+    SPORTS_EVENTS_ENABLED: "false",
     WIRE_INBOX_CONCURRENCY: "52",
     WIRE_INBOX_SOURCE_GENERATIONS: productionWireSourceGenerations,
     WIRE_POSTGRES_MAX_CONNECTIONS: "12",
@@ -195,7 +200,10 @@ const productionProfile = {
     POSTGRES_MAX_CONNECTIONS: "16",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "32",
     WIRE_EXTERNAL_SIGNAL_MODE: "off",
-    WIRE_FEED_MODE: "visible",
+    WIRE_FEED_MODE: "off",
+    FINANCE_FEED_MODE: "off",
+    SPORTS_FEED_MODE: "off",
+    SPORTS_EVENTS_ENABLED: "false",
     WIRE_INBOX_CONCURRENCY: "32",
     WIRE_INBOX_SOURCE_GENERATIONS: productionWireCoordinatorGenerations,
     WIRE_METADATA_BATCH_SIZE: "128",
@@ -215,12 +223,7 @@ const indexingBuild = {
   watchPatterns: [
     "/.railway/**",
     "/services/indexing-worker/**",
-    "/services/jetstream-ingest/cmd/schema-ready/**",
-    "/services/jetstream-ingest/internal/schemaready/**",
-    "/services/jetstream-ingest/go.mod",
-    "/services/jetstream-ingest/go.sum",
-    // Runtime packages and schema-gate module metadata both affect the image.
-    "/packages/go/**",
+    "/tools/schema-ready/**",
     "/database/migrations/**",
   ],
 };
@@ -274,12 +277,8 @@ export default defineRailway((context) => {
     build: {
       builder: "DOCKERFILE",
       dockerfilePath: "/services/jetstream-ingest/Dockerfile",
-      watchPatterns: [
-        "/.railway/**",
-        "/services/jetstream-ingest/**",
-        "/packages/go/**",
-        "/database/migrations/**",
-      ],
+      // Retain ownership and history without automatic restarts after retirement.
+      watchPatterns: ["/__global_ingress_retired__/**"],
     },
     deploy: longRunningDeploy,
     replicas: { [profile.ingressRegion]: 2 },
@@ -294,7 +293,8 @@ export default defineRailway((context) => {
 
   const projectionPool = service("Projection Pool", {
     source: github(repository, { branch: profile.branch, rootDirectory: "/" }),
-    build: indexingBuild,
+    // This service is stopped during the provider cutover, not deleted by omission.
+    build: { ...indexingBuild, watchPatterns: ["/__global_projection_retired__/**"] },
     deploy: longRunningDeploy,
     replicas: { [profile.workerRegion]: profile.projectionReplicas },
     env: {
@@ -313,6 +313,9 @@ export default defineRailway((context) => {
       ...appViewWorkerEnvironment,
       ...profile.coordinator,
       INDEXING_WORKER_ROLE: "coordinator",
+      THIN_APPVIEW_WORKER_MODE: "maintenance",
+      THIN_APPVIEW_RSS_FEED_POLL_ENABLED: "true",
+      OPERATIONS_RECOVERY_ENABLED: "false",
     },
   });
 

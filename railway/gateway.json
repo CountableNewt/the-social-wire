@@ -5,13 +5,9 @@
     "dockerfilePath": "/services/gateway/Dockerfile",
     "watchPatterns": [
       "/services/gateway/**",
-      "/packages/go/**",
       "/database/migrations/**",
-      "/services/jetstream-ingest/cmd/schema-ready/**",
-      "/services/jetstream-ingest/internal/schemaready/**",
-      "/services/jetstream-ingest/go.mod",
-      "/services/jetstream-ingest/go.sum",
-      "/railway/gateway.json"
+      "/railway/gateway.json",
+      "/tools/schema-ready/**"
     ]
   },
   "deploy": {

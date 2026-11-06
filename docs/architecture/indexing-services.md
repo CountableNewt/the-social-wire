@@ -1,53 +1,52 @@
 # Replicated indexing and ingestion services
 
-The ingestion and indexing control plane is implemented as three replicated service classes plus ephemeral snapshot jobs. Gateway, App View, Operations, Database Migrator, and Wire Corpus Edge remain independent because they have different public contracts, scaling signals, or deployment authority.
+The active ingestion and indexing control plane uses three independent Swift
+service classes. Web and iOS remain thin clients; Gateway and App View stay
+separate services. Operations and dormant corpus-edge services are excluded from
+the Swift migration tracked in [GitHub #782](https://github.com/Stygian-Tech/the-social-wire/issues/782).
 
-| Service class | Runtime | Default replicas | Responsibilities |
+| Service class | Package | Replicas | Active responsibilities |
 | --- | --- | ---: | --- |
-| Ingress Controller | `services/jetstream-ingest` | 2 | AppView and Wire Jetstream lanes, each with its own database handle, source identity, fenced intake lease, health state, and restart lifecycle |
-| Projection Pool | `services/indexing-worker`, role `projection` | N | AppView durable-inbox projection and Wire inbox drain; PostgreSQL claim/ack semantics partition work across replicas |
-| Coordinator | `services/indexing-worker`, role `coordinator` | 2 | AppView RSS polling/backfill/retention/recovery and Wire rank/enrichment/cleanup; independent fenced leases select one active owner per subsystem |
-| Ingress Snapshot Job | `services/jetstream-ingest` legacy single-lane snapshot mode | 0 normally | Bounded, operator-created replay snapshots; exits after the bounded range and uses restart policy `NEVER` |
+| Ingress Controller | `services/jetstream-ingest` | 2 | Jetstream V2 archive/live AppView intake, fenced leases, transactional inbox/checkpoints, bounded replay budgets |
+| Projection Pool | `services/indexing-worker`, role `projection` | N | AppView durable-inbox projection using PostgreSQL claims and acknowledgements |
+| Coordinator | `services/indexing-worker`, role `coordinator` | 2 | AppView RSS polling, signed repository reconciliation, backfill, retention, and recovery under fenced authority |
 
 ```text
-Jetstream archive / live tail
+Jetstream V2 archives / live tail
             │
             ▼
-Ingress Controller ×2
-  ├─ AppView lane ── fenced intake lease ── appview durable inbox
-  └─ Wire lane ───── fenced intake lease ── wire durable inbox
+Ingress Controller ×2 ── fenced intake lease ── AppView durable inbox
             │
             ▼
-Projection Pool ×N
-  ├─ AppView projector (claim / project / ack)
-  └─ Wire drain       (claim / project / ack)
-            │
-            ├──────────────► App View read service
-            └──────────────► Wire Corpus Edge
+Projection Pool ×N ── claim / project / acknowledge ── App View reads
 
-Coordinator ×2
-  ├─ appview-coordinator lease ── RSS / backfill / TTL / recovery
-  └─ wire-materializer lease ─── rank / enrich / cleanup
+Coordinator ×2 ── appview-coordinator lease ── RSS / backfill / TTL / recovery
 ```
 
 ## Isolation and compatibility
 
-The Go intake-to-Postgres-inbox-to-Go-projector boundary remains intact. A single Ingress Controller process hosts both intake lanes, but a lane failure restarts only that lane. `/status` reports lane state separately; `/startupz` and `/readyz` fail closed if a configured continuous lane is unhealthy.
+The Postgres inbox boundary, database schema, source generations, replay cursors,
+and claim/ack semantics remain stable across the language migration. Only
+`v2_authoritative` AppView ingestion is supported by the active workers. Tap,
+legacy combined ingestion, enabled Wire/Finance/Sports workers, and standalone
+retired worker executables must not be started. IaC explicitly holds excluded
+feed modes off. Retained Go sources support parity checks and rollback review.
 
-The Go `appviewworkercore` and `wireworkercore` packages expose their runtimes without merging their stores, database pools, or domain logic. Projection Pool independently supervises both runtimes and probes their loopback health listeners. A failed AppView projector does not terminate the Wire drain, and vice versa.
-
-The old Swift executables are retired from current source after Development Go acceptance. Rollback requires a previously accepted Git revision. Shared Swift API packages remain in use by Gateway, AppView and Corpus Edge.
+All active images build with Swift 6.4.2 and run the native `schema-ready` gate
+before the service binary. Service manifests pin remote shared packages; local
+SwiftPM mirrors never enter images. Each process joins cancellation and closes
+owned clients, pools, and listeners during shutdown. Authority and diagnostic
+Postgres pools remain separate from workload pools. The worker image also ships
+the native `retry-reconciliation` operator tool with explicit scoped admission.
 
 ## Singleton fencing
 
 Coordinator replicas use `operations_role_leases`, keyed by `(environment, role)`. Takeover increments a monotonic fencing token. Renew, release, and fenced commit entry require the exact owner and token, so a stale owner cannot regain authority after lease loss.
 
-The two Coordinator subsystems use distinct roles:
-
-- `indexing.appview-coordinator`
-- `indexing.wire-materializer`
-
-This allows one subsystem to fail over without moving the other. A replica with neither lease remains a healthy standby as long as it can reach PostgreSQL and its lease supervisors are running. When it owns a role, its component health must also pass.
+The active Coordinator uses `indexing.appview-coordinator`. A replica without
+the lease remains a healthy standby while it can reach PostgreSQL and its lease
+supervisor is running. The active owner must also pass component health checks.
+Wire materialization remains disabled.
 
 ## Scaling signals
 
@@ -62,7 +61,8 @@ Railway Infrastructure as Code for the three long-running classes lives in
 `/.railway/railway.ts`. Its stable `indexing-consolidation` partial owns only
 Ingress Controller, Projection Pool, and Coordinator while compatibility
 services remain on grandfathered `railway/*.json` configuration. The partial
-is Development-only until a separately approved Production promotion.
+selects an explicit Development or Production profile; applying or promoting it
+remains an environment-scoped operator action.
 
 Snapshots are temporary operator-created services, not persistent IaC
 resources. They use the ingress Dockerfile, bounded cursor variables, restart

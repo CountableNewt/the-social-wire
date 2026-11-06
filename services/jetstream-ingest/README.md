@@ -1,3 +1,7 @@
+> Global intake is retired for the current reader rollout. This Go source is retained
+> for historical contracts and rollback. Active services use `tools/schema-ready`;
+> branch pushes must not restart this service or replay its preserved checkpoint.
+
 # Jetstream V2 durable ingress
 
 This private Railway service uses Bluesky's official Go client to consume
