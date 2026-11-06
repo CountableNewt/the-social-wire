@@ -2,11 +2,11 @@ import Foundation
 import Logging
 import ThinAppViewCore
 
-/// Coalesced publication refreshes retain PDS enumeration as the authority.
+/// Coalesced provider-only refreshes, with PDS enumeration only in explicit legacy mode.
 /// Four provider jobs and four fast author jobs retain at most32 waiters per scope.
 actor ScopedContentRefresh {
   private let provider: (any PublicContentDiscovering)?
-  private let enumeratePDS: @Sendable (String) async throws -> Int
+  private let enumeratePDS: (@Sendable (String) async throws -> Int)?
   private let logger: Logger
   private let now: @Sendable () -> Date
   private var stopped = false
@@ -23,6 +23,13 @@ actor ScopedContentRefresh {
     self.logger = logger
     self.now = now
     self.enumeratePDS = enumeratePDS
+  }
+
+  init(provider: (any PublicContentDiscovering)?, logger: Logger) {
+    self.provider = provider
+    self.logger = logger
+    self.now = Date.init
+    self.enumeratePDS = nil
   }
 
   func refresh(scope: PublicContentDiscoveryScope) async throws -> Int {
@@ -85,11 +92,15 @@ actor ScopedContentRefresh {
       catch is CancellationError { throw CancellationError() }
       catch {
         try Task.checkCancellation()
-        logger.debug("Public content provider unavailable; using scoped PDS enumeration")
+        logger.debug("Public content provider unavailable; retaining cached content")
+        if enumeratePDS == nil {
+          remember(scope, seconds: 5)
+          return indexed
+        }
       }
     }
     try Task.checkCancellation()
-    // Hints do not promise complete historical or legacy backlink coverage.
+    // PDS scanning is available only in the explicitly selected legacy mode.
     do { indexed += try await refreshAuthor(scope.authorDid) }
     catch is CancellationError { throw CancellationError() }
     catch {
@@ -103,6 +114,7 @@ actor ScopedContentRefresh {
   }
 
   private func refreshAuthor(_ authorDid: String) async throws -> Int {
+    guard let enumeratePDS else { return 0 }
     while pdsActive.contains(authorDid) { try await Task.sleep(for: .milliseconds(10)) }
     try Task.checkCancellation()
     guard (pdsFreshUntil[authorDid] ?? .distantPast) <= now() else { return 0 }
