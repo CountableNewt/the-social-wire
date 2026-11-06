@@ -9,6 +9,8 @@ struct PodcastService: Sendable {
   let store: PostgresPodcastStore
   let http: HTTPClient
   let repo: ATProtoAuthenticatedRepoClient
+  /// When set, unknown subscribed feeds resolve in the background instead of during hydration.
+  var feedResolution: PodcastFeedResolutionQueue? = nil
   var bridgeEnabled: Bool { ProcessInfo.processInfo.environment["PODCAST_BRIDGE_ENABLED"] == "true" }
   func resolve(_ raw: String) async throws -> PodcastResolveResponse {
     if raw.hasPrefix("at://") {
@@ -116,6 +118,7 @@ struct PodcastService: Sendable {
   }
   func hydrate(auth: AuthContext) async throws -> [PodcastShow] {
     var records: [(showID: String, uri: String)] = []
+    var unresolved: [String] = []
     var cursor: String?
     repeat {
       guard let page = try? await repo.listRecords(
@@ -130,7 +133,13 @@ struct PodcastService: Sendable {
         let key = feed.flatMap(RssFeedIdentity.normalizeFeedUrl) ?? source
         guard let key else { continue }
         var show = try await store.show(id: key)
-        if show == nil { show = try? await resolve(key).show }
+        if show == nil {
+          if feedResolution != nil {
+            unresolved.append(key)
+            continue
+          }
+          show = try? await resolve(key).show
+        }
         guard let show else { continue }
         if show.sourceKind == "rss", let feed = show.feedUrl, !PodcastRSSURL.isAllowed(feed) {
           continue
@@ -144,6 +153,7 @@ struct PodcastService: Sendable {
       }
       cursor = page.cursor
     } while cursor != nil
+    await feedResolution?.schedule(unresolved)
     try await store.subscriptions(viewer: auth.did, records: records)
     var shows = try await store.shows(viewer: auth.did)
     for index in shows.indices where bridgeEnabled {
