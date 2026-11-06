@@ -129,6 +129,7 @@ enum WorkerHealthResponseBuilder {
       ?? (error as? WorkerReadinessError)
     if let readinessError {
       return switch readinessError {
+      case .maintenanceEvidenceUnavailable: "maintenance_evidence_unavailable"
       case .missingIngestionHeartbeat: "missing_ingestion_heartbeat"
       case .staleIngestionHeartbeat: "stale_ingestion_heartbeat"
       case .ingestionTransportUnhealthy: "ingestion_transport_unhealthy"

@@ -27,9 +27,12 @@ public enum AppViewWorkerHost {
     if let instance = environment["OPERATIONS_INSTANCE_ID"], !instance.isEmpty {
       environment["RAILWAY_REPLICA_ID"] = instance
     }
+    let workerMode = try ThinAppViewWorkerMode.fromEnvironment(environment)
+    try workerMode.validate(role: role)
     let operationsEnvironment = try OperationsConfiguration.requireEnvironment(environment)
     let thinConfig = ThinAppViewConfig.fromEnvironment(environment)
-    let tapConfiguration = try TapConsumerConfiguration.fromEnvironment(environment)
+    let tapConfiguration: TapConsumerConfiguration? = workerMode == .maintenance
+      ? nil : try TapConsumerConfiguration.fromEnvironment(environment)
     let operationsConfig = OperationsConfiguration.fromEnvironment(environment)
     guard thinConfig.enabled else {
       throw AppViewWorkerRuntimeError.thinAppViewDisabled
@@ -82,12 +85,14 @@ public enum AppViewWorkerHost {
           } else {
             try SQLiteAppViewProjectionCacheStore(path: path, logger: logger)
           }
+        try validateMaintenanceCache(mode: workerMode, rssEnabled: thinConfig.rssFeedPollEnabled,
+          backend: cacheBackend, available: redisRuntime != nil)
         await redisRuntime?.installResolutionCache()
         let readinessProbe = readinessProbe(
           storePing: { try await store.ping() },
           operationsStore: operationsStore,
           operationsConfig: operationsConfig,
-          serviceName: serviceName
+          serviceName: serviceName, mode: workerMode
         )
         try await withThrowingTaskGroup(of: Void.self) { group in
           addHealthListener(
@@ -111,7 +116,8 @@ public enum AppViewWorkerHost {
               projectionCache: projectionCache,
               operationsStore: operationsStore,
               operationsConfig: operationsConfig,
-              tapConfiguration: tapConfiguration
+              tapConfiguration: tapConfiguration,
+              mode: workerMode
             )
           }
           try await group.next()
@@ -151,12 +157,14 @@ public enum AppViewWorkerHost {
           cacheBackend == .redis
           ? redisRuntime?.store
           : PostgresAppViewProjectionCacheStore(pool: pgPool, logger: logger)
+        try validateMaintenanceCache(mode: workerMode, rssEnabled: thinConfig.rssFeedPollEnabled,
+          backend: cacheBackend, available: redisRuntime != nil)
         await redisRuntime?.installResolutionCache()
         let readinessProbe = readinessProbe(
           storePing: { try await store.ping() },
           operationsStore: operationsStore,
           operationsConfig: operationsConfig,
-          serviceName: serviceName
+          serviceName: serviceName, mode: workerMode
         )
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { await pgPool.run() }
@@ -181,7 +189,8 @@ public enum AppViewWorkerHost {
               projectionCache: projectionCache,
               operationsStore: operationsStore,
               operationsConfig: operationsConfig,
-              tapConfiguration: tapConfiguration
+              tapConfiguration: tapConfiguration,
+              mode: workerMode
             )
           }
           try await group.next()
@@ -197,6 +206,13 @@ public enum AppViewWorkerHost {
     try await httpClient.shutdown()
   }
 
+  static func validateMaintenanceCache(mode: ThinAppViewWorkerMode, rssEnabled: Bool,
+    backend: AppViewProjectionCacheBackend, available: Bool) throws {
+    if mode == .maintenance, rssEnabled, backend == .redis, !available {
+      throw AppViewWorkerRuntimeError.maintenanceCacheUnavailable
+    }
+  }
+
   static func httpClientConfiguration() -> HTTPClient.Configuration {
     var configuration = HTTPClient.Configuration()
     configuration.timeout.read = .seconds(30)
@@ -208,7 +224,7 @@ public enum AppViewWorkerHost {
     storePing: @escaping @Sendable () async throws -> Void,
     operationsStore: any OperationsStore,
     operationsConfig: OperationsConfiguration,
-    serviceName: String
+    serviceName: String, mode: ThinAppViewWorkerMode
   ) -> WorkerReadinessProbe {
     let serviceStateProbe: @Sendable () async throws -> OperationsServiceState? = {
       try await operationsStore.listServiceStates()
@@ -221,7 +237,8 @@ public enum AppViewWorkerHost {
     }
     return WorkerReadinessProbe(
       databaseProbe: storePing,
-      serviceStateProbe: serviceStateProbe
+      serviceStateProbe: serviceStateProbe,
+      mode: mode
     )
   }
 
@@ -249,12 +266,14 @@ public enum AppViewWorkerHost {
 }
 
 public enum AppViewWorkerRuntimeError: Error, CustomStringConvertible, Equatable {
+  case maintenanceCacheUnavailable
   case thinAppViewDisabled
   case unsupportedRole
   case coordinatorRequiresAuthority
 
   public var description: String {
     switch self {
+    case .maintenanceCacheUnavailable: "Maintenance RSS requires the configured Redis cache."
     case .thinAppViewDisabled: "ENABLE_THIN_APPVIEW must be true to run the AppView worker."
     case .unsupportedRole: "A projection or coordinator role is required."
     case .coordinatorRequiresAuthority: "Coordinator role authority is required."
