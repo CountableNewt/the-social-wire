@@ -65,6 +65,29 @@ it("never caches non-image 200 responses or empty image bodies", async () => {
   expect(created).toHaveLength(0);
 });
 
+it("abandons a silent database open, skips queued opens, and closes its late connection", async () => {
+  const factory = indexedDB;
+  const request = {} as IDBOpenDBRequest;
+  const close = mock(() => {});
+  Object.defineProperty(request, "result", { value: { close } });
+  const open = mock((...args: Parameters<IDBFactory["open"]>) => factory.open(...args));
+  open.mockImplementationOnce(() => request);
+  Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: { open } });
+  const network = fetchMock(async () => image("network fallback"));
+  const initial = cache.fetchCachedImageObjectUrl("/silent-db");
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(1));
+  expect(await initial).toStartWith("blob:");
+  const later = Promise.all([cache.fetchCachedImageObjectUrl("/silent-db-two"), cache.fetchCachedImageObjectUrl("/silent-db-three"), cache.invalidateCachedImage("/silent-db")]);
+  expect(await Promise.race([later.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 100))])).toBe(true);
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(network).toHaveBeenCalledTimes(3);
+  request.onsuccess?.call(request, new Event("success"));
+  expect(close).toHaveBeenCalledTimes(1);
+  await cache.fetchCachedImageObjectUrl("/database-resumed");
+  await waitFor(async () => expect(await read("/database-resumed")).toBeDefined());
+  expect(open).toHaveBeenCalledTimes(2);
+});
+
 it("deletes invalid existing cache rows before trying the network", async () => {
   await seed("/old-html", new Blob(["login page"], { type: "text/html" }));
   await seed("/old-empty", new Blob([], { type: "image/jpeg" }));

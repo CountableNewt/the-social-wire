@@ -55,7 +55,15 @@ describe("bounded image cache storage", () => {
     expect(objectUrl).toStartWith("blob:");
     expect(fetchImage).toHaveBeenCalledTimes(1);
     URL.revokeObjectURL(objectUrl!);
-    legacy.close();
+    // The legacy tab stays open: subsequent image reads and background writes
+    // must not enqueue another database open behind the blocked upgrade.
+    const more = Promise.all([cache.fetchCachedImageObjectUrl("/images/blocked-two.png"), cache.fetchCachedImageObjectUrl("/images/blocked-three.png")]);
+    try {
+      const finished = await Promise.race([more.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 100))]);
+      expect(finished).toBe(true);
+      expect(fetchImage).toHaveBeenCalledTimes(3);
+      (await more).forEach(url => URL.revokeObjectURL(url!));
+    } finally { legacy.close(); await more; await keys(); }
   });
 
   it("upgrades existing images and evicts oldest keys without reading all cached blobs", async () => {

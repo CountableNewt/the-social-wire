@@ -6,6 +6,7 @@ const DB_VERSION = 2;
 const STORED_AT_INDEX = "storedAt";
 const MAX_ENTRIES = 400;
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const CACHE_OPEN_TIMEOUT_MS = 250;
 
 type CachedImageRow = {
   url: string;
@@ -15,6 +16,7 @@ type CachedImageRow = {
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let abandonedOpen: IDBOpenDBRequest | null = null;
 
 type ImageFetch = { reload: boolean; promise: Promise<Blob | undefined>; persistence?: Promise<void> };
 const inFlightImageFetches = new Map<string, ImageFetch>();
@@ -51,9 +53,20 @@ function openImageCacheDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB unavailable"));
   }
+  // IndexedDB open requests cannot be canceled. Once blocked or timed out,
+  // skip this optional cache rather than queue more opens behind that request.
+  if (abandonedOpen) return Promise.reject(new Error("Image cache temporarily unavailable"));
   if (!dbPromise) {
-    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const pending = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let abandoned = false;
+      const abandon = (message: string) => {
+        abandoned = true;
+        abandonedOpen = request;
+        clearTimeout(deadline);
+        reject(new Error(message));
+      };
+      const deadline = setTimeout(() => abandon("Image cache open timed out"), CACHE_OPEN_TIMEOUT_MS);
       request.onupgradeneeded = () => {
         const db = request.result;
         const store = db.objectStoreNames.contains(STORE)
@@ -63,19 +76,28 @@ function openImageCacheDb(): Promise<IDBDatabase> {
           store.createIndex(STORED_AT_INDEX, "storedAt");
         }
       };
-      let blocked = false;
       request.onblocked = () => {
-        blocked = true;
-        reject(new Error("Image cache upgrade is blocked by another tab"));
+        abandon("Image cache upgrade is blocked by another tab");
       };
       request.onsuccess = () => {
+        clearTimeout(deadline);
         const db = request.result;
-        if (blocked) { db.close(); return; }
-        db.onversionchange = () => { db.close(); dbPromise = null; };
+        if (abandoned) {
+          db.close();
+          if (abandonedOpen === request) abandonedOpen = null;
+          return;
+        }
+        db.onversionchange = () => { db.close(); if (dbPromise === opening) dbPromise = null; };
         resolve(db);
       };
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    }).catch(error => { dbPromise = null; throw error; });
+      request.onerror = () => {
+        clearTimeout(deadline);
+        if (abandonedOpen === request) abandonedOpen = null;
+        reject(request.error ?? new Error("IndexedDB open failed"));
+      };
+    });
+    const opening = pending.catch(error => { if (dbPromise === opening) dbPromise = null; throw error; });
+    dbPromise = opening;
   }
   return dbPromise;
 }
