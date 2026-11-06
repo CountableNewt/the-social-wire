@@ -356,6 +356,33 @@ components:
           description: Human-readable error description.
           example: Unauthorized — invalid ATProto JWT or malformed DPoP proof.
 
+    AppViewEnrollmentError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            articlesUpdated:
+              type: boolean
+              enum: [true]
+              description: Present only after successful counter reconciliation when every failure is an upstream RSS fetch, parse, or backoff failure. HTTP 503 still indicates incomplete source checks; clients must refresh their article pages before presenting partial success. Omitted for request cancellation and infrastructure, PDS, or counter failures.
+            unavailablePublicationIds:
+              type: array
+              uniqueItems: true
+              description: Sorted canonical RSS publication IDs for failed feeds selected from this viewer's subscriptions. Only present with articlesUpdated; exact IDs distinguish multiple feeds on one host and may be used to match subscribed publication rows for unsubscribe actions. These viewer-private identifiers must never be logged. Older servers or unidentified failures may omit this field.
+              items: { type: string }
+            sourceFailures:
+              type: array
+              description: Sanitized upstream RSS diagnostics, included with articlesUpdated. Hostnames exclude credentials, paths, and query parameters; raw upstream messages are never returned.
+              items:
+                type: object
+                required: [category, kind, count]
+                properties:
+                  category: { type: string, enum: [rss_backoff, rss_fetch, rss_parse] }
+                  kind: { type: string, enum: [other, network, timeout] }
+                  host: { type: string }
+                  status: { type: integer, minimum: 100, maximum: 599 }
+                  count: { type: integer, minimum: 1 }
+
     AppViewFeedError:
       type: object
       required: [error, message, requestId, retryable]
@@ -3800,6 +3827,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: Route disabled when thin AppView flag is unset.
+        "503":
+          description: Source checks or counter reconciliation failed. Healthy sources may already be committed. The equivalent app.thesocialwire.appview.enrollSources XRPC procedure returns this same error envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppViewEnrollmentError"
 
   /v1/appview/entry:
     get:
