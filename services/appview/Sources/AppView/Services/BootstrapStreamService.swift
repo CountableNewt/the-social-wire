@@ -740,7 +740,7 @@ struct BootstrapStreamService {
     }
   }
 
-  /// PDS backfill for bootstrap page 1 — runs in parallel with folder sidebar when possible.
+  /// Scoped content refresh for bootstrap page 1; provider mode schedules it without waiting.
   private func enrollAuthorForBootstrap(auth: AuthContext, row: SidebarPublicationRow) async {
     if row.publicationId.hasPrefix(PublicationLexicons.rssPublicationPrefix),
        let feedUrl = PublicationProjectionLogic.normalizedFeedUrlFromRssPublicationId(row.publicationId)
