@@ -234,6 +234,11 @@ const longRunningDeploy = {
   restartPolicyType: "ALWAYS" as const,
 };
 
+const retiredWorkerDeploy = {
+  ...longRunningDeploy,
+  restartPolicyType: "NEVER" as const,
+};
+
 export default defineRailway((context) => {
   const profile = context.isEnvironment("dev")
     ? developmentProfile
@@ -280,7 +285,7 @@ export default defineRailway((context) => {
       // Retain ownership and history without automatic restarts after retirement.
       watchPatterns: ["/__global_ingress_retired__/**"],
     },
-    deploy: longRunningDeploy,
+    deploy: retiredWorkerDeploy,
     replicas: { [profile.ingressRegion]: 2 },
     env: {
       APP_ENV: profile.appEnvironment,
@@ -288,6 +293,10 @@ export default defineRailway((context) => {
       DATABASE_URL: preserve(),
       JETSTREAM_API_KEY: preserve(),
       ...profile.ingress,
+      // Keep both intake lanes disabled even if a retained deployment is started.
+      JETSTREAM_APPVIEW_ENABLED: "false",
+      JETSTREAM_WIRE_ENABLED: "false",
+      JETSTREAM_WIRE_LANES: "",
     },
   });
 
@@ -295,7 +304,7 @@ export default defineRailway((context) => {
     source: github(repository, { branch: profile.branch, rootDirectory: "/" }),
     // This service is stopped during the provider cutover, not deleted by omission.
     build: { ...indexingBuild, watchPatterns: ["/__global_projection_retired__/**"] },
-    deploy: longRunningDeploy,
+    deploy: retiredWorkerDeploy,
     replicas: { [profile.workerRegion]: profile.projectionReplicas },
     env: {
       ...appViewWorkerEnvironment,
