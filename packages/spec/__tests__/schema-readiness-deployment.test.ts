@@ -55,7 +55,7 @@ describe("schema readiness deployment contract", () => {
     expect(iac).toContain('watchPatterns: ["/__global_ingress_retired__/**"]');
     expect(iac).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
     expect(iac).toContain('OPERATIONS_RECOVERY_ENABLED: "false"');
-    expect(iac.match(/deploy: longRunningDeploy/g)).toHaveLength(3);
+    expect(iac.match(/deploy: longRunningDeploy/g)).toHaveLength(1);
     expect(deploy).toContain('healthcheckPath: "/startupz"');
     expect(Number(deploy.match(/healthcheckTimeout: (\d+)/)?.[1])).toBeGreaterThan(90);
     const dockerfile = read("services/indexing-worker/Dockerfile");
@@ -63,6 +63,28 @@ describe("schema readiness deployment contract", () => {
     expect(dockerfile).toContain("--product IndexingWorker");
     expect(dockerfile).toContain("--product retry-reconciliation");
     expect(dockerfile).not.toContain("COPY packages/go");
+  });
+
+  it("keeps retired intake and projection dormant while RSS maintenance can restart", () => {
+    const iac = read(".railway/railway.ts");
+    const retiredDeploy = iac.slice(iac.indexOf("const retiredWorkerDeploy"), iac.indexOf("export default"));
+    const ingress = iac.slice(iac.indexOf('const ingressController = service('), iac.indexOf('const projectionPool = service('));
+    const projection = iac.slice(iac.indexOf('const projectionPool = service('), iac.indexOf('const coordinator = service('));
+    const coordinator = iac.slice(iac.indexOf('const coordinator = service('), iac.indexOf('return project('));
+    expect(retiredDeploy).toContain('restartPolicyType: "NEVER"');
+    for (const dormant of [ingress, projection]) {
+      expect(dormant).toContain("deploy: retiredWorkerDeploy");
+      expect(dormant).not.toContain("deploy: longRunningDeploy");
+    }
+    const overrides = ingress.slice(ingress.indexOf("...profile.ingress,"));
+    expect(overrides).toContain('JETSTREAM_APPVIEW_ENABLED: "false"');
+    expect(overrides).toContain('JETSTREAM_WIRE_ENABLED: "false"');
+    expect(overrides).toContain('JETSTREAM_WIRE_LANES: ""');
+    expect(coordinator).toContain("deploy: longRunningDeploy");
+    expect(coordinator).toContain("build: indexingBuild");
+    expect(coordinator).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
+    expect(coordinator).toContain('THIN_APPVIEW_RSS_FEED_POLL_ENABLED: "true"');
+    expect(iac).toContain("ingressController, projectionPool, coordinator,");
   });
 
   it("keeps the consolidated IaC entrypoint and rebuild dependencies", () => {
