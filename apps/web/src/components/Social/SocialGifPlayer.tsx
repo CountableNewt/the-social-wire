@@ -1,12 +1,12 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- GIF posters retain provider formats. */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GifRendition } from "@/lib/composerMedia";
 import { Button } from "@/components/ui/button";
 
-export function SocialGifPlayer({ source, poster, mp4, webm, alt, width, height, files }: { source: string; poster?: string; mp4?: string; webm?: string; alt: string; width?: number; height?: number; files?: Partial<Record<GifRendition, Blob>> }) {
-  const [playing, setPlaying] = useState(false);
+export function SocialGifPlayer({ source, poster, mp4, webm, alt, width, height, files, onOpenViewer }: { source: string; poster?: string; mp4?: string; webm?: string; alt: string; width?: number; height?: number; files?: Partial<Record<GifRendition, Blob>>; onOpenViewer?: () => void }) {
+  const [playing, setPlaying] = useState(true);
   const [error, setError] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -14,6 +14,8 @@ export function SocialGifPlayer({ source, poster, mp4, webm, alt, width, height,
   const mp4Source = useRef<HTMLSourceElement>(null);
   const webmSource = useRef<HTMLSourceElement>(null);
   const urls = useRef<Partial<Record<GifRendition, string>>>({});
+  const manuallyPaused = useRef(false);
+  const playbackRequest = useRef(0);
   const gifBlob = files?.gif, posterBlob = files?.poster, mp4Blob = files?.mp4, webmBlob = files?.webm;
   useEffect(() => {
     const local: Partial<Record<GifRendition, string>> = {};
@@ -30,24 +32,47 @@ export function SocialGifPlayer({ source, poster, mp4, webm, alt, width, height,
     const uri = playing ? urls.current.gif : urls.current.poster;
     if (image.current && uri) image.current.src = uri;
   }, [playing, gifBlob, posterBlob]);
+  const cancelPlayback = useCallback(() => { playbackRequest.current++; }, []);
+  const pause = useCallback(() => { cancelPlayback(); video.current?.pause(); setPlaying(false); }, [cancelPlayback]);
+  const play = useCallback(async (manual = false) => {
+    const request = ++playbackRequest.current;
+    try {
+      if (video.current) await video.current.play();
+      if (request === playbackRequest.current) setPlaying(true);
+    } catch {
+      if (request === playbackRequest.current) { setPlaying(false); if (manual) setError(true); }
+    }
+  }, []);
   useEffect(() => {
     const element = container.current;
-    if (!element || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(entries => { if (!entries[0].isIntersecting) { video.current?.pause(); setPlaying(false); } });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+    const media = video.current;
+    if (!element) return;
+    const observer = typeof IntersectionObserver === "undefined" ? undefined : new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { if (!manuallyPaused.current) void play(); }
+      else pause();
+    });
+    if (observer) observer.observe(element);
+    else void play();
+    return () => { observer?.disconnect(); cancelPlayback(); media?.pause(); };
+  }, [pause, play, cancelPlayback]);
   async function toggle() {
     setError(false);
-    if (playing) { video.current?.pause(); setPlaying(false); return; }
-    if (video.current) { try { await video.current.play(); setPlaying(true); } catch { setError(true); } }
-    else setPlaying(true);
+    if (playing) { manuallyPaused.current = true; pause(); return; }
+    manuallyPaused.current = false;
+    await play(true);
   }
-  return <div ref={container} className="flex min-w-0 flex-col gap-2">
-    {mp4 || webm || mp4Blob || webmBlob ? <video ref={video} loop muted playsInline preload="none" poster={poster} aria-label={alt || "Animated GIF"} width={width} height={height} onError={() => { setError(true); setPlaying(false); }} className="block max-h-[60dvh] w-full rounded-xl object-contain" onPause={() => setPlaying(false)}>
+  const validRatio = width !== undefined && height !== undefined && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+  const frameStyle = { aspectRatio: validRatio ? `${width} / ${height}` : "1 / 1", maxHeight: "60dvh" };
+  const mediaClassName = "absolute inset-0 block h-full w-full object-contain";
+  const fail = () => { cancelPlayback(); setError(true); setPlaying(false); };
+  const media = mp4 || webm || mp4Blob || webmBlob ? <video ref={video} autoPlay loop muted playsInline preload="metadata" poster={poster} aria-label={alt || "Animated GIF"} width={validRatio ? width : undefined} height={validRatio ? height : undefined} onError={fail} className={mediaClassName} onPause={() => setPlaying(false)} onPlay={() => setPlaying(true)}>
       {webm || webmBlob ? <source ref={webmSource} src={webm} type="video/webm" /> : null}{mp4 || mp4Blob ? <source ref={mp4Source} src={mp4} type="video/mp4" /> : null}
-    </video> : playing ? <img ref={image} src={source || undefined} alt={alt} width={width} height={height} className="block h-auto max-h-[60dvh] w-full object-contain" onError={() => { setError(true); setPlaying(false); }} /> : poster || posterBlob ? <img ref={image} src={poster} alt={alt} width={width} height={height} className="block h-auto max-h-[60dvh] w-full object-contain" /> : <p className="rounded-xl border p-4 text-sm">Animated GIF · {alt}</p>}
-    <div className="flex items-center gap-2"><span className="text-xs font-medium">GIF</span><Button type="button" variant="outline" size="sm" onClick={() => void toggle()} aria-label={playing ? "Pause GIF" : "Play GIF"}>{playing ? "Pause" : "Play"}</Button></div>
-    {error ? <p role="alert" className="text-sm text-destructive">GIF Could Not Be Played. Try Again.</p> : null}
+    </video> : playing ? <img ref={image} src={source || undefined} alt={alt} width={validRatio ? width : undefined} height={validRatio ? height : undefined} className={mediaClassName} onError={fail} /> : poster || posterBlob ? <img ref={image} src={poster} alt={alt} width={validRatio ? width : undefined} height={validRatio ? height : undefined} className={mediaClassName} onError={fail} /> : <span className="absolute inset-0 flex items-center justify-center p-4 text-sm">Animated GIF · {alt}</span>;
+  return <div ref={container} className="flex min-w-0 flex-col gap-2">
+    <div data-gif-viewport className="relative block w-full overflow-hidden rounded-xl bg-muted" style={frameStyle}>
+      {onOpenViewer ? <button type="button" aria-label="Open GIF Viewer" className="absolute inset-0 block h-full w-full outline-offset-4 focus-visible:outline-2 focus-visible:outline-ring" onClick={event => { event.stopPropagation(); onOpenViewer(); }}>{media}</button> : media}
+      {error ? <p role="alert" className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/90 p-2 text-sm text-destructive">GIF Could Not Be Played. Try Again.</p> : null}
+    </div>
+    <div className="flex items-center gap-2"><span className="text-xs font-medium">GIF</span><Button type="button" variant="outline" size="sm" onClick={event => { event.stopPropagation(); void toggle(); }} aria-label={playing ? "Pause GIF" : "Play GIF"}>{playing ? "Pause" : "Play"}</Button></div>
   </div>;
 }
