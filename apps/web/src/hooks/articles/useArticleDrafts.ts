@@ -166,24 +166,33 @@ export function useArticleDrafts(did: string, getSyncActor?: () => ArticleDraftA
   const select = useCallback(async (id: string) => {
     requireViewer();
     const selection = ++intent.current, selectedVersion = editVersion.current;
+    const previousId = current.current?.id, previousDirty = dirty.current;
     let context: ArticleDraftActor | undefined;
     try {
-      await persist();
+      // Opening a saved draft must not wait for the private sync queue. Preserve
+      // outgoing edits locally, then reconcile each affected draft in the background.
+      await persist({ localOnly: true });
       context = actor();
-      const saved = context && navigator.onLine !== false ? await loadSyncedArticleDraft(context, id) : await getArticleDraft(did, id);
+      const cached = await getArticleDraft(did, id);
+      context?.assertCurrentActor?.();
+      if (!available() || selection !== intent.current || selectedVersion !== editVersion.current) return;
+      const online = navigator.onLine !== false;
+      if (context && online && previousDirty && previousId && previousId !== id) void syncOne(previousId, selectedVersion);
+      const saved = cached ?? (context && online ? await loadSyncedArticleDraft(context, id) : undefined);
       context?.assertCurrentActor?.();
       if (!available() || selection !== intent.current || selectedVersion !== editVersion.current) return;
       if (!saved) throw new Error("This draft is no longer available. Refresh the draft list.");
-      versions.current.set(saved.id, saved.revision ?? 0);
+      versions.current.set(saved.id, Math.max(versions.current.get(saved.id) ?? 0, saved.revision ?? 0));
       current.current = saved; dirty.current = false;
-      setDraft(saved); setStatus(context ? "Private Draft Loaded" : "Saved in This Browser"); setError(undefined);
+      setDraft(saved); setStatus("Saved in This Browser"); setError(undefined);
+      if (cached && context && online) void syncOne(id, selectedVersion);
     } catch (failure) {
       let currentActor = true;
       try { context?.assertCurrentActor?.(); } catch { currentActor = false; }
       if (currentActor && selection === intent.current) reportFailure(failure);
       throw failure;
     }
-  }, [did, persist, actor, requireViewer, reportFailure, available]);
+  }, [did, persist, actor, syncOne, requireViewer, reportFailure, available]);
 
   const create = useCallback(async (publicationUri = "") => {
     requireViewer();

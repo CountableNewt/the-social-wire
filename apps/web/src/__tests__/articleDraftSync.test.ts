@@ -68,6 +68,28 @@ it("rebases the newer local edit after CAS conflict with a distinct durable muta
   expect(inputs[1].mutationId).not.toBe(inputs[0].mutationId);
   expect(inputs[1].draft.title).toBe("Newest Local");
 });
+it("retries a delayed older cloud read without downgrading another tab's server revision", async () => {
+  await Storage.saveArticleDraft(did, draft("Latest Local", "2026-11-09T00:00:00Z"));
+  remote = document(draft("Earlier Server", "2026-11-02T00:00:00Z"), 1);
+  let started!: () => void, finish!: (value: ArticleDraftDocument) => void;
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const reply = new Promise<ArticleDraftDocument>(resolve => { finish = resolve; });
+  let reads = 0;
+  const get = spyOn(Cloud, "getCloudArticleDraft").mockImplementation(async () => {
+    if (++reads === 1) { started(); return reply; }
+    expect((await Storage.getArticleDraftSyncState(did, id))?.serverRevision).toBe(3);
+    return remote;
+  }); restores.push(() => get.mockRestore());
+  const syncing = syncArticleDraft(actor, id);
+  await reading;
+  await Storage.updateArticleDraftSyncState(did, id, () => ({ draftId: id, serverRevision: 3, ackedLocalRevision: 0 }));
+  const old = remote;
+  remote = document(draft("Other Tab Server", "2026-11-03T00:00:00Z"), 3);
+  finish(old);
+  expect((await syncing)?.title).toBe("Latest Local");
+  expect((await Storage.getArticleDraftSyncState(did, id))?.serverRevision).toBe(4);
+  expect(remote?.revision).toBe(4);
+});
 it("lets a remote publication claim win even when the local text timestamp is newer", async () => {
   await Storage.saveArticleDraft(did, draft("Newer Text", "2026-11-09T00:00:00Z"));
   remote = document({ ...draft("Claimed Snapshot", "2026-11-02T00:00:00Z"), publishingRecordKey: "stable-key", publicationClaimId: crypto.randomUUID() }, 2);
@@ -91,6 +113,26 @@ it("hydrates verified private image bytes on a fresh device without a PDS upload
   expect(result?.coverAssetId).toBe(assetId);
   expect(download).toHaveBeenCalledWith(actor, asset);
   expect(await (await Storage.getArticleDraftAsset(did, id, assetId))?.text()).toBe("private image");
+});
+it("rechecks newer local edits after a list refresh waits for private image hydration", async () => {
+  const saved = await Storage.saveArticleDraft(did, draft("Original Local", "2026-11-02T00:00:00Z"));
+  const blob = new Blob(["remote image"], { type: "image/png" });
+  const asset = { assetId, name: "cover.png", contentType: "image/png", byteLength: blob.size, sha256: await Files.draftAttachmentSHA256(blob), kind: "photo" as const, state: "ready" as const };
+  remote = document({ ...draft("Remote Before Typing", "2026-11-07T00:00:00Z"), assets: [{ id: assetId, alt: "", name: asset.name, mimeType: blob.type, width: 2, height: 2 }] });
+  remote.attachments = [{ localAssetId: assetId, asset }];
+  let started!: () => void, finish!: (value: Blob) => void;
+  const downloading = new Promise<void>(resolve => { started = resolve; });
+  const response = new Promise<Blob>(resolve => { finish = resolve; });
+  const download = spyOn(Files, "downloadDraftAttachment").mockImplementation(() => { started(); return response; });
+  restores.push(() => download.mockRestore());
+  const syncing = syncArticleDrafts(actor);
+  await downloading;
+  await Storage.saveArticleDraft(did, { ...saved, title: "Newest Local Typing", updatedAt: "2026-11-09T00:00:00Z" });
+  finish(blob);
+  expect((await syncing)[0]?.title).toBe("Newest Local Typing");
+  expect((await Storage.getArticleDraft(did, id))?.title).toBe("Newest Local Typing");
+  expect(remote?.draft?.title).toBe("Newest Local Typing");
+  expect((await Storage.getArticleDraftSyncState(did, id))?.serverRevision).toBe(2);
 });
 it("retains a local deletion journal while offline and completes the same mutation after reconnect", async () => {
   await Storage.saveArticleDraft(did, draft()); await syncArticleDraft(actor, id);
