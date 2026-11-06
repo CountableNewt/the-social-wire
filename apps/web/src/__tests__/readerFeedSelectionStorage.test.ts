@@ -26,11 +26,15 @@ describe("reader feed selection storage", () => {
 
     expect(loadReaderFeedSelection(storage)).toBeNull();
     saveReaderFeedSelection(storage, "wire");
-    expect(values.get(READER_FEED_SELECTION_STORAGE_KEY)).toBe("wire");
-    expect(loadReaderFeedSelection(storage)).toBe("wire");
+    expect(values.get(READER_FEED_SELECTION_STORAGE_KEY)).toBe("subscribed");
+    expect(loadReaderFeedSelection(storage)).toBe("subscribed");
     saveReaderFeedSelection(storage, "circle");
-    expect(values.get(READER_FEED_SELECTION_STORAGE_KEY)).toBe("circle");
-    expect(loadReaderFeedSelection(storage)).toBe("circle");
+    expect(values.get(READER_FEED_SELECTION_STORAGE_KEY)).toBe("subscribed");
+    expect(loadReaderFeedSelection(storage)).toBe("subscribed");
+  });
+
+  it.each(["wire", "circle"])("falls back from a previously persisted %s selection", feed => {
+    expect(loadReaderFeedSelection({ getItem: key => key === READER_FEED_SELECTION_STORAGE_KEY ? feed : null })).toBe("subscribed");
   });
 
   it("rejects unknown stored values", () => {

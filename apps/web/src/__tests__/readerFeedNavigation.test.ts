@@ -14,7 +14,7 @@ it.each(["sports", "finance", "wire", "circle", "subscribed", "following"] as co
     navigateReaderFeed("/read", feed, pushRoute);
 
     // A fresh destination query drops the prior list/folder/topic selection, as full navigation did.
-    expect(history).toHaveBeenCalledWith(null, "", `/read?feed=${feed}`);
+    expect(history).toHaveBeenCalledWith(null, "", `/read?feed=${feed === "wire" || feed === "circle" ? "subscribed" : feed}`);
     expect(pushRoute).not.toHaveBeenCalled();
   },
 );
