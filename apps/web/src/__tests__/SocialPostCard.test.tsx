@@ -45,17 +45,18 @@ function card(value: AppBskyFeedDefs.FeedViewPost, prefs = moderation) {
 }
 
 describe("Social Post Rendering", () => {
-  it("shows profile pronouns beside the author name as subscript", () => {
+  it("shows profile pronouns beside the author name", () => {
     const element = document.createElement("div");
     element.innerHTML = card(item({ author: { ...author, pronouns: "  they/them  " } }));
-    const pronouns = element.querySelector("sub")!;
+    const pronouns = Array.from(element.querySelectorAll("span")).find(node => node.textContent === "they/them")!;
     expect(pronouns.textContent).toBe("they/them");
     expect(pronouns.closest("a")!.textContent).toBe("Other they/them");
-    expect(pronouns.className).toContain("align-sub");
   });
   it("omits absent and blank author pronouns", () => {
     for (const pronouns of [undefined, "", "   "]) {
-      expect(card(item({ author: { ...author, pronouns } }))).not.toContain("<sub");
+      const element = document.createElement("div");
+      element.innerHTML = card(item({ author: { ...author, pronouns } }));
+      expect(element.querySelector("[data-social-feed-section=author] a.block")?.textContent).toBe("Other");
     }
   });
   it("shows the reposter's own pronouns beside their attribution name", () => {
@@ -65,7 +66,7 @@ describe("Social Post Rendering", () => {
     }, indexedAt: value.post.indexedAt };
     const element = document.createElement("div");
     element.innerHTML = card(value);
-    const pronouns = element.querySelector("sub")!;
+    const pronouns = Array.from(element.querySelectorAll("span")).find(node => node.textContent === "she/her")!;
     expect(pronouns.textContent).toBe("she/her");
     expect(pronouns.closest("a")!.textContent).toBe("Reposter she/her");
   });
@@ -87,8 +88,8 @@ describe("Social Post Rendering", () => {
     } } }));
     const element = document.createElement("div");
     element.innerHTML = html;
-    expect(element.querySelector("blockquote sub")!.textContent).toBe("he/him");
-    expect(element.querySelector("blockquote sub")!.closest("a")!.textContent).toBe("Quoted he/him");
+    const pronouns = Array.from(element.querySelectorAll("blockquote span")).find(node => node.textContent === "he/him")!;
+    expect(pronouns.closest("a")!.textContent).toBe("Quoted he/him");
   });
   it("names stable post sections so background embed growth can preserve the reading position", () => {
     const value = item({ embed: { $type: "app.bsky.embed.external#view", external: {

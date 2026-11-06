@@ -19,7 +19,7 @@ import { socialExternalGif } from "./socialExternalGif";
 import { SocialGifEmbed } from "./SocialGifEmbed";
 import { socialGalleryImages } from "./socialGalleryImages";
 import { SocialProfileLink } from "./SocialProfileLink";
-import { ProfilePronouns } from "@/components/shared/ProfilePronouns";
+import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
 import { SocialCashtags } from "./SocialCashtags";
 import { SocialYouTubeEmbed } from "./SocialYouTubeEmbed";
 import { socialYouTubePlayerUrl } from "./socialYouTubePlayerUrl";
@@ -145,8 +145,7 @@ export function SocialPostEmbed({
           actor={quote.author.did}
           className="text-sm font-medium hover:underline"
         >
-          {quote.author.displayName || quote.author.handle}
-          <ProfilePronouns pronouns={quote.author.pronouns} />
+          <ProfileDisplayName name={quote.author.displayName || quote.author.handle} pronouns={quote.author.pronouns} />
         </SocialProfileLink>
       )}
       <SocialRichText record={record.value} />
