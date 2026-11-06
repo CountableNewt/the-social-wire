@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as AvatarModule from "@/components/shared/Avatar";
 import { ArticlePublicationGroups } from "@/components/Articles/ArticlePublicationGroups";
+import { ArticleLibraryToolbarContext } from "@/components/Articles/ArticleLibraryToolbarContext";
 import { ARTICLE_COLLAPSED_PUBLICATIONS_STORAGE_KEY } from "@/lib/articles/articlePublicationCollapseStorage";
 import type { ArticlePublication } from "@/lib/articles/articlePublishingTypes";
 
@@ -54,4 +55,15 @@ it("shows the publication icon beside matching publication headers", async () =>
     expect(screen.getAllByTestId("publication-icon")).toHaveLength(1);
     expect(screen.getByRole("button", { name: /^First Journal/ })).toBeTruthy();
   } finally { avatar.mockRestore(); }
+});
+
+it("renders the bulk toggle into the library toolbar slot when one is provided", () => {
+  const slot = document.createElement("div");
+  document.body.append(slot);
+  try {
+    withQueries(<ArticleLibraryToolbarContext.Provider value={slot}><ArticlePublicationGroups did={did} publications={[]} groups={groups} renderItems={items => items.join()} /></ArticleLibraryToolbarContext.Provider>);
+    expect(slot.querySelector("button")?.textContent).toBe("Collapse All");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse All" }));
+    expect(slot.querySelector("button")?.textContent).toBe("Expand All");
+  } finally { slot.remove(); }
 });

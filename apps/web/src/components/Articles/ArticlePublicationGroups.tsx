@@ -1,11 +1,13 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useContext, useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import { useCollapsedArticlePublications } from "@/hooks/articles/useCollapsedArticlePublications";
 import type { ArticlePublication } from "@/lib/articles/articlePublishingTypes";
 import { Button } from "@/components/ui/button";
 import { ArticlePublicationIcon } from "./ArticlePublicationIcon";
+import { ArticleLibraryToolbarContext } from "./ArticleLibraryToolbarContext";
 
 export function ArticlePublicationGroups<T>({ did, publications, groups, renderItems, className = "space-y-8" }: {
   did: string;
@@ -15,11 +17,13 @@ export function ArticlePublicationGroups<T>({ did, publications, groups, renderI
   className?: string;
 }) {
   const baseId = useId().replace(/:/g, "");
+  const toolbar = useContext(ArticleLibraryToolbarContext);
   const { collapsed, toggle, setAll } = useCollapsedArticlePublications(did);
   const ids = groups.map(group => group.id);
   const allCollapsed = ids.every(id => collapsed.has(id));
+  const bulkToggle = <Button type="button" size="sm" variant="ghost" onClick={() => setAll(ids, !allCollapsed)}>{allCollapsed ? "Expand All" : "Collapse All"}</Button>;
   return <div className={className}>
-    {groups.length > 1 ? <div className="flex justify-end"><Button type="button" size="sm" variant="ghost" onClick={() => setAll(ids, !allCollapsed)}>{allCollapsed ? "Expand All" : "Collapse All"}</Button></div> : null}
+    {groups.length > 1 ? toolbar ? createPortal(bulkToggle, toolbar) : <div className="flex justify-end">{bulkToggle}</div> : null}
     {groups.map((group, index) => {
       const expanded = !collapsed.has(group.id);
       const contentId = `${baseId}-publication-${index}`;
