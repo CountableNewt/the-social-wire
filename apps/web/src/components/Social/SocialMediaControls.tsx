@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
+import { PRIVATE_DRAFT_FILE_LIMIT } from "@/lib/socialDraftAttachmentClient";
 import { prepareComposerVideo } from "@/lib/prepareComposerVideo";
 import { SocialVideoPreview } from "./SocialVideoPreview";
 import { prepareComposerPhoto } from "@/lib/prepareComposerPhoto";
@@ -21,6 +22,15 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
   const [altID, setAltID] = useState<string>();
   const [alt, setAlt] = useState("");
   const [replace, setReplace] = useState<(() => void) | undefined>();
+  const preparation = useRef(new Map<string, AbortController>());
+  const videoID = media?.kind === "video" ? media.id : undefined;
+  useEffect(() => {
+    for (const [id, controller] of preparation.current) if (id !== videoID) { controller.abort(); preparation.current.delete(id); }
+  }, [videoID]);
+  useEffect(() => {
+    const pending = preparation.current;
+    return () => { for (const controller of pending.values()) controller.abort(); pending.clear(); };
+  }, []);
   const updateRef = useRef(update);
   updateRef.current = update;
   function replacing(action: () => void, conflict: boolean) { if (conflict || hasLink) setReplace(() => action); else action(); }
@@ -33,11 +43,23 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
     }
   }
   async function prepareVideo(video: ComposerVideo) {
+    preparation.current.get(video.id)?.abort();
+    const controller = new AbortController();
+    preparation.current.set(video.id, controller);
     try {
-      const ready = await prepareComposerVideo(video);
+      const ready = await prepareComposerVideo(video, { signal: controller.signal, onProgress: fraction => {
+        if (preparation.current.get(video.id) !== controller || controller.signal.aborted) return;
+        const progress = Math.min(99, Math.max(0, Math.floor(fraction * 100)));
+        updateRef.current(previous => previous?.kind === "video" && previous.id === video.id && previous.preparationProgress !== progress ? { ...previous, preparationProgress: progress } : previous);
+      } });
+      controller.signal.throwIfAborted();
+      if (preparation.current.get(video.id) !== controller) return;
       updateRef.current(previous => previous?.kind === "video" && previous.id === video.id ? { ...ready, alt: previous.alt } : previous);
     } catch (cause) {
-      updateRef.current(previous => previous?.kind === "video" && previous.id === video.id ? { ...previous, status: "failed", error: cause instanceof Error ? cause.message : "Video Could Not Be Prepared" } : previous);
+      if (preparation.current.get(video.id) !== controller) return;
+      updateRef.current(previous => previous?.kind === "video" && previous.id === video.id ? { ...previous, status: "failed", preparationProgress: undefined, error: controller.signal.aborted ? "Video Preparation Canceled. Retry Or Choose Another Video." : cause instanceof Error ? cause.message : "Video Could Not Be Prepared" } : previous);
+    } finally {
+      if (preparation.current.get(video.id) === controller) preparation.current.delete(video.id);
     }
   }
   function intakeVideo(original: File) {
@@ -88,12 +110,18 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
     {media?.kind === "gif" ? <div className="flex flex-col gap-2 rounded-xl border p-3"><SocialComposerGifPreview media={media} /><p className="text-xs text-muted-foreground">{media.asset.attribution}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => editAlt("gif")}>{media.alt ? "Edit Alt Text" : "Add Alt Text"}</Button><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setPicker(true)}>Replace GIF</Button><Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => update(() => undefined)}>Remove GIF</Button></div></div> : null}
     {media?.kind === "video" ? <div className="flex min-w-0 flex-col gap-2 rounded-xl border p-3">
       <SocialVideoPreview video={media} /><p className="truncate text-xs">{media.name}</p>
-      <p className="text-xs text-muted-foreground">MP4 · Up To 300 MB And 10 Minutes</p>
+      <p className="text-xs text-muted-foreground">MP4 · Up To 10 Minutes · Large Videos Compress On This Device</p>
       {media.error ? <p role="alert" className="text-sm text-destructive">{media.error}</p> : null}
-      {media.status === "preparing" ? <p role="status" className="text-sm">Preparing Video…</p> : null}
+      {media.status === "preparing" ? <div role="status" className="flex flex-col gap-1 text-sm">
+        {media.preparationProgress === undefined ? "Preparing Video…" : `Compressing Video… ${media.preparationProgress}%`}
+        {media.preparationProgress !== undefined ? <progress aria-label="Video Compression" max={100} value={media.preparationProgress} className="w-full" /> : null}
+      </div> : null}
+      {media.status === "ready" && media.blob && (media.sourceByteLength ?? 0) > media.blob.size ? <p className="text-xs text-muted-foreground">Compressed From {((media.sourceByteLength ?? 0) / 1_000_000).toFixed(1)} MB To {(media.blob.size / 1_000_000).toFixed(1)} MB</p> : null}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => editAlt(media.id)}>{media.alt ? "Edit Alt Text" : "Add Alt Text"}</Button>
-        {media.status === "failed" ? <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { update(previous => previous?.kind === "video" && previous.id === media.id ? { ...previous, status: "preparing", error: undefined } : previous); void prepareVideo(media); }}>Retry</Button> : null}
+        {media.status === "ready" && media.blob && media.blob.size > PRIVATE_DRAFT_FILE_LIMIT ? <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { update(previous => previous?.kind === "video" && previous.id === media.id ? { ...previous, status: "preparing", preparationProgress: undefined, error: undefined } : previous); void prepareVideo({ ...media, original: media.blob! }); }}>Compress Video</Button> : null}
+        {media.status === "preparing" ? <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => preparation.current.get(media.id)?.abort()}>Cancel Preparation</Button> : null}
+        {media.status === "failed" ? <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { update(previous => previous?.kind === "video" && previous.id === media.id ? { ...previous, status: "preparing", preparationProgress: undefined, error: undefined } : previous); void prepareVideo(media); }}>Retry</Button> : null}
         <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => videos.current?.click()}>Replace Video</Button>
         <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => update(() => undefined)}>Remove Video</Button>
       </div>

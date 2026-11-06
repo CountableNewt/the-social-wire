@@ -67,8 +67,8 @@ async function pause(signal?: AbortSignal) {
 }
 
 /** Read MP4 metadata in small slices, without copying a 300MB video into memory. */
-export async function validateBlueskyVideo(video: Blob): Promise<void> {
-  if (video.type !== "video/mp4" || video.size < 32 || video.size > BLUESKY_VIDEO_MAX_BYTES) throw new Error("Choose an MP4 video of at most 300 MB.");
+export async function validateBlueskyVideo(video: Blob, maximumBytes = BLUESKY_VIDEO_MAX_BYTES): Promise<void> {
+  if (video.type !== "video/mp4" || video.size < 32 || video.size > maximumBytes) throw new Error("Choose an MP4 video of at most 300 MB.");
   const header = new Uint8Array(await video.slice(0, 12).arrayBuffer());
   if (new TextDecoder().decode(header.slice(4, 8)) !== "ftyp") throw new Error("The selected video is not a valid MP4.");
   async function findBox(start: number, end: number, wanted: string): Promise<{ start: number; end: number } | undefined> {

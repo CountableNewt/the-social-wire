@@ -16,7 +16,7 @@ function mp4() {
 const attachment = (original = mp4()): ComposerVideo => ({ kind: "video", id: "video-1", name: "clip.mp4", original, alt: "A penguin swimming", status: "preparing" });
 function decoder(fail = false, duration = 5) {
   const element = document.createElement("video");
-  Object.defineProperties(element, { videoWidth: { value: 720 }, videoHeight: { value: 1280 }, duration: { value: duration }, src: { set() { queueMicrotask(() => element.dispatchEvent(new window.Event(fail ? "error" : "loadedmetadata"))); } } });
+  Object.defineProperties(element, { videoWidth: { value: 720 }, videoHeight: { value: 1280 }, duration: { configurable: true, value: duration }, src: { configurable: true, set() { queueMicrotask(() => element.dispatchEvent(new window.Event(fail ? "error" : "loadedmetadata"))); } } });
   const load = spyOn(element, "load").mockImplementation(() => {});
   const create = spyOn(document, "createElement").mockReturnValue(element);
   const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -55,4 +55,66 @@ it("rejects browser metadata beyond the duration limit and cleans up", async () 
   const { revoke } = decoder(false, 601);
   await expect(prepareComposerVideo(attachment())).rejects.toThrow("At Most 10 Minutes");
   expect(revoke).toHaveBeenCalled();
+});
+
+it("compresses oversized source files locally and stores only validated prepared bytes", async () => {
+  decoder();
+  const compression = await import("@/lib/compressComposerVideo");
+  const output = new Blob([mp4()], { type: "video/mp4" });
+  const compress = spyOn(compression, "compressComposerVideo").mockImplementation(async (_source, _metadata, options) => { options?.onProgress?.(0.5); return output; });
+  restores.push(() => compress.mockRestore());
+  const original = new Blob([mp4()], { type: "video/mp4" });
+  Object.defineProperty(original, "size", { value: 400_000_000 });
+  const progress: number[] = [];
+  const ready = await prepareComposerVideo(attachment(original), { onProgress: value => progress.push(value) });
+  expect(compress).toHaveBeenCalledTimes(1);
+  expect(compress.mock.calls[0][0]).toBe(original);
+  expect(ready.blob).toBe(output); expect(ready.original).toBe(output);
+  expect(ready.id).not.toBe("video-1"); expect(ready.privateAttachment).toBeUndefined();
+  expect(ready.sourceByteLength).toBe(400_000_000); expect(ready.status).toBe("ready");
+  expect(ready.alt).toBe("A penguin swimming"); expect(progress).toEqual([0, 0.5]);
+});
+it("rejects overlong videos before compression", async () => {
+  const compression = await import("@/lib/compressComposerVideo");
+  const compress = spyOn(compression, "compressComposerVideo"); restores.push(() => compress.mockRestore());
+  decoder(false, 601);
+  const original = new Blob([mp4()], { type: "video/mp4" });
+  Object.defineProperty(original, "size", { value: 150_000_000 });
+  await expect(prepareComposerVideo(attachment(original))).rejects.toThrow("At Most 10 Minutes");
+  expect(compress).not.toHaveBeenCalled();
+});
+it("rejects compression output that still exceeds the target without changing its source", async () => {
+  decoder();
+  const compression = await import("@/lib/compressComposerVideo");
+  const output = new Blob([mp4()], { type: "video/mp4" });
+  Object.defineProperty(output, "size", { value: 101_000_000 });
+  const compress = spyOn(compression, "compressComposerVideo").mockResolvedValue(output); restores.push(() => compress.mockRestore());
+  const original = new Blob([mp4()], { type: "video/mp4" });
+  Object.defineProperty(original, "size", { value: 150_000_000 });
+  const video = attachment(original);
+  await expect(prepareComposerVideo(video)).rejects.toThrow("Could Not Be Compressed");
+  expect(video.original).toBe(original); expect(video.status).toBe("preparing");
+});
+it("stops metadata preparation promptly on cancellation and revokes the URL", async () => {
+  const { element, revoke } = decoder();
+  let started!: () => void;
+  const metadataStarted = new Promise<void>(resolve => { started = resolve; });
+  Object.defineProperty(element, "src", { set() { started(); }, configurable: true });
+  const controller = new AbortController();
+  const pending = prepareComposerVideo(attachment(), { signal: controller.signal });
+  await metadataStarted;
+  controller.abort(new DOMException("Canceled", "AbortError"));
+  await expect(pending).rejects.toThrow("Canceled"); expect(revoke).toHaveBeenCalled();
+});
+it("does not accept a compressed file that shortens the selected video", async () => {
+  const { element } = decoder();
+  let reads = 0;
+  Object.defineProperty(element, "duration", { configurable: true, get: () => reads++ === 0 ? 5 : 3 });
+  const compression = await import("@/lib/compressComposerVideo");
+  const compress = spyOn(compression, "compressComposerVideo").mockResolvedValue(new Blob([mp4()], { type: "video/mp4" })); restores.push(() => compress.mockRestore());
+  const original = new Blob([mp4()], { type: "video/mp4" });
+  Object.defineProperty(original, "size", { value: 150_000_000 });
+  const video = attachment(original);
+  await expect(prepareComposerVideo(video)).rejects.toThrow("Could Not Preserve Its Duration");
+  expect(video.original).toBe(original);
 });

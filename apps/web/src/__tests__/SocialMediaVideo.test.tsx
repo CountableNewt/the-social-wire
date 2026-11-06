@@ -67,3 +67,34 @@ it("requires confirmation before replacing photos and rejects mixed video drops"
   fireEvent.click(screen.getByRole("button", { name: "Replace Attachment" }));
   await waitFor(() => expect(screen.getByTestId("state").textContent).toContain('"status":"ready"'));
 });
+it("shows compression progress, cancels encoding, and keeps the original for retry", async () => {
+  let source: ComposerVideo | undefined;
+  let retried: ComposerVideo | undefined;
+  const prepare = spyOn(preparation, "prepareComposerVideo").mockImplementationOnce((video, options) => {
+    source = video;
+    options?.onProgress?.(0.42);
+    return new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true }));
+  }).mockImplementation(async video => { retried = video; return { ...ready(video), blob: new Blob(["smaller video"], { type: "video/mp4" }), sourceByteLength: 400_000_000 }; });
+  restores.push(() => prepare.mockRestore());
+  render(<Harness />);
+  fireEvent.change(screen.getByLabelText("Choose Video"), { target: { files: [original()] } });
+  expect(screen.getByText("Compressing Video… 42%").textContent).toContain("42%");
+  expect(screen.getByLabelText("Video Compression").getAttribute("value")).toBe("42");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel Preparation" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Video Preparation Canceled"));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.getByText(/Compressed From/).textContent).toContain("400.0 MB"));
+  expect(retried?.original).toBe(source?.original);
+});
+it("cancels in-flight compression when its attachment is removed", async () => {
+  let signal: AbortSignal | undefined;
+  const prepare = spyOn(preparation, "prepareComposerVideo").mockImplementation((_video, options) => {
+    signal = options?.signal;
+    return new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true }));
+  }); restores.push(() => prepare.mockRestore());
+  render(<Harness />);
+  fireEvent.change(screen.getByLabelText("Choose Video"), { target: { files: [original()] } });
+  fireEvent.click(screen.getByRole("button", { name: "Remove Video" }));
+  await waitFor(() => expect(signal?.aborted).toBe(true));
+  expect(screen.getByTestId("state").textContent).toBe("empty");
+});
