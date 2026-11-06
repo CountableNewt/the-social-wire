@@ -18,14 +18,20 @@ type Proxy struct {
 	Internal, Public *http.Client
 }
 
+func isPrivateDraftPath(path string) bool {
+	return strings.HasPrefix(path, "/xrpc/app.thesocialwire.socialDraft.") || strings.HasPrefix(path, "/xrpc/app.thesocialwire.articleDraft.")
+}
+
 func (p *Proxy) Handler(route Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { p.forward(w, r, route) })
 }
 func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, route Route) {
 	c := p.Config
-	privateDraft := strings.HasPrefix(route.Target, "/xrpc/app.thesocialwire.socialDraft.")
+	privateDraft := isPrivateDraftPath(route.Target)
+	articleDraft := strings.HasPrefix(route.Target, "/xrpc/app.thesocialwire.articleDraft.")
 	if privateDraft {
 		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 	}
 	if route.Target == "/v1/analytics/summary" || route.Target == "/v1/analytics/refresh" {
 		if !requirePro(w, r, c) {
@@ -121,6 +127,14 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, route Route) {
 		body = http.MaxBytesReader(w, r.Body, r.ContentLength)
 	} else if method != "GET" && method != "HEAD" {
 		limit := int64(4 << 20)
+		if articleDraft {
+			limit = 2 << 20
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "application/json" {
+				writeError(w, 400, "Article draft requests require application/json")
+				return
+			}
+		}
 		if route.Service == "wire" {
 			limit = 4096
 		}
@@ -253,6 +267,9 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, route Route) {
 	if privateDraft || media || path == "/v1/podcasts/search" {
 		w.Header().Set("Cache-Control", "private, no-store")
 	}
+	if privateDraft {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+	}
 	if route.Service == "wire" || route.Service == "circle" {
 		w.Header().Set("Vary", "Authorization, Accept-Language")
 		if route.Service == "circle" || strings.Contains(path, "Finance") || strings.Contains(path, "Sports") {
@@ -285,6 +302,9 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, route Route) {
 		}
 	}
 	maximum := 8 << 20
+	if articleDraft {
+		maximum = 24 << 20
+	}
 	if strings.HasSuffix(path, "discovery.getSportsCatalog") || strings.HasSuffix(path, "discovery.getFeedCatalog") {
 		maximum = 32 << 20
 	}

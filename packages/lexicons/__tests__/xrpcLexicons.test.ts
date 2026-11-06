@@ -28,7 +28,7 @@ describe("Social Wire XRPC lexicons", () => {
   });
 
   it("loads through the AT Protocol Lexicon validator", () => {
-    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", ...nsids].map((nsid) =>
+    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids].map((nsid) =>
       JSON.parse(readFileSync(fileForNsid(nsid), "utf8"))
     );
     expect(() => new Lexicons(documents)).not.toThrow();

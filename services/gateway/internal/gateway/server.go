@@ -60,7 +60,7 @@ func (s *Server) Handler() http.Handler {
 			continue
 		}
 		h := proxy.Handler(route)
-		if strings.HasPrefix(route.Path, "/xrpc/app.thesocialwire.socialDraft.") {
+		if isPrivateDraftPath(route.Path) {
 			h = draftAdmission.middleware(h)
 		}
 		if route.Service == "wire" || route.Service == "circle" {

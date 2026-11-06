@@ -1,0 +1,76 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.articleDraft.put",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Owner-only encrypted server-private article drafts. Authentication required; owner comes only from the authenticated DID. Never publishes drafts or images to the PDS. Responses use private, no-store and nosniff. Storage unavailable returns Unavailable. Saves use expectedRevision CAS and durable mutationId idempotency; tombstones never resurrect. Explicit Publish/Schedule remain separate actions. Create uses expectedRevision 0; replaying an identical mutation returns the acknowledged snapshot, while conflicting payloads or revisions return Conflict. Clients resolve unlocked cross-device conflicts by payload.updatedAt (latest edit wins); ties, tombstones, and publication/schedule claims prefer the server.",
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Conflict"
+        },
+        {
+          "name": "UploadPending"
+        },
+        {
+          "name": "Quota"
+        },
+        {
+          "name": "Unavailable"
+        }
+      ],
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "expectedRevision",
+            "mutationId",
+            "draft",
+            "attachments"
+          ],
+          "properties": {
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mutationId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+            },
+            "draft": {
+              "type": "ref",
+              "ref": "app.thesocialwire.articleDraft.defs#payload"
+            },
+            "attachments": {
+              "type": "array",
+              "maxLength": 200,
+              "items": {
+                "type": "ref",
+                "ref": "app.thesocialwire.articleDraft.defs#attachmentRef"
+              }
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.articleDraft.defs#document"
+        }
+      }
+    }
+  }
+}
