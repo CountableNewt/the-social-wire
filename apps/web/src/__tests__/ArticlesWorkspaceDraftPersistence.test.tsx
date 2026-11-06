@@ -41,9 +41,12 @@ it("keeps a newly entered title through immediate mode changes, body edits, Save
   fireEvent.click(screen.getByRole("button", { name: "Article Viewer" }));
   expect(screen.getByRole("heading", { name: "Retained New Article Title" })).toBeTruthy();
   expect(screen.getByText("Saved Article Content.")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Retained New Article Title" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Article Library" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+  expect(await screen.findByRole("button", { name: /^Retained New Article Title/ })).toBeTruthy();
   cleanup(); client.clear();
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
+  fireEvent.click(await screen.findByRole("button", { name: /^Retained New Article Title/ }));
   const restored = await screen.findByLabelText("Article Title");
   expect((restored as HTMLInputElement).value).toBe("Retained New Article Title");
   fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
