@@ -27,9 +27,9 @@ export function SocialStandardSiteEmbed({ external, href, fallback }: {
     retry: 1,
     refetchOnWindowFocus: false,
   });
-  const content = useMemo(() => !metadata.data ? fallback : <StandardSiteArticleCard metadata={metadata.data} thumb={external.thumb}>
+  const content = useMemo(() => !metadata.data ? fallback : <StandardSiteArticleCard metadata={metadata.data} thumb={external.thumb} anchorUrl={href}>
     <StandardSiteArticleActions key={`${session?.did}:${oauthSessionReloadSeq}:${metadata.data.documentUri}`} metadata={metadata.data} />
-  </StandardSiteArticleCard>, [metadata.data, external.thumb, session?.did, oauthSessionReloadSeq, fallback]);
+  </StandardSiteArticleCard>, [metadata.data, external.thumb, href, session?.did, oauthSessionReloadSeq, fallback]);
   // Metadata updates originate here, so the outer feed boundary does not update.
   return viewport ? <SocialFeedViewportBoundary {...viewport}>{content}</SocialFeedViewportBoundary> : content;
 }

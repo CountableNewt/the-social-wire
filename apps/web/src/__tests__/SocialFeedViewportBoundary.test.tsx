@@ -98,7 +98,7 @@ it("keeps the visible post offset when deferred parent hydration grows earlier c
   expect(anchor.getBoundingClientRect().top).toBe(offset);
 });
 
-function ConversationFixture({ parentHeight }: { parentHeight: number }) {
+function ConversationFixture({ parentHeight, insidePost = false, showSection = true }: { parentHeight: number; insidePost?: boolean; showSection?: boolean }) {
   const container = useLayoutContainer();
   return <div ref={container} data-testid="scroller">
     <SocialFeedViewportBoundary container={container} scope="viewer:following" resetKey={0}>
@@ -108,10 +108,15 @@ function ConversationFixture({ parentHeight }: { parentHeight: number }) {
       }}>
         <article data-analytics-subject="reply" ref={node => {
           if (node) node.getBoundingClientRect = () => {
-            const top = 50 + Number(node.parentElement!.dataset.parentHeight) - node.parentElement!.parentElement!.scrollTop;
+            const top = 50 + (insidePost ? 0 : Number(node.parentElement!.dataset.parentHeight)) - node.parentElement!.parentElement!.scrollTop;
             return { top, bottom: top + 1000 } as DOMRect;
           };
-        }}>Visible Reply</article>
+        }}>Visible Reply{showSection ? <div data-social-feed-section="actions" ref={node => {
+          if (node) node.getBoundingClientRect = () => {
+            const top = 50 + Number(node.parentElement!.parentElement!.dataset.parentHeight) - container.current!.scrollTop;
+            return { top, bottom: top + 300 } as DOMRect;
+          };
+        }}>Visible Actions</div> : null}</article>
       </div>
     </SocialFeedViewportBoundary>
   </div>;
@@ -124,6 +129,26 @@ it("preserves the reply itself when its newly hydrated parent grows inside the s
   const offset = view.getByText("Visible Reply").getBoundingClientRect().top;
   view.rerender(<ConversationFixture parentHeight={600} />);
   expect(container.scrollTop).toBe(580);
+  expect(view.getByText("Visible Reply").getBoundingClientRect().top).toBe(offset);
+});
+
+it("preserves the visible section when async content grows within the same tall post", () => {
+  const view = render(<ConversationFixture parentHeight={200} insidePost />);
+  const container = view.getByTestId("scroller");
+  container.scrollTop = 230;
+  const offset = view.getByText("Visible Actions").getBoundingClientRect().top;
+  view.rerender(<ConversationFixture parentHeight={600} insidePost />);
+  expect(container.scrollTop).toBe(630);
+  expect(view.getByText("Visible Actions").getBoundingClientRect().top).toBe(offset);
+});
+
+it("falls back to the existing post offset when the named section is removed", () => {
+  const view = render(<ConversationFixture parentHeight={200} insidePost />);
+  const container = view.getByTestId("scroller");
+  container.scrollTop = 230;
+  const offset = view.getByText("Visible Reply").getBoundingClientRect().top;
+  view.rerender(<ConversationFixture parentHeight={600} insidePost showSection={false} />);
+  expect(container.scrollTop).toBe(230);
   expect(view.getByText("Visible Reply").getBoundingClientRect().top).toBe(offset);
 });
 
