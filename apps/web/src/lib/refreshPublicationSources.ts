@@ -9,6 +9,7 @@ import {
   type SidebarPublicationRow,
 } from "@/lib/publicationProjectionClient";
 import { enrollAuthorsInAppView } from "@/lib/thinAppViewClient";
+import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
 
 /** Match the visible feed; a publication refresh must not enroll the full follow graph. */
 export function readerRefreshRows(client: QueryClient, did: string, projection: PublicationSidebarProjection): SidebarPublicationRow[] {
@@ -116,7 +117,7 @@ export async function refreshPublicationSources(args: {
       }).finally(schedulePaint);
     }, 1000);
   };
-  let sourceFailure: unknown;
+  const sourceFailures: unknown[] = [];
   if (total) {
     schedulePaint();
     try {
@@ -131,7 +132,7 @@ export async function refreshPublicationSources(args: {
           await awaitWithAbort(enrollAuthorsInAppView(args.oauthSession, request.authorDids, request.feedUrls, signal), signal);
         } catch (error) {
           args.signal.throwIfAborted();
-          sourceFailure ??= error;
+          sourceFailures.push(error);
         }
       }
     } finally {
@@ -146,8 +147,14 @@ export async function refreshPublicationSources(args: {
   // interval once, including partial ingestion on failure; the caller must not
   // issue an additional unconditional feed refresh. This authoritative flush
   // supersedes any intermediate paint failure if it succeeds.
-  if (!sourceFailure) args.onProgress(total, total);
+  if (!sourceFailures.length) args.onProgress(total, total);
   await args.onBatch();
   args.signal.throwIfAborted();
-  if (sourceFailure) throw new Error("Some publications could not be checked. Articles received so far are available. Try Refresh again.", { cause: sourceFailure });
+  if (sourceFailures.length && sourceFailures.every(error => error instanceof PublicationSourceRefreshError)) {
+    throw new PublicationSourceRefreshError(
+      [...new Set(sourceFailures.flatMap(error => error.hosts))].sort(),
+      [...new Set(sourceFailures.flatMap(error => error.unavailablePublicationIds))].sort(),
+    );
+  }
+  if (sourceFailures.length) throw new Error("Some publications could not be checked. Articles received so far are available. Try Refresh again.", { cause: sourceFailures[0] });
 }

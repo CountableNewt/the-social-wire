@@ -20,6 +20,8 @@ import { useWireFeedEntries } from "@/hooks/useWireFeed";
 import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
 import { useCircleEdition } from "@/hooks/useCircleFeed";
 import { editorialFeedForReadRoute } from "@/lib/editorialFeedRoute";
+import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
+import { UnavailablePublicationActions } from "@/components/FeedHeader/UnavailablePublicationActions";
 
 /**
  * Global All / Unread toggle for the read shell (applies to whichever publication is open).
@@ -121,16 +123,18 @@ export function ReadArticleFilterBar() {
     );
   }
 
+  const partialRefresh = refresh.isError && refresh.error instanceof PublicationSourceRefreshError ? refresh.error : undefined;
   const refreshStatus = refresh.isPending
     ? refreshMessage || "Refreshing Publications…"
-    : refresh.isError ? "Refresh Incomplete — Try Again" : refreshMessage;
+    : partialRefresh ? partialRefresh.statusMessage : refresh.isError ? "Refresh Incomplete — Try Again" : refreshMessage;
   return (
     <FeedHeader title={feedTitle} subtitle={
-      projectionError && !refreshMessage && !refresh.isError ? <span role="alert" className="text-destructive" title={projectionError.message}>Couldn’t refresh. Try Refresh.</span> : refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" className={cn("hidden sm:inline", refresh.isError && "text-destructive")}>{refreshStatus}</span> : undefined
+      projectionError && !refreshMessage && !refresh.isError ? <span role="alert" className="text-destructive" title={projectionError.message}>Couldn’t refresh. Try Refresh.</span> : refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" title={partialRefresh?.message} className={cn("hidden sm:inline", refresh.isError && !partialRefresh && "text-destructive")}>{refreshStatus}{partialRefresh ? <span className="sr-only">. {partialRefresh.message}</span> : null}</span> : undefined
     } mobileStatus={
-      refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" className={refresh.isError ? "text-destructive" : undefined}>{refreshStatus}</span> : undefined
+      refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" className={refresh.isError && !partialRefresh ? "text-destructive" : undefined}>{refreshStatus}{partialRefresh ? <span className="block text-xs">{partialRefresh.hosts.join(", ")}</span> : null}</span> : undefined
     }>
       <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
+        {partialRefresh ? <UnavailablePublicationActions key={refresh.submittedAt} warning={partialRefresh} /> : null}
         {isTabletPortrait ? (
           <Button
             type="button"

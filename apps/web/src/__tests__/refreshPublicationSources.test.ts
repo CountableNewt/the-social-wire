@@ -4,11 +4,36 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as appview from "@/lib/thinAppViewClient";
 import { readerRefreshRows, readerRefreshSourcesKey, refreshPublicationSources } from "@/lib/refreshPublicationSources";
 import type { PublicationSidebarProjection, SidebarPublicationRow } from "@/lib/publicationProjectionClient";
+import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
 
 const oauthSession = {} as OAuthSession;
 const row = (author: string, id = author): SidebarPublicationRow => ({ publicationId: id, authorDid: author, authorHandle: author, title: author, discoveredAt: "", appViewScope: { authorDid: author, publicationAtUri: null, publicationScopeAtUris: [], publicationSiteUrls: [] } });
 const restores: (() => void)[] = [];
 afterEach(() => { while (restores.length) restores.pop()!(); });
+
+it("reports unavailable publishers only after the authoritative article flush succeeds", async () => {
+  const upstream = new PublicationSourceRefreshError(["publisher.test"], ["rss:world"]);
+  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockRejectedValue(upstream);
+  restores.push(() => enroll.mockRestore());
+  let paints = 0;
+  const outcome = await refresh(async () => { paints++; }).catch(error => error);
+  expect(paints).toBe(1);
+  expect(outcome).toBeInstanceOf(PublicationSourceRefreshError);
+  expect(outcome.hosts).toEqual(["publisher.test"]);
+  expect(outcome.unavailablePublicationIds).toEqual(["rss:world"]);
+  await expect(refresh(async () => { throw new Error("feed failed"); })).rejects.toThrow("feed failed");
+});
+
+it("does not hide an infrastructure failure behind another chunk's publisher warning", async () => {
+  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => {
+    if (enroll.mock.calls.length === 1) throw new PublicationSourceRefreshError(["publisher.test"]);
+    throw new Error("database unavailable");
+  });
+  restores.push(() => enroll.mockRestore());
+  const error = await refresh(async () => {}, undefined, Array.from({ length: 501 }, (_, i) => row(`did:plc:${i}`))).catch(error => error);
+  expect(error).not.toBeInstanceOf(PublicationSourceRefreshError);
+  expect(error.message).toContain("Some publications could not be checked");
+});
 
 function deferred() {
   let resolve!: () => void;
