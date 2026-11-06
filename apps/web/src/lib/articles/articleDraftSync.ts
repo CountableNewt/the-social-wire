@@ -31,7 +31,7 @@ function remoteWins(remote: ArticleDraftDocument, local?: ArticleDraft): boolean
 }
 async function adopt(actor: ArticleDraftActor, remote: ArticleDraftDocument): Promise<ArticleDraft | undefined> {
   assertArticleDraftActor(actor);
-  const local = await getArticleDraft(actor.viewerDid, remote.draftId), state = await getArticleDraftSyncState(actor.viewerDid, remote.draftId);
+  let local = await getArticleDraft(actor.viewerDid, remote.draftId), state = await getArticleDraftSyncState(actor.viewerDid, remote.draftId);
   assertArticleDraftActor(actor);
   if ((state?.serverRevision ?? 0) > remote.revision) return local;
   if (remote.deleted) {
@@ -39,6 +39,7 @@ async function adopt(actor: ArticleDraftActor, remote: ArticleDraftDocument): Pr
     assertArticleDraftActor(actor); return undefined;
   }
   if (state?.deleted) return undefined;
+  const adoptingMutation = state?.pending?.request.mutationId;
   const blobs: { assetId: string; blob: Blob }[] = [];
   for (const binding of remote.attachments) {
     assertArticleDraftActor(actor);
@@ -46,6 +47,22 @@ async function adopt(actor: ArticleDraftActor, remote: ArticleDraftDocument): Pr
     if (!blob || blob.type !== binding.asset.contentType || blob.size !== binding.asset.byteLength || await draftAttachmentSHA256(blob) !== binding.asset.sha256) blob = await downloadDraftAttachment(actor, binding.asset);
     assertArticleDraftActor(actor);
     blobs.push({ assetId: binding.localAssetId, blob });
+  }
+  // Image downloads may take long enough for another local edit or deletion.
+  // Decide against the durable snapshot immediately before replacing the cache.
+  local = await getArticleDraft(actor.viewerDid, remote.draftId);
+  state = await getArticleDraftSyncState(actor.viewerDid, remote.draftId);
+  assertArticleDraftActor(actor);
+  if (state?.deleted) return undefined;
+  if ((state?.serverRevision ?? 0) > remote.revision) return local;
+  if (state?.pending?.request.mutationId !== adoptingMutation) return reconcile(actor, remote.draftId);
+  if (local && local.revision !== state?.ackedLocalRevision && !remoteWins(remote, local)) {
+    await updateArticleDraftSyncState(actor.viewerDid, remote.draftId, previous => {
+      if (previous?.deleted || (previous?.serverRevision ?? 0) > remote.revision) return previous ?? baseState(remote.draftId);
+      if (previous?.pending?.request.mutationId !== state?.pending?.request.mutationId) return previous ?? baseState(remote.draftId);
+      return { ...(previous ?? baseState(remote.draftId)), serverRevision: remote.revision, assets: remote.attachments, pending: undefined };
+    });
+    return reconcile(actor, remote.draftId);
   }
   const dirty = !!local && local.revision !== state?.ackedLocalRevision;
   const next: ArticleDraftSyncState = { ...state, draftId: remote.draftId, serverRevision: remote.revision, ackedLocalRevision: 0, assets: remote.attachments, pending: undefined, conflict: undefined, recoveryDraft: dirty ? local : state?.recoveryDraft };
@@ -80,6 +97,12 @@ async function reconcile(actor: ArticleDraftActor, draftId: string): Promise<Art
     if (!state.pending) {
       if (state.deleted) return undefined;
       const remote = await getCloudArticleDraft(actor, draftId);
+      // Cloud reads must not freeze the local winner decision at request time.
+      // Another tab or the editor can save while this request is in flight.
+      state = await getArticleDraftSyncState(actor.viewerDid, draftId) ?? baseState(draftId);
+      local = await getArticleDraft(actor.viewerDid, draftId);
+      assertArticleDraftActor(actor);
+      if (state.pending || state.deleted || remote && remote.revision < state.serverRevision) continue attempts;
       if (remote) {
         if (remote.deleted || remote.revision !== state.serverRevision) {
           if (remoteWins(remote, local) || local?.revision === state.ackedLocalRevision) return adopt(actor, remote);

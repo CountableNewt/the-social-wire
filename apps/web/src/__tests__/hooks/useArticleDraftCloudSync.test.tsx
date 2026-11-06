@@ -2,11 +2,33 @@ import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, renderHook, waitFor } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
+import * as Cloud from "@/lib/articles/articleDraftCloudClient";
+import type { ArticleDraftDocument } from "@/lib/articles/articleDraftCloudTypes";
 import * as Sync from "@/lib/articles/articleDraftSync";
 import * as Storage from "@/lib/articles/articleDraftStorage";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
 import type { ArticleDraftActor } from "@/lib/articles/articleDraftSync";
 import { useArticleDrafts } from "@/hooks/articles/useArticleDrafts";
+const realSyncOne = Sync.syncArticleDraft, realSyncAll = Sync.syncArticleDrafts, realLoad = Sync.loadSyncedArticleDraft;
+function realSync() {
+  const one = spyOn(Sync, "syncArticleDraft").mockImplementation(realSyncOne); restores.push(() => one.mockRestore());
+  const all = spyOn(Sync, "syncArticleDrafts").mockImplementation(realSyncAll); restores.push(() => all.mockRestore());
+  const load = spyOn(Sync, "loadSyncedArticleDraft").mockImplementation(realLoad); restores.push(() => load.mockRestore());
+}
+function cloudReply(value: ArticleDraft): ArticleDraftDocument {
+  const { revision: _revision, ...payload } = value; void _revision;
+  return { draftId: value.id, revision: 1, deleted: false, mutationId: crypto.randomUUID(), updatedAt: value.updatedAt, draft: { ...payload, assets: payload.assets ?? [] }, attachments: [] };
+}
+function abortable<T>(context: ArticleDraftActor, promise: Promise<T>): Promise<T> {
+  if (!context.signal) return promise;
+  const signal = context.signal;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(value => { signal.removeEventListener("abort", abort); resolve(value); }, error => { signal.removeEventListener("abort", abort); reject(error); });
+  });
+}
 const did = "did:plc:alice", id = "11111111-1111-4111-8111-111111111111";
 const session = { did } as unknown as OAuthSession;
 const actor = (): ArticleDraftActor => ({ session, viewerDid: did });
@@ -128,7 +150,7 @@ it("does not install a selection response from a retired same-DID authorization 
   let generation = 1;
   const makeActor = (expected: number) => () => ({ session, viewerDid: did, assertCurrentActor() { if (generation !== expected) throw new Error("Retired Selection Session"); } });
   const firstActor = makeActor(1), nextActor = makeActor(2);
-  const other = await Storage.saveArticleDraft(did, { ...draft(), id: "33333333-3333-4333-8333-333333333333", title: "Other Draft", updatedAt: "2026-10-01T00:00:00Z" });
+  const other = { ...draft(), id: "33333333-3333-4333-8333-333333333333", title: "Uncached Remote Draft", updatedAt: "2026-10-01T00:00:00Z" };
   const { result, rerender } = renderHook(({ getActor }) => useArticleDrafts(did, getActor), { initialProps: { getActor: firstActor } });
   await waitFor(() => expect(result.current.status).toBe("Synced Privately"));
   const gate = deferred<ArticleDraft | undefined>();
@@ -158,4 +180,52 @@ it("does not downgrade the local revision when an older list refresh arrives aft
   act(() => result.current.update({ title: "Next Local Save" }));
   await act(async () => result.current.persist({ localOnly: true }));
   expect((await Storage.getArticleDraft(did, id))?.title).toBe("Next Local Save");
+});
+
+it("opens a cached selection without waiting for stalled initial or per-draft cloud work", async () => {
+  realSync();
+  const cached = await Storage.saveArticleDraft(did, { ...draft(), id: "33333333-3333-4333-8333-333333333333", title: "Cached Selection", updatedAt: "2026-10-01T00:00:00Z" });
+  const never = new Promise<never>(() => {});
+  const all = spyOn(Cloud, "listCloudArticleDrafts").mockImplementation(context => abortable(context, never)); restores.push(() => all.mockRestore());
+  const get = spyOn(Cloud, "getCloudArticleDraft").mockImplementation(context => abortable(context, never)); restores.push(() => get.mockRestore());
+  const { result } = renderHook(() => useArticleDrafts(did, actor));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  let selected = false;
+  act(() => { void result.current.select(cached.id).then(() => { selected = true; }); });
+  await waitFor(() => expect(result.current.draft?.id).toBe(cached.id));
+  expect(result.current.draft?.title).toBe("Cached Selection");
+  expect(selected).toBe(true);
+});
+
+it("preserves edits made after opening a cached draft when its late cloud reply arrives", async () => {
+  realSync();
+  const cached = await Storage.saveArticleDraft(did, { ...draft(), id: "44444444-4444-4444-8444-444444444444", title: "Cached Selection", updatedAt: "2026-10-01T00:00:00Z" });
+  const never = new Promise<never>(() => {}), reply = deferred<ArticleDraftDocument | undefined>();
+  const all = spyOn(Cloud, "listCloudArticleDrafts").mockImplementation(context => abortable(context, never)); restores.push(() => all.mockRestore());
+  const get = spyOn(Cloud, "getCloudArticleDraft").mockImplementation(context => abortable(context, reply.promise)); restores.push(() => get.mockRestore());
+  const put = spyOn(Cloud, "putCloudArticleDraft").mockImplementation(async (_actor, input) => ({ ...cloudReply(input.draft), revision: input.expectedRevision + 1, mutationId: input.mutationId })); restores.push(() => put.mockRestore());
+  const { result } = renderHook(() => useArticleDrafts(did, actor));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => { void result.current.select(cached.id); });
+  await waitFor(() => expect(result.current.draft?.id).toBe(cached.id));
+  act(() => result.current.update({ title: "Typed Immediately After Opening" }));
+  await act(async () => result.current.persist({ localOnly: true }));
+  await act(async () => { reply.resolve(cloudReply({ ...cached, title: "Old Cloud Reply" })); });
+  await waitFor(() => expect(put).toHaveBeenCalled());
+  expect(result.current.draft?.title).toBe("Typed Immediately After Opening");
+  expect((await Storage.getArticleDraft(did, cached.id))?.title).toBe("Typed Immediately After Opening");
+});
+
+it("preserves a dirty outgoing draft and starts one background sync for each affected cached draft", async () => {
+  const other = await Storage.saveArticleDraft(did, { ...draft(), id: "33333333-3333-4333-8333-333333333333", title: "Other Cached Draft", updatedAt: "2026-10-01T00:00:00Z" });
+  const { result } = await show();
+  const never = new Promise<never>(() => {});
+  const one = spyOn(Sync, "syncArticleDraft").mockReturnValue(never); restores.push(() => one.mockRestore());
+  const load = spyOn(Sync, "loadSyncedArticleDraft").mockReturnValue(never); restores.push(() => load.mockRestore());
+  act(() => result.current.update({ title: "Outgoing Private Edits" }));
+  await act(async () => result.current.select(other.id));
+  expect(result.current.draft?.id).toBe(other.id);
+  expect((await Storage.getArticleDraft(did, id))?.title).toBe("Outgoing Private Edits");
+  expect(one.mock.calls.map(call => call[1]).sort()).toEqual([id, other.id].sort());
+  expect(load).not.toHaveBeenCalled();
 });

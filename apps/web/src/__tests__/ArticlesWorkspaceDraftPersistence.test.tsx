@@ -5,11 +5,24 @@ import { IDBFactory } from "fake-indexeddb";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Auth from "@/hooks/useAuth";
 import * as Semble from "@/hooks/useSembleReadLater";
+import * as Cloud from "@/lib/articles/articleDraftCloudClient";
+import type { ArticleDraftActor, ArticleDraftDocument } from "@/lib/articles/articleDraftCloudTypes";
 import * as Sync from "@/lib/articles/articleDraftSync";
 import * as Publishing from "@/lib/articles/articlePublishingClient";
-import { getArticleDraft, listArticleDrafts } from "@/lib/articles/articleDraftStorage";
+import { getArticleDraft, listArticleDrafts, saveArticleDraft, getArticleDraftSyncState } from "@/lib/articles/articleDraftStorage";
 import { ArticlesWorkspace } from "@/components/Articles/ArticlesWorkspace";
 import { SidebarProvider } from "@/components/ui/sidebar";
+const realSyncOne = Sync.syncArticleDraft, realSyncAll = Sync.syncArticleDrafts, realLoad = Sync.loadSyncedArticleDraft;
+function abortable<T>(context: ArticleDraftActor, promise: Promise<T>): Promise<T> {
+  if (!context.signal) return promise;
+  const signal = context.signal;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(value => { signal.removeEventListener("abort", abort); resolve(value); }, error => { signal.removeEventListener("abort", abort); reject(error); });
+  });
+}
 const did = "did:plc:abcdefghijklmnopqrstuvwx";
 let client: QueryClient;
 const restores: (() => void)[] = [];
@@ -60,4 +73,32 @@ it("keeps a newly entered title through immediate mode changes, body edits, Save
   expect((restored as HTMLInputElement).value).toBe("Retained New Article Title");
   fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
   expect((screen.getByLabelText("Article Markdown") as HTMLTextAreaElement).value).toBe("# A New Body\n\nSaved Article Content.");
+});
+
+
+it("opens a persisted draft from its library row while cloud requests are stalled and preserves new edits after late readback", async () => {
+  const cached = await saveArticleDraft(did, { id: "11111111-1111-4111-8111-111111111111", title: "Cached Article", markdown: "# Cached Body\n\nPrivate cached content.", excerpt: "", path: "/cached-article", tags: [], publicationUri: `at://${did}/site.standard.publication/one`, createdAt: "2026-11-01T00:00:00Z", updatedAt: "2026-11-01T00:00:00Z", assets: [] });
+  const never = new Promise<never>(() => {});
+  let finish!: (value: ArticleDraftDocument | undefined) => void;
+  const reply = new Promise<ArticleDraftDocument | undefined>(resolve => { finish = resolve; });
+  const all = spyOn(Sync, "syncArticleDrafts").mockImplementation(realSyncAll); restores.push(() => all.mockRestore());
+  const one = spyOn(Sync, "syncArticleDraft").mockImplementation(realSyncOne); restores.push(() => one.mockRestore());
+  const load = spyOn(Sync, "loadSyncedArticleDraft").mockImplementation(realLoad); restores.push(() => load.mockRestore());
+  const list = spyOn(Cloud, "listCloudArticleDrafts").mockImplementation(context => abortable(context, never)); restores.push(() => list.mockRestore());
+  const get = spyOn(Cloud, "getCloudArticleDraft").mockImplementation(context => abortable(context, reply)); restores.push(() => get.mockRestore());
+  const put = spyOn(Cloud, "putCloudArticleDraft").mockImplementation(async (_actor, input) => ({ draftId: input.draft.id, revision: input.expectedRevision + 1, mutationId: input.mutationId, updatedAt: input.draft.updatedAt, deleted: false, draft: input.draft, attachments: [] })); restores.push(() => put.mockRestore());
+  await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
+  fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Cached Article/ }));
+  const title = await screen.findByLabelText("Article Title");
+  expect((title as HTMLInputElement).value).toBe("Cached Article");
+  expect((title as HTMLInputElement).disabled).toBe(false);
+  expect(screen.getByRole("complementary", { name: "Article Details" })).toBeTruthy();
+  fireEvent.change(title, { target: { value: "Edited Without Waiting for Cloud" } });
+  await waitFor(async () => expect((await getArticleDraft(did, cached.id))?.title).toBe("Edited Without Waiting for Cloud"));
+  const { revision: _revision, ...payload } = cached; void _revision;
+  await act(async () => { finish({ draftId: cached.id, revision: 1, mutationId: crypto.randomUUID(), updatedAt: cached.updatedAt, deleted: false, draft: { ...payload, assets: payload.assets ?? [], title: "Stale Cloud Title" }, attachments: [] }); });
+  await waitFor(async () => expect((await getArticleDraftSyncState(did, cached.id))?.serverRevision).toBe(2));
+  expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe("Edited Without Waiting for Cloud");
+  expect((await getArticleDraft(did, cached.id))?.title).toBe("Edited Without Waiting for Cloud");
 });
