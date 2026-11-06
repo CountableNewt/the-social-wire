@@ -121,6 +121,7 @@ filter_changed shared_swift \
   '.github/workflows/ci.yml'
 
 filter_changed swift_backend \
+  'tools/schema-ready/**' \
   'services/gateway/Dockerfile' \
   'services/gateway/Package.swift' \
   'services/gateway/Package.resolved' \
@@ -136,11 +137,6 @@ filter_changed swift_backend \
   'services/indexing-worker/Package.resolved' \
   'services/indexing-worker/Sources/**' \
   'services/indexing-worker/Tests/**' \
-  'services/jetstream-ingest/Package.swift' \
-  'services/jetstream-ingest/Dockerfile' \
-  'services/jetstream-ingest/Package.resolved' \
-  'services/jetstream-ingest/Sources/**' \
-  'services/jetstream-ingest/Tests/**' \
   'database/migrations/**' \
   'railway/gateway.json' \
   'railway/appview.json' \
