@@ -434,9 +434,9 @@ export function AppSidebar({
   if (displayPreferences.showSocial) visible.add("social");
 
   const selectTopLevelFeed = (feed: ReaderNavigationFeed) => {
-    if (isRetiredReaderFeed(feed)) return;
     if (feed === "social") { setOpenMobile(false); router.push("/social"); return; }
     if (feed === "podcasts") { setOpenMobile(false); router.push("/podcasts"); return; }
+    if (isRetiredReaderFeed(feed)) return;
     setSelectedFolderUri(null);
     if (feed === "readLater") {
       router.push("/saved");
