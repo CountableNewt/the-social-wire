@@ -11933,11 +11933,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "96540adbf161d889d2a528b2b66f313116d5b0ac8fbd0b7b14f5572c0ae2f84b"
+          "sha256": "4bfa03c3a3a1bbb5577cc776c5c719164f05bd462988ce96e955e04888c7d077"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "5cc7c7c99606258e9a21fc32e468cc6cdf4000d3d06625835aa7197c5f0efc2d"
+          "sha256": "fa6938f66968b2c1f75ee077dee438307da600d0a8d376c36b04bc2681f19d82"
         },
         {
           "path": "packages/spec/package.json",
