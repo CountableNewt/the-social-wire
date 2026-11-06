@@ -60,6 +60,7 @@ extension SocialDraftService {
         guard let (id, key) = job else { return (true, false, false) }
         let bindings = try await connection.query("""
           SELECT EXISTS(SELECT 1 FROM private_social_draft_bindings WHERE owner=\(owner) AND asset_id=\(id)::uuid)
+            OR EXISTS(SELECT 1 FROM private_article_draft_bindings WHERE owner=\(owner) AND asset_id=\(id)::uuid)
           """, logger: self.logger)
         var referenced = false
         for try await row in bindings { referenced = try row.decode(Bool.self) }

@@ -12,6 +12,7 @@ struct SocialDraftProxyRoutes {
   let admission: SocialDraftAdmission
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
+    registerArticleDrafts(on: group)
     for name in ["getAttachment", "getManifest"] {
       let path = "/xrpc/app.thesocialwire.socialDraft.\(name)"
       group.get(RouterPath(path)) { request, context in
@@ -20,6 +21,19 @@ struct SocialDraftProxyRoutes {
     }
     for name in ["reserveAttachment", "uploadAttachment", "putManifest", "deleteManifest"] {
       let path = "/xrpc/app.thesocialwire.socialDraft.\(name)"
+      group.post(RouterPath(path)) { request, context in
+        try await handle(request: request, context: context, path: path, method: "POST")
+      }
+    }
+  }
+
+  private func registerArticleDrafts(on group: RouterGroup<GatewayRequestContext>) {
+    for path in ["/xrpc/app.thesocialwire.articleDraft.list", "/xrpc/app.thesocialwire.articleDraft.get"] {
+      group.get(RouterPath(path)) { request, context in
+        try await handle(request: request, context: context, path: path, method: "GET")
+      }
+    }
+    for path in ["/xrpc/app.thesocialwire.articleDraft.put", "/xrpc/app.thesocialwire.articleDraft.delete"] {
       group.post(RouterPath(path)) { request, context in
         try await handle(request: request, context: context, path: path, method: "POST")
       }
@@ -104,7 +118,7 @@ struct SocialDraftProxyRoutes {
       upstream.headers.add(name: "X-Social-Draft-Upload-Id", value: id)
       upstream.body = .stream(request.body, length: .known(length))
     } else if method == "POST" {
-      let bytes = try await request.body.collect(upTo: 4 << 20)
+      let bytes = try await request.body.collect(upTo: path.contains(".articleDraft.") ? 2 << 20 : 4 << 20)
       upstream.body = .bytes(bytes)
       upstream.headers.add(name: "Content-Type", value: "application/json")
     }
@@ -145,7 +159,7 @@ struct SocialDraftProxyRoutes {
         }
       })
     }
-    return Response(status: status, headers: headers, body: .init(byteBuffer: try await reply.body.collect(upTo: 8 << 20)))
+    return Response(status: status, headers: headers, body: .init(byteBuffer: try await reply.body.collect(upTo: path.contains(".articleDraft.") ? 24 << 20 : 8 << 20)))
   }
 
   private func failure(_ status: HTTPResponse.Status, _ message: String) -> Response {
