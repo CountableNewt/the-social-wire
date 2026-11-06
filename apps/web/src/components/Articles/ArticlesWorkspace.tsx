@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BlockEditorHandle } from "@stygian/markdown-editor";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, PanelLeft, PanelRight, Plus } from "lucide-react";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import { useSkejScheduling } from "@/hooks/useSkejScheduling";
 import { useProEntitlements } from "@/hooks/useProEntitlements";
@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ArticleImageInput, articleImageDimensions } from "./ArticleImageInput";
+import { ArticlePanelResizeHandle } from "./ArticlePanelResizeHandle";
 import { ArticleBodyViews, type ArticleBodyMode } from "./ArticleBodyViews";
 
 export function ArticlesWorkspace() {
@@ -46,6 +47,10 @@ function ArticlesViewer({ did }: { did: string }) {
   useEffect(() => { draftRef.current = draft; }, [draft]);
   const editor = useRef<BlockEditorHandle>(null);
   const cache = useQueryClient();
+  const [draftsVisible, setDraftsVisible] = useState(true);
+  const [metadataVisible, setMetadataVisible] = useState(true);
+  const [draftsWidth, setDraftsWidth] = useState(288);
+  const [metadataWidth, setMetadataWidth] = useState(320);
   const [tab, setTab] = useState<"drafts" | "scheduled" | "published">("drafts");
   const [mode, setMode] = useState<ArticleBodyMode>("editor");
   const [busy, setBusy] = useState(false);
@@ -164,14 +169,17 @@ function ArticlesViewer({ did }: { did: string }) {
     && matchingSchedules.every(item => item.status === "canceled" && item.record.status === "canceled");
   const error = failure ?? local.error ?? (publications.error ? socialErrorMessage(publications.error) : undefined);
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-    <FeedHeader title="Articles" subtitle="Write and Publish"><Button size="sm" disabled={busy || local.loading} onClick={() => { void perform(async () => { await local.create(publications.data?.[0]?.uri); setTab("drafts"); setPublishedUrl(undefined); }); }}><Plus className="size-4" />New Article</Button></FeedHeader>
+    <FeedHeader title="Articles" subtitle="Write and Publish" desktopSidebarToggle><Button variant="ghost" size="sm" aria-label={draftsVisible ? "Hide Drafts" : "Show Drafts"} aria-expanded={draftsVisible} aria-controls="article-library" onClick={() => setDraftsVisible(value => !value)}><PanelLeft className="size-4" />Drafts</Button><Button variant="ghost" size="sm" aria-label={metadataVisible ? "Hide Metadata" : "Show Metadata"} aria-expanded={metadataVisible} aria-controls="article-metadata" disabled={!draft} onClick={() => setMetadataVisible(value => !value)}><PanelRight className="size-4" />Metadata</Button><Button size="sm" disabled={busy || local.loading} onClick={() => { void perform(async () => { await local.create(publications.data?.[0]?.uri); setTab("drafts"); setPublishedUrl(undefined); }); }}><Plus className="size-4" />New Article</Button></FeedHeader>
     {error ? <div role="alert" className="border-b p-3 text-sm text-destructive">{error}{error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : <Button variant="outline" size="sm" className="ml-2" onClick={() => { void perform(async () => { await local.persist(); await publications.refetch(); }); }}>Retry</Button>}</div> : null}
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
-      <aside aria-label="Article Library" className={`${floatingGlassClasses} m-4 min-h-0 shrink-0 p-3 md:w-72 md:overflow-y-auto`}>
-        <div aria-label="Article Sections" className="mb-3 flex"><Button variant={tab === "drafts" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "drafts"} onClick={() => setTab("drafts")}>Drafts</Button><Button variant={tab === "scheduled" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "scheduled"} onClick={() => setTab("scheduled")}>Scheduled</Button><Button variant={tab === "published" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "published"} onClick={() => setTab("published")}>Published</Button></div>
+      <aside id="article-library" aria-label="Article Library" hidden={!draftsVisible} style={{ "--article-drafts-width": `${draftsWidth}px` } as React.CSSProperties} className={`${floatingGlassClasses} relative m-4 min-h-0 shrink-0 p-3 md:w-[var(--article-drafts-width)] md:max-w-[30%] ${draftsVisible ? "" : "hidden"}`}>
+        <ArticlePanelResizeHandle side="drafts" width={draftsWidth} onWidthChange={setDraftsWidth} />
+        <div className="h-full min-h-0 overflow-y-auto">
+        <div aria-label="Article Sections" className="mb-3 flex flex-wrap"><Button variant={tab === "drafts" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "drafts"} onClick={() => setTab("drafts")}>Drafts</Button><Button variant={tab === "scheduled" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "scheduled"} onClick={() => setTab("scheduled")}>Scheduled</Button><Button variant={tab === "published" ? "secondary" : "ghost"} size="sm" aria-pressed={tab === "published"} onClick={() => setTab("published")}>Published</Button></div>
         {tab === "scheduled" ? <ArticleScheduledList scheduler={scheduler} isPro={isPro} onCanceled={async item => {
           if (isSkejArticleSchedule(item) && draftRef.current?.scheduleRecordKey === item.record.publishRkey && draftRef.current?.scheduleUri === item.scheduleUri) { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined }); await local.persist(); }
         }} /> : local.loading ? <p role="status" className="text-sm">Loading Drafts…</p> : tab === "drafts" ? <><p className="mb-3 text-xs text-muted-foreground">Private Drafts · This Browser Only</p><nav aria-label="Article Drafts" className="flex flex-col gap-1">{local.drafts.map(row => <Button key={row.id} variant={row.id === draft?.id ? "secondary" : "ghost"} className="h-auto justify-start whitespace-normal py-2 text-left" disabled={busy} onClick={() => { void perform(async () => { await local.select(row.id); setPublishedUrl(undefined); }); }}><span className="min-w-0 break-words">{row.title || "Untitled Article"}{row.publishedUri ? <span className="block text-xs text-muted-foreground">Published</span> : null}</span></Button>)}</nav>{!local.drafts.length ? <p className="text-sm text-muted-foreground">Create an article to start writing.</p> : null}</> : <>{history.isPending ? <p role="status">Loading Published Articles…</p> : history.error ? <p role="alert" className="text-sm">{socialErrorMessage(history.error)}</p> : !history.data?.length ? <p className="text-sm text-muted-foreground">No Published Articles Yet.</p> : history.data.map(row => <div key={row.uri} className="mb-2 rounded-lg border p-2"><p className="break-words text-sm font-medium">{String(row.record.title ?? "Untitled Article")}</p><p className="mt-1 break-all text-xs text-muted-foreground">{row.uri}</p></div>)}</>}
+        </div>
       </aside>
       {!draft ? <div className="flex min-h-60 flex-1 items-center justify-center p-6 text-muted-foreground">Select a Draft or Create an Article.</div> : <div className="flex min-w-0 shrink-0 flex-col md:min-h-0 md:flex-1 lg:flex-row">
         <section aria-label="Article Editor" aria-busy={busy} className="min-w-0 shrink-0 p-4 sm:p-6 md:min-h-0 md:flex-1 md:overflow-y-auto">
@@ -184,7 +192,9 @@ function ArticlesViewer({ did }: { did: string }) {
           {draft.coverAssetId && assetUrls[draft.coverAssetId] ? <img src={assetUrls[draft.coverAssetId]} alt={assets.find(asset => asset.id === draft.coverAssetId)?.alt ?? ""} className="mb-5 max-h-72 w-full rounded-xl object-cover" /> : null}
           <ArticleBodyViews draftId={draft.id} markdown={draft.markdown} mode={mode} onModeChange={setMode} onChange={markdown => local.update({ markdown })} editorRef={editor} resolveImageURL={resolveImage} onImageFiles={(files, index) => addImages(files, index)} readOnly={busy || !!draft.publishedUri || !!draft.scheduleRecordKey} busy={busy} controls={<ArticleImageInput label="Add Images" multiple disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey} onFiles={files => addImages(files)} />} />
         </section>
-        <aside aria-label="Article Details" className={`${floatingGlassClasses} m-4 min-h-0 shrink-0 space-y-4 p-4 md:overflow-y-auto lg:w-80`}>
+        <aside id="article-metadata" aria-label="Article Details" hidden={!metadataVisible} style={{ "--article-metadata-width": `${metadataWidth}px` } as React.CSSProperties} className={`${floatingGlassClasses} relative m-4 min-h-0 shrink-0 p-4 lg:w-[var(--article-metadata-width)] lg:max-w-[40%] ${metadataVisible ? "" : "hidden"}`}>
+          <ArticlePanelResizeHandle side="metadata" width={metadataWidth} onWidthChange={setMetadataWidth} />
+          <div className="h-full min-h-0 space-y-4 overflow-y-auto">
           <h2 className="text-sm font-semibold">Article Details</h2>
           <label className="block space-y-1 text-sm"><span>Publication</span><div className="relative"><select aria-label="Article Publication" value={draft.publicationUri} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey} onChange={event => local.update({ publicationUri: event.target.value })} className="w-full appearance-none rounded-md border bg-background py-2 pl-3 pr-9"><option value="">Select a Publication</option>{publications.data?.map(pub => <option key={pub.uri} value={pub.uri}>{pub.name}</option>)}</select><ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" aria-hidden="true" /></div></label>
           {publications.isPending ? <p role="status" className="text-xs">Loading Publications…</p> : !publications.error && !publications.data?.length ? <p className="text-xs text-muted-foreground">Create a publication in your publishing app, then refresh here.</p> : null}
@@ -197,6 +207,7 @@ function ArticlesViewer({ did }: { did: string }) {
           {draft.coverAssetId ? <Button variant="ghost" size="sm" disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey} onClick={() => local.update({ coverAssetId: undefined })}>Remove Cover</Button> : null}
           {assets.map(asset => <label key={asset.id} className="block space-y-1 text-xs"><span className="block truncate">{asset.name} · Image Description</span><Input aria-label={`Image Description: ${asset.name}`} value={asset.alt} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey} onChange={event => local.update({ assets: assets.map(value => value.id === asset.id ? { ...value, alt: event.target.value } : value) })} /></label>)}
           <Button variant="destructive" size="sm" disabled={busy || !!draft.scheduleRecordKey} onClick={() => setDeleting(true)}>Delete Local Draft</Button>
+          </div>
         </aside>
       </div>}
     </div>
