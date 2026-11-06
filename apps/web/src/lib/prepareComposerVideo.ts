@@ -68,5 +68,5 @@ export async function prepareComposerVideo(video: ComposerVideo, options: { sign
   options.signal?.throwIfAborted();
   // Once output is validated, keep one prepared file in IndexedDB rather than
   // duplicating a potentially multi-gigabyte original. Failures never replace it.
-  return { ...video, id: compressed ? crypto.randomUUID() : video.id, privateAttachment: compressed ? undefined : video.privateAttachment, original: blob, blob, ...metadata, sourceByteLength: video.sourceByteLength ?? sourceByteLength, preparationProgress: undefined, status: "ready", error: undefined };
+  return { ...video, id: compressed ? crypto.randomUUID() : video.id, privateAttachment: compressed ? undefined : video.privateAttachment, original: blob, blob, ...metadata, sourceByteLength: video.sourceByteLength ?? sourceByteLength, status: "ready", error: undefined };
 }

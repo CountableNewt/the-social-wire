@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, expect, it, mock, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComposerMedia, ComposerVideo } from "@/lib/composerMedia";
 import { SocialMediaControls } from "@/components/Social/SocialMediaControls";
@@ -18,11 +18,11 @@ beforeEach(() => {
   restores.push(() => load.mockRestore(), () => pause.mockRestore());
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
-function Harness({ initial, disabled = false }: { initial?: ComposerMedia; disabled?: boolean }) {
+function Harness({ initial, disabled = false, onUpdate }: { initial?: ComposerMedia; disabled?: boolean; onUpdate?: () => void }) {
   const [media, setMedia] = useState(initial);
   const intake = useRef<((files: File[]) => void) | undefined>(undefined);
   return <div onDrop={event => intake.current?.(Array.from(event.dataTransfer.files))}>
-    <SocialMediaControls media={media} update={change => setMedia(previous => change(previous))} disabled={disabled} hasLink={false} removeLink={() => {}} registerIntake={intake} />
+    <SocialMediaControls media={media} update={change => { onUpdate?.(); setMedia(previous => change(previous)); }} disabled={disabled} hasLink={false} removeLink={() => {}} registerIntake={intake} />
     <output data-testid="state">{media ? JSON.stringify({ kind: media.kind, ...(media.kind === "video" ? { id: media.id, status: media.status, alt: media.alt } : {}) }) : "empty"}</output>
   </div>;
 }
@@ -97,4 +97,19 @@ it("cancels in-flight compression when its attachment is removed", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Remove Video" }));
   await waitFor(() => expect(signal?.aborted).toBe(true));
   expect(screen.getByTestId("state").textContent).toBe("empty");
+});
+
+it("keeps encoding progress out of persisted composer edits", async () => {
+  let progress!: (value: number) => void;
+  const prepare = spyOn(preparation, "prepareComposerVideo").mockImplementation((_video, options) => {
+    progress = options!.onProgress!;
+    return new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true }));
+  }); restores.push(() => prepare.mockRestore());
+  const changed = mock(() => {});
+  render(<Harness onUpdate={changed} />);
+  fireEvent.change(screen.getByLabelText("Choose Video"), { target: { files: [original()] } });
+  expect(changed).toHaveBeenCalledTimes(1);
+  act(() => { progress(0.2); progress(0.4); progress(0.6); });
+  expect(screen.getByLabelText("Video Compression").getAttribute("value")).toBe("60");
+  expect(changed).toHaveBeenCalledTimes(1);
 });

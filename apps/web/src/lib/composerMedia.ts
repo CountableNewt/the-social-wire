@@ -16,7 +16,7 @@ export type ComposerVideo = {
   kind: "video"; id: string; name: string; original: Blob; blob?: Blob;
   width?: number; height?: number; duration?: number; alt: string;
   status: "preparing" | "ready" | "failed"; error?: string;
-  preparationProgress?: number; sourceByteLength?: number;
+  sourceByteLength?: number;
   privateAttachment?: { ownerDid: string; video: DraftAttachment };
 };
 export const isGifCatalogId = (id: string) => /^[A-Za-z0-9_-]{1,128}$/.test(id);
