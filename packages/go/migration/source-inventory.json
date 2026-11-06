@@ -11737,7 +11737,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-path-detection.test.ts",
-          "sha256": "c619755750411aa85ef6e6029c4fbea068746fb964245a0a6108e722da9c4cd5"
+          "sha256": "c5a2c650fd4d53bc8740823e192ae17af0fb1e112d76400361e21de2df3598a2"
         },
         {
           "path": "packages/spec/__tests__/ci-postgres-preparation.test.ts",
@@ -11749,7 +11749,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-workflow-config.test.ts",
-          "sha256": "852bfe3292fd00fc70cc1a1ef014b119fc09dd92836aa210525ab9520b19c7e3"
+          "sha256": "97cea8954a24271f2058ad4c094614bb58458dbe0ffe51e485c4cd05f0694625"
         },
         {
           "path": "packages/spec/__tests__/circle-private-state-migration.test.ts",
@@ -11781,7 +11781,7 @@
         },
         {
           "path": "packages/spec/__tests__/ingress-go-image-dependencies.test.ts",
-          "sha256": "db8d00f5e5173ad0f65cc58a959b93acd6d892eb2fa63db0d5c901c8eb6cc844"
+          "sha256": "b5bac3571903878f552b9cfcb64e7d6fc151b772af494906bd71984506ea368b"
         },
         {
           "path": "packages/spec/__tests__/jetstream-bounded-snapshot-migration.test.ts",
@@ -11849,7 +11849,7 @@
         },
         {
           "path": "packages/spec/__tests__/schema-readiness-deployment.test.ts",
-          "sha256": "7732155dd05dcbd9528e5c6f71e1f58ee5d26427c5e6ca3d38eccd0d84844776"
+          "sha256": "49dda4658f7955e73f718d83b676cd32ac2a019347cdf8cd08e7d58583a46532"
         },
         {
           "path": "packages/spec/__tests__/social-draft-contract.test.ts",
@@ -11954,8 +11954,8 @@
       "files": [
         {
           "path": "services/indexing-worker/Sources/AppViewWorkerCore/AppViewWorkerHost.swift",
-          "sha256": "b4cf05c6613ca600b78cb9052e63bb692f119ee410a401c6ac6d5003f286bb56",
-          "lines": 263
+          "sha256": "91ece4a8bdf57914f9abf2cbc53ca574a5198b4c2177e1ef8e1d247fcb453f14",
+          "lines": 282
         },
         {
           "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerAppViewComponent.swift",
@@ -11999,8 +11999,8 @@
         },
         {
           "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerHealthServer.swift",
-          "sha256": "873600d1fef69a05be7e22fb0b9c0eb3c65afee8566bfa6806f386be7125b04c",
-          "lines": 225
+          "sha256": "af5590cbc42dfa7df0a62cf4a0fb2e1a464a9ed8119536f803e19600b3d096cf",
+          "lines": 226
         },
         {
           "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerReadinessDiagnostics.swift",
@@ -12014,8 +12014,8 @@
         },
         {
           "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerReadinessProbe.swift",
-          "sha256": "14e4c944eb24e11d33de82ebb82264d726ee84cc654d809dc2ac089adb345fe9",
-          "lines": 93
+          "sha256": "8b0587c304376c5ef70647877005daea3c09de1681e078deeb9a6c4f0d61c1e3",
+          "lines": 114
         }
       ]
     },
@@ -12103,158 +12103,6 @@
           "path": "services/indexing-worker/Sources/IndexingWorkerCore/ReconciliationRetryScope.swift",
           "sha256": "dc2f5b8d1ba76ba167c2beb0d2346f0599dbd25dd6c3d624e096c06da97b8ce7",
           "lines": 62
-        }
-      ]
-    },
-    {
-      "name": "IngressCore",
-      "source": "services/jetstream-ingest/Sources/IngressCore",
-      "target": "packages/go/ingresscore",
-      "files": [
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ATProtoRecordJSON.swift",
-          "sha256": "5969e33950b2f07423f4ebd2c8457e19eeee2d6b18963bf3bd1f1afb1db2b9b8",
-          "lines": 100
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ArchiveBlockDecoder.swift",
-          "sha256": "6fea741fef68693d819d8c1a4ac6024ecaa5fd9ea8e63ae208b06062c0e49273",
-          "lines": 119
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ArchiveSegment.swift",
-          "sha256": "fbe6461a4ed9185b28e45bdd0e32231c49d178082863d4af2bb21970af0e2636",
-          "lines": 83
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ArchiveSpool.swift",
-          "sha256": "3d7112775a98ab80820df185287ecbdcc82c54bfb776377e682e3bdbebcfdbcc",
-          "lines": 8
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ArchiveTransport.swift",
-          "sha256": "9a6c6c21679b487855bca5b529c111704f9685702e051d6cd711f0d5e68b5aa0",
-          "lines": 310
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/BinaryCursor.swift",
-          "sha256": "3017a00914ef351e99a4c1d44284bda6ef6e8e4d68842b13cc7e4768d0d2eff4",
-          "lines": 27
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/DAGCBOR.swift",
-          "sha256": "de4ed101cf5f27d0e15bee48b6d88b87186011e29ab007df4f5fad5ef09e5a54",
-          "lines": 112
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressCheckpoint.swift",
-          "sha256": "74d30310c1b4da989c1652b6b36a86a04cc53accc897a3b088f50a862f02e441",
-          "lines": 24
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressConfiguration.swift",
-          "sha256": "4819ab10e23199416006738e2c47a79d0b6830c629fe69c701a1d003d6e1fdbf",
-          "lines": 150
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressDatabase+Inbox.swift",
-          "sha256": "0d0e8186b9d74ea619b1507f48b420802aaa6c4f82e85fcef8527333303f977b",
-          "lines": 60
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressDatabase+Incidents.swift",
-          "sha256": "be83f250f46df1095a8d16e9a281e900568d60f5b2813262274972bb7b9f6aaf",
-          "lines": 34
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressDatabase+Poison.swift",
-          "sha256": "574821cc0db0bf9b20de5dbf124494723a092fb047257a157b7d0009cb42422b",
-          "lines": 57
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressDatabase+Replay.swift",
-          "sha256": "504af34ffea5b1324475a5b47c192c3b06c6994f6c0b81a5686ccc1c2886469c",
-          "lines": 30
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressDatabase.swift",
-          "sha256": "107dd0634f5579079be9e86e8496032b9f79971c392f08a30708914917778d93",
-          "lines": 170
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressError.swift",
-          "sha256": "e088a3eaf7ff8ba01e3af5fb09fbddd01bb98f1f6c36748de49a2d18ff3e0432",
-          "lines": 33
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressEvent.swift",
-          "sha256": "f5d9f543cae29fb7dfce71e86d76ce2522f45a81ec15a4385d5e955468222a2f",
-          "lines": 149
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressHealth.swift",
-          "sha256": "1b54e97dbb97251f74e434f29170aa7c917b9706ceda7cf4afc9f7a85fd601fe",
-          "lines": 56
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressLease.swift",
-          "sha256": "5db78b6472120275b699682f575f7d863067ce6b3ef2eecf0e318c8b4c3facf7",
-          "lines": 10
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/IngressRunner.swift",
-          "sha256": "b87f0be3bfedafd61cbae872b51d2b1f3870421c07ea894d62c0ceb85981aade",
-          "lines": 364
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/JSONValue.swift",
-          "sha256": "6b44ce12af4f1b6177f2d4ca2f61e1d6076fb2d91c2ef2750762def7e17fee50",
-          "lines": 75
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/JetstreamSocket.swift",
-          "sha256": "5e8e6f922754bab9904a02bbe680f714c95070d9fb90e528662674e603c37c49",
-          "lines": 55
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/JetstreamUpgradeHandler.swift",
-          "sha256": "d2e1142007ab39355cffc8a818f41e159ea9348bcb80dd3b71bf3d5a6461c755",
-          "lines": 84
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/LiveConnection.swift",
-          "sha256": "90a2dff231efa82ee174b039fd2949d623154b3a24f8f1194f8f53525900d3a9",
-          "lines": 107
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/PostgresConfiguration.swift",
-          "sha256": "4b164e74637d8b78959bcf34620000a0855d417080f581bae0d424a44e6b0008",
-          "lines": 38
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ReplayBudget.swift",
-          "sha256": "f91146060d93f948003b487eb05fca2c931946c4bd52ab805eaa899b4ab211ba",
-          "lines": 44
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/ReplayProgress.swift",
-          "sha256": "8751ff9646bae6177ffb5436ba8ea83014a22fd92318454f674710652e5f0e0a",
-          "lines": 21
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/SchemaManifest.swift",
-          "sha256": "97195ff78db8a8efa4a9b4836fda1b613c5b8d54fadf9404762bc4cd5cdf86b6",
-          "lines": 51
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/SchemaReadiness.swift",
-          "sha256": "52aea8400621b9c1901667dce5c26f70ac4de5906cfd4abb4b242a3c150971c0",
-          "lines": 45
-        },
-        {
-          "path": "services/jetstream-ingest/Sources/IngressCore/SnapshotPlan.swift",
-          "sha256": "c1f14918da0484c597012bec6ce3d3cf63327b632b803a4fc2ca0763bf7991c4",
-          "lines": 53
         }
       ]
     }
