@@ -60,6 +60,7 @@ struct Serve: AsyncParsableCommand {
       eventLoopGroupProvider: .singleton,
       configuration: httpConfiguration
     )
+    let backgroundTasks = AppViewBackgroundTasks()
     var serverError: Error?
     var managedDraftObjects: SocialDraftS3Store?
     do {
@@ -110,6 +111,7 @@ struct Serve: AsyncParsableCommand {
         let router = AppViewRouterBuilder.router(
           config: config,
           httpClient: httpClient,
+          backgroundTasks: backgroundTasks,
           thinAppViewStore: store,
           wireFeedStore: nil,
           wireModerationService: nil,
@@ -129,7 +131,14 @@ struct Serve: AsyncParsableCommand {
           if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
           if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           if let redisRuntime { group.addTask { await redisRuntime.runInfoSampling() } }
-          try await group.next()
+          do {
+            try await group.next()
+          } catch {
+            await backgroundTasks.shutdown()
+            group.cancelAll()
+            throw error
+          }
+          await backgroundTasks.shutdown()
           group.cancelAll()
         }
         await redisRuntime?.shutdown()
@@ -329,6 +338,7 @@ struct Serve: AsyncParsableCommand {
         let router = AppViewRouterBuilder.router(
           config: config,
           httpClient: httpClient,
+          backgroundTasks: backgroundTasks,
           thinAppViewStore: store,
           wireFeedStore: wireFeedStore,
           wireModerationService: wireModerationService,
@@ -358,7 +368,14 @@ struct Serve: AsyncParsableCommand {
           if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
           if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           if let redisRuntime { group.addTask { await redisRuntime.runInfoSampling() } }
-          try await group.next()
+          do {
+            try await group.next()
+          } catch {
+            await backgroundTasks.shutdown()
+            group.cancelAll()
+            throw error
+          }
+          await backgroundTasks.shutdown()
           group.cancelAll()
         }
         await redisRuntime?.shutdown()
@@ -366,6 +383,7 @@ struct Serve: AsyncParsableCommand {
     } catch {
       serverError = error
     }
+    await backgroundTasks.shutdown()
     try? await managedDraftObjects?.shutdown()
     try? await httpClient.shutdown()
     if let serverError { throw serverError }
