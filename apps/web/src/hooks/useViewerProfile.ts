@@ -20,6 +20,7 @@ export type ViewerProfileSlice = {
   did: string;
   handle?: string;
   displayName?: string;
+  pronouns?: string;
   avatar?: string;
   description?: string;
   banner?: string;
@@ -60,6 +61,7 @@ export function useViewerProfile() {
           did: d.did,
           handle: d.handle,
           displayName: d.displayName,
+          pronouns: d.pronouns,
           avatar: d.avatar,
           description: d.description,
           banner: d.banner,
@@ -86,6 +88,7 @@ export function useViewerProfile() {
           did,
           handle: did,
           displayName: str(val.displayName),
+          pronouns: str(val.pronouns),
           description: str(val.description),
         };
       }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar } from "@/components/shared/Avatar";
+import { ProfilePronouns } from "@/components/shared/ProfilePronouns";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ViewerProfileSlice } from "@/hooks/useViewerProfile";
@@ -28,7 +29,7 @@ export function ProfileHeader({ viewer, loading = false, onRetry, actions }: { v
         ) : null}
         <Avatar src={viewer.avatar} alt={name} size={96} className={`shrink-0 ring-4 ring-background ${banner ? "-mt-12" : "mt-6"}`} />
         <div className="min-w-0 px-4">
-          <h2 id="profile-heading" className="break-words text-2xl font-bold">{name}</h2>
+          <h2 id="profile-heading" className="break-words text-2xl font-bold">{name}<ProfilePronouns pronouns={viewer.pronouns} /></h2>
           {viewer.handle ? <p className="break-all text-sm text-muted-foreground">{viewer.handle.startsWith("did:") ? viewer.handle : `@${viewer.handle}`}</p> : null}
         </div>
         {actions ? <div className="flex max-w-xl flex-col items-center gap-2 px-4">{actions}</div> : null}
