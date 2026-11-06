@@ -6,10 +6,8 @@
     "watchPatterns": [
       "/services/gateway/**",
       "/database/migrations/**",
-      "/services/jetstream-ingest/Package.swift",
-      "/services/jetstream-ingest/Package.resolved",
-      "/services/jetstream-ingest/Sources/**",
-      "/railway/gateway.json"
+      "/railway/gateway.json",
+      "/tools/schema-ready/**"
     ]
   },
   "deploy": {
