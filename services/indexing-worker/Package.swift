@@ -12,7 +12,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/Stygian-Tech/thin-app-view-core.git",
-      revision: "08da4950c1b27cbffeb7d5764ea367347adfa2c4"),
+      revision: "a2d852857b8680832cf7dabddac42e1800db5954"),
     .package(
       url: "https://github.com/Stygian-Tech/operations-core.git",
       revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),

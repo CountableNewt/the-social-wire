@@ -7,9 +7,9 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
-    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "de267683ab72cf66a2dd52208382f35c03b80425"),
+    .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "d4002e42387de17765429513136cfc59e437df33"),
     .package(url: "https://github.com/Stygian-Tech/operations-core.git", revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),
-    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "dc0e90186485455db78ad0168d861d0dcc8fcae3"),
+    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "a2d852857b8680832cf7dabddac42e1800db5954"),
     .package(url: "https://github.com/Stygian-Tech/social-wire-redis.git", revision: "b47429ade063d837039a0a144379200bc0487401"),
     .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.6.0"),
     .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
