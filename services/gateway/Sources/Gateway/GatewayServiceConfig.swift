@@ -31,7 +31,9 @@ struct GatewayServiceConfig: Sendable {
   let appViewBaseURL: String?
   /// Dedicated control-plane origin for `/v1/operations/*`.
   let operationsBaseURL: String?
-  /// Projection Pool origin sampled independently for ingestion-health evidence.
+  /// Global ingestion is opt-in; stale retired-worker variables cannot enable it.
+  let globalIngestionEnabled: Bool
+  /// Sampled only when global ingestion is explicitly enabled.
   let projectionPoolBaseURL: String?
   /// When set, `link.latr.bookmarks.*` XRPC is proxied to L@tr using iOS server credentials.
   let latrIosProxy: LatrIosProxyCredentials.Config?
@@ -86,9 +88,11 @@ struct GatewayServiceConfig: Sendable {
     let appViewBaseURL = (appViewRaw?.isEmpty == false) ? appViewRaw : nil
     let operationsRaw = env["OPERATIONS_BASE_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let operationsBaseURL = (operationsRaw?.isEmpty == false) ? operationsRaw : nil
-    let projectionPoolRaw = (
+    let globalIngestionEnabled = env["GLOBAL_INGESTION_ENABLED"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
+    let projectionPoolRaw = globalIngestionEnabled ? (
       env["PROJECTION_POOL_BASE_URL"] ?? env["CHARYBDIS_BASE_URL"]
-    )?.trimmingCharacters(in: .whitespacesAndNewlines)
+    )?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
     let projectionPoolBaseURL =
       (projectionPoolRaw?.isEmpty == false) ? projectionPoolRaw : nil
     for base in [appViewBaseURL, operationsBaseURL, projectionPoolBaseURL].compactMap({ $0 }) {
@@ -117,6 +121,7 @@ struct GatewayServiceConfig: Sendable {
       cacheBackend: backend,
       appViewBaseURL: appViewBaseURL,
       operationsBaseURL: operationsBaseURL,
+      globalIngestionEnabled: globalIngestionEnabled,
       projectionPoolBaseURL: projectionPoolBaseURL,
       latrIosProxy: latrIosProxy,
       pdsAttestationReceipt: pdsAttestationReceipt,

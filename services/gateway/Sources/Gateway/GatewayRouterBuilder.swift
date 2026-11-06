@@ -45,11 +45,12 @@ enum GatewayRouterBuilder {
         if error is CancellationError { throw error }
         throw HTTPError(.serviceUnavailable, message: "Gateway serving dependency unavailable")
       }
-      let ingestion = await ingestionHealth?.snapshot() ?? .unknown
+      let ingestion = config.globalIngestionEnabled
+        ? await ingestionHealth?.snapshot() ?? .unknown : .disabled
       return ingestion.dependencyState.merging(["status": "ready", "service": "gateway"]) { _, new in new }
     }
     router.get("/freshness") { _, _ async -> GatewayIngestionHealthSnapshot in
-      await ingestionHealth?.snapshot() ?? .unknown
+      config.globalIngestionEnabled ? await ingestionHealth?.snapshot() ?? .unknown : .disabled
     }
 
     GatewayOAuthMetadataRoutes(

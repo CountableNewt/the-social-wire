@@ -11,6 +11,9 @@ struct GatewayIngestionHealthSnapshot: Encodable, Sendable, ResponseEncodable {
   let checkedAt: Date?
   let validUntil: Date?
 
+  static let disabled = Self(poolReadiness: "disabled", completeness: .unknown,
+                             checkedAt: nil, validUntil: nil)
+
   static let unknown = Self(poolReadiness: "unobserved", completeness: .unknown,
                             checkedAt: nil, validUntil: nil)
 
