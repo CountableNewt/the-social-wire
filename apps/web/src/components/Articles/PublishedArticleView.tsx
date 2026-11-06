@@ -35,7 +35,6 @@ export function PublishedArticleView({ article, publications, metadataVisible, m
         {typeof record.publishedAt === "string" ? <p className="text-sm"><time dateTime={record.publishedAt}>{new Date(record.publishedAt).toLocaleString()}</time></p> : null}
         {Array.isArray(record.tags) ? <p className="break-words text-sm">{record.tags.filter(value => typeof value === "string").join(", ")}</p> : null}
         {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">Open Article</a> : null}
-        <p className="break-all text-xs text-muted-foreground">{article.uri}</p>
       </div>
     </aside>
   </div>;

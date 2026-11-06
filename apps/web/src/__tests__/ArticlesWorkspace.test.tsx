@@ -87,6 +87,16 @@ describe("article publishing workspace", () => {
     expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Hide Metadata" })).toBeNull();
   });
+  it("groups drafts under a publication name and opens the selected row without displaying AT URIs", async () => {
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    const group = screen.getByRole("region", { name: "First Publication" });
+    expect(within(group).getByRole("heading", { name: "First Publication" })).toBeTruthy();
+    const row = within(group).getByRole("button", { name: /^Working Article/ });
+    expect(document.body.textContent).not.toContain("at://");
+    fireEvent.click(row);
+    expect((await screen.findByLabelText("Article Title") as HTMLInputElement).value).toBe("Working Article");
+  });
   it("creates an article from the library and opens editor with metadata", async () => {
     await show(false);
     fireEvent.click(screen.getByRole("button", { name: "New Article" }));
@@ -119,14 +129,19 @@ describe("article publishing workspace", () => {
   });
   it("opens published rows read-only with metadata and returns to the Published library", async () => {
     publishedRows.push({ uri: `at://${did}/site.standard.document/public-story`, cid: "published", record: { title: "Public Story", site: publications[0]!.uri, path: "/public-story", content: { $type: "at.markpub.markdown", text: { markdown: "A public paragraph." } } } });
+    publishedRows.push({ uri: `at://${did}/site.standard.document/second-story`, cid: "second", record: { title: "Second Story", site: publications[1]!.uri, content: { $type: "at.markpub.markdown", text: { markdown: "Another public paragraph." } } } });
     const publish = publishingSpy();
     await show(false);
     fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    expect(within(await screen.findByRole("region", { name: "First Publication" })).getByRole("button", { name: /^Public Story/ })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Second Publication" })).getByRole("button", { name: /^Second Story/ })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("at://");
     fireEvent.click(await screen.findByRole("button", { name: /^Public Story/ }));
     expect(await screen.findByRole("heading", { name: "Public Story" })).toBeTruthy();
     expect(screen.getByText("A public paragraph.")).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Article Details" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open Article" }).getAttribute("href")).toBe("https://first.test/public-story");
+    expect(document.body.textContent).not.toContain("at://");
     expect(screen.queryByLabelText("Article Title")).toBeNull();
     expect(screen.queryByRole("button", { name: "Publish Article" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Hide Metadata" }));

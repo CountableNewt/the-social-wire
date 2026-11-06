@@ -2,13 +2,17 @@
 
 import type { ReactNode } from "react";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
-import type { PublishedArticle } from "@/lib/articles/articlePublishingTypes";
+import type { ArticlePublication, PublishedArticle } from "@/lib/articles/articlePublishingTypes";
 import { socialErrorMessage } from "@/lib/blueskySocialClient";
+import { groupArticlesByPublication } from "@/lib/articles/articleLibraryPresentation";
+import { ArticleLibraryThumbnail } from "./ArticleLibraryThumbnail";
 import { buttonVariants } from "@/components/ui/button";
 
 export type ArticleLibraryTab = "drafts" | "scheduled" | "published" | "research";
 
-export function ArticleLibrary({ tab, onTabChange, drafts, loading, busy, onOpenDraft, published, publishedPending, publishedError, onOpenPublished, scheduled, research }: {
+export function ArticleLibrary({ did, publications, tab, onTabChange, drafts, loading, busy, onOpenDraft, published, publishedPending, publishedError, onOpenPublished, scheduled, research }: {
+  did: string;
+  publications: ArticlePublication[];
   tab: ArticleLibraryTab;
   onTabChange: (tab: ArticleLibraryTab) => void;
   drafts: ArticleDraft[];
@@ -28,15 +32,17 @@ export function ArticleLibrary({ tab, onTabChange, drafts, loading, busy, onOpen
     </nav>
     {tab === "research" ? research : tab === "scheduled" ? scheduled : tab === "drafts" ? <>
       <p className="mb-4 text-sm text-muted-foreground">Private Drafts · This Browser Only</p>
-      {loading ? <p role="status">Loading Drafts…</p> : !drafts.length ? <p className="py-12 text-center text-muted-foreground">Create an article to start writing.</p> : <div className="divide-y">{drafts.map(draft => <button key={draft.id} type="button" disabled={busy} onClick={() => onOpenDraft(draft.id)} className="flex w-full flex-col gap-2 rounded-lg px-3 py-5 text-left hover:bg-muted/50 focus-visible:outline-ring disabled:opacity-50">
+      {loading ? <p role="status">Loading Drafts…</p> : !drafts.length ? <p className="py-12 text-center text-muted-foreground">Create an article to start writing.</p> : <div className="space-y-8">{groupArticlesByPublication(drafts, publications, draft => draft.publicationUri).map(group => <section key={group.id} aria-label={group.name}><h2 className="mb-2 text-base font-semibold">{group.name}</h2><div className="divide-y">{group.items.map(draft => <button key={draft.id} type="button" disabled={busy} onClick={() => onOpenDraft(draft.id)} className="flex w-full items-start gap-4 rounded-lg px-3 py-5 text-left hover:bg-muted/50 focus-visible:outline-ring disabled:opacity-50">
+        <ArticleLibraryThumbnail did={did} draft={draft} /><span className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="break-words text-lg font-semibold">{draft.title || "Untitled Article"}</span>
         {draft.excerpt ? <span className="line-clamp-2 text-sm text-muted-foreground">{draft.excerpt}</span> : null}
-        <span className="text-xs text-muted-foreground">{draft.publishedUri ? "Published" : draft.scheduleRecordKey ? "Scheduling Requested" : "Draft"} · Updated <time dateTime={draft.updatedAt}>{new Date(draft.updatedAt).toLocaleString()}</time></span>
-      </button>)}</div>}
-    </> : publishedPending ? <p role="status">Loading Published Articles…</p> : publishedError ? <p role="alert">{socialErrorMessage(publishedError)}</p> : !published.length ? <p className="py-12 text-center text-muted-foreground">No Published Articles Yet.</p> : <div className="divide-y">{published.map(article => <button key={article.uri} type="button" disabled={busy} onClick={() => onOpenPublished(article)} className="flex w-full flex-col gap-2 rounded-lg px-3 py-5 text-left hover:bg-muted/50 focus-visible:outline-ring">
+        <span className="text-xs text-muted-foreground">{draft.publishedUri ? "Published" : draft.scheduleRecordKey ? "Scheduling Requested" : "Draft"} · Updated <time dateTime={draft.updatedAt}>{new Date(draft.updatedAt).toLocaleString()}</time></span></span>
+      </button>)}</div></section>)}</div>}
+    </> : publishedPending ? <p role="status">Loading Published Articles…</p> : publishedError ? <p role="alert">{socialErrorMessage(publishedError)}</p> : !published.length ? <p className="py-12 text-center text-muted-foreground">No Published Articles Yet.</p> : <div className="space-y-8">{groupArticlesByPublication(published, publications, article => article.record.site).map(group => <section key={group.id} aria-label={group.name}><h2 className="mb-2 text-base font-semibold">{group.name}</h2><div className="divide-y">{group.items.map(article => <button key={article.uri} type="button" disabled={busy} onClick={() => onOpenPublished(article)} className="flex w-full items-start gap-4 rounded-lg px-3 py-5 text-left hover:bg-muted/50 focus-visible:outline-ring">
+      <ArticleLibraryThumbnail did={did} article={article} /><span className="flex min-w-0 flex-1 flex-col gap-2">
       <span className="break-words text-lg font-semibold">{String(article.record.title ?? "Untitled Article")}</span>
       {typeof article.record.description === "string" ? <span className="line-clamp-2 text-sm text-muted-foreground">{article.record.description}</span> : null}
-      <span className="break-all text-xs text-muted-foreground">{article.uri}</span>
-    </button>)}</div>}
+      {typeof article.record.publishedAt === "string" ? <time dateTime={article.record.publishedAt} className="text-xs text-muted-foreground">{new Date(article.record.publishedAt).toLocaleString()}</time> : null}</span>
+    </button>)}</div></section>)}</div>}
   </section>;
 }
