@@ -11,6 +11,7 @@ enum AppViewRouterBuilder {
   static func router(
     config: AppViewServiceConfig,
     httpClient: HTTPClient,
+    backgroundTasks: AppViewBackgroundTasks? = nil,
     thinAppViewStore: any ThinAppViewStore,
     wireFeedStore: (any WireFeedStore)? = nil,
     wireModerationService: WireViewerModerationService? = nil,
@@ -41,7 +42,7 @@ enum AppViewRouterBuilder {
       return ["status": "ready", "service": "appview"]
     }
     router.get("/freshness") { _, _ async throws -> ServiceFreshnessResponse in
-      try await ServiceFreshnessResponse.evaluate(service: "appview", store: operationsStore)
+      try await ServiceFreshnessResponse.evaluate(service: "appview", store: config.globalIngestionEnabled ? operationsStore : nil)
     }
 
     let internalTrustMiddleware = GatewayInternalTrustAuthMiddleware(
@@ -60,6 +61,7 @@ enum AppViewRouterBuilder {
       readStateRecovery = PDSReadStateRecoveryCoordinator(store: lifecycleStore, operations: operationsStore,
         projectionCache: projectionCache, plcURL: config.core.atprotoPLCURL, logger: logger)
     } else { readStateRecovery = nil }
+    if let readStateRecovery { backgroundTasks?.register { await readStateRecovery.shutdown() } }
     let protected = router.group()
       .add(middleware: XRPCErrorMiddleware())
       .add(middleware: AppViewFeedErrorMiddleware())
@@ -190,11 +192,16 @@ enum AppViewRouterBuilder {
       rssIngestion: rssIngestion,
       logger: logger
     )
+    let contentVerifier: AuthoritativeContentVerifier? = config.globalIngestionEnabled ? nil
+      : AuthoritativeContentVerifier(store: thinAppViewStore, indexer: indexer,
+        httpClient: httpClient, plcURL: config.core.atprotoPLCURL)
+    if let contentVerifier { backgroundTasks?.register { await contentVerifier.shutdown() } }
     let readService = ThinAppViewReadService(
       store: thinAppViewStore,
       projectionCache: projectionCache,
       telemetry: telemetry,
       circlePrivateState: circlePrivateState,
+      contentVerifier: contentVerifier,
       logger: logger
     )
     let enrollService = ThinAppViewEnrollService(
@@ -204,8 +211,11 @@ enum AppViewRouterBuilder {
       plcURL: config.core.atprotoPLCURL,
       config: config.thinAppView,
       logger: logger,
-      skyreaderIngestion: skyreaderIngestionService
+      skyreaderIngestion: skyreaderIngestionService,
+      publicContentProvider: config.publicContentDiscoveryMode == .microcosm
+        ? MicrocosmContentDiscovery(indexer: indexer, httpClient: httpClient) : nil
     )
+    backgroundTasks?.register { await enrollService.shutdown() }
     ThinAppViewRoutes(
       readService: readService,
       enrollService: enrollService,

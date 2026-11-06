@@ -43,6 +43,23 @@ struct ThinAppViewRoutes {
           requestId: context.requestId
         )
         let selector = AppViewFeedSelector(kind: kind, id: id)
+        if cursor == nil, kind != .list {
+          Task {
+            if kind == .publication,
+              let row = await projectionService.sidebarRow(for: auth.did, publicationId: selector.id) {
+              _ = try? await enrollService.refreshPublicContent(authorDid: row.appViewScope.authorDid,
+                publicationAtUri: row.appViewScope.publicationAtUri,
+                publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+                publicationSiteUrls: row.appViewScope.publicationSiteUrls)
+            } else if let scopes = try? await readService.publicContentScopes(auth: auth, selector: selector) {
+              for scope in scopes {
+                _ = try? await enrollService.refreshPublicContent(authorDid: scope.authorDid,
+                  publicationAtUri: scope.publicationAtUri, publicationScopeAtUris: scope.publicationScopeAtUris,
+                  publicationSiteUrls: scope.publicationSiteUrls)
+              }
+            }
+          }
+        }
         if kind == .list {
           guard let listsService, let id else { throw HTTPError(.serviceUnavailable) }
           let prepared: (list: StandardReaderListDTO, scopes: [AppViewPublicationScope])
@@ -52,6 +69,15 @@ struct ThinAppViewRoutes {
               message: "The list projection is warming. Refresh to retry.", requestId: context.requestId, retryable: true)
           }
           let list = prepared.list
+          if cursor == nil {
+            Task {
+              for scope in prepared.scopes.prefix(8) {
+                _ = try? await enrollService.refreshPublicContent(authorDid: scope.authorDid,
+                  publicationAtUri: scope.publicationAtUri, publicationScopeAtUris: scope.publicationScopeAtUris,
+                  publicationSiteUrls: scope.publicationSiteUrls)
+              }
+            }
+          }
           // First render uses indexed content immediately; enrollment repairs cold public authors in background.
           let authors = Array(Set(list.users + list.publications.compactMap {
             StandardReaderListsService.publicationIdentity($0)?.did
@@ -181,6 +207,13 @@ struct ThinAppViewRoutes {
           range: 1...ThinAppViewEntryPagination.maxAggregateEntries,
           requestId: context.requestId
         )
+        if cursor == nil {
+          Task {
+            _ = try? await enrollService.refreshPublicContent(authorDid: authorDid,
+              publicationAtUri: publicationAtUri, publicationScopeAtUris: publicationScopeAtUris,
+              publicationSiteUrls: publicationSiteUrls)
+          }
+        }
         return try await AppViewFeedExecution.run(requestId: context.requestId) {
           if let maxEntries {
             return try await readService.listEntriesUpTo(
