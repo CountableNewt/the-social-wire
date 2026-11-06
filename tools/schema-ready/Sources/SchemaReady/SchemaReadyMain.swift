@@ -11,7 +11,7 @@ import SchemaReadyCore
 struct SchemaReadyMain {
   static func main() async {
     do { try await run() } catch {
-      FileHandle.standardError.write(Data("Schema readiness prevented startup\n".utf8))
+      FileHandle.standardError.write(Data(SchemaReadinessError.startupDiagnostic(for: error).utf8))
       exit(1)
     }
   }
