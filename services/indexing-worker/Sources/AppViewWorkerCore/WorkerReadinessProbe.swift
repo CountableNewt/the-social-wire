@@ -1,19 +1,23 @@
 import Foundation
 import OperationsCore
+import ThinAppViewCore
 
 struct WorkerReadinessProbe: Sendable {
   let databaseProbe: @Sendable () async throws -> Void
   let serviceStateProbe: (@Sendable () async throws -> OperationsServiceState?)?
   let now: @Sendable () -> Date
+  let mode: ThinAppViewWorkerMode
 
   init(
     databaseProbe: @escaping @Sendable () async throws -> Void,
     serviceStateProbe: (@Sendable () async throws -> OperationsServiceState?)? = nil,
-    now: @escaping @Sendable () -> Date = Date.init
+    now: @escaping @Sendable () -> Date = Date.init,
+    mode: ThinAppViewWorkerMode = .ingestion
   ) {
     self.databaseProbe = databaseProbe
     self.serviceStateProbe = serviceStateProbe
     self.now = now
+    self.mode = mode
   }
 
   func run(includingDiagnostics: Bool = false) async throws {
@@ -42,6 +46,22 @@ struct WorkerReadinessProbe: Sendable {
         at: evaluatedAt,
         includingDiagnostics: includingDiagnostics
       )
+    }
+
+    if mode == .maintenance {
+      // Maintenance reports scheduler progress only. It makes no claim about
+      // the coverage or freshness of a retired global ingestion pipeline.
+      guard state.dependencyState["coordinator_authority"] == "active",
+        state.dependencyState["coordinator_role"] == "indexing.appview-coordinator",
+        state.dependencyState["worker_mode"] == "maintenance",
+        state.dependencyState["worker_role"] == "coordinator",
+        state.dependencyState["ingestion_source"] == "disabled",
+        state.dependencyState["maintenance_retention"] == "ready",
+        ["ready", "disabled"].contains(state.dependencyState["maintenance_rss"] ?? ""),
+        state.dependencyState["jetstream_replay"] == "disabled_by_worker_mode",
+        state.dependencyState["pds_reconciliation"] == "disabled_by_worker_mode"
+      else { throw WorkerReadinessError.maintenanceEvidenceUnavailable }
+      return
     }
 
     // Projection-repair evidence describes the authoritative Tap and durable V2 paths. The
@@ -85,6 +105,7 @@ struct WorkerReadinessProbe: Sendable {
 }
 
 enum WorkerReadinessError: Error, Equatable {
+  case maintenanceEvidenceUnavailable
   case missingIngestionHeartbeat
   case staleIngestionHeartbeat
   case ingestionTransportUnhealthy
