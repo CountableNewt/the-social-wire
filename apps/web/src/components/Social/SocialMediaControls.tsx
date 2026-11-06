@@ -2,8 +2,10 @@
 
 import { useRef, useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
+import { prepareComposerVideo } from "@/lib/prepareComposerVideo";
+import { SocialVideoPreview } from "./SocialVideoPreview";
 import { prepareComposerPhoto } from "@/lib/prepareComposerPhoto";
-import type { ComposerMedia, ComposerPhoto, GifAsset } from "@/lib/composerMedia";
+import type { ComposerMedia, ComposerPhoto, ComposerVideo, GifAsset } from "@/lib/composerMedia";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SocialGifPicker } from "./SocialGifPicker";
@@ -13,6 +15,7 @@ import { SocialPhotoPreview } from "./SocialPhotoPreview";
 type Update = (change: (previous?: ComposerMedia) => ComposerMedia | undefined) => void;
 export function SocialMediaControls({ media, update, session, disabled, hasLink, removeLink, registerIntake }: { media?: ComposerMedia; update: Update; session?: OAuthSession | null; disabled: boolean; hasLink: boolean; removeLink: () => void; registerIntake?: React.RefObject<((files: File[]) => void) | undefined> }) {
   const files = useRef<HTMLInputElement>(null);
+  const videos = useRef<HTMLInputElement>(null);
   const [picker, setPicker] = useState(false);
   const [error, setError] = useState<string>();
   const [altID, setAltID] = useState<string>();
@@ -29,8 +32,30 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
       updateRef.current(previous => previous?.kind === "photos" ? { ...previous, photos: previous.photos.map(item => item.id === photo.id ? { ...item, status: "failed", error: cause instanceof Error ? cause.message : "Photo Could Not Be Prepared" } : item) } : previous);
     }
   }
+  async function prepareVideo(video: ComposerVideo) {
+    try {
+      const ready = await prepareComposerVideo(video);
+      updateRef.current(previous => previous?.kind === "video" && previous.id === video.id ? { ...ready, alt: previous.alt } : previous);
+    } catch (cause) {
+      updateRef.current(previous => previous?.kind === "video" && previous.id === video.id ? { ...previous, status: "failed", error: cause instanceof Error ? cause.message : "Video Could Not Be Prepared" } : previous);
+    }
+  }
+  function intakeVideo(original: File) {
+    replacing(() => {
+      setError(undefined);
+      const video: ComposerVideo = { kind: "video", id: crypto.randomUUID(), name: original.name, original, alt: "", status: "preparing" };
+      update(() => video);
+      void prepareVideo(video);
+    }, !!media);
+  }
   function intake(selected: File[]) {
     if (disabled || !selected.length) return;
+    const videoFiles = selected.filter(file => file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(file.name));
+    if (videoFiles.length) {
+      if (selected.length !== 1) { setError("Choose One Video Or Up To Four Photos Per Post"); return; }
+      intakeVideo(videoFiles[0]);
+      return;
+    }
     replacing(() => {
       setError(undefined);
       const available = 4 - (media?.kind === "photos" ? media.photos.length : 0);
@@ -38,16 +63,17 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
       const added = selected.slice(0, available).map(original => ({ id: crypto.randomUUID(), name: original.name, original, alt: "", status: "preparing" as const }));
       update(previous => ({ kind: "photos", photos: [...(previous?.kind === "photos" ? previous.photos : []), ...added].slice(0, 4) }));
       added.forEach(photo => void prepare(photo));
-    }, media?.kind === "gif");
+    }, !!media && media.kind !== "photos");
   }
   if (registerIntake) registerIntake.current = intake;
   function selectGif(asset: GifAsset) {
-    replacing(() => { update(() => ({ kind: "gif", asset, alt: "" })); setPicker(false); }, media?.kind === "photos");
+    replacing(() => { update(() => ({ kind: "gif", asset, alt: "" })); setPicker(false); }, !!media && media.kind !== "gif");
   }
-  function editAlt(id: string) { setAltID(id); setAlt(media?.kind === "gif" ? media.alt : media?.photos.find(photo => photo.id === id)?.alt ?? ""); }
+  function editAlt(id: string) { setAltID(id); setAlt(media?.kind === "photos" ? media.photos.find(photo => photo.id === id)?.alt ?? "" : media?.alt ?? ""); }
   return <div className="flex min-w-0 flex-col gap-3">
-    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled || (media?.kind === "photos" && media.photos.length === 4)} onClick={() => files.current?.click()}>Add Photos</Button><Button type="button" variant="outline" size="sm" disabled={disabled || !session} onClick={() => setPicker(true)}>GIF</Button></div>
+    <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled || (media?.kind === "photos" && media.photos.length === 4)} onClick={() => files.current?.click()}>Add Photos</Button><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => videos.current?.click()}>Add Video</Button><Button type="button" variant="outline" size="sm" disabled={disabled || !session} onClick={() => setPicker(true)}>GIF</Button></div>
     <input ref={files} type="file" accept="image/jpeg,image/png" multiple hidden aria-label="Choose Photos" disabled={disabled} onChange={event => { intake(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+    <input ref={videos} type="file" accept="video/mp4,.mp4" hidden aria-label="Choose Video" disabled={disabled} onChange={event => { const file = event.target.files?.[0]; if (file && !disabled) intakeVideo(file); event.target.value = ""; }} />
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     {media?.kind === "photos" ? <div className="grid min-w-0 grid-cols-2 gap-3">{media.photos.map((photo, index) => <div key={photo.id} className="min-w-0 rounded-xl border p-2">
       <SocialPhotoPreview photo={photo} /><p className="truncate text-xs">{photo.name}</p>
@@ -60,8 +86,20 @@ export function SocialMediaControls({ media, update, session, disabled, hasLink,
       </div>
     </div>)}</div> : null}
     {media?.kind === "gif" ? <div className="flex flex-col gap-2 rounded-xl border p-3"><SocialComposerGifPreview media={media} /><p className="text-xs text-muted-foreground">{media.asset.attribution}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => editAlt("gif")}>{media.alt ? "Edit Alt Text" : "Add Alt Text"}</Button><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setPicker(true)}>Replace GIF</Button><Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => update(() => undefined)}>Remove GIF</Button></div></div> : null}
+    {media?.kind === "video" ? <div className="flex min-w-0 flex-col gap-2 rounded-xl border p-3">
+      <SocialVideoPreview video={media} /><p className="truncate text-xs">{media.name}</p>
+      <p className="text-xs text-muted-foreground">MP4 · Up To 300 MB And 10 Minutes</p>
+      {media.error ? <p role="alert" className="text-sm text-destructive">{media.error}</p> : null}
+      {media.status === "preparing" ? <p role="status" className="text-sm">Preparing Video…</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => editAlt(media.id)}>{media.alt ? "Edit Alt Text" : "Add Alt Text"}</Button>
+        {media.status === "failed" ? <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { update(previous => previous?.kind === "video" && previous.id === media.id ? { ...previous, status: "preparing", error: undefined } : previous); void prepareVideo(media); }}>Retry</Button> : null}
+        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => videos.current?.click()}>Replace Video</Button>
+        <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => update(() => undefined)}>Remove Video</Button>
+      </div>
+    </div> : null}
     {picker && session ? <SocialGifPicker session={session} onClose={() => setPicker(false)} onSelect={selectGif} /> : null}
-    {replace ? <Dialog open onOpenChange={open => { if (!open) setReplace(undefined); }}><DialogContent onKeyDown={event => event.stopPropagation()}><DialogTitle>Replace Current Attachment?</DialogTitle><DialogDescription>Each Post Supports Photos, One GIF, Or A Link Preview. Your Text Will Be Kept.</DialogDescription><Button type="button" onClick={() => { removeLink(); replace(); setReplace(undefined); }}>Replace Attachment</Button><DialogClose>Keep Current Attachment</DialogClose></DialogContent></Dialog> : null}
-    {altID ? <Dialog open onOpenChange={open => { if (!open) setAltID(undefined); }}><DialogContent onKeyDown={event => event.stopPropagation()}><DialogTitle>Describe This {media?.kind === "gif" ? "GIF" : "Photo"}</DialogTitle><DialogDescription>Describe The Meaningful Content For People Who Cannot See It.</DialogDescription><label className="flex flex-col gap-2 text-sm">Alt Text<textarea autoFocus rows={5} maxLength={2000} value={alt} onChange={event => setAlt(event.target.value)} className="rounded-xl border bg-background p-3" /></label><p className="text-xs">{alt.length}/2000</p><Button type="button" onClick={() => { update(previous => previous?.kind === "gif" ? { ...previous, alt } : previous?.kind === "photos" ? { ...previous, photos: previous.photos.map(photo => photo.id === altID ? { ...photo, alt } : photo) } : previous); setAltID(undefined); }}>Save Description</Button><DialogClose>Cancel</DialogClose></DialogContent></Dialog> : null}
+    {replace ? <Dialog open onOpenChange={open => { if (!open) setReplace(undefined); }}><DialogContent onKeyDown={event => event.stopPropagation()}><DialogTitle>Replace Current Attachment?</DialogTitle><DialogDescription>Each Post Supports Photos, One Video, One GIF, Or A Link Preview. Your Text Will Be Kept.</DialogDescription><Button type="button" onClick={() => { removeLink(); replace(); setReplace(undefined); }}>Replace Attachment</Button><DialogClose>Keep Current Attachment</DialogClose></DialogContent></Dialog> : null}
+    {altID ? <Dialog open onOpenChange={open => { if (!open) setAltID(undefined); }}><DialogContent onKeyDown={event => event.stopPropagation()}><DialogTitle>Describe This {media?.kind === "gif" ? "GIF" : media?.kind === "video" ? "Video" : "Photo"}</DialogTitle><DialogDescription>Describe The Meaningful Content For People Who Cannot See It.</DialogDescription><label className="flex flex-col gap-2 text-sm">Alt Text<textarea autoFocus rows={5} maxLength={media?.kind === "video" ? 1000 : 2000} value={alt} onChange={event => setAlt(event.target.value)} className="rounded-xl border bg-background p-3" /></label><p className="text-xs">{alt.length}/{media?.kind === "video" ? 1000 : 2000}</p><Button type="button" onClick={() => { update(previous => previous && previous.kind !== "photos" ? { ...previous, alt } : previous?.kind === "photos" ? { ...previous, photos: previous.photos.map(photo => photo.id === altID ? { ...photo, alt } : photo) } : previous); setAltID(undefined); }}>Save Description</Button><DialogClose>Cancel</DialogClose></DialogContent></Dialog> : null}
   </div>;
 }

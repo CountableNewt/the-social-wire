@@ -1,12 +1,23 @@
-import { AppBskyEmbedExternal, AppBskyEmbedImages } from "@atproto/api";
+import { AppBskyEmbedExternal, AppBskyEmbedImages, AppBskyEmbedVideo } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { createOAuthAgent } from "./atprotoClient";
 import { gifEmbedURI, mediaReady, type ComposerMedia } from "./composerMedia";
 import { getComposerGifs, getGifPoster, validateGifFile } from "./klipyClient";
 import { isMissingOAuthScope, SCOPE_RECOVERY_MESSAGE } from "./oauthScopeRecovery";
+import { uploadBlueskyVideo } from "./blueskyVideoUpload";
 
 export async function composeMediaEmbed(session: OAuthSession, media: ComposerMedia, assertCurrentAccount?: () => void, onProgress?: (message: string) => void) {
   if (!mediaReady(media)) throw new Error("Finish Preparing Attachments Before Posting");
+  if (media.kind === "video") {
+    const video = await uploadBlueskyVideo({ session, video: media.blob!, key: media.id, assertCurrentAccount, onProgress }).catch(error => {
+      if (isMissingOAuthScope(error)) throw new Error(SCOPE_RECOVERY_MESSAGE);
+      throw error;
+    });
+    assertCurrentAccount?.();
+    const embed = { $type: "app.bsky.embed.video" as const, video, alt: media.alt.trim(), aspectRatio: { width: media.width!, height: media.height! } };
+    if (!AppBskyEmbedVideo.validateMain(embed).success) throw new Error("Invalid Video Attachment");
+    return embed;
+  }
   const agent = createOAuthAgent(session);
   if (media.kind === "photos") {
     const images: AppBskyEmbedImages.Image[] = [];
