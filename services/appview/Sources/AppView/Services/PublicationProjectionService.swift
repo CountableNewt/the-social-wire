@@ -188,6 +188,27 @@ actor PublicationProjectionService {
     publicationIds.compactMap { sidebarRow(for: viewerDid, publicationId: $0) }
   }
 
+  /// Cached catalog scopes only: content enrollment must not enumerate author repositories.
+  func knownPublicContentScopes(viewerDid: String, authorDids: [String]) async -> [PublicContentDiscoveryScope] {
+    let authors = Set(authorDids)
+    if sidebarRowCacheByViewer[viewerDid] == nil,
+      let cached = await cachedSidebarResponse(viewerDid: viewerDid) {
+      mergeSidebarRows(viewerDid: viewerDid, rows: Dictionary(cached.allPublicationRows.map { ($0.publicationId, $0) }, uniquingKeysWith: { _, last in last }))
+    }
+    let rows = sidebarRowCacheByViewer[viewerDid]?.values ?? Dictionary<String, SidebarPublicationRow>().values
+    var scopes: Set<PublicContentDiscoveryScope> = []
+    for row in rows.sorted(by: { $0.publicationId < $1.publicationId }) where authors.contains(row.appViewScope.authorDid) {
+      if let scope = try? ThinAppViewEnrollService.discoveryScope(authorDid: row.appViewScope.authorDid,
+        publicationAtUri: row.appViewScope.publicationAtUri,
+        publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+        publicationSiteUrls: row.appViewScope.publicationSiteUrls), !scope.publicationKeys.isEmpty {
+        scopes.insert(scope)
+        if scopes.count == 8 { break }
+      }
+    }
+    return Array(scopes)
+  }
+
   // MARK: - Discovery
 
   private func discoverContext(
