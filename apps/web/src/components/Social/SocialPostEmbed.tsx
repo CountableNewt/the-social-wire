@@ -19,6 +19,7 @@ import { socialExternalGif } from "./socialExternalGif";
 import { SocialGifEmbed } from "./SocialGifEmbed";
 import { socialGalleryImages } from "./socialGalleryImages";
 import { SocialProfileLink } from "./SocialProfileLink";
+import { ProfilePronouns } from "@/components/shared/ProfilePronouns";
 import { SocialCashtags } from "./SocialCashtags";
 import { SocialYouTubeEmbed } from "./SocialYouTubeEmbed";
 import { socialYouTubePlayerUrl } from "./socialYouTubePlayerUrl";
@@ -145,6 +146,7 @@ export function SocialPostEmbed({
           className="text-sm font-medium hover:underline"
         >
           {quote.author.displayName || quote.author.handle}
+          <ProfilePronouns pronouns={quote.author.pronouns} />
         </SocialProfileLink>
       )}
       <SocialRichText record={record.value} />

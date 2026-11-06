@@ -26,6 +26,25 @@ describe("Profile information", () => {
     expect(screen.getByText("Posts").nextElementSibling?.textContent).toBe("48");
     expect(screen.getByRole("heading", { name: "Local Viewer" }).closest("section")?.id).toBe("profile");
   });
+  it("shows trimmed pronouns in subscript beside the display name", () => {
+    state.data!.pronouns = "  they/them  ";
+    render(<ProfileInformation />);
+    const heading = screen.getByRole("heading", { name: "Local Viewer they/them" });
+    expect(heading.querySelector("sub")?.textContent).toBe("they/them");
+    expect(heading.firstChild?.textContent).toBe("Local Viewer");
+  });
+  it.each([undefined, "", "   "])("omits missing or blank pronouns: %p", pronouns => {
+    state.data!.pronouns = pronouns;
+    render(<ProfileInformation />);
+    expect(screen.getByRole("heading", { name: "Local Viewer" }).querySelector("sub")).toBeNull();
+  });
+  it("renders pronouns as plain text", () => {
+    state.data!.pronouns = "<b>she/her</b>";
+    render(<ProfileInformation />);
+    const pronouns = screen.getByText("<b>she/her</b>");
+    expect(pronouns.tagName).toBe("SUB");
+    expect(pronouns.children.length).toBe(0);
+  });
   it("omits unknown counts and keeps a DID fallback readable", () => {
     state.data = { did: "did:plc:viewer", handle: "did:plc:viewer", description: "Repo fallback profile" };
     render(<ProfileInformation />);

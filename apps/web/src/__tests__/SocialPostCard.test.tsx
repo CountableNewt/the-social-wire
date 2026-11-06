@@ -45,6 +45,51 @@ function card(value: AppBskyFeedDefs.FeedViewPost, prefs = moderation) {
 }
 
 describe("Social Post Rendering", () => {
+  it("shows profile pronouns beside the author name as subscript", () => {
+    const element = document.createElement("div");
+    element.innerHTML = card(item({ author: { ...author, pronouns: "  they/them  " } }));
+    const pronouns = element.querySelector("sub")!;
+    expect(pronouns.textContent).toBe("they/them");
+    expect(pronouns.closest("a")!.textContent).toBe("Other they/them");
+    expect(pronouns.className).toContain("align-sub");
+  });
+  it("omits absent and blank author pronouns", () => {
+    for (const pronouns of [undefined, "", "   "]) {
+      expect(card(item({ author: { ...author, pronouns } }))).not.toContain("<sub");
+    }
+  });
+  it("shows the reposter's own pronouns beside their attribution name", () => {
+    const value = item();
+    value.reason = { $type: "app.bsky.feed.defs#reasonRepost", by: {
+      did: "did:plc:reposter", handle: "reposter.test", displayName: "Reposter", pronouns: "she/her",
+    }, indexedAt: value.post.indexedAt };
+    const element = document.createElement("div");
+    element.innerHTML = card(value);
+    const pronouns = element.querySelector("sub")!;
+    expect(pronouns.textContent).toBe("she/her");
+    expect(pronouns.closest("a")!.textContent).toBe("Reposter she/her");
+  });
+  it("hides pronouns with moderated author and reposter identities", () => {
+    const hidden = { ...author, pronouns: "private-pronouns", labels: [{
+      src: "did:plc:labeler", uri: `at://${author.did}/app.bsky.actor.profile/self`, val: "!hide", cts: "2026-10-09T10:00:00Z",
+    }] };
+    expect(card(item({ author: hidden }))).not.toContain("private-pronouns");
+    const value = item();
+    value.reason = { $type: "app.bsky.feed.defs#reasonRepost", by: hidden, indexedAt: value.post.indexedAt };
+    expect(card(value)).not.toContain("private-pronouns");
+  });
+  it("shows a quoted author's pronouns beside the quoted name", () => {
+    const html = card(item({ embed: { $type: "app.bsky.embed.record#view", record: {
+      $type: "app.bsky.embed.record#viewRecord", uri: "at://did:plc:quoted/app.bsky.feed.post/abc", cid: item().post.cid,
+      author: { did: "did:plc:quoted", handle: "quoted.test", displayName: "Quoted", pronouns: "he/him" },
+      value: { $type: "app.bsky.feed.post", text: "Quoted post", createdAt: "2026-10-09T10:00:00.000Z" },
+      indexedAt: "2026-10-09T10:00:00.000Z",
+    } } }));
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    expect(element.querySelector("blockquote sub")!.textContent).toBe("he/him");
+    expect(element.querySelector("blockquote sub")!.closest("a")!.textContent).toBe("Quoted he/him");
+  });
   it("names stable post sections so background embed growth can preserve the reading position", () => {
     const value = item({ embed: { $type: "app.bsky.embed.external#view", external: {
       uri: "https://example.com/article", title: "Article", description: "Preview",
@@ -194,6 +239,7 @@ describe("Social Post Rendering", () => {
             author: {
               did: "did:plc:quoted",
               handle: "quoted.test",
+              pronouns: "quoted-private-pronouns",
               viewer: { muted: true },
             },
             value: {
@@ -220,6 +266,7 @@ describe("Social Post Rendering", () => {
     );
     expect(html).not.toContain("Quoted secret");
     expect(html).not.toContain("quoted.jpg");
+    expect(html).not.toContain("quoted-private-pronouns");
   });
   it("uses UTF-8 facets and refuses unsafe link protocols", () => {
     const record = {
