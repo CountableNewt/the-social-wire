@@ -143,7 +143,7 @@ func (a Routes) enroll(w http.ResponseWriter, r *http.Request) {
 	// A failed source can leave other sources committed. Publish their fresh counts
 	// before reporting partial failure so the reader can reconcile those articles.
 	if e != nil {
-		fail(w, 503, "Enrollment unavailable")
+		failEnrollment(w, e, r.Context().Err())
 		return
 	}
 	write(w, map[string]int{"indexed": n})
