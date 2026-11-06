@@ -209,7 +209,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [gateway, appview, indexing-worker, jetstream-ingest]
+        include:
+          - service: gateway
+            package: services/gateway
+          - service: appview
+            package: services/appview
+          - service: indexing-worker
+            package: services/indexing-worker
+          - service: schema-ready
+            package: tools/schema-ready
     services:
       postgres:
         image: postgres:17-alpine
@@ -239,11 +247,11 @@ jobs:
       SOCIAL_DRAFT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
       THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
       PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      INGRESS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
+      SCHEMA_READY_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
       - name: Install Linux Swift build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libxml2-dev libssl-dev libzstd-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libxml2-dev libssl-dev pkg-config
       - uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.4.2"
@@ -254,10 +262,10 @@ jobs:
           postgres-container: ${{ job.services.postgres.id }}
       - uses: actions/cache@v5
         with:
-          path: services/${{ matrix.service }}/.build
-          key: ${{ runner.os }}-swift-active-6.4.2-${{ matrix.service }}-${{ hashFiles('services/**/Package.resolved') }}
+          path: ${{ matrix.package }}/.build
+          key: ${{ runner.os }}-swift-active-6.4.2-${{ matrix.service }}-${{ hashFiles('services/**/Package.resolved', 'tools/schema-ready/Package.resolved') }}
       - name: Test active Swift backend
-        working-directory: services/${{ matrix.service }}
+        working-directory: ${{ matrix.package }}
         run: swift test --force-resolved-versions -j 2
       - name: Test the shared AppView package at the service's actual pin
         if: matrix.service == 'appview'

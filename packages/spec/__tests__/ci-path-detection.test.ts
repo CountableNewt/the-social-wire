@@ -118,7 +118,7 @@ describe("CI path detection", () => {
     "services/gateway/Sources/Gateway/GatewayCommand.swift",
     "services/appview/Package.swift",
     "services/indexing-worker/Tests/WorkerTests/RuntimeTests.swift",
-    "services/jetstream-ingest/Sources/SchemaReady/SchemaReadyMain.swift",
+    "tools/schema-ready/Sources/SchemaReady/SchemaReadyMain.swift",
     "services/gateway/Dockerfile",
     "railway/appview.json",
   ])("requires the Swift backend matrix for active runtime changes: %s", (path) => {
@@ -127,6 +127,7 @@ describe("CI path detection", () => {
 
   it.each([
     "services/operations/Sources/Operations/Command.swift",
+    "services/jetstream-ingest/Sources/IngressCore/ArchiveTransport.swift",
     "services/wire-corpus-edge/Package.swift",
     "services/wire-worker/README.md",
   ])("does not add inactive services to the Swift migration: %s", (path) => {
