@@ -11542,6 +11542,10 @@
           "sha256": "7393253807b1d36926618b93ad6c09a486aad7df14f185c73b055018eba3c028"
         },
         {
+          "path": "packages/lexicons/link/latr/preview/getOpenGraph.json",
+          "sha256": "02c7ad0116b849f60e51c551c7f83b8aa1793ff1d16763bcd21c7cf9646e5770"
+        },
+        {
           "path": "packages/lexicons/link/latr/saved/external.json",
           "sha256": "bb56d9601b50ca91ca32fb7d48a162109c45fbb4da4a991fb31836651c3e3077"
         },
@@ -11757,7 +11761,7 @@
         },
         {
           "path": "packages/spec/__tests__/client-xrpc-transport.test.ts",
-          "sha256": "403932f2de249c47b357ee4cb0128e2051fc1ab46b934b6e87ed8a313e2cf345"
+          "sha256": "0d3e9df238e98ceb554bc6a00b0fc2ac7847b2da6ed2a3fd32033ec6876334da"
         },
         {
           "path": "packages/spec/__tests__/coverage-inventory.test.ts",
@@ -11805,7 +11809,7 @@
         },
         {
           "path": "packages/spec/__tests__/openapi-routes.test.ts",
-          "sha256": "2d782af1b262f77bc8c8ad4388fa5240882e6d2982e53d4e7c5718bb43dde470"
+          "sha256": "88a03a8d47908fc0519dd1a12d1a4740da28b8472f4db15dc67881c4c64d9fbb"
         },
         {
           "path": "packages/spec/__tests__/operations-change-retention-postgres.test.ts",
@@ -11929,11 +11933,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "7495230ed82a584e4d560c9da33f8e1ce772182b8a2795ff7d37abb19919768d"
+          "sha256": "4bfa03c3a3a1bbb5577cc776c5c719164f05bd462988ce96e955e04888c7d077"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "aabd79b6e0ad08dde31f2ffd5fff9dfe7ca1bb62773a020f744c70524695e0bd"
+          "sha256": "fa6938f66968b2c1f75ee077dee438307da600d0a8d376c36b04bc2681f19d82"
         },
         {
           "path": "packages/spec/package.json",
