@@ -77,6 +77,16 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("leaves published history idle until its tab opens", async () => {
+    const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([]); restores.push(() => history.mockRestore());
+    await show(false);
+    expect(history).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    expect(history).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    await waitFor(() => expect(history).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("No Published Articles Yet.")).toBeTruthy();
+  });
   it("starts in the full-page library even when a draft was restored", async () => {
     await show(false);
     const sections = within(screen.getByRole("navigation", { name: "Article Sections" })).getAllByRole("button");

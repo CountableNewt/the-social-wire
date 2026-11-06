@@ -5,10 +5,10 @@ import { useSembleCollectionItems } from "@/hooks/useSembleReadLater";
 import type { SembleCollection } from "@/lib/semble";
 import { ResearchSourceLink } from "./ResearchSourceLink";
 
-export function ResearchCollection({ collection }: { collection: SembleCollection }) {
+export function ResearchCollection({ collection, onClose }: { collection: SembleCollection; onClose: () => void }) {
   const query = useSembleCollectionItems(collection.uri);
   return <article className="min-w-0 rounded-xl border bg-card/60">
-    <header className="space-y-2 border-b p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{collection.name}</h2><span className="text-xs text-muted-foreground">{collection.accessType === "CLOSED" ? "Closed" : "Open"} · {collection.cardCount} Items</span></div>{collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}</header>
+    <header className="space-y-2 border-b p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{collection.name}</h2><span className="text-xs text-muted-foreground">{collection.accessType === "CLOSED" ? "Closed" : "Open"} · {collection.cardCount} Items</span></div>{collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}<Button variant="outline" size="sm" onClick={onClose}>Close Collection</Button></header>
     {query.isPending ? <p role="status" className="p-4 text-sm text-muted-foreground">Loading Collection…</p> : null}
     {query.error ? <div role="alert" className="space-y-2 p-4 text-sm"><p>{query.error.message}</p><Button size="sm" variant="outline" onClick={() => { void query.refetch(); }}>Retry Collection</Button></div> : null}
     {!query.isPending && !query.error && !query.items.length ? <p className="p-4 text-sm text-muted-foreground">This collection is empty.</p> : null}

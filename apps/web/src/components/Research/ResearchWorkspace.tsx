@@ -13,8 +13,9 @@ import { ResearchSourceLink } from "./ResearchSourceLink";
 export function ResearchWorkspace({ did }: { did: string }) {
   const [source, setSource] = useState<"semble" | "margin">("semble");
   const [refreshing, setRefreshing] = useState(false);
+  const [selection, setSelection] = useState<{ did: string; uri: string }>();
   const cache = useQueryClient();
-  const semble = useSembleCollections();
+  const semble = useSembleCollections({ enabled: source === "semble" });
   const margin = useMarginAnnotations(did, source === "margin");
   const refresh = async () => {
     setRefreshing(true);
@@ -33,7 +34,10 @@ export function ResearchWorkspace({ did }: { did: string }) {
         {semble.isPending ? <p role="status">Loading Semble Collections…</p> : null}
         {semble.error ? <div role="alert" className="space-y-2"><p>{semble.error.message}</p><Button variant="outline" onClick={() => { void semble.refetch(); }}>Retry Semble</Button></div> : null}
         {!semble.isPending && !semble.error && !semble.collections.length ? <div className="py-12 text-center"><h2 className="font-semibold">No Semble Collections Found</h2><p className="mt-2 text-sm text-muted-foreground">Collections saved by this account will appear here.</p></div> : null}
-        <div className="grid gap-4">{semble.collections.map(collection => <ResearchCollection key={collection.uri} collection={collection} />)}</div>
+        <div className="grid gap-4">{semble.collections.map(collection => selection?.did === did && selection.uri === collection.uri ?
+          <ResearchCollection key={collection.uri} collection={collection} onClose={() => setSelection(undefined)} /> :
+          <article key={collection.uri} className="min-w-0 space-y-2 rounded-xl border bg-card/60 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{collection.name}</h2><span className="text-xs text-muted-foreground">{collection.accessType === "CLOSED" ? "Closed" : "Open"} · {collection.cardCount} Items</span></div>{collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}<Button variant="outline" size="sm" aria-label={`Open ${collection.name}`} onClick={() => setSelection({ did, uri: collection.uri })}>Open Collection</Button></article>
+        )}</div>
         {semble.hasNextPage ? <Button variant="outline" disabled={semble.isFetchingNextPage} onClick={() => { void semble.fetchNextPage(); }}>Load More Collections</Button> : null}
       </> : <>
         {margin.isPending ? <p role="status">Loading Margin Annotations…</p> : null}

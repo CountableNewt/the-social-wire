@@ -30,6 +30,7 @@ import { ArticleImageInput, articleImageDimensions } from "./ArticleImageInput";
 import { ResearchWorkspace } from "@/components/Research/ResearchWorkspace";
 import { PublishedArticleView } from "./PublishedArticleView";
 import { ArticleLibrary, type ArticleLibraryTab } from "./ArticleLibrary";
+import { ArticleDraftSaveStatus } from "./ArticleDraftSaveStatus";
 import { ArticlePanelResizeHandle } from "./ArticlePanelResizeHandle";
 import { ArticleBodyViews, type ArticleBodyMode } from "./ArticleBodyViews";
 
@@ -75,7 +76,7 @@ function ArticlesViewer({ did }: { did: string }) {
   const [publishedUrl, setPublishedUrl] = useState<string>();
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
-  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), retry: false });
+  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published", retry: false });
   const publication = publications.data?.find(value => value.uri === draft?.publicationUri);
   const assets = draft?.assets ?? [];
   const draftId = draft?.id;
@@ -248,7 +249,7 @@ function ArticlesViewer({ did }: { did: string }) {
       }} />} /> : publishedArticle ? <PublishedArticleView article={publishedArticle} publications={publications.data ?? []} metadataVisible={metadataVisible} metadataWidth={metadataWidth} onMetadataWidthChange={setMetadataWidth} /> : <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
       {!draft ? <div className="flex min-h-60 flex-1 items-center justify-center p-6 text-muted-foreground">Select a Draft or Create an Article.</div> : <div className="flex min-w-0 shrink-0 flex-col md:min-h-0 md:flex-1 lg:flex-row">
         <section aria-label="Article Editor" aria-busy={busy} className="min-w-0 shrink-0 p-4 sm:p-6 md:min-h-0 md:flex-1 md:overflow-y-auto">
-          <div className="mb-4 flex flex-wrap items-center gap-2"><p role="status" className="mr-auto text-xs text-muted-foreground">{local.status}</p><Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button><Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button></div>
+          <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button><Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button></div>
           {!isPro ? <p className="mb-3 text-xs text-muted-foreground">Article Scheduling Requires Social Wire Pro.</p> : !scheduler.readiness.data?.connected ? <p className="mb-3 text-xs text-muted-foreground">Open Scheduled to Connect Skej.</p> : null}
           {draft.publishingRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">Publication May Have Completed. Check Published Articles Before Taking Further Action.</p> : null}
           {draft.publishingRecordKey ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("publish")); }}>Check Publication</Button> : null}
