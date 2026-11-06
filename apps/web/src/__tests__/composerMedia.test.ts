@@ -76,3 +76,36 @@ it("publishes a privately restored GIF with its local poster while keeping the K
   expect(mocks.resolve).toHaveBeenCalled(); expect(mocks.poster).not.toHaveBeenCalled(); expect(uploads).toBe(1);
   expect(JSON.stringify(record)).not.toContain("private-manifest-key"); expect(JSON.stringify(record)).not.toContain("blob:");
 });
+
+it("prepares native video embeds for media-only posts, replies and quotes", async () => {
+  const { jsonToLex } = await import("@atproto/api");
+  const videoUploads = await import("@/lib/blueskyVideoUpload");
+  const uploaded = jsonToLex({ $type: "blob", ref: { $link: "bafkreigh2akiscaildcv6ubnt36d2bk6bj3fx3xpq6xfj2vgtz3yqjv2zy" }, mimeType: "video/mp4", size: 48 }) as import("@atproto/api").BlobRef;
+  const upload = spyOn(videoUploads, "uploadBlueskyVideo").mockResolvedValue(uploaded); restores.push(() => upload.mockRestore());
+  const blob = new Blob([new Uint8Array(48)], { type: "video/mp4" });
+  const media: ComposerMedia = { kind: "video", id: "stable-video", name: "clip.mp4", original: blob, blob, status: "ready", alt: "A penguin swimming", width: 720, height: 1280, duration: 5 };
+  const subject = { uri: "at://did:plc:bob/app.bsky.feed.post/one", cid: "bafkreigh2akiscaildcv6ubnt36d2bk6bj3fx3xpq6xfj2vgtz3yqjv2zy", author: { did: "did:plc:bob", handle: "bob.test" }, record: { $type: "app.bsky.feed.post", text: "Hi", createdAt: "2026-01-01T00:00:00Z" }, indexedAt: "2026-01-01T00:00:00Z" };
+  const session = sessionFor();
+  const plain = await prepareBlueskyPost({ session, text: "", media });
+  expect(AppBskyFeedPost.validateRecord(plain).success).toBe(true);
+  expect(plain).toMatchObject({ text: "", embed: { $type: "app.bsky.embed.video", alt: media.alt, aspectRatio: { width: 720, height: 1280 } } });
+  const reply = await prepareBlueskyPost({ session, text: "", media, replyTo: subject });
+  expect(AppBskyFeedPost.validateRecord(reply).success).toBe(true);
+  expect(reply).toMatchObject({ reply: { parent: { uri: subject.uri } }, embed: { $type: "app.bsky.embed.video" } });
+  const quote = await prepareBlueskyPost({ session, text: "", media, quoteTo: subject });
+  expect(AppBskyFeedPost.validateRecord(quote).success).toBe(true);
+  expect(quote).toMatchObject({ embed: { $type: "app.bsky.embed.recordWithMedia", record: { record: { uri: subject.uri } }, media: { $type: "app.bsky.embed.video", alt: media.alt } } });
+  expect(upload.mock.calls[0][0]).toMatchObject({ session, key: media.id, video: blob });
+});
+it("keeps video attachments retryable after upload failure and fences changed accounts", async () => {
+  const videoUploads = await import("@/lib/blueskyVideoUpload");
+  const upload = spyOn(videoUploads, "uploadBlueskyVideo").mockRejectedValue(new Error("Video Processing Failed")); restores.push(() => upload.mockRestore());
+  const blob = new Blob([new Uint8Array(48)], { type: "video/mp4" });
+  const media: ComposerMedia = { kind: "video", id: "retry-video", name: "clip.mp4", original: blob, blob, status: "ready", alt: "", width: 720, height: 1280, duration: 5 };
+  const publication = newThreadPublication("did:plc:alice", [{ id: "one", text: "", media }]);
+  await expect(publishBlueskyThread({ session: sessionFor(), publication, assertCurrentAccount: () => {} })).rejects.toThrow("Video Processing Failed");
+  expect(publication.segments[0].draft.media).toBe(media); expect(publication.segments[0].attempted).toBeUndefined();
+  upload.mockClear();
+  await expect(prepareBlueskyPost({ session: sessionFor(), text: "", media, assertCurrentAccount: () => { throw new Error("Your Account Changed"); } })).rejects.toThrow("Your Account Changed");
+  expect(upload).not.toHaveBeenCalled();
+});

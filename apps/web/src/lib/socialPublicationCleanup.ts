@@ -3,6 +3,7 @@ import { deleteSocialDraft, listSocialDrafts } from "./blueskyDraftClient";
 import { loadComposerDraft, saveComposerDraft, type ComposerDraft } from "./composerDraftStorage";
 import { deleteDraftAttachmentManifest, getDraftAttachmentManifest } from "./socialDraftAttachmentClient";
 import { hasDraftGifs, hasPrivateDraftPhotos, socialDraftFingerprint } from "./socialDraftConversion";
+import { hasPrivateDraftVideos } from "./socialDraftVideo";
 
 type Actor = { session: OAuthSession; viewerDid: string; signal?: AbortSignal; assertCurrentActor: () => void };
 
@@ -72,7 +73,7 @@ export async function cleanupPublishedComposition(actor: Actor, context: string,
       cloud.nativeDeleted = true;
       await persist();
     }
-    if (cloud.attachmentManifest || cloud.pendingManifest || hasPrivateDraftPhotos(cloud.nativeDraft) || hasDraftGifs(cloud.nativeDraft)) {
+    if (cloud.attachmentManifest || cloud.pendingManifest || hasPrivateDraftPhotos(cloud.nativeDraft) || hasDraftGifs(cloud.nativeDraft) || hasPrivateDraftVideos(cloud.nativeDraft)) {
       const manifest = await getDraftAttachmentManifest(actor, cloud.id);
       guard();
       if (!manifest.deleted) await deleteDraftAttachmentManifest(actor, cloud.id, manifest.revision);
