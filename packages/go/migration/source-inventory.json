@@ -11849,7 +11849,7 @@
         },
         {
           "path": "packages/spec/__tests__/schema-readiness-deployment.test.ts",
-          "sha256": "49dda4658f7955e73f718d83b676cd32ac2a019347cdf8cd08e7d58583a46532"
+          "sha256": "5aa5fc5e5904bceb1a0d14bb158ca0c3e9e0441dfb19d08aad9b29705ac45915"
         },
         {
           "path": "packages/spec/__tests__/social-draft-contract.test.ts",
