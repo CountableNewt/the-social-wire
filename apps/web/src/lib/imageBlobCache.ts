@@ -2,7 +2,8 @@ import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 
 const DB_NAME = "the-social-wire.image-cache.v1";
 const STORE = "images";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+const STORED_AT_INDEX = "storedAt";
 const MAX_ENTRIES = 400;
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
 
@@ -22,17 +23,30 @@ function openImageCacheDb(): Promise<IDBDatabase> {
     return Promise.reject(new Error("IndexedDB unavailable"));
   }
   if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
+    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: "url" });
+        const store = db.objectStoreNames.contains(STORE)
+          ? request.transaction!.objectStore(STORE)
+          : db.createObjectStore(STORE, { keyPath: "url" });
+        if (!store.indexNames.contains(STORED_AT_INDEX)) {
+          store.createIndex(STORED_AT_INDEX, "storedAt");
         }
       };
-      request.onsuccess = () => resolve(request.result);
+      let blocked = false;
+      request.onblocked = () => {
+        blocked = true;
+        reject(new Error("Image cache upgrade is blocked by another tab"));
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        if (blocked) { db.close(); return; }
+        db.onversionchange = () => { db.close(); dbPromise = null; };
+        resolve(db);
+      };
       request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    });
+    }).catch(error => { dbPromise = null; throw error; });
   }
   return dbPromise;
 }
@@ -75,10 +89,23 @@ async function writeCachedBlob(url: string, blob: Blob): Promise<void> {
         storedAt: Date.now(),
         contentType: blob.type || "application/octet-stream",
       } satisfies CachedImageRow);
+      // Keep eviction inside the write transaction so concurrent image arrivals
+      // share one consistent count. The index visits keys, never cached blobs.
+      const count = store.count();
+      count.onsuccess = () => {
+        let excess = count.result - MAX_ENTRIES;
+        if (excess <= 0) return;
+        const oldest = store.index(STORED_AT_INDEX).openKeyCursor();
+        oldest.onsuccess = () => {
+          const cursor = oldest.result;
+          if (!cursor || excess <= 0) return;
+          store.delete(cursor.primaryKey);
+          if (--excess > 0) cursor.continue();
+        };
+      };
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error("IndexedDB write failed"));
     });
-    await trimImageCache();
   } catch {
     /* best-effort cache */
   }
@@ -90,33 +117,6 @@ function imageFetchUrl(url: string): string {
     return new URL(url, window.location.href).href;
   } catch {
     return url;
-  }
-}
-
-async function trimImageCache(): Promise<void> {
-  try {
-    const db = await openImageCacheDb();
-    const rows = await new Promise<CachedImageRow[]>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const store = tx.objectStore(STORE);
-      const req = store.getAll();
-      req.onsuccess = () => resolve((req.result as CachedImageRow[]) ?? []);
-      req.onerror = () => reject(req.error ?? new Error("IndexedDB read failed"));
-    });
-    if (rows.length <= MAX_ENTRIES) return;
-    rows.sort((a, b) => a.storedAt - b.storedAt);
-    const toDelete = rows.slice(0, rows.length - MAX_ENTRIES);
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      for (const row of toDelete) {
-        store.delete(row.url);
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error("IndexedDB trim failed"));
-    });
-  } catch {
-    /* ignore */
   }
 }
 

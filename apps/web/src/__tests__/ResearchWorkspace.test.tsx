@@ -3,9 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Semble from "@/hooks/useSembleReadLater";
 import * as Margin from "@/hooks/research/useMarginAnnotations";
+import * as Auth from "@/hooks/useAuth";
+import { SembleReadClient } from "@/lib/sembleClient";
 import { ResearchWorkspace } from "@/components/Research/ResearchWorkspace";
 const restores: (() => void)[] = [];
 let client: QueryClient;
+let restoreItems: () => void;
 const retry = mock(async () => {});
 function collections(value: unknown) { const spy = spyOn(Semble, "useSembleCollections").mockReturnValue(value as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => spy.mockRestore()); }
 function annotations(value: unknown) { const spy = spyOn(Margin, "useMarginAnnotations").mockReturnValue(value as ReturnType<typeof Margin.useMarginAnnotations>); restores.push(() => spy.mockRestore()); }
@@ -13,16 +16,38 @@ beforeEach(() => {
   client = new QueryClient(); retry.mockClear();
   collections({ collections: [{ uri: "at://did:plc:writer/network.cosmik.collection/one", name: "Research Sources", cardCount: 1, accessType: "OPEN" }], isPending: false, error: null, hasNextPage: false, refetch: retry });
   const items = spyOn(Semble, "useSembleCollectionItems").mockReturnValue({ items: [{ id: "one", title: "Promising Source", url: "https://source.test", cardType: "URL" }], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollectionItems>); restores.push(() => items.mockRestore());
+  restoreItems = () => items.mockRestore();
   annotations({ data: [{ uri: "annotation", motivation: "highlighting", title: "Revisit This Essay", quote: "A Passage", body: "My Note", source: "javascript:alert(1)", tags: ["writing"], createdAt: "2026-11-01T12:00:00Z" }], isPending: false, error: null, refetch: retry });
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-function show() { render(<QueryClientProvider client={client}><ResearchWorkspace did="did:plc:writer" /></QueryClientProvider>); }
+function show() { return render(<QueryClientProvider client={client}><ResearchWorkspace did="did:plc:writer" /></QueryClientProvider>); }
 it("browses Semble and Margin while suppressing unsafe source links", () => {
   show(); expect(screen.getByRole("heading", { name: "Research Sources" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Open Research Sources" }));
   expect(screen.getByRole("link", { name: "Open Source" }).getAttribute("href")).toBe("https://source.test");
   fireEvent.click(screen.getByRole("button", { name: "Margin" }));
   expect(screen.getByText("“A Passage”")).toBeTruthy(); expect(screen.getByText("My Note")).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Open Source" })).toBeNull();
+});
+it("loads only an explicitly opened collection from a large overview", async () => {
+  restoreItems();
+  const session = { did: "did:plc:writer" };
+  const auth = spyOn(Auth, "useAuth").mockReturnValue({ session, getOAuthSession: () => session, oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
+  const request = spyOn(SembleReadClient.prototype, "getCollection").mockImplementation(async ({ collectionUri }) => ({ collection: { uri: collectionUri, name: "Collection", cardCount: 0 }, items: [], membershipComplete: true, recordLinksComplete: true })); restores.push(() => request.mockRestore());
+  collections({ collections: Array.from({ length: 100 }, (_, i) => ({ uri: `at://did:plc:writer/network.cosmik.collection/${i}`, name: `Collection ${i}`, cardCount: 100, accessType: "OPEN" })), isPending: false, error: null, hasNextPage: false });
+  show();
+  expect(screen.getAllByText("Open · 100 Items")).toHaveLength(100);
+  expect(request).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Open Collection 0" }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  expect(request.mock.calls[0]![0].collectionUri).toEndWith("/0");
+  fireEvent.click(screen.getByRole("button", { name: "Open Collection 99" }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  expect(request.mock.calls[1]![0].collectionUri).toEndWith("/99");
+  expect(screen.getAllByRole("button", { name: "Close Collection" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Margin" }));
+  expect(screen.queryByRole("button", { name: "Close Collection" })).toBeNull();
+  expect(request).toHaveBeenCalledTimes(2);
 });
 it("moves the selected source styling together with the visible research content", () => {
   show();
@@ -42,6 +67,29 @@ it("moves the selected source styling together with the visible research content
   expect(margin.getAttribute("aria-pressed")).toBe("false");
   expect(margin.classList.contains("bg-secondary")).toBe(false);
   expect(screen.getByRole("heading", { name: "Research Sources" })).toBeTruthy();
+});
+it("does not retain an opened collection when the account changes", () => {
+  const view = show();
+  fireEvent.click(screen.getByRole("button", { name: "Open Research Sources" }));
+  expect(screen.getByText("Promising Source")).toBeTruthy();
+  view.rerender(<QueryClientProvider client={client}><ResearchWorkspace did="did:plc:another" /></QueryClientProvider>);
+  expect(screen.queryByText("Promising Source")).toBeNull();
+  expect(screen.getByRole("button", { name: "Open Research Sources" })).toBeTruthy();
+});
+it("cancels an opened collection load when switching to Margin", async () => {
+  restoreItems();
+  const session = { did: "did:plc:writer" };
+  const auth = spyOn(Auth, "useAuth").mockReturnValue({ session, getOAuthSession: () => session, oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
+  const request = spyOn(SembleReadClient.prototype, "getCollection").mockImplementation(() => new Promise(() => {})); restores.push(() => request.mockRestore());
+  show();
+  fireEvent.click(screen.getByRole("button", { name: "Open Research Sources" }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole("status").textContent).toBe("Loading Collection…");
+  const signal = request.mock.calls[0]![0].signal;
+  fireEvent.click(screen.getByRole("button", { name: "Margin" }));
+  expect(signal?.aborted).toBe(true);
+  expect(screen.queryByText("Loading Collection…")).toBeNull();
+  expect(Semble.useSembleCollections).toHaveBeenLastCalledWith({ enabled: false });
 });
 it("keeps Margin usable after Semble failure and offers retry", async () => {
   collections({ collections: [], isPending: false, error: new Error("Semble Unavailable"), refetch: retry }); show();
