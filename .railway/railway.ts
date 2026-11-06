@@ -223,9 +223,7 @@ const indexingBuild = {
   watchPatterns: [
     "/.railway/**",
     "/services/indexing-worker/**",
-    "/services/jetstream-ingest/Package.swift",
-    "/services/jetstream-ingest/Package.resolved",
-    "/services/jetstream-ingest/Sources/**",
+    "/tools/schema-ready/**",
     "/database/migrations/**",
   ],
 };
@@ -279,11 +277,8 @@ export default defineRailway((context) => {
     build: {
       builder: "DOCKERFILE",
       dockerfilePath: "/services/jetstream-ingest/Dockerfile",
-      watchPatterns: [
-        "/.railway/**",
-        "/services/jetstream-ingest/**",
-        "/database/migrations/**",
-      ],
+      // Retain ownership and history without automatic restarts after retirement.
+      watchPatterns: ["/__global_ingress_retired__/**"],
     },
     deploy: longRunningDeploy,
     replicas: { [profile.ingressRegion]: 2 },
@@ -298,7 +293,8 @@ export default defineRailway((context) => {
 
   const projectionPool = service("Projection Pool", {
     source: github(repository, { branch: profile.branch, rootDirectory: "/" }),
-    build: indexingBuild,
+    // This service is stopped during the provider cutover, not deleted by omission.
+    build: { ...indexingBuild, watchPatterns: ["/__global_projection_retired__/**"] },
     deploy: longRunningDeploy,
     replicas: { [profile.workerRegion]: profile.projectionReplicas },
     env: {
@@ -317,6 +313,9 @@ export default defineRailway((context) => {
       ...appViewWorkerEnvironment,
       ...profile.coordinator,
       INDEXING_WORKER_ROLE: "coordinator",
+      THIN_APPVIEW_WORKER_MODE: "maintenance",
+      THIN_APPVIEW_RSS_FEED_POLL_ENABLED: "true",
+      OPERATIONS_RECOVERY_ENABLED: "false",
     },
   });
 

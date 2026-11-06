@@ -5,7 +5,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "../../..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
-describe("Active ingress Swift image dependencies", () => {
+describe("Archived ingress Swift image dependencies", () => {
   it("builds both native products with a frozen dependency graph and native zstd", () => {
     const dockerfile = read("services/jetstream-ingest/Dockerfile");
     expect(dockerfile).toContain("FROM swift:6.4.2-jammy AS builder");
@@ -23,7 +23,7 @@ describe("Active ingress Swift image dependencies", () => {
     expect(dockerfile).not.toContain(".swiftpm");
   });
 
-  it("rebuilds active ingress from canonical Swift inputs and migrations", () => {
+  it("keeps the archived standalone ingress build reproducible", () => {
     const config = JSON.parse(read("railway/jetstream-ingest.json"));
     expect(config.build.dockerfilePath).toBe("/services/jetstream-ingest/Dockerfile");
     expect(config.build.watchPatterns).toContain("/services/jetstream-ingest/**");
@@ -31,10 +31,11 @@ describe("Active ingress Swift image dependencies", () => {
     expect(config.build.watchPatterns).not.toContain("/packages/go/**");
   });
 
-  it("includes native ingress inputs in consolidated IaC", () => {
+  it("prevents automatic global ingestion restarts in consolidated IaC", () => {
     const iac = read(".railway/railway.ts");
     const ingress = iac.slice(iac.indexOf('const ingressController = service('), iac.indexOf('const projectionPool = service('));
-    expect(ingress).toContain('"/services/jetstream-ingest/**"');
+    expect(ingress).toContain('"/__global_ingress_retired__/**"');
+    expect(ingress).not.toContain('"/services/jetstream-ingest/**"');
     expect(ingress).not.toContain('"/packages/go/**"');
     // The dormant standalone Wire ingress is outside this migration.
     const dormant = JSON.parse(read("railway/wire-jetstream-ingest.json"));
