@@ -117,7 +117,21 @@ export async function uploadBlueskyVideo(args: BlueskyVideoUploadArgs): Promise<
     const url = new URL(`/xrpc/${method}`, VIDEO_ORIGIN);
     for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
     const response = await fetch(url, { method: body === undefined ? "GET" : "POST", headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { "Content-Type": contentType } : {}) }, body, signal, credentials: "omit", redirect: "error" }); guard(args);
-    if (!response.ok) throw new Error(`Bluesky video service failed (${response.status}). Please retry.`);
+    if (!response.ok) {
+      const details = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
+      guard(args);
+      const error = typeof details?.error === "string" ? details.error : undefined;
+      const code = error?.toLowerCase().replace(/[^a-z]/g, "");
+      // A confirmed missing/expired reservation cannot be resumed. Preserve IDs
+      // for network, auth, rate-limit and server failures so those retries are safe.
+      const existingJob = ["app.bsky.video.uploadPart", "app.bsky.video.finishUpload", "app.bsky.video.getUploadStatus", "app.bsky.video.getJobStatus"].includes(method);
+      const missing = response.status === 404 || response.status === 410 || !!code && ["notfound", "uploadnotfound", "uploadsessionnotfound", "jobnotfound", "uploadexpired", "jobexpired", "uploadaborted", "uploadfailed", "invalidjobid"].includes(code);
+      if (existingJob && response.status >= 400 && response.status < 500 && ![401, 403, 429].includes(response.status) && missing) {
+        pendingUploads.delete(key);
+        pendingJobs.delete(key);
+      }
+      throw Object.assign(new Error(`Bluesky video service failed (${response.status}). Please retry.`), { status: response.status, error });
+    }
     const data = await response.json(); guard(args); return data as T;
   }
   let upload: Upload | undefined;
@@ -165,6 +179,7 @@ export async function uploadBlueskyVideo(args: BlueskyVideoUploadArgs): Promise<
           break;
         } catch (error) {
           guard(args);
+          if (!pendingUploads.has(key)) throw error;
           const status = await request<{ state: string; jobStatus?: AppBskyVideoDefs.JobStatus }>("app.bsky.video.getUploadStatus", uploadToken, undefined, { jobId: upload.jobId });
           if (status.state === "completed" && status.jobStatus) { job = status.jobStatus; break; }
           if (["failed", "aborted", "expired"].includes(status.state)) { pendingUploads.delete(key); throw new Error("Bluesky could not finish this video upload. Please retry."); }

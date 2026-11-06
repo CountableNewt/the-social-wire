@@ -17,11 +17,12 @@ function video(): Blob {
 function setup(options: {
   did?: string; processing?: boolean; failed?: boolean; alreadyExists?: boolean; foreignPoll?: boolean;
   invalidRef?: boolean; invalidPlan?: boolean; invalidReceipt?: boolean; oversizedOutput?: boolean;
-  failPartOnce?: boolean; afterRequest?: () => void;
+  failPartOnce?: boolean; finishLostOnce?: boolean; afterRequest?: () => void;
+  failRequestOnce?: { method: string; status: number; error?: string };
 } = {}) {
   const did = options.did ?? "did:plc:video-uploader";
   const calls: string[] = [], parts: number[] = [];
-  let failedPart = false;
+  let failedPart = false, failedRequest = false, finishLost = false;
   const session = {
     did,
     getTokenInfo: async () => ({ aud: "https://viewer.pds.example" }),
@@ -37,6 +38,10 @@ function setup(options: {
     const url = new URL(String(input));
     expect(url.origin).toBe("https://video.bsky.app"); expect(init?.credentials).toBe("omit"); expect(init?.redirect).toBe("error");
     const method = url.pathname.split("/").at(-1)!; calls.push(method); options.afterRequest?.();
+    if (options.failRequestOnce?.method === method && !failedRequest) {
+      failedRequest = true;
+      return Response.json({ error: options.failRequestOnce.error ?? "ServiceFailure" }, { status: options.failRequestOnce.status });
+    }
     if (method === "app.bsky.video.getUploadLimits") return Response.json({ canUpload: true });
     if (method === "app.bsky.video.startUpload") return Response.json({ jobId: "upload", partCount: options.invalidPlan ? 5 : Math.ceil(video().size / 32), partSizeBytes: 32 });
     if (method === "app.bsky.video.uploadPart") {
@@ -44,7 +49,10 @@ function setup(options: {
       if (options.failPartOnce && partNumber === 2 && !failedPart) { failedPart = true; throw new TypeError("Connection lost"); }
       return Response.json({ partNumber: options.invalidReceipt ? 9 : partNumber, sizeBytes: (init?.body as Blob).size });
     }
-    if (method === "app.bsky.video.finishUpload") return Response.json({ jobStatus: job });
+    if (method === "app.bsky.video.finishUpload") {
+      if (options.finishLostOnce && !finishLost) { finishLost = true; throw new TypeError("Lost finish response"); }
+      return Response.json({ jobStatus: job });
+    }
     if (method === "app.bsky.video.getJobStatus") return Response.json({ jobStatus: { ...job, state: "JOB_STATE_COMPLETED", jobId: options.foreignPoll ? "different-processing-job" : job.jobId } });
     if (method === "app.bsky.video.abortUpload") return Response.json({ state: "aborted" });
     throw new Error(`Unexpected request ${method}`);
@@ -79,6 +87,43 @@ describe("shared Bluesky video upload", () => {
       expect(s.parts).toEqual([1, 2, 2]);
       expect(s.calls.filter(call => call === "app.bsky.video.startUpload")).toHaveLength(1);
     } finally { s.fetchSpy.mockRestore(); }
+  });
+  it("starts a fresh upload after a confirmed missing or expired reservation", async () => {
+    for (const failRequestOnce of [
+      { method: "app.bsky.video.uploadPart", status: 410 },
+      { method: "app.bsky.video.uploadPart", status: 400, error: "UploadExpired" },
+      { method: "app.bsky.video.finishUpload", status: 404 },
+      { method: "app.bsky.video.finishUpload", status: 400, error: "UploadAborted" },
+      { method: "app.bsky.video.getUploadStatus", status: 404 },
+    ]) {
+      const s = setup({ failRequestOnce, finishLostOnce: failRequestOnce.method.endsWith("getUploadStatus") });
+      const args = { session: s.session, key: crypto.randomUUID(), video: video() };
+      try {
+        await expect(uploadBlueskyVideo(args)).rejects.toThrow("video service failed");
+        await uploadBlueskyVideo(args);
+        expect(s.calls.filter(call => call === "app.bsky.video.startUpload")).toHaveLength(2);
+      } finally { s.fetchSpy.mockRestore(); }
+    }
+  });
+  it("starts over after the processing job disappears instead of polling that ID forever", async () => {
+    const s = setup({ processing: true, failRequestOnce: { method: "app.bsky.video.getJobStatus", status: 404 } });
+    const args = { session: s.session, key: crypto.randomUUID(), video: video() };
+    try {
+      await expect(uploadBlueskyVideo(args)).rejects.toThrow("video service failed (404)");
+      await uploadBlueskyVideo(args);
+      expect(s.calls.filter(call => call === "app.bsky.video.startUpload")).toHaveLength(2);
+    } finally { s.fetchSpy.mockRestore(); }
+  });
+  it("preserves a reservation for auth, quota and transient server errors", async () => {
+    for (const status of [401, 403, 429, 503]) {
+      const s = setup({ failRequestOnce: { method: "app.bsky.video.uploadPart", status, error: "NotFound" } });
+      const args = { session: s.session, key: crypto.randomUUID(), video: video() };
+      try {
+        await expect(uploadBlueskyVideo(args)).rejects.toThrow("video service failed");
+        await uploadBlueskyVideo(args);
+        expect(s.calls.filter(call => call === "app.bsky.video.startUpload")).toHaveLength(1);
+      } finally { s.fetchSpy.mockRestore(); }
+    }
   });
   it("does not adopt a different job returned while polling", async () => {
     const s = setup({ processing: true, foreignPoll: true });
