@@ -5,6 +5,7 @@ import { gifEmbedURI, klipyMediaURL, type ComposerPhoto, type ComposerMedia, typ
 import { assertDraftAttachmentActor, describeDraftAttachment, downloadDraftAttachment, uploadDraftAttachment, draftAttachmentSHA256, isRetiredDraftAttachment, type DraftAttachmentActor, type DraftAttachmentManifest, type DraftAttachmentRef } from "./socialDraftAttachmentClient";
 
 import { getGifFile, validateGifFile } from "./klipyClient";
+import { restoreLocalDraftVideo, videoToDraftEmbed } from "./socialDraftVideo";
 
 const GIF_METADATA = "app.thesocialwire.socialDraft.gif";
 const DEVICE_KEY = "the-social-wire.social-draft-device.v1";
@@ -73,11 +74,11 @@ export function socialDraftToSegments(draft: AppBskyDraftDefs.Draft, localSegmen
     const images = post.embedImages ?? [];
     const paths = images.map(image => image.localRef.path);
     const unavailableImages = images.length > 4 || new Set(paths).size !== paths.length || images.some(image => !photosByPath.get(image.localRef.path));
-    const mixedMedia = !!images.length && !!post.embedExternals?.length;
+    const mixedMedia = [images.length, post.embedExternals?.length, post.embedVideos?.length].filter(Boolean).length > 1;
     let media: ThreadSegment["media"];
     if (images.length && !unavailableImages && !mixedMedia) {
       media = { kind: "photos", photos: images.map(image => ({ ...photosByPath.get(image.localRef.path)!, alt: image.alt ?? "" })) };
-    } else if (!images.length && post.embedExternals?.length === 1) {
+    } else if (!mixedMedia && post.embedExternals?.length === 1) {
       const uri = post.embedExternals[0].uri;
       const native = nativeGifMetadata(post.embedExternals[0]) ?? restoreGif(uri);
       const candidates = (localSegments ?? []).filter(segment => matchingGif(segment.media, uri));
@@ -96,8 +97,8 @@ export function socialDraftToSegments(draft: AppBskyDraftDefs.Draft, localSegmen
         } else media = metadata;
       }
     }
-    // The current composer has no video editor; preserve all video/gallery data.
-    const unavailableVideos = !!post.embedVideos?.length || !!(post as AppBskyDraftDefs.DraftPost & { embedGallery?: unknown }).embedGallery;
+    if (!mixedMedia && post.embedVideos?.length === 1) media = restoreLocalDraftVideo(draft, post.embedVideos[0], localSegments);
+    const unavailableVideos = (!!post.embedVideos?.length && media?.kind !== "video") || !!(post as AppBskyDraftDefs.DraftPost & { embedGallery?: unknown }).embedGallery;
     const unavailableExternal = (post.embedExternals?.length ?? 0) > 1 || !!post.embedExternals?.some(external => {
       try { const url = new URL(external.uri); return url.protocol !== "https:" || !!url.username || !!url.password || (url.host === "static.klipy.com" && media?.kind !== "gif"); }
       catch { return true; }
@@ -129,12 +130,19 @@ export function segmentsToSocialDraft(segments: ThreadSegment[], deviceId: strin
     // Inaccessible native attachments survive until the explicit removal helper.
     if (!segment.media && !segment.unavailableDraftMedia) {
       delete post.embedImages;
+      delete post.embedVideos;
       if (post.embedExternals?.length === 1 && restoreGif(post.embedExternals[0].uri)) delete post.embedExternals;
     }
     if (segment.media?.kind === "photos" && !segment.unavailableDraftMedia) post.embedImages = segment.media.photos.map(photo => {
       const originalImage = post.embedImages?.find(image => (photo.privateAttachment ? (image.localRef.path === privatePhotoPath(photo) || image.localRef.path.startsWith(`socialwire-private://v1/photo/${photo.privateAttachment.original.assetId}/`)) : image.localRef.path.endsWith(`/${encodeURIComponent(photo.id)}`)));
       return { ...originalImage, localRef: photo.privateAttachment ? { ...originalImage?.localRef, path: privatePhotoPath(photo) } : originalImage?.localRef ?? { path: `socialwire://${deviceId}/${encodeURIComponent(photo.id)}` }, ...(originalImage && originalImage.alt === undefined && photo.alt === "" ? {} : { alt: photo.alt }) };
     });
+    if (segment.media && !segment.unavailableDraftMedia) {
+      if (segment.media.kind !== "photos") delete post.embedImages;
+      if (segment.media.kind !== "video") delete post.embedVideos;
+      if (segment.media.kind !== "gif") delete post.embedExternals;
+    }
+    if (segment.media?.kind === "video" && !segment.unavailableDraftMedia) post.embedVideos = [videoToDraftEmbed(segment.media, deviceId, post.embedVideos)];
     if (segment.media?.kind === "gif") {
       const uri = gifEmbedURI(segment.media.asset);
       const external = { ...post.embedExternals?.find(external => external.uri === uri), uri };

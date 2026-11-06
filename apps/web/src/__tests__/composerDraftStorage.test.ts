@@ -40,3 +40,13 @@ it("serializes writes and makes interrupted preparation explicitly retryable", a
   expect(restored?.segments[0].text).toBe("new");
   expect(restored?.segments[0].media).toMatchObject({ photos: [{ status: "failed", error: "Photo Preparation Was Interrupted. Retry." }] });
 });
+it("restores interrupted video preparation with bytes and an explicit retry state", async () => {
+  const did = "did:plc:video-draft";
+  const original = new Blob(["saved video bytes"], { type: "video/mp4" });
+  await saveComposerDraft(did, "video", { version: 1, did, segments: [{ id: "one", text: "", media: { kind: "video", id: "stable-video", name: "clip.mp4", original, status: "preparing", alt: "A mountain" } }] });
+  const restored = await loadComposerDraft(did, "video");
+  const video = restored?.segments[0].media;
+  expect(video).toMatchObject({ kind: "video", id: "stable-video", status: "failed", error: "Video Preparation Was Interrupted. Retry.", alt: "A mountain" });
+  if (video?.kind !== "video") throw new Error("Missing video");
+  expect(await video.original.text()).toBe("saved video bytes");
+});
