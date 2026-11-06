@@ -18,7 +18,7 @@ import ThinAppViewCore
     func discover(scope: PublicContentDiscoveryScope) async throws -> Int { try await probe.stall(); return 0 }
   }
 
-  @Test func coldBootstrapFinishesFastPDSWhileProviderIsStalled() async throws {
+  @Test func coldBootstrapReturnsWithoutPDSContentScanWhileProviderIsStalled() async throws {
     let probe = Probe(), logger = Logger(label: "public-bootstrap.test")
     let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
     defer { try? FileManager.default.removeItem(atPath: path) }
@@ -28,7 +28,7 @@ import ThinAppViewCore
     let http = HTTPClient(eventLoopGroupProvider: .singleton)
     let service = ThinAppViewEnrollService(store: store, indexer: indexer, httpClient: http,
       plcURL: "https://plc.directory", config: config, logger: logger,
-      publicContentProvider: StalledProvider(probe: probe), publicContentPDS: { _, recent in await probe.enumerate(recentOnly: recent) })
+      publicContentProvider: StalledProvider(probe: probe), publicContentDiscoveryMode: .microcosm, publicContentPDS: { _, recent in await probe.enumerate(recentOnly: recent) })
     let enrollment = BootstrapEnrollment.start {
       _ = try? await service.refreshPublicContentFast(authorDid: "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
         publicationAtUri: "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/site.standard.publication/main")
@@ -42,7 +42,7 @@ import ThinAppViewCore
     }
     #expect(await enrollment.isFinished)
     #expect(await probe.provider == 1)
-    #expect(await probe.recent == 1)
+    #expect(await probe.recent == 0)
     await service.shutdown()
     try await http.shutdown()
   }

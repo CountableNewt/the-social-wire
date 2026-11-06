@@ -6,9 +6,10 @@ import Logging
 import ThinAppViewCore
 
 actor ThinAppViewEnrollService {
-  private let backfill: ThinAppViewEnrollBackfill
   private let publicRefresh: ScopedContentRefresh
-  private let publicHistory: ScopedContentHistory
+  private let publicHistory: ScopedContentHistory?
+  private let discoveryMode: PublicContentDiscoveryMode
+  private let knownScopes: @Sendable (AuthContext, [String]) async -> [PublicContentDiscoveryScope]
   private let skyreaderIngestion: ThinAppViewSkyreaderIngestionService?
   private let config: ThinAppViewConfig
   private let logger: Logger
@@ -22,25 +23,28 @@ actor ThinAppViewEnrollService {
     logger: Logger,
     skyreaderIngestion: ThinAppViewSkyreaderIngestionService? = nil,
     publicContentProvider: (any PublicContentDiscovering)? = nil,
+    publicContentDiscoveryMode: PublicContentDiscoveryMode = .off,
+    knownPublicContentScopes: @escaping @Sendable (AuthContext, [String]) async -> [PublicContentDiscoveryScope] = { _, _ in [] },
     publicContentPDS: (@Sendable (String, Bool) async throws -> Int)? = nil
   ) {
-    let backfill = ThinAppViewEnrollBackfill(
-      store: store,
-      indexer: indexer,
-      httpClient: httpClient,
-      plcURL: plcURL,
-      config: config,
-      logger: logger
-    )
-    self.backfill = backfill
-    let enumerate: @Sendable (String, Bool) async throws -> Int = publicContentPDS ?? { authorDid, recent in
-      try await backfill.enroll(authorDids: [authorDid], recentOnly: recent)
-    }
-    self.publicRefresh = ScopedContentRefresh(provider: publicContentProvider, logger: logger) { authorDid in
-      try await enumerate(authorDid, true)
-    }
-    self.publicHistory = ScopedContentHistory(logger: logger) { authorDid in
-      try await enumerate(authorDid, false)
+    self.discoveryMode = publicContentDiscoveryMode
+    self.knownScopes = knownPublicContentScopes
+    if publicContentDiscoveryMode == .microcosm {
+      // Provider mode never constructs a PDS content enumerator or history job.
+      self.publicRefresh = ScopedContentRefresh(provider: publicContentProvider, logger: logger)
+      self.publicHistory = nil
+    } else {
+      let backfill = ThinAppViewEnrollBackfill(store: store, indexer: indexer, httpClient: httpClient,
+        plcURL: plcURL, config: config, logger: logger)
+      let enumerate: @Sendable (String, Bool) async throws -> Int = publicContentPDS ?? { authorDid, recent in
+        try await backfill.enroll(authorDids: [authorDid], recentOnly: recent)
+      }
+      self.publicRefresh = ScopedContentRefresh(provider: nil, logger: logger) { authorDid in
+        try await enumerate(authorDid, true)
+      }
+      self.publicHistory = ScopedContentHistory(logger: logger) { authorDid in
+        try await enumerate(authorDid, false)
+      }
     }
     self.skyreaderIngestion = skyreaderIngestion
     self.config = config
@@ -61,7 +65,7 @@ actor ThinAppViewEnrollService {
     guard authorDid != PublicationLexicons.rssAuthorDid else { return 0 }
     let scope = try Self.discoveryScope(authorDid: authorDid, publicationAtUri: publicationAtUri,
       publicationScopeAtUris: publicationScopeAtUris, publicationSiteUrls: publicationSiteUrls)
-    await publicHistory.schedule(authorDid: authorDid)
+    await publicHistory?.schedule(authorDid: authorDid)
     return try await publicRefresh.refresh(scope: scope)
   }
 
@@ -70,15 +74,17 @@ actor ThinAppViewEnrollService {
     guard authorDid != PublicationLexicons.rssAuthorDid else { return 0 }
     let scope = try Self.discoveryScope(authorDid: authorDid, publicationAtUri: publicationAtUri,
       publicationScopeAtUris: publicationScopeAtUris, publicationSiteUrls: publicationSiteUrls)
-    await publicHistory.schedule(authorDid: authorDid)
+    await publicHistory?.schedule(authorDid: authorDid)
     if !scope.publicationKeys.isEmpty {
       Task { _ = try? await publicRefresh.refresh(scope: scope) }
     }
+    // A cold bootstrap emits cached/empty entries while provider work continues.
+    guard discoveryMode != .microcosm else { return 0 }
     return try await publicRefresh.refresh(scope: PublicContentDiscoveryScope(authorDid: authorDid, publicationKeys: []))
   }
 
   func shutdown() async {
-    async let history: Void = publicHistory.shutdown()
+    async let history: Void? = publicHistory?.shutdown()
     async let refresh: Void = publicRefresh.shutdown()
     _ = await (history, refresh)
   }
@@ -95,8 +101,17 @@ actor ThinAppViewEnrollService {
     .prefix(config.maxEnrollAuthors)
 
     var indexed = 0
-    for author in uniqueAuthors { await publicHistory.schedule(authorDid: author) }
-    if recentOnly {
+    if discoveryMode == .microcosm {
+      // Catalog resolution still uses authoritative request-scoped PDS reads;
+      // content enrollment only uses publication scopes already known to it.
+      let scopes = await knownScopes(auth, Array(uniqueAuthors))
+      for scope in scopes.prefix(8) where !scope.publicationKeys.isEmpty {
+        Task { _ = try? await publicRefresh.refresh(scope: scope) }
+      }
+    } else {
+      for author in uniqueAuthors { await publicHistory?.schedule(authorDid: author) }
+    }
+    if discoveryMode != .microcosm, recentOnly {
       for author in uniqueAuthors where ThinAppViewEnrollBackfill.isBackfillEligibleAuthorDid(author)
         && author != PublicationLexicons.rssAuthorDid {
         indexed += try await publicRefresh.refresh(scope: PublicContentDiscoveryScope(authorDid: author, publicationKeys: []))
@@ -116,7 +131,7 @@ actor ThinAppViewEnrollService {
     }
 
     logger.info(
-      "Enrollment backfill complete",
+      "Scoped enrollment scheduled",
       metadata: [
         "viewer": .string(auth.did),
         "authors": .stringConvertible(uniqueAuthors.count),
