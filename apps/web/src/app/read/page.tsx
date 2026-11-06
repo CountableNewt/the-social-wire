@@ -8,7 +8,7 @@ const FinanceExperience = dynamic(() => import("@/components/FinanceExperience")
 import { useEffect, useState } from "react";
 import { navigateTopicFeed } from "@/lib/topicFeedNavigation";
 import ReadPubPage from "./[...pubId]/ReadPubPage";
-import { useWireFeedCatalog } from "@/hooks/useWireFeed";
+import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 import {
   isReaderFeedSelection,
   loadReaderFeedSelection,
@@ -28,8 +28,8 @@ function ReadIndexContent() {
   const router = useRouter();
   const list = params.get("list");
   const folder = params.get("folder");
-  const feed = params.get("feed");
-  const catalog = useWireFeedCatalog({ enabled: feed === "wire" });
+  const requestedFeed = params.get("feed");
+  const feed = isRetiredReaderFeed(requestedFeed) ? "subscribed" : requestedFeed;
   const [selectionState, setSelectionState] = useState<{
     loaded: boolean;
     feed: ReaderFeedSelection | null;
@@ -46,6 +46,13 @@ function ReadIndexContent() {
   const rememberedFeed = selectionState.feed;
 
   useEffect(() => {
+    if (!isRetiredReaderFeed(requestedFeed)) return;
+    const next = new URLSearchParams(params.toString());
+    next.set("feed", "subscribed");
+    router.replace(`/read?${next.toString()}`);
+  }, [requestedFeed, params, router]);
+
+  useEffect(() => {
     if (!selectionState.loaded || list || folder || feed || !rememberedFeed) return;
     router.replace(`/read?feed=${rememberedFeed}`);
   }, [feed, list, folder, rememberedFeed, router, selectionState.loaded]);
@@ -59,21 +66,8 @@ function ReadIndexContent() {
       />
     );
   }
-  const wireAvailable =
-    catalog.data?.enabled === true && catalog.data.available === true;
-  if (feed === "wire") {
-    if (wireAvailable) return <ReadPubPage key="wire" wireFeed />;
-    return (
-      <div className="flex h-full flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
-        {catalog.isLoading ? "Loading The Wire…" : "The Wire is unavailable."}
-      </div>
-    );
-  }
   if (feed === "sports") return <SportsExperience key="sports" feedID={params.get("sportsFeed") || "sports"} onFeedChange={id => navigateTopicFeed("sports", id, params)} />;
   if (feed === "finance") return <FinanceExperience key="finance" feedID={params.get("financeFeed") || "finance"} onFeedChange={id => navigateTopicFeed("finance", id, params)} />;
-  if (feed === "circle") {
-    return <ReadPubPage key="circle" circleFeed />;
-  }
   if (feed && !isReaderFeedSelection(feed)) {
     return (
       <div className="flex h-full flex-1 items-center justify-center p-8 text-sm text-muted-foreground">

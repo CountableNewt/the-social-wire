@@ -126,9 +126,18 @@ describe("feed display preference persistence", () => {
     expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.visibleFeeds).toEqual([]);
   });
 
-  for (const feed of ["wire", "circle", "social", "podcasts"] as const) {
+  it.each(["wire", "circle"] as const)("ignores attempts to reactivate retired %s preferences", feed => {
+    const { result } = renderHook(useSettingsAndSidebar, { wrapper });
+    act(() => result.current.settings.setDiscoveryFeedVisible(feed, true));
+    expect(upsertPreferences).not.toHaveBeenCalled();
+    expect(result.current.sidebar.preferences.showWire).toBe(false);
+    expect(result.current.sidebar.preferences.showCircle).toBe(false);
+    expect(queryClient.getQueryData<RepoRecord<PreferencesRecord>>(ACCOUNT_PREFERENCES_QUERY_KEY)).toEqual(initial);
+  });
+
+  for (const feed of ["social", "podcasts"] as const) {
     const field = ({ wire: "showWire", circle: "showCircle", social: "showSocial", podcasts: "showPodcasts" } as const)[feed];
-    const otherField = feed === "wire" ? "showCircle" : "showWire";
+    const otherField = "showWire";
 
     it(`persists hiding ${feed} and shares the committed record with another observer`, async () => {
       const request = deferred<RepoRecord<PreferencesRecord>>();
@@ -143,7 +152,7 @@ describe("feed display preference persistence", () => {
       });
       expect(upsertPreferences.mock.calls[0]![0]).toMatchObject({
         [field]: false,
-        [otherField]: true,
+        [otherField]: false,
         visibleFeeds: initial.value.visibleFeeds,
         feedsWithUnreadCounts: initial.value.feedsWithUnreadCounts,
         rssArticleOpenMode: "reader",
@@ -223,7 +232,7 @@ describe("feed display preference persistence", () => {
         ACCOUNT_PREFERENCES_QUERY_KEY,
       )).toEqual(initial);
       expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.[field]).toBe(true);
-      expect(result.current.sidebar.preferences[otherField]).toBe(true);
+      expect(result.current.sidebar.preferences[otherField]).toBe(false);
     });
   }
   it("restores visible Sports scores in PDS and refreshes the Gateway before settling",async()=>{

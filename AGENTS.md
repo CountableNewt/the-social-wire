@@ -1,6 +1,7 @@
 ## Learned User Preferences
 
 - Never create git commits or push to remote unless explicitly asked; when asked, stage only files changed for the current task, exclude unrelated edits, use a short conventional commit message, and push the active branch (often `main`).
+- **Development Before Production:** Never introduce a Production change without the same change already present in Development. Backport Production fixes and removals before any release; verify current source parity and hosted Development behavior, including navigation and disabled features. Retired ingestion and its dependent feeds must stay retired in both environments. Required CI must reject Production PR patches absent from current `dev`.
 - Prefer Swift Testing over XCTest for Swift tests (API, worker, packages, iOS) wherever the toolchain supports it.
 - Prefer atomic source files: one type or view per file, grouped by folder—not large multi-type files.
 - Prefer focused diffs: match existing project style, keep imports at the top, and avoid drive-by refactors or unsolicited docs. When adding Gateway/AppView routes, include matching Bruno requests and OpenAPI drift coverage. When a delegated or subagent outcome is already visible in the parent UI, do not restate its full contents unless asked or multi-task synthesis is needed; a brief confirmation is enough.
