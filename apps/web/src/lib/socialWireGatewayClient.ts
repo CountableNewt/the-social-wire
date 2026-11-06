@@ -1,6 +1,7 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { LATR_UPSTREAM_DPOP_HEADER } from "latr-packages/gateway-client";
 
+import { enqueueForGatewayOrigin } from "@/lib/gatewayOriginQueue";
 import {
   createUpstreamDpopProof,
   pdsXrpcMethodForSocialWireGatewayRequest,
@@ -55,33 +56,8 @@ function shouldRetryGatewayDpopNonce(res: Response): boolean {
   return Boolean(res.headers.get("DPoP-Nonce")?.trim());
 }
 
-/**
- * Manually-signed requests read the cached DPoP nonce, mint a proof, and only refresh the
- * cache once the response comes back. Concurrent callers (e.g. bulk mark-read/unread, which
- * fire one write per entry) all read the same stale nonce before any of them return, so the
- * gateway accepts one and rejects the rest with 400. Serializing dispatch per gateway origin
- * makes each request observe the previous one's refreshed nonce instead of racing it.
- */
-const gatewayOriginQueues = new Map<string, Promise<unknown>>();
 const PDS_SESSION_PREFLIGHT_PATH =
   "/xrpc/app.thesocialwire.appview.listEntries";
-
-function enqueueForGatewayOrigin<T>(origin: string, task: () => Promise<T>): Promise<T> {
-  const prior = gatewayOriginQueues.get(origin) ?? Promise.resolve();
-  const settled = prior.then(
-    () => undefined,
-    () => undefined
-  );
-  const result = settled.then(task);
-  gatewayOriginQueues.set(
-    origin,
-    result.then(
-      () => undefined,
-      () => undefined
-    )
-  );
-  return result;
-}
 
 export async function gatewayFetch(
   oauthSession: OAuthSession,
@@ -153,7 +129,7 @@ export async function gatewayFetch(
   };
   try {
     if (canManuallySignGatewayRequest(oauthSession)) {
-      return await enqueueForGatewayOrigin(gatewayBaseUrl(), run);
+      return await enqueueForGatewayOrigin(gatewayBaseUrl(), run, { signal: init?.signal });
     }
     return await run();
   } catch (error) {
