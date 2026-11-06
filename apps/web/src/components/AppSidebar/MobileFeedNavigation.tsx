@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ReaderNavigationFeed } from "@/lib/feedPreferences";
 import { cn } from "@/lib/utils";
+import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 import { WireBetaBadge } from "@/components/Wire/WireBetaBadge";
 import { useOptionalPodcastPlayer } from "@/components/Podcasts/PodcastPlayerProvider";
 import { PodcastPlaybackWaveform } from "@/components/Podcasts/PodcastPlaybackWaveform";
@@ -28,8 +29,8 @@ const FEED_ITEMS = [
   { feed: "following", label: "Following", icon: Users },
 ] as const;
 
-// Match the four default iOS primary slots; remaining destinations stay in More.
-const PRIMARY_FEEDS: readonly ReaderNavigationFeed[] = ["wire", "circle", "subscribed", "following"];
+// Keep reader destinations in primary slots; remaining destinations stay in More.
+const PRIMARY_FEEDS: readonly ReaderNavigationFeed[] = ["subscribed", "following"];
 const navigationButtonClass = "flex min-h-16 min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 export function MobileFeedNavigation({
@@ -48,7 +49,7 @@ export function MobileFeedNavigation({
   listsActive?: boolean;
 }) {
   const player = useOptionalPodcastPlayer();
-  const items = FEED_ITEMS.filter(({ feed }) => visibleFeeds.has(feed));
+  const items = FEED_ITEMS.filter(({ feed }) => !isRetiredReaderFeed(feed) && visibleFeeds.has(feed));
   if (items.length === 0 && !onOpenLists) return null;
   const orderedItems = [
     ...PRIMARY_FEEDS.flatMap((feed) => items.filter((item) => item.feed === feed)),

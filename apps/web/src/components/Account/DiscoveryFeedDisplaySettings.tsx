@@ -4,8 +4,6 @@ import { Switch } from "@/components/ui/switch";
 import type { FeedDisplayPreferences } from "@/lib/feedPreferences";
 
 const feeds = [
-  { id: "wire", label: "The Wire", preference: "showWire" },
-  { id: "circle", label: "Your Circle", preference: "showCircle" },
   { id: "finance", label: "Finance", preference: "showFinance" },
   { id: "sports", label: "Sports", preference: "showSports" },
   { id: "social", label: "Social", preference: "showSocial" },
