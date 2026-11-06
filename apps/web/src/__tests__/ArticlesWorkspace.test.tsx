@@ -21,6 +21,7 @@ const publications: ArticlePublication[] = [
   { uri: `at://${did}/site.standard.publication/two`, cid: "second", name: "Second Publication", url: "https://second.test", host: "offprint", record: {} },
 ];
 let seed: ArticleDraft;
+let storedDraft: ArticleDraft;
 let storageError: string | undefined;
 let client: QueryClient;
 let scheduleRows: unknown[];
@@ -47,17 +48,18 @@ beforeEach(() => {
   publishedRows = [];
   scheduleArticle.mockReset(); scheduleArticle.mockResolvedValue({ scheduleUri: `at://${did}/at.skej.schedule/current` });
   const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
-  const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => {} }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
+  const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
+  storedDraft = seed;
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
-    const [draft, setDraft] = useState(seed);
-    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => setDraft(current => ({ ...current, ...patch })), persist, select: async () => {}, create: async () => draft, remove: async () => {} };
+    const [draft, setDraft] = useState(() => { storedDraft = seed; return seed; });
+    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing: false, refresh: async () => {}, select: async () => {}, create: async () => draft, remove: async () => {} };
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
-  const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => seed); restores.push(() => stored.mockRestore());
+  const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => storedDraft); restores.push(() => stored.mockRestore());
   const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue(publishedRows); restores.push(() => history.mockRestore());
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
@@ -322,12 +324,110 @@ describe("article publishing workspace", () => {
     const publish = publishingSpy();
     await show();
     // The editor still holds the original object while IndexedDB has the new lock.
-    seed = { ...seed, scheduleRecordKey: "scheduled-in-another-tab" };
+    storedDraft = { ...storedDraft, scheduleRecordKey: "scheduled-in-another-tab" };
     fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
-    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Reload It Before Publishing"))).toBe(true));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Review It Before Publishing"))).toBe(true));
     expect(publish).not.toHaveBeenCalled();
+  });
+  it("does not publish an old snapshot when a remote edit has the same timestamp", async () => {
+    const publish = publishingSpy();
+    await show();
+    storedDraft = { ...storedDraft, title: "A Different Remote Title" };
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Review It Before Publishing"))).toBe(true));
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it("requires an acknowledged private claim before making any public article write", async () => {
+    const publish = publishingSpy();
+    persist.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Private Claim Sync Failed"));
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Private Claim Sync Failed"))).toBe(true));
+    expect(publish).not.toHaveBeenCalled();
+    expect(storedDraft.publishingRecordKey).toBeUndefined();
+    expect(storedDraft.publicationClaimId).toBeUndefined();
+  });
+  it("stops when another device wins the private publication claim", async () => {
+    const publish = publishingSpy();
+    persist.mockImplementation(async () => {
+      if (storedDraft.publishingRecordKey) storedDraft = { ...storedDraft, publicationClaimId: "00000000-0000-4000-8000-000000000001" };
+    });
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Another Device Is Publishing"))).toBe(true));
+    expect(publish).not.toHaveBeenCalled();
+    expect(storedDraft.publicationClaimId).toBe("00000000-0000-4000-8000-000000000001");
+  });
+  it("releases its private claim when an image is missing before article submission", async () => {
+    seed.assets = [{ id: "missing", name: "Cover.png", mimeType: "image/png", width: 10, height: 10, alt: "" }];
+    seed.coverAssetId = "missing";
+    const blob = spyOn(Storage, "getArticleDraftAsset").mockResolvedValue(undefined); restores.push(() => blob.mockRestore());
+    const publish = publishingSpy();
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("is missing"))).toBe(true));
+    expect(publish).not.toHaveBeenCalled();
+    await waitFor(() => expect(persist.mock.calls.length).toBeGreaterThanOrEqual(3));
+    await waitFor(() => expect(storedDraft.publishingRecordKey).toBeUndefined());
+    expect(storedDraft.publicationClaimId).toBeUndefined();
+  });
+  it("reconciles a lost publication response with an owned matching record without publishing again", async () => {
+    seed.publishingRecordKey = "stable-key"; seed.publicationClaimId = "own-claim";
+    const uri = `at://${did}/site.standard.document/stable-key`;
+    publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title } });
+    const publish = publishingSpy();
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Check Publication" }));
+    await waitFor(() => expect(storedDraft.publishedUri).toBe(uri));
+    expect(storedDraft.publishingRecordKey).toBeUndefined();
+    expect(storedDraft.publicationClaimId).toBe("own-claim");
+    expect(persist).toHaveBeenCalledWith({ requireRemote: true });
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it("keeps an uncertain publication protected when no matching publication is found", async () => {
+    seed.publishingRecordKey = "stable-key"; seed.publicationClaimId = "own-claim";
+    publishedRows.push({ uri: `at://${did}/site.standard.document/stable-key`, cid: "different", record: { $type: "site.standard.document", site: publications[1]!.uri, title: seed.title } });
+    const publish = publishingSpy();
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Check Publication" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Still Unconfirmed"))).toBe(true));
+    expect(storedDraft.publishingRecordKey).toBe("stable-key");
+    expect(storedDraft.publishedUri).toBeUndefined();
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it("recovers an acknowledged schedule after a lost response so confirmed cancellation can unlock it", async () => {
+    seed.scheduleRecordKey = "stable-key"; seed.publicationClaimId = "own-claim";
+    const scheduleUri = `at://${did}/at.skej.schedule/current`;
+    scheduleRows.push({ did, scheduleUri, status: "canceled", record: { recordType: "site.standard.document", publishRkey: seed.scheduleRecordKey, status: "canceled", posts: [], shadowRecord: { $type: "site.standard.document", title: seed.title, site: seed.publicationUri, publishedAt: "2099-01-01T12:00:00Z" } } });
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Check Schedule" }));
+    await waitFor(() => expect(storedDraft.scheduleUri).toBe(scheduleUri));
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock Canceled Draft" }));
+    await waitFor(() => expect(storedDraft.scheduleRecordKey).toBeUndefined());
+    expect(storedDraft.publicationClaimId).toBeUndefined();
+    expect(scheduleArticle).not.toHaveBeenCalled();
+  });
+  it("retains the private claim when an explicit publication result is uncertain", async () => {
+    const publish = publishingSpy(); publish.mockRejectedValue(new Error("Publication Response Was Lost"));
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(storedDraft.publishingRecordKey).toBeTruthy());
+    expect(storedDraft.publicationClaimId).toBeTruthy();
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Publish Article", hidden: true }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("requires title, content, and a selected owned publication before confirmation", async () => {
     const publish = publishingSpy(); seed.title = ""; seed.publicationUri = "";

@@ -1,4 +1,4 @@
-/** Private browser draft; publishing is a separate, explicit operation. */
+/** Private article draft; publishing is a separate, explicit operation. */
 export type ArticleDraft = {
   id: string;
   title: string;
@@ -9,6 +9,9 @@ export type ArticleDraft = {
   publicationUri: string;
   coverAssetId?: string;
   publishedUri?: string;
+  /** Durable publishing claim; retained until publication is reconciled. */
+  publishingRecordKey?: string;
+  publicationClaimId?: string;
   /** Persisted before scheduling; retained when the remote result is uncertain. */
   scheduleRecordKey?: string;
   /** Exact confirmed schedule identity; absent while submission is uncertain. */

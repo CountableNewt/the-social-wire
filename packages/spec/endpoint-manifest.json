@@ -2,7 +2,12 @@
   "version": 1,
   "description": "Authoritative classification and XRPC migration mapping for first-party and integrated HTTP endpoints.",
   "entries": [
-    {"surface": "openapi", "method": "POST", "path": "/v1/media/project", "classification": "first-party-rest"},
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/v1/media/project",
+      "classification": "first-party-rest"
+    },
     {
       "surface": "openapi",
       "method": "GET",
@@ -931,6 +936,34 @@
       "path": "/v1/publications/article-embed",
       "classification": "xrpc-migration",
       "xrpcNsid": "app.thesocialwire.publication.getArticleEmbed"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.articleDraft.list",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.articleDraft.list"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.articleDraft.get",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.articleDraft.get"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.articleDraft.put",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.articleDraft.put"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.articleDraft.delete",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.articleDraft.delete"
     }
   ]
 }

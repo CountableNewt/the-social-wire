@@ -111,8 +111,24 @@ function articlePath(input: ArticlePublishInput, rkey: string): string {
   if (input.publication.host === "pckt" && !input.existing) path += `-${rkey.slice(-7)}`;
   return path;
 }
+const articlePublicationNotSubmitted = new WeakSet<object>();
+function markArticlePublicationNotSubmitted(error: unknown): void {
+  if (error !== null && (typeof error === "object" || typeof error === "function")) articlePublicationNotSubmitted.add(error);
+}
+/** Retains the original error object so OAuth permission recovery still recognizes it. */
+export function wasArticlePublicationNotSubmitted(error: unknown): boolean {
+  return error !== null && (typeof error === "object" || typeof error === "function") && articlePublicationNotSubmitted.has(error);
+}
 /** Called only by explicit Publish. Canonical and native wrapper writes are atomic. */
 export async function publishArticle(session: OAuthSession, input: ArticlePublishInput, signal?: AbortSignal): Promise<ArticlePublishResult> {
+  const submission = { attempted: false };
+  try { return await publishArticleAttempt(session, input, signal, submission); }
+  catch (error) {
+    if (!submission.attempted) markArticlePublicationNotSubmitted(error);
+    throw error;
+  }
+}
+async function publishArticleAttempt(session: OAuthSession, input: ArticlePublishInput, signal: AbortSignal | undefined, submission: { attempted: boolean }): Promise<ArticlePublishResult> {
   signal?.throwIfAborted();
   const publicationKey = key(input.publication.uri, session.did, PUBLICATION);
   if (!input.title.trim() || !input.markdown.trim()) throw new Error("An article needs a title and content.");
@@ -194,6 +210,7 @@ export async function publishArticle(session: OAuthSession, input: ArticlePublis
   const wrapperCid = writes[1] ? (await cidForLex(lexParse(JSON.stringify(writes[1].value), { strict: true }))).toString() : undefined;
   const published = { uri, cid, wrapperUri, wrapperCid, url: `${url}${path}` };
   try {
+    submission.attempted = true;
     const response = await agent.com.atproto.repo.applyWrites({ repo: session.did, writes, swapCommit: commit.data.cid }, { signal });
     const result = response.data.results?.[0], wrapperResult = response.data.results?.[1];
     if (!result || !("uri" in result) || result.uri !== uri || result.cid !== cid || (wrapperUri && (!wrapperResult || !("uri" in wrapperResult) || wrapperResult.uri !== wrapperUri || wrapperResult.cid !== wrapperCid))) throw new Error("Unexpected PDS commit response.");
@@ -201,8 +218,8 @@ export async function publishArticle(session: OAuthSession, input: ArticlePublis
   } catch (error) {
     // An explicit PDS rejection cannot have committed this atomic operation.
     // Preserve its identity so authorization recovery can recognize the scope.
-    if (error && typeof error === "object" && "status" in error && typeof error.status === "number" && error.status >= 400 && error.status < 500) throw error;
-    if (isMissingOAuthScope(error) || (error instanceof Error && error.message === SCOPE_RECOVERY_MESSAGE)) throw error;
+    if (error && typeof error === "object" && "status" in error && typeof error.status === "number" && error.status >= 400 && error.status < 500) { markArticlePublicationNotSubmitted(error); throw error; }
+    if (isMissingOAuthScope(error) || (error instanceof Error && error.message === SCOPE_RECOVERY_MESSAGE)) { markArticlePublicationNotSubmitted(error); throw error; }
     // A dropped response does not prove a failed write. Verify the exact records;
     // never repeat a mutation automatically or generate another article identity.
     try {

@@ -5,8 +5,9 @@ import { IDBFactory } from "fake-indexeddb";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Auth from "@/hooks/useAuth";
 import * as Semble from "@/hooks/useSembleReadLater";
+import * as Sync from "@/lib/articles/articleDraftSync";
 import * as Publishing from "@/lib/articles/articlePublishingClient";
-import { listArticleDrafts } from "@/lib/articles/articleDraftStorage";
+import { getArticleDraft, listArticleDrafts } from "@/lib/articles/articleDraftStorage";
 import { ArticlesWorkspace } from "@/components/Articles/ArticlesWorkspace";
 import { SidebarProvider } from "@/components/ui/sidebar";
 const did = "did:plc:abcdefghijklmnopqrstuvwx";
@@ -18,6 +19,9 @@ beforeAll(() => { Object.defineProperty(window, "matchMedia", { configurable: tr
 afterAll(() => { if (originalMatchMedia) Object.defineProperty(window, "matchMedia", originalMatchMedia); else Reflect.deleteProperty(window, "matchMedia"); });
 beforeEach(() => {
   Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: new IDBFactory() });
+  const sync = spyOn(Sync, "syncArticleDraft").mockImplementation(async (actor, id) => getArticleDraft(actor.viewerDid, id)); restores.push(() => sync.mockRestore());
+  const all = spyOn(Sync, "syncArticleDrafts").mockImplementation(async actor => listArticleDrafts(actor.viewerDid)); restores.push(() => all.mockRestore());
+  const load = spyOn(Sync, "loadSyncedArticleDraft").mockImplementation(async (actor, id) => getArticleDraft(actor.viewerDid, id)); restores.push(() => load.mockRestore());
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
