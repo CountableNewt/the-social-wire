@@ -1,4 +1,5 @@
 import Foundation
+import NIOSSL
 import PostgresNIO
 
 enum SchemaPostgresConfiguration {
@@ -7,13 +8,17 @@ enum SchemaPostgresConfiguration {
       ["postgres", "postgresql"].contains(parts.scheme), let host = parts.host, !host.isEmpty,
       let username = parts.user, !username.isEmpty, parts.path.count > 1
     else { throw SchemaReadinessError.invalidConfiguration("Invalid PostgreSQL configuration") }
-    let mode = parts.queryItems?.first(where: { $0.name == "sslmode" })?.value ?? "prefer"
+    let parameters = parts.queryItems ?? []
+    guard parameters.filter({ $0.name == "sslmode" }).count <= 1,
+      !parameters.contains(where: { $0.name.lowercased().hasPrefix("ssl") && $0.name != "sslmode" })
+    else { throw SchemaReadinessError.invalidConfiguration("Unsupported PostgreSQL TLS settings") }
+    let mode = parameters.first(where: { $0.name == "sslmode" })?.value ?? "prefer"
+    let settings = try tlsConfiguration(mode: mode)
     let tls: PostgresClient.Configuration.TLS
     switch mode {
     case "disable": tls = .disable
-    case "prefer", "allow": tls = .prefer(.makeClientConfiguration())
-    case "require", "verify-ca", "verify-full": tls = .require(.makeClientConfiguration())
-    default: throw SchemaReadinessError.invalidConfiguration("Unsupported PostgreSQL TLS mode")
+    case "prefer", "allow": tls = .prefer(settings)
+    default: tls = .require(settings)
     }
     var configuration = PostgresClient.Configuration(
       host: host, port: parts.port ?? 5432, username: username, password: parts.password,
@@ -28,5 +33,18 @@ enum SchemaPostgresConfiguration {
       ("default_transaction_read_only", "on"),
     ]
     return configuration
+  }
+
+  static func tlsConfiguration(mode: String) throws -> TLSConfiguration {
+    var settings = TLSConfiguration.makeClientConfiguration()
+    switch mode {
+    // Encryption selection is independent of certificate authentication.
+    // Prefer/allow retain the existing fallback when the server has no TLS support.
+    case "disable", "prefer", "allow", "require": settings.certificateVerification = .none
+    case "verify-ca": settings.certificateVerification = .noHostnameVerification
+    case "verify-full": settings.certificateVerification = .fullVerification
+    default: throw SchemaReadinessError.invalidConfiguration("Unsupported PostgreSQL TLS mode")
+    }
+    return settings
   }
 }
