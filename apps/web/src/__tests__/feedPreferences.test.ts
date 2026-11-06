@@ -9,7 +9,7 @@ import {
 } from "@/lib/feedPreferences";
 
 describe("feed display preferences", () => {
-  test("preserves independent discovery visibility without changing legacy feeds", () => {
+  test("keeps retired feeds hidden despite stale preferences while preserving active feeds", () => {
     for (const showWire of [true, false]) {
       for (const showCircle of [true, false]) {
         const preferences = normalizeFeedDisplayPreferences({
@@ -29,8 +29,8 @@ describe("feed display preferences", () => {
           visibleFeeds: ["following"],
           feedsWithUnreadCounts: [],
           rssArticleOpenMode: "original",
-          showWire,
-          showCircle,
+          showWire: false,
+          showCircle: false,
           showFinance: true,
           showSports: true,
           showSocial: true,
@@ -66,8 +66,8 @@ describe("feed display preferences", () => {
     ).toEqual({
       visibleFeeds: [],
       feedsWithUnreadCounts: [],
-      showWire: true,
-      showCircle: true,
+      showWire: false,
+      showCircle: false,
       showFinance: true,
           showSports: true,
           showSocial: true,
@@ -88,8 +88,8 @@ describe("feed display preferences", () => {
     ).toEqual({
       visibleFeeds: ["following", "readLater"],
       feedsWithUnreadCounts: ["readLater", "following"],
-      showWire: true,
-      showCircle: true,
+      showWire: false,
+      showCircle: false,
       showFinance: true,
           showSports: true,
           showSocial: true,

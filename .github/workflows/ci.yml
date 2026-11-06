@@ -54,6 +54,17 @@ jobs:
         run: node --test scripts/ci/validated-merge.test.mjs
       - name: Test bounded dependency installation
         run: node --test scripts/ci/install-bun.test.mjs
+      - name: Test Development-first promotion guard
+        run: node --test scripts/ci/development-parity.test.mjs
+      - name: Require Production changes in Development first
+        if: (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
+        env:
+          PRODUCTION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          PRODUCTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          git fetch --no-tags origin dev
+          git show refs/remotes/origin/dev:scripts/ci/development-parity.mjs > "${RUNNER_TEMP}/development-parity.mjs"
+          node "${RUNNER_TEMP}/development-parity.mjs" --base "$PRODUCTION_BASE_SHA" --head "$PRODUCTION_HEAD_SHA" --development refs/remotes/origin/dev
       - name: Detect changed paths
         id: filter
         env:

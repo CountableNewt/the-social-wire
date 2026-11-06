@@ -1,5 +1,7 @@
 ## Learned User Preferences
 
+- **Development Before Production:** Never introduce a Production change without the same change already present in Development. Backport Production fixes and removals before any release; verify current source parity and hosted Development behavior, including navigation and disabled features. Retired ingestion and its dependent feeds must stay retired in both environments. Required CI must reject Production PR patches absent from current `dev`.
+
 - **Issue Tracking And Remote Ownership:** GitHub issues are the current tracker for planning, progress, bugs, dependencies, and PR links. This overrides older Linear workflow instructions: the Linear skill is deprecated for routine work, and Linear updates or authentication are required only when explicitly requested. Preserve historical references; the active Swift migration is tracked in GitHub issue #782. GitHub remains the canonical remote until a separately requested migration to Tangled supplies a destination.
 - Never create git commits or push to remote unless explicitly asked; when asked, stage only files changed for the current task, exclude unrelated edits, use a short conventional commit message, and push the active branch (often `main`).
 - Prefer Swift Testing over XCTest for Swift tests (API, worker, packages, iOS) wherever the toolchain supports it.

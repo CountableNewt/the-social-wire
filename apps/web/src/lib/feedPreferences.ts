@@ -35,8 +35,8 @@ export type FeedDisplayPreferences = {
 };
 
 export const DEFAULT_FEED_DISPLAY_PREFERENCES: FeedDisplayPreferences = {
-  showWire: true,
-  showCircle: true,
+  showWire: false,
+  showCircle: false,
   showFinance: true,
   showSports: true,
   showSocial: true,
@@ -100,8 +100,9 @@ export function normalizeFeedDisplayPreferences(
       : [];
   const requestedCountFeedSet = new Set(requestedCountFeeds);
   return {
-    showWire: value?.showWire !== false,
-    showCircle: value?.showCircle !== false,
+    // Keep legacy fields readable without allowing retired feeds to reappear.
+    showWire: false,
+    showCircle: false,
     showFinance: value?.showFinance !== false,
     showSports: value?.showSports !== false,
     showSocial: value?.showSocial !== false,
