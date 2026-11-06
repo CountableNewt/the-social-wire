@@ -5,13 +5,9 @@
     "dockerfilePath": "/services/appview/Dockerfile",
     "watchPatterns": [
       "/services/appview/**",
-      "/packages/go/**",
       "/database/migrations/**",
-      "/services/jetstream-ingest/cmd/schema-ready/**",
-      "/services/jetstream-ingest/internal/schemaready/**",
-      "/services/jetstream-ingest/go.mod",
-      "/services/jetstream-ingest/go.sum",
-      "/railway/appview.json"
+      "/railway/appview.json",
+      "/tools/schema-ready/**"
     ]
   },
   "deploy": {

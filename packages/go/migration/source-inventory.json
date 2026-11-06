@@ -11418,6 +11418,10 @@
           "sha256": "88d0c847fdffb059e210842b125eeb226f9c44c29f8fb70d866893413fec5115"
         },
         {
+          "path": "packages/lexicons/app/thesocialwire/publication/getArticleEmbed.json",
+          "sha256": "e7e97a7647eda997bce77971a02e5f61c6cad673720d6e1fa680fe30384f6d1b"
+        },
+        {
           "path": "packages/lexicons/app/thesocialwire/publication/getSidebar.json",
           "sha256": "fb419bb7982c1cdf4a40b6f6fbbfae66a21e6905e3c97abc37d2345256649cc4"
         },
@@ -11733,7 +11737,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-path-detection.test.ts",
-          "sha256": "88dbf2bf9c039ac496797468d205925e50429ceab59cbdb9d52543a28a3c7bd6"
+          "sha256": "c5a2c650fd4d53bc8740823e192ae17af0fb1e112d76400361e21de2df3598a2"
         },
         {
           "path": "packages/spec/__tests__/ci-postgres-preparation.test.ts",
@@ -11745,7 +11749,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-workflow-config.test.ts",
-          "sha256": "4722b9c3b8cfae63f1921f4d36aedcc3c30061facc122b8ebdb50fc37578e665"
+          "sha256": "97cea8954a24271f2058ad4c094614bb58458dbe0ffe51e485c4cd05f0694625"
         },
         {
           "path": "packages/spec/__tests__/circle-private-state-migration.test.ts",
@@ -11757,7 +11761,7 @@
         },
         {
           "path": "packages/spec/__tests__/client-xrpc-transport.test.ts",
-          "sha256": "403932f2de249c47b357ee4cb0128e2051fc1ab46b934b6e87ed8a313e2cf345"
+          "sha256": "0d3e9df238e98ceb554bc6a00b0fc2ac7847b2da6ed2a3fd32033ec6876334da"
         },
         {
           "path": "packages/spec/__tests__/coverage-inventory.test.ts",
@@ -11777,7 +11781,7 @@
         },
         {
           "path": "packages/spec/__tests__/ingress-go-image-dependencies.test.ts",
-          "sha256": "4719482bea5a4efb607cb0d9dd4dc05ccd9e13f04d8fae6c4d9becf48e1a54cd"
+          "sha256": "b5bac3571903878f552b9cfcb64e7d6fc151b772af494906bd71984506ea368b"
         },
         {
           "path": "packages/spec/__tests__/jetstream-bounded-snapshot-migration.test.ts",
@@ -11796,12 +11800,16 @@
           "sha256": "990aa6a84578426c8ec4d49484dbee5a65ff6b20bcb862f35b31b35fd50dd359"
         },
         {
+          "path": "packages/spec/__tests__/media-contract.test.ts",
+          "sha256": "e7efe7418210be607c5f0589c8c3cd380805d025b6eb4de4c0b23488d84497ca"
+        },
+        {
           "path": "packages/spec/__tests__/migration-duplicate-bodies.test.ts",
           "sha256": "9a29ff963ef23e70f0b646cf46f86440b3aaedabeb24befbe279d78a86e96ea3"
         },
         {
           "path": "packages/spec/__tests__/openapi-routes.test.ts",
-          "sha256": "2d782af1b262f77bc8c8ad4388fa5240882e6d2982e53d4e7c5718bb43dde470"
+          "sha256": "88a03a8d47908fc0519dd1a12d1a4740da28b8472f4db15dc67881c4c64d9fbb"
         },
         {
           "path": "packages/spec/__tests__/operations-change-retention-postgres.test.ts",
@@ -11841,7 +11849,7 @@
         },
         {
           "path": "packages/spec/__tests__/schema-readiness-deployment.test.ts",
-          "sha256": "efea935dfd86fa150fc71ae51b8e457fdc0f9fde636b69aa7381cb3f970405bc"
+          "sha256": "5aa5fc5e5904bceb1a0d14bb158ca0c3e9e0441dfb19d08aad9b29705ac45915"
         },
         {
           "path": "packages/spec/__tests__/social-draft-contract.test.ts",
@@ -11925,11 +11933,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "01b20b0c398caa3f380def247d98a3cbd62a0bc88df72e968431b25e3c879b01"
+          "sha256": "4bfa03c3a3a1bbb5577cc776c5c719164f05bd462988ce96e955e04888c7d077"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "ec7948287a6a07695d1cfb0f2360fb8dc5174331fa8ace43619eb4dd25460873"
+          "sha256": "fa6938f66968b2c1f75ee077dee438307da600d0a8d376c36b04bc2681f19d82"
         },
         {
           "path": "packages/spec/package.json",
@@ -11938,5 +11946,165 @@
       ]
     }
   ],
-  "serviceLibraries": []
+  "serviceLibraries": [
+    {
+      "name": "AppViewWorkerCore",
+      "source": "services/indexing-worker/Sources/AppViewWorkerCore",
+      "target": "packages/go/appviewworkercore",
+      "files": [
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/AppViewWorkerHost.swift",
+          "sha256": "91ece4a8bdf57914f9abf2cbc53ca574a5198b4c2177e1ef8e1d247fcb453f14",
+          "lines": 282
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerAppViewComponent.swift",
+          "sha256": "949f8778d5367cf39ab0b98623e7985a56872238937d0d8f18506fec72bb8872",
+          "lines": 36
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerControlDatabase.swift",
+          "sha256": "c254c822e9410783349b5814c96356fd93a7ea82565546231ca2e2b4e0885d07",
+          "lines": 41
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerHealthServer.swift",
+          "sha256": "6a4a37e3306bd32edf13f05d892040fdec65107be842b6e309709c98aa2debd3",
+          "lines": 177
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerHost.swift",
+          "sha256": "571c68170d8eb20b141cb85161f959a64bb851011b76a8292fa9b92560244e90",
+          "lines": 66
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerHostError.swift",
+          "sha256": "29e8d85e18612a9036a75408aaa607ac7ebdc10dd75dbdc0105a2b4cbbb8cd1a",
+          "lines": 4
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerLocalHealthProbe.swift",
+          "sha256": "0ae2bd2abacbed29cdc6c3fb03e0c354867cbdce89d2654e3d5ca2bdd73edc1d",
+          "lines": 25
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/IndexingWorkerOperationsSupervisor.swift",
+          "sha256": "21dadac1199d6e8e2e5dfe948492109790bd4735c31a45774c3a6dcbfd53de4b",
+          "lines": 61
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/ReconciliationRetryRunner.swift",
+          "sha256": "665deb047e754611c88b851324cbee7dee5281a4c37fdb2d0985b43d2cddfd6b",
+          "lines": 88
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerHealthServer.swift",
+          "sha256": "af5590cbc42dfa7df0a62cf4a0fb2e1a464a9ed8119536f803e19600b3d096cf",
+          "lines": 226
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerReadinessDiagnostics.swift",
+          "sha256": "e18d726debc3b520bb63d784719fe5e12db2178a187881bd6426c14edbc68e8a",
+          "lines": 87
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerReadinessFailure.swift",
+          "sha256": "11fef8b6e598500f3e6b58b2cb34738931d753736a6f1a77095b3abc0ddc5ade",
+          "lines": 4
+        },
+        {
+          "path": "services/indexing-worker/Sources/AppViewWorkerCore/WorkerReadinessProbe.swift",
+          "sha256": "8b0587c304376c5ef70647877005daea3c09de1681e078deeb9a6c4f0d61c1e3",
+          "lines": 114
+        }
+      ]
+    },
+    {
+      "name": "IndexingWorkerCore",
+      "source": "services/indexing-worker/Sources/IndexingWorkerCore",
+      "target": "packages/go/indexingworkercore",
+      "files": [
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerComponent.swift",
+          "sha256": "601cb49a3660480e266355a6e884d36d3ee0a09c5769eb3d297a762176e23dea",
+          "lines": 5
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerConfig.swift",
+          "sha256": "3126bb9bbc92af285fd849280c8719ec753579e1b8378cd2a5cc007cb917650c",
+          "lines": 110
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerConfigError.swift",
+          "sha256": "12b46da1eebbb76f4e6eecae9559c8dc4c6a530a8a3810c8eb830fa46649c1e4",
+          "lines": 18
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLane.swift",
+          "sha256": "e993a057475641876f8c78356a85db68c7ad87d8991c8b1eafada62d5f929654",
+          "lines": 11
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLaneState.swift",
+          "sha256": "e97c3d7926f7da562c9abfffc48d37421d127482102419c36ea76393beece6a4",
+          "lines": 58
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLeaseAuthority.swift",
+          "sha256": "bfc1a8b9350410b2033f44565f5df2ec5d0d4eb6732fcaeb33cde7482fbea5ab",
+          "lines": 15
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLeaseConfiguration.swift",
+          "sha256": "a06c205367596335c86fd4edd6d76ab394af019b2ab2114bf7702cd29e390da1",
+          "lines": 17
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLeaseEvent.swift",
+          "sha256": "742eddaad034ab36d6f4e8f42daf6eb0fe83dadd43a8536f68b863f0a49d75f1",
+          "lines": 5
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerLeaseSupervisor.swift",
+          "sha256": "85c9e26d1835d9f9fc7144e3d64a630efc2ef757986b79eb3e8d11cb710ebeab",
+          "lines": 9
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerPhase.swift",
+          "sha256": "51bad98fb2e3720c47b86612e777e9efcb5fb0f3b79ee6f1baac15f01081ff83",
+          "lines": 3
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerRole.swift",
+          "sha256": "e6054be0167e5f0f155573d6207ffc1f354f7326f11ae5b2aee2429015b8eaa5",
+          "lines": 4
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerRuntime.swift",
+          "sha256": "d466c934199d673e43d2f1503216883bcbe0e7fc41cf5cf68bc0a0bef8837efc",
+          "lines": 168
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerRuntimeError.swift",
+          "sha256": "04bdf065fbf2a01040c4e4e13136cd78e471804987354c1612f7d52ab5591981",
+          "lines": 10
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/IndexingWorkerSignals.swift",
+          "sha256": "e3b876a8ccac32a5e1254b41961bfae46ee8c07d79d0affaa89e42c17ed767a2",
+          "lines": 42
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/ReconciliationRetryError.swift",
+          "sha256": "0af72e05fcd6a303c2116c13ca583acca64813dadff8235cc4f8d5f813a0a9ff",
+          "lines": 4
+        },
+        {
+          "path": "services/indexing-worker/Sources/IndexingWorkerCore/ReconciliationRetryScope.swift",
+          "sha256": "dc2f5b8d1ba76ba167c2beb0d2346f0599dbd25dd6c3d624e096c06da97b8ce7",
+          "lines": 62
+        }
+      ]
+    }
+  ]
 }

@@ -5,7 +5,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "../../..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
-describe("Ingress repository-local Go image dependencies", () => {
+describe("Archived ingress Go image dependencies", () => {
   it("resolves the local module before downloading and building either executable", () => {
     expect(read("services/jetstream-ingest/go.mod")).toContain("=> ../../packages/go");
     const dockerfile = read("services/jetstream-ingest/Dockerfile");
@@ -29,9 +29,9 @@ describe("Ingress repository-local Go image dependencies", () => {
     });
   }
 
-  it("includes the same dependency in consolidated Ingress IaC", () => {
+  it("prevents automatic global ingestion restarts in consolidated IaC", () => {
     const iac = read(".railway/railway.ts");
     const ingress = iac.slice(iac.indexOf('const ingressController = service('), iac.indexOf('const projectionPool = service('));
-    expect(ingress).toContain('"/packages/go/**"');
+    expect(ingress).toContain('"/__global_ingress_retired__/**"');
   });
 });

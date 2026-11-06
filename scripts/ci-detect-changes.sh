@@ -120,6 +120,30 @@ filter_changed shared_swift \
   'packages/swift/SportsCore/**' \
   '.github/workflows/ci.yml'
 
+filter_changed swift_backend \
+  'tools/schema-ready/**' \
+  'services/gateway/Dockerfile' \
+  'services/gateway/Package.swift' \
+  'services/gateway/Package.resolved' \
+  'services/gateway/Sources/**' \
+  'services/gateway/Tests/**' \
+  'services/appview/Package.swift' \
+  'services/appview/Dockerfile' \
+  'services/appview/Package.resolved' \
+  'services/appview/Sources/**' \
+  'services/appview/Tests/**' \
+  'services/indexing-worker/Package.swift' \
+  'services/indexing-worker/Dockerfile' \
+  'services/indexing-worker/Package.resolved' \
+  'services/indexing-worker/Sources/**' \
+  'services/indexing-worker/Tests/**' \
+  'database/migrations/**' \
+  'railway/gateway.json' \
+  'railway/appview.json' \
+  'railway/jetstream-ingest.json' \
+  '.railway/railway.ts' \
+  '.github/workflows/ci.yml'
+
 filter_changed jetstream_ingest \
   'scripts/go/check-out-swift-contracts.py' \
   'packages/go/migration/extracted-swift-packages.json' \
