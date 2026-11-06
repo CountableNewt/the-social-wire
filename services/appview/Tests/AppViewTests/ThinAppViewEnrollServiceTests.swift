@@ -23,6 +23,7 @@ struct ThinAppViewEnrollServiceTests {
     let store = try SQLiteThinAppViewStore(path: dbPath, logger: logger)
     let config = ThinAppViewConfig.fromEnvironment([
       "ENABLE_THIN_APPVIEW": "true",
+      "PUBLIC_CONTENT_DISCOVERY_MODE": "off",
       "THIN_APPVIEW_MAX_ENROLL_AUTHORS": "2",
     ])
     let indexer = ThinAppViewIndexer(store: store, config: config, logger: logger)
@@ -73,6 +74,7 @@ struct AppViewRouteContractTests {
       "APP_ENV": "local",
       "SQLITE_DB_PATH": dbPath,
       "ENABLE_THIN_APPVIEW": "true",
+      "PUBLIC_CONTENT_DISCOVERY_MODE": "off",
     ])
     let router = AppViewRouterBuilder.router(
       config: config,
@@ -103,6 +105,7 @@ struct AppViewRouteContractTests {
       "APP_ENV": "local",
       "SQLITE_DB_PATH": dbPath,
       "ENABLE_THIN_APPVIEW": "true",
+      "PUBLIC_CONTENT_DISCOVERY_MODE": "off",
     ])
     let router = AppViewRouterBuilder.router(
       config: config,

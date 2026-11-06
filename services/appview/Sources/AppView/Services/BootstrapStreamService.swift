@@ -517,6 +517,11 @@ struct BootstrapStreamService {
   ) {
     let priorityAuthorDids = BootstrapStreamSelection.priorityAuthorDids(from: priority)
     Task {
+      for row in (priority.myPublications + priority.subscribedUnfoldered + priority.followingTabPublications).prefix(8) {
+        await self.warmSelectedPublication(auth: auth, row: row, priorityAuthorDids: priorityAuthorDids)
+      }
+    }
+    Task {
       if !priorityAuthorDids.isEmpty {
         do {
           _ = try await self.enrollService.enroll(
@@ -584,7 +589,6 @@ struct BootstrapStreamService {
     priorityAuthorDids: [String],
     skipAuthorEnroll: Bool = false
   ) async {
-    let warmedAuthorDids = Set(priorityAuthorDids)
     if row.publicationId.hasPrefix(PublicationLexicons.rssPublicationPrefix),
        let feedUrl = PublicationProjectionLogic.normalizedFeedUrlFromRssPublicationId(row.publicationId)
     {
@@ -596,13 +600,12 @@ struct BootstrapStreamService {
           metadata: ["publicationId": .string(row.publicationId)]
         )
       }
-    } else if !skipAuthorEnroll, !warmedAuthorDids.contains(row.appViewScope.authorDid) {
+    } else {
       do {
-        _ = try await enrollService.enroll(
-          auth: auth,
-          authorDids: [row.appViewScope.authorDid],
-          recentOnly: true
-        )
+        _ = try await enrollService.refreshPublicContent(authorDid: row.appViewScope.authorDid,
+          publicationAtUri: row.appViewScope.publicationAtUri,
+          publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+          publicationSiteUrls: row.appViewScope.publicationSiteUrls)
       } catch {
         logger.warning(
           "Bootstrap stream selected publication enroll failed",
@@ -749,11 +752,10 @@ struct BootstrapStreamService {
     let authorDid = row.appViewScope.authorDid
     guard ThinAppViewEnrollBackfill.isBackfillEligibleAuthorDid(authorDid) else { return }
     do {
-      _ = try await enrollService.enroll(
-        auth: auth,
-        authorDids: [authorDid],
-        recentOnly: true
-      )
+      _ = try await enrollService.refreshPublicContentFast(authorDid: authorDid,
+        publicationAtUri: row.appViewScope.publicationAtUri,
+        publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
+        publicationSiteUrls: row.appViewScope.publicationSiteUrls)
     } catch {
       logger.warning(
         "Bootstrap stream pre-page enroll failed",
