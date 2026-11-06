@@ -1176,7 +1176,7 @@ function publicationTitleFromRecord(
   return t ?? fallback;
 }
 
-async function publicationIconUrlFromRecord(
+export async function publicationIconUrlFromRecord(
   recordUri: string,
   value: Record<string, unknown>
 ): Promise<string | undefined> {
