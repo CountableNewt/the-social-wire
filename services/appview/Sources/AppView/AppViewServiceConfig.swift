@@ -12,6 +12,8 @@ struct AppViewServiceConfig: Sendable {
   var sports: SportsDiscoveryConfig = .disabled
   var podcastsEnabled: Bool = false
   var toolsEnabled: Bool = false
+  var globalIngestionEnabled: Bool = false
+  var publicContentDiscoveryMode: PublicContentDiscoveryMode = .off
   let semble: SembleProjectionConfig
 
   enum StoreBackend: Sendable {
@@ -77,6 +79,8 @@ struct AppViewServiceConfig: Sendable {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value.lowercased() == "true"
       } ?? (core.appEnv != .prod),
+      globalIngestionEnabled: env["GLOBAL_INGESTION_ENABLED"]?.lowercased() == "true",
+      publicContentDiscoveryMode: try PublicContentDiscoveryMode.load(env),
       semble: semble
     )
   }
