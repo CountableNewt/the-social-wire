@@ -247,7 +247,12 @@ describe("Social Post Rendering", () => {
         },
       },
     }));
-    expect(html).toContain('class="mx-auto block h-auto max-h-60 w-auto max-w-full"');
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    const image = element.querySelector("img")!;
+    expect(image.className).toContain("absolute inset-0 h-full w-full object-contain");
+    expect(image.parentElement!.className).toContain("h-48");
+    expect(image.parentElement!.className).toContain("sm:h-60");
     expect(html).not.toContain("object-cover");
   });
   it("rejects unsafe external embed and image URLs", () => {

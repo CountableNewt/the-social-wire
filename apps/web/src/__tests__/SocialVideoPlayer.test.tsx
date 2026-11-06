@@ -30,6 +30,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(fn => fn()); });
 
 describe("Social video playback", () => {
+  it("reserves a stable video viewport through metadata and playback failure", () => {
+    for (const ratio of [undefined, { width: 0, height: 10 }, { width: Infinity, height: NaN }, { width: 9, height: 16 }]) {
+      const view = render(<SocialVideoPlayer video={{ ...video, aspectRatio: ratio }} src="https://video.example/clip.mp4" />);
+      const element = view.container.querySelector("video")!;
+      const viewport = element.parentElement!;
+      const expected = ratio?.width === 9 ? "9 / 16" : "16 / 9";
+      expect(viewport.style.aspectRatio).toBe(expected);
+      expect(element.classList.contains("h-full")).toBe(true);
+      expect(element.classList.contains("object-contain")).toBe(true);
+      fireEvent.loadedMetadata(element);
+      expect(viewport.style.aspectRatio).toBe(expected);
+      fireEvent.error(element);
+      const failure = screen.getByRole("status");
+      expect(failure.parentElement).toBe(viewport);
+      expect(failure.classList.contains("absolute")).toBe(true);
+      expect(viewport.style.aspectRatio).toBe(expected);
+      expect(element.controls).toBe(true);
+      view.unmount();
+    }
+  });
   it("loads the real streaming module on demand", async () => {
     const engine = await realLoader();
     expect(typeof engine.isSupported).toBe("function");

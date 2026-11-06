@@ -20,6 +20,7 @@ import { SocialFeedsSheet } from "./SocialFeedsSheet";
 import { SocialComposeButton } from "./SocialComposeButton";
 import { consumeSocialHomeRefresh, SOCIAL_HOME_REFRESH_EVENT } from "@/lib/socialHomeRefresh";
 import { groupSocialFeedItems } from "@/lib/socialFeedGrouping";
+import { resetSocialFeedViewport, SocialFeedViewportBoundary } from "./SocialFeedViewportBoundary";
 
 export function SocialTimeline() {
   const params = useSearchParams();
@@ -29,6 +30,7 @@ export function SocialTimeline() {
   const { session, signIn } = useAuth();
   const [reauthorizing, setReauthorizing] = useState(false);
   const [reauthorizeError, setReauthorizeError] = useState(false);
+  const [scrollReset, setScrollReset] = useState(0);
   const catalog = useBlueskySocialCatalog();
   const cachedModeration = catalog.data?.moderation;
   const moderation = !routeError && cachedModeration?.userDid === session?.did ? cachedModeration : undefined;
@@ -53,8 +55,10 @@ export function SocialTimeline() {
   const refetchSafety = catalog.refetchSafety;
   const refreshFirstPage = timeline.refreshFirstPage;
   const refresh = useCallback(async () => {
+    setScrollReset(value => value + 1);
+    resetSocialFeedViewport(scrollContainer.current);
     await refreshFirstPage(async () => (await refetchSafety()).moderation);
-  }, [refetchSafety, refreshFirstPage]);
+  }, [refetchSafety, refreshFirstPage, scrollContainer]);
 
   useEffect(() => {
     const returnHome = () => {
@@ -90,7 +94,9 @@ export function SocialTimeline() {
           : !routeError ? <Button variant="outline" onClick={() => { void refresh(); }}>Retry</Button> : null}
         {reauthorizeError ? <p className="text-sm text-destructive">Login could not be opened. Please try again.</p> : null}
       </section> : loading ? <SocialTimelineSkeleton /> : moderation ? <div className="mx-auto flex max-w-2xl flex-col gap-4 p-3 sm:p-4">
-        <SocialFeedPosts items={posts} moderation={moderation} />
+        <SocialFeedViewportBoundary container={scrollContainer} scope={`${session?.did}:${feed.kind}:${feed.uri ?? ""}`} resetKey={scrollReset}>
+          <SocialFeedPosts items={posts} moderation={moderation} />
+        </SocialFeedViewportBoundary>
         {posts.length === 0 ? <section className="flex flex-col gap-2 px-2 py-10 text-center">
           <h2 className="text-lg font-semibold">No Posts to Show</h2>
           <p className="text-sm text-muted-foreground">{timeline.data?.pages.some(page => page.feed.length) ? "Posts on this page are hidden by your moderation settings." : "New posts will appear here when this feed updates."}</p>
