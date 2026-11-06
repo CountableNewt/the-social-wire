@@ -213,7 +213,11 @@ enum AppViewRouterBuilder {
       logger: logger,
       skyreaderIngestion: skyreaderIngestionService,
       publicContentProvider: config.publicContentDiscoveryMode == .microcosm
-        ? MicrocosmContentDiscovery(indexer: indexer, httpClient: httpClient) : nil
+        ? MicrocosmContentDiscovery(indexer: indexer, httpClient: httpClient) : nil,
+      publicContentDiscoveryMode: config.publicContentDiscoveryMode,
+      knownPublicContentScopes: { auth, authors in
+        await projection.knownPublicContentScopes(viewerDid: auth.did, authorDids: authors)
+      }
     )
     backgroundTasks?.register { await enrollService.shutdown() }
     ThinAppViewRoutes(
