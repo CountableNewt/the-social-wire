@@ -275,16 +275,26 @@ struct ThinAppViewRoutes {
     for path in ["/v1/appview/enroll", "/xrpc/app.thesocialwire.appview.enrollSources"]
       as [RouterPath]
     {
-      group.post(path) { request, context async throws -> AppViewEnrollResponse in
+      group.post(path) { request, context async throws -> Response in
         guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
         let body = try await request.decode(as: AppViewEnrollRequest.self, context: context)
-        let indexed = try await enrollService.enroll(
-          auth: auth,
-          authorDids: body.authorDids,
-          feedUrls: body.feedUrls
-        )
-        await projectionService.invalidateViewerCaches(viewerDid: auth.did)
-        return AppViewEnrollResponse(indexed: indexed)
+        do {
+          let indexed = try await enrollService.enroll(
+            auth: auth,
+            authorDids: body.authorDids,
+            feedUrls: body.feedUrls,
+            explicitRSSRefresh: true
+          )
+          try await projectionService.reconcileEnrollmentCounters(auth: auth)
+          await projectionService.invalidateViewerCaches(viewerDid: auth.did)
+          return try AppViewEnrollResponse(indexed: indexed).response(from: request, context: context)
+        } catch let partial as AppViewEnrollmentPartialFailure {
+          try Task.checkCancellation()
+          try await projectionService.reconcileEnrollmentCounters(auth: auth)
+          await projectionService.invalidateViewerCaches(viewerDid: auth.did)
+          try Task.checkCancellation()
+          return try AppViewEnrollmentError(partial).response(from: request, context: context)
+        }
       }
     }
 

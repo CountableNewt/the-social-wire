@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -258,7 +260,7 @@ func TestRSSEnrollmentAttemptsAllFeedsOnDatabaseFailures(t *testing.T) {
 	}
 	db.Close()
 	repo := &rssEnrollmentRepo{}
-	feeds := []string{"https://db-failure-a.invalid/rss", "https://db-failure-b.invalid/rss", "https://db-failure-c.invalid/rss"}
+	feeds := []string{"https://db-failure.invalid/first", "https://db-failure.invalid/second", "https://db-failure.invalid/third"}
 	for _, feed := range feeds {
 		repo.records = append(repo.records, gatewaycore.RepoRecord{Value: map[string]json.RawMessage{"feedUrl": json.RawMessage(fmt.Sprintf("%q", feed))}})
 	}
@@ -268,8 +270,17 @@ func TestRSSEnrollmentAttemptsAllFeedsOnDatabaseFailures(t *testing.T) {
 		return 200, nil, enrollmentRSSBody, nil
 	})
 	e := Enroller{Repo: repo, RSSConcurrency: 1, RSS: &thinappviewcore.RSSIngestion{DB: db, HTTP: getter}}
-	n, err := e.Enroll(context.Background(), gatewaycore.AuthContext{DID: "viewer"}, nil, feeds, true)
+	requested := append(append([]string{}, feeds...), "https://db-failure.invalid/unsubscribed")
+	n, err := e.Enroll(context.Background(), gatewaycore.AuthContext{DID: "viewer"}, nil, requested, true)
 	if n != 0 || err == nil || calls.Load() != 0 || strings.Count(err.Error(), "sql: database is closed") != 3 {
 		t.Fatalf("count=%d error=%v calls=%d", n, err, calls.Load())
+	}
+	want := make([]string, 0, len(feeds))
+	for _, feed := range feeds {
+		want = append(want, thinappviewcore.RSSPublicationID(feed))
+	}
+	sort.Strings(want)
+	if got := thinappviewcore.UnavailableRSSPublicationIDs(err); !reflect.DeepEqual(got, want) {
+		t.Fatalf("failed identities=%v want only subscribed feeds %v", got, want)
 	}
 }

@@ -11805,7 +11805,7 @@
         },
         {
           "path": "packages/spec/__tests__/openapi-routes.test.ts",
-          "sha256": "9eeb88ea9bd0ed6db6173ef452efb235817103050e0ecd7c08db4b4509365b2b"
+          "sha256": "2d782af1b262f77bc8c8ad4388fa5240882e6d2982e53d4e7c5718bb43dde470"
         },
         {
           "path": "packages/spec/__tests__/operations-change-retention-postgres.test.ts",
@@ -11933,7 +11933,7 @@
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "e26edee866357379d322cf1d7ab9ccdd4f54fafa974a37f94d48a662da98ca90"
+          "sha256": "aabd79b6e0ad08dde31f2ffd5fff9dfe7ca1bb62773a020f744c70524695e0bd"
         },
         {
           "path": "packages/spec/package.json",
