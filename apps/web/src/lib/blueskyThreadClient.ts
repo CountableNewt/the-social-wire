@@ -9,6 +9,7 @@ import { postTextLength, prepareBlueskyPost } from "./blueskyComposeClient";
 import type { ComposeLinkPreview } from "./blueskyExternalEmbed";
 import type { ComposerMedia } from "./composerMedia";
 import { mediaHasContent, mediaReady } from "./composerMedia";
+import { forgetBlueskyVideo } from "./blueskyVideoUpload";
 import type { AppBskyDraftDefs, AppBskyFeedDefs } from "@atproto/api";
 
 type Reference = { uri: string; cid: string };
@@ -72,6 +73,7 @@ export async function publishBlueskyThread(args: {
     }
     assertCurrentAccount();
     await args.checkpoint?.();
+    if (segment.draft.media?.kind === "video") forgetBlueskyVideo(session.did, segment.draft.media.id);
     args.onProgress?.(index + 1);
   }
   return publication.segments.map(segment => segment.result!);

@@ -44,7 +44,10 @@ export async function loadComposerDraft(did: string, context: string): Promise<C
       try {
       const value = request.result as ComposerDraft | undefined;
       if (value && (value.version !== 1 || value.did !== did || !Array.isArray(value.segments) || !value.segments.length)) { reject(new Error("Saved Draft Is Incompatible")); return; }
-      if (value) for (const segment of value.segments) { if (segment.media?.kind === "photos") segment.media.photos = segment.media.photos.map(photo => photo.status === "preparing" ? { ...photo, status: "failed", error: "Photo Preparation Was Interrupted. Retry." } : photo); }
+      if (value) for (const segment of value.segments) {
+        if (segment.media?.kind === "photos") segment.media.photos = segment.media.photos.map(photo => photo.status === "preparing" ? { ...photo, status: "failed", error: "Photo Preparation Was Interrupted. Retry." } : photo);
+        if (segment.media?.kind === "video" && segment.media.status === "preparing") segment.media = { ...segment.media, status: "failed", error: "Video Preparation Was Interrupted. Retry." };
+      }
       if (value?.publication) for (const segment of value.publication.segments) { if (segment.record) segment.record = jsonToLex(segment.record) as typeof segment.record; }
       if (value) for (const segment of value.segments) { if (segment.replyTo) segment.replyTo = jsonToLex(segment.replyTo) as typeof segment.replyTo; if (segment.quoteTo) segment.quoteTo = jsonToLex(segment.quoteTo) as typeof segment.quoteTo; }
       resolve(value);

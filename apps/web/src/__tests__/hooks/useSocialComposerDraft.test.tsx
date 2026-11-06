@@ -998,3 +998,108 @@ it("continues durable background cleanup after closing the composer while the sa
   await waitFor(async () => expect((await Storage.pendingPublicationCleanups(did)).length).toBe(0));
   expect((await Storage.loadComposerDraft(did, "social-draft:background"))?.cloud?.cleaned).toBe(true);
 });
+
+function privateVideoSegments(): ThreadSegment[] {
+  const blob = new Blob(["private video bytes"], { type: "video/mp4" });
+  return [{ id: "video-post", text: "Video post", media: { kind: "video", id: "video", name: "video.mp4", original: blob, blob, width: 640, height: 360, duration: 30, alt: "Video Description", status: "ready" } }];
+}
+it("saves private video references with verified manifests and recovers bytes on another device", async () => {
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments(privateVideoSegments()));
+  await act(async () => hook.result.current.flush());
+  const id = hook.result.current.cloudId!;
+  const native = remote[0].draft;
+  expect(native.posts[0].embedVideos?.[0].localRef.path).toStartWith("socialwire-private://v1/video/");
+  expect(manifests.get(id)?.attachments).toHaveLength(1);
+  expect(manifests.get(id)?.attachments[0].role).toBe("video");
+  await act(async () => hook.result.current.close());
+  hook.unmount();
+  await Storage.saveComposerDraft(did, `social-draft:${id}`);
+  const preparation = await import("@/lib/prepareComposerVideo");
+  const prepare = spyOn(preparation, "prepareComposerVideo").mockImplementation(async video => ({ ...video, blob: video.original, width: 640, height: 360, duration: 30, status: "ready" })); restores.push(() => prepare.mockRestore());
+  const reopened = harness(remote[0]); await waitFor(() => expect(reopened.result.current.loaded).toBe(true));
+  const media = reopened.result.current.segments[0].media;
+  if (media?.kind !== "video") throw new Error("Missing Restored Video");
+  expect(await media.blob!.text()).toBe("private video bytes");
+  expect(media.alt).toBe("Video Description");
+  expect(reopened.result.current.hasUnavailableMedia).toBe(false);
+  expect(Attachments.downloadDraftAttachment).toHaveBeenCalledTimes(1);
+});
+it("keeps video bytes and reserved IDs when uploads fail, then retries the same private file", async () => {
+  const upload = spyOn(Attachments, "uploadDraftAttachment").mockRejectedValue(new Error("Offline")); restores.push(() => upload.mockRestore());
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments(privateVideoSegments()));
+  await act(async () => { await expect(hook.result.current.flush()).rejects.toThrow("Offline"); });
+  const recovery = await Storage.loadComposerDraft(did, "new-post");
+  const media = recovery?.segments[0].media;
+  if (media?.kind !== "video") throw new Error("Missing Video Recovery");
+  expect(await media.blob!.text()).toBe("private video bytes");
+  const id = media.privateAttachment!.video.assetId;
+  expect(Transport.createSocialDraft).not.toHaveBeenCalled();
+  upload.mockImplementation(async (_actor, asset, blob) => {
+    expect(asset.assetId).toBe(id);
+    const ready = { ...asset, state: "ready" as const };
+    files.set(id, { asset: ready, blob }); return ready;
+  });
+  await act(async () => hook.result.current.retry());
+  expect(hook.result.current.status).toBe("Draft Saved");
+  expect(manifests.get(hook.result.current.cloudId!)?.attachments[0].assetId).toBe(id);
+});
+it("does not resurrect a video removed while its private upload was in flight", async () => {
+  const gate = deferred<Attachments.DraftAttachment>();
+  let asset: Attachments.DraftAttachment | undefined;
+  const upload = spyOn(Attachments, "uploadDraftAttachment").mockImplementation(async (_actor, input) => { asset = input; return gate.promise; }); restores.push(() => upload.mockRestore());
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments(privateVideoSegments()));
+  let saving!: Promise<void>;
+  act(() => { saving = hook.result.current.flush(); });
+  await waitFor(() => expect(asset).toBeDefined());
+  act(() => hook.result.current.setSegments([{ id: "video-post", text: "Kept Text" }]));
+  await act(async () => { gate.resolve({ ...asset!, state: "ready" }); await saving; });
+  expect(hook.result.current.segments[0].media).toBeUndefined();
+  expect(remote[0].draft.posts[0].embedVideos).toBeUndefined();
+  expect(manifests.get(hook.result.current.cloudId!)?.attachments ?? []).toEqual([]);
+});
+it("removes private video manifest references after native video removal is acknowledged", async () => {
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments(privateVideoSegments())); await act(async () => hook.result.current.flush());
+  const id = hook.result.current.cloudId!;
+  const update = spyOn(Transport, "updateSocialDraft").mockImplementation(async ({ draft }) => {
+    expect(manifests.get(id)?.attachments).toHaveLength(1);
+    expect(draft.posts[0].embedVideos).toBeUndefined();
+    remote = [view(id, draft)];
+  }); restores.push(() => update.mockRestore());
+  act(() => hook.result.current.setSegments(previous => previous.map(segment => ({ ...segment, media: undefined }))));
+  await act(async () => hook.result.current.flush());
+  expect(manifests.get(id)?.attachments).toEqual([]);
+});
+it("retains oversized videos locally and permits explicit publication without cloud syncing", async () => {
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  const local = privateVideoSegments();
+  if (local[0].media?.kind !== "video") throw new Error("Missing Video");
+  Object.defineProperty(local[0].media.blob, "size", { value: Attachments.PRIVATE_DRAFT_FILE_LIMIT + 1 });
+  act(() => hook.result.current.setSegments(local));
+  await act(async () => { await expect(hook.result.current.flush()).rejects.toThrow("Saved Locally Only"); });
+  expect(Transport.createSocialDraft).not.toHaveBeenCalled();
+  expect((await Storage.loadComposerDraft(did, "new-post"))?.segments[0].media?.kind).toBe("video");
+  await act(async () => { const snapshot = await hook.result.current.beginPublication(); expect(snapshot[0].media?.kind).toBe("video"); hook.result.current.endPublication(); });
+});
+it("keeps missing private videos unavailable until an explicit successful recovery retry", async () => {
+  const hook = harness(); await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments(privateVideoSegments())); await act(async () => hook.result.current.flush());
+  const id = hook.result.current.cloudId!;
+  const reference = manifests.get(id)!.attachments[0];
+  const file = files.get(reference.assetId)!;
+  await act(async () => hook.result.current.close()); hook.unmount();
+  await Storage.saveComposerDraft(did, `social-draft:${id}`); files.clear();
+  const reopened = harness(remote[0]); await waitFor(() => expect(reopened.result.current.loaded).toBe(true));
+  expect(reopened.result.current.hasUnavailableMedia).toBe(true);
+  expect(reopened.result.current.segments[0].nativeDraftPost?.embedVideos).toEqual(remote[0].draft.posts[0].embedVideos);
+  await act(async () => { await expect(reopened.result.current.beginPublication()).rejects.toThrow("Unavailable"); });
+  files.set(reference.assetId, file);
+  const preparation = await import("@/lib/prepareComposerVideo");
+  const prepare = spyOn(preparation, "prepareComposerVideo").mockImplementation(async video => ({ ...video, blob: video.original, width: 640, height: 360, duration: 30, status: "ready" })); restores.push(() => prepare.mockRestore());
+  await act(async () => reopened.result.current.retry());
+  expect(reopened.result.current.hasUnavailableMedia).toBe(false);
+  expect(reopened.result.current.status).toBe("Draft Saved");
+});

@@ -12,13 +12,21 @@ export type ComposerPhoto = {
 export type GifRendition = "gif" | "poster" | "mp4" | "webm";
 export type PrivateGifFiles = { ownerDid: string; identity: string; referenceKey: string; files: Partial<Record<GifRendition, { asset: DraftAttachment; blob: Blob }>> };
 export type ComposerGif = { kind: "gif"; asset: GifAsset; alt: string; privateFiles?: PrivateGifFiles; unavailable?: boolean };
+export type ComposerVideo = {
+  kind: "video"; id: string; name: string; original: Blob; blob?: Blob;
+  width?: number; height?: number; duration?: number; alt: string;
+  status: "preparing" | "ready" | "failed"; error?: string;
+  sourceByteLength?: number;
+  privateAttachment?: { ownerDid: string; video: DraftAttachment };
+};
 export const isGifCatalogId = (id: string) => /^[A-Za-z0-9_-]{1,128}$/.test(id);
 export function gifRenditions(asset: GifAsset): GifRendition[] { return ["gif", "poster", ...(asset.mp4 ? ["mp4" as const] : []), ...(asset.webm ? ["webm" as const] : [])]; }
-export type ComposerMedia = { kind: "photos"; photos: ComposerPhoto[] } | ComposerGif;
+export type ComposerMedia = { kind: "photos"; photos: ComposerPhoto[] } | ComposerGif | ComposerVideo;
 
 export function mediaReady(media?: ComposerMedia): boolean {
   if (!media) return true;
   if (media.kind === "gif") { if (media.unavailable) return false; try { gifEmbedURI(media.asset); return media.alt.length <= 2000; } catch { return false; } }
+  if (media.kind === "video") return media.status === "ready" && media.blob instanceof Blob && media.blob.type === "video/mp4" && media.blob.size >= 32 && media.blob.size <= 300_000_000 && [media.width, media.height].every(value => Number.isSafeInteger(value) && value! > 0 && value! <= 20000) && Number.isFinite(media.duration) && media.duration! > 0 && media.duration! <= 600 && media.alt.length <= 1000;
   return media.photos.length > 0 && media.photos.length <= 4 && media.photos.every(photo => photo.status === "ready" && !!photo.blob && !!photo.width && !!photo.height && photo.alt.length <= 2000);
 }
 
@@ -27,7 +35,7 @@ export function mediaHasContent(media?: ComposerMedia): boolean {
 }
 
 export function missingMediaAlt(media?: ComposerMedia): boolean {
-  return media?.kind === "photos" ? media.photos.some(photo => !photo.alt.trim()) : media?.kind === "gif" ? !media.alt.trim() : false;
+  return media?.kind === "photos" ? media.photos.some(photo => !photo.alt.trim()) : media ? !media.alt.trim() : false;
 }
 
 export function klipyMediaURL(value: string): URL {
