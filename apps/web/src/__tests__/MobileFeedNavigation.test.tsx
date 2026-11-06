@@ -53,11 +53,11 @@ describe("MobileFeedNavigation", () => {
     fireEvent.click(podcasts);
     expect(onSelect).toHaveBeenCalledWith("podcasts");
   });
-  it("labels Podcasts as Beta in mobile overflow without changing selection", () => {
+  it("keeps Podcasts Beta in an available primary slot after retired feeds are excluded", () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="podcasts" visibleFeeds={new Set(["podcasts", "social", "shortVideos", "subscribed", "following"])} onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
-    const podcasts = screen.getByRole("menuitem", { name: "Podcasts, Beta" });
+    render(<MobileFeedNavigation currentFeed="podcasts" visibleFeeds={new Set(["podcasts", "social", "wire", "circle", "subscribed", "following"])} onSelect={onSelect} />);
+    expect(screen.queryByRole("button", { name: "More Feeds" })).toBeNull();
+    const podcasts = screen.getByRole("button", { name: "Podcasts, Beta" });
     expect(podcasts.textContent).toContain("Beta");
     expect(podcasts.getAttribute("aria-current")).toBe("page");
     fireEvent.click(podcasts);
@@ -85,11 +85,12 @@ describe("MobileFeedNavigation", () => {
 
   it("keeps retired feeds out of primary slots and More despite stale enabled visibility", async () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="sports" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "shortVideos", "podcasts", "finance", "sports"])} onSelect={onSelect} />);
+    render(<MobileFeedNavigation currentFeed="sports" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "podcasts", "finance", "sports"])} onSelect={onSelect} />);
     for (const label of ["The Wire", "Your Circle"]) expect(screen.queryByRole("button", { name: label })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
     for (const label of ["The Wire", "Your Circle"]) expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
-    for (const label of ["Podcasts", "Finance", "Sports"]) expect((await screen.findByRole("menuitem", { name: `${label}, Beta` })).textContent).toContain("Beta");
+    expect(screen.getByRole("button", { name: "Podcasts, Beta" }).textContent).toContain("Beta");
+    for (const label of ["Finance", "Sports"]) expect((await screen.findByRole("menuitem", { name: `${label}, Beta` })).textContent).toContain("Beta");
     const sports = screen.getByRole("menuitem", { name: "Sports, Beta" });
     expect(sports.getAttribute("aria-current")).toBe("page"); fireEvent.click(sports);
     expect(onSelect).toHaveBeenCalledWith("sports");

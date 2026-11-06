@@ -435,10 +435,10 @@ export function AppSidebar({
   if (displayPreferences.showSocial) { visible.add("social"); visible.add("shortVideos"); visible.add("photos"); }
 
   const selectTopLevelFeed = (feed: ReaderNavigationFeed) => {
-    if (isRetiredReaderFeed(feed)) return;
     if (feed === "shortVideos" || feed === "photos") { setOpenMobile(false); router.push(feed === "photos" ? "/media/photos" : "/media/short-videos"); return; }
     if (feed === "social") { setOpenMobile(false); router.push("/social"); return; }
     if (feed === "podcasts") { setOpenMobile(false); router.push("/podcasts"); return; }
+    if (isRetiredReaderFeed(feed)) return;
     setSelectedFolderUri(null);
     if (feed === "readLater") {
       router.push("/saved");
