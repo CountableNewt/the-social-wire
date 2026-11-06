@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IDBFactory } from "fake-indexeddb";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Auth from "@/hooks/useAuth";
+import * as Semble from "@/hooks/useSembleReadLater";
 import * as Publishing from "@/lib/articles/articlePublishingClient";
 import { listArticleDrafts } from "@/lib/articles/articleDraftStorage";
 import { ArticlesWorkspace } from "@/components/Articles/ArticlesWorkspace";
@@ -18,6 +19,7 @@ afterAll(() => { if (originalMatchMedia) Object.defineProperty(window, "matchMed
 beforeEach(() => {
   Object.defineProperty(globalThis, "indexedDB", { configurable: true, value: new IDBFactory() });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ uri: `at://${did}/site.standard.publication/one`, cid: "pub", name: "Test Publication", url: "https://publication.test", host: "leaflet", record: {} }]); restores.push(() => pubs.mockRestore());
   const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([]); restores.push(() => history.mockRestore());
@@ -41,9 +43,15 @@ it("keeps a newly entered title through immediate mode changes, body edits, Save
   fireEvent.click(screen.getByRole("button", { name: "Article Viewer" }));
   expect(screen.getByRole("heading", { name: "Retained New Article Title" })).toBeTruthy();
   expect(screen.getByText("Saved Article Content.")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Retained New Article Title" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Article Library" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+  expect(await screen.findByRole("button", { name: /^Retained New Article Title/ })).toBeTruthy();
   cleanup(); client.clear();
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
+  expect(screen.getByRole("button", { name: "Research" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.queryByLabelText("Article Title")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Retained New Article Title/ }));
   const restored = await screen.findByLabelText("Article Title");
   expect((restored as HTMLInputElement).value).toBe("Retained New Article Title");
   fireEvent.click(screen.getByRole("button", { name: "Markdown" }));

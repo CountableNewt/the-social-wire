@@ -1,17 +1,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import * as Scheduling from "@/hooks/useSkejScheduling";
+import * as Semble from "@/hooks/useSembleReadLater";
 import * as Entitlements from "@/hooks/useProEntitlements";
 import * as Auth from "@/hooks/useAuth";
 import * as Drafts from "@/hooks/articles/useArticleDrafts";
 import * as Storage from "@/lib/articles/articleDraftStorage";
 import * as Publishing from "@/lib/articles/articlePublishingClient";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
-import type { ArticlePublication } from "@/lib/articles/articlePublishingTypes";
+import type { ArticlePublication, PublishedArticle } from "@/lib/articles/articlePublishingTypes";
 import { ArticlesWorkspace } from "@/components/Articles/ArticlesWorkspace";
 import { SidebarProvider } from "@/components/ui/sidebar";
 const did = "did:plc:abcdefghijklmnopqrstuvwx";
@@ -23,6 +24,7 @@ let seed: ArticleDraft;
 let storageError: string | undefined;
 let client: QueryClient;
 let scheduleRows: unknown[];
+let publishedRows: PublishedArticle[];
 const scheduleArticle = mock(async (_input: unknown, _time: string): Promise<unknown> => { void _input; void _time; return {}; });
 const persist = mock(async () => {});
 const restores: (() => void)[] = [];
@@ -42,11 +44,13 @@ afterAll(() => { if (originalMatchMedia) Object.defineProperty(window, "matchMed
 beforeEach(() => {
   seed = { id: "draft", title: "Working Article", markdown: "# Article Body\n\nA private paragraph.", excerpt: "", path: "/working-article", tags: [], publicationUri: publications[0]!.uri, createdAt: "2026-10-10T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z", assets: [], revision: 1 };
   scheduleRows = [];
+  publishedRows = [];
   scheduleArticle.mockReset(); scheduleArticle.mockResolvedValue({ scheduleUri: `at://${did}/at.skej.schedule/current` });
   const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => {} }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(seed);
@@ -54,28 +58,100 @@ beforeEach(() => {
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
   const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => seed); restores.push(() => stored.mockRestore());
-  const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([]); restores.push(() => history.mockRestore());
+  const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue(publishedRows); restores.push(() => history.mockRestore());
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-async function show() {
+async function show(openDraft = true) {
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
-  await waitFor(() => expect(screen.getByRole("option", { name: "First Publication" })).toBeTruthy());
+  await screen.findByRole("region", { name: "Article Library" });
+  if (openDraft) {
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
+    await waitFor(() => expect(screen.getByRole("option", { name: "First Publication" })).toBeTruthy());
+  }
 }
 function publishingSpy() {
   const publish = spyOn(Publishing, "publishArticle").mockResolvedValue({ uri: `at://${did}/site.standard.document/published`, cid: "published", url: "https://first.test/working-article" }); restores.push(() => publish.mockRestore());
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("starts in the full-page library even when a draft was restored", async () => {
+    await show(false);
+    const sections = within(screen.getByRole("navigation", { name: "Article Sections" })).getAllByRole("button");
+    expect(sections.map(button => button.textContent)).toEqual(["Research", "Drafts", "Scheduled", "Published"]);
+    expect(screen.getByRole("button", { name: "Research" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Drafts" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("region", { name: "Research Library" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Working Article/ })).toBeNull();
+    expect(screen.queryByLabelText("Article Title")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hide Metadata" })).toBeNull();
+  });
+  it("creates an article from the library and opens editor with metadata", async () => {
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "New Article" }));
+    expect(await screen.findByLabelText("Article Title")).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Article Details" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Article Library" })).toBeNull();
+    expect(screen.queryByRole("separator", { name: "Resize Drafts" })).toBeNull();
+  });
+  it("waits for saving before returning to the library", async () => {
+    await show();
+    let finish!: () => void;
+    persist.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    fireEvent.change(screen.getByLabelText("Article Title"), { target: { value: "Saved Before Leaving" } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+    expect(screen.getByLabelText("Article Title")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Article Library" })).toBeNull();
+    await act(async () => { finish(); });
+    expect(await screen.findByRole("region", { name: "Article Library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Saved Before Leaving/ })).toBeTruthy();
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+  it("keeps the editor open when saving before leaving fails", async () => {
+    await show();
+    persist.mockRejectedValue(new Error("Cannot Save Yet"));
+    fireEvent.change(screen.getByLabelText("Article Title"), { target: { value: "Keep These Edits" } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Cannot Save YetRetry");
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe("Keep These Edits");
+    expect(screen.queryByRole("region", { name: "Article Library" })).toBeNull();
+  });
+  it("opens published rows read-only with metadata and returns to the Published library", async () => {
+    publishedRows.push({ uri: `at://${did}/site.standard.document/public-story`, cid: "published", record: { title: "Public Story", site: publications[0]!.uri, path: "/public-story", content: { $type: "at.markpub.markdown", text: { markdown: "A public paragraph." } } } });
+    const publish = publishingSpy();
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Public Story/ }));
+    expect(await screen.findByRole("heading", { name: "Public Story" })).toBeTruthy();
+    expect(screen.getByText("A public paragraph.")).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Article Details" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open Article" }).getAttribute("href")).toBe("https://first.test/public-story");
+    expect(screen.queryByLabelText("Article Title")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Publish Article" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hide Metadata" }));
+    expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show Metadata" }));
+    expect(screen.getByRole("complementary", { name: "Article Details" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+    await screen.findByRole("region", { name: "Article Library" });
+    expect(screen.getByRole("button", { name: "Published" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /^Public Story/ })).toBeTruthy();
+    expect(publish).not.toHaveBeenCalled();
+  });
   it("opens Scheduled without publishing or losing the active draft", async () => {
     const publish = publishingSpy();
     await show();
     fireEvent.change(screen.getByLabelText("Article Title"), { target: { value: "Still Private" } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+    await screen.findByRole("region", { name: "Article Library" });
     fireEvent.click(screen.getByRole("button", { name: "Scheduled" }));
     expect(screen.getByText("No Scheduled Articles.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Scheduled" }).getAttribute("aria-pressed")).toBe("true");
     expect(publish).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
-    expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe("Still Private");
+    fireEvent.click(screen.getByRole("button", { name: /^Still Private/ }));
+    expect((await screen.findByLabelText("Article Title") as HTMLInputElement).value).toBe("Still Private");
     expect(screen.queryByText("No Scheduled Articles.")).toBeNull();
   });
   it("requires public-record confirmation and locks a scheduled snapshot", async () => {
@@ -88,6 +164,11 @@ describe("article publishing workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
     await waitFor(() => expect(scheduleArticle).toHaveBeenCalledTimes(1));
     expect(scheduleArticle.mock.calls[0]?.[0]).toMatchObject({ title: seed.title, markdown: seed.markdown });
+    await screen.findByRole("region", { name: "Article Library" });
+    expect(screen.getByRole("button", { name: "Scheduled" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Working Article/ }));
+    await screen.findByLabelText("Article Title");
     expect((screen.getByRole("button", { name: "Publish Article" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(true);
     expect(persist.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -170,6 +251,40 @@ describe("article publishing workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm Schedule" }));
     expect(await screen.findByText("Storage Full")).toBeTruthy();
     expect(scheduleArticle).not.toHaveBeenCalled();
+  });
+  it("toggles metadata without losing editor or metadata edits", async () => {
+    await show();
+    const title = screen.getByLabelText("Article Title");
+    fireEvent.change(title, { target: { value: "Still Writing" } });
+    fireEvent.change(screen.getByLabelText("Article Excerpt"), { target: { value: "Retained Metadata" } });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize Metadata" }), { key: "ArrowLeft", shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Hide Metadata" }));
+    expect(screen.queryByRole("complementary", { name: "Article Library" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
+    expect(screen.getByLabelText("Article Title")).toBe(title);
+    fireEvent.click(screen.getByRole("button", { name: "Show Metadata" }));
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe("Still Writing");
+    expect((screen.getByLabelText("Article Excerpt") as HTMLTextAreaElement).value).toBe("Retained Metadata");
+    expect(screen.getByRole("separator", { name: "Resize Metadata" }).getAttribute("aria-valuenow")).toBe("344");
+    const sidebarToggle = screen.getByRole("button", { name: "Toggle Sidebar" });
+    expect(sidebarToggle.className).not.toContain("md:hidden");
+    const expanded = sidebarToggle.getAttribute("aria-expanded");
+    fireEvent.click(sidebarToggle);
+    expect(sidebarToggle.getAttribute("aria-expanded")).not.toBe(expanded);
+    fireEvent.click(sidebarToggle);
+    expect(sidebarToggle.getAttribute("aria-expanded")).toBe(expanded);
+  });
+  it("resizes metadata with keyboard bounds", async () => {
+    await show();
+    const metadata = screen.getByRole("separator", { name: "Resize Metadata" });
+    fireEvent.keyDown(metadata, { key: "ArrowLeft" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("328");
+    fireEvent.keyDown(metadata, { key: "End" });
+    fireEvent.keyDown(metadata, { key: "ArrowLeft" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("480");
+    fireEvent.keyDown(metadata, { key: "Home" });
+    fireEvent.keyDown(metadata, { key: "ArrowRight" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("208");
   });
   it("renders the actual block editor and publishes only after explicit confirmation", async () => {
     const publish = publishingSpy();
