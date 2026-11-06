@@ -4224,6 +4224,18 @@ paths:
 
   # ── L@tr bookmark XRPC proxy (Social Wire Gateway iOS proxy) ───────────────
 
+  /xrpc/link.latr.preview.getOpenGraph:
+    get:
+      operationId: getLatrOpenGraphPreview
+      summary: Resolve saved-link preview metadata
+      description: Proxies L@tr preview lookup with viewer OAuth/DPoP and L@tr-bound DPoP.
+      tags: [Latr]
+      parameters:
+        - { name: url, in: query, required: true, schema: { type: string, format: uri } }
+      responses:
+        "200": { description: "Optional title, description, image, siteName, and author fields." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /xrpc/link.latr.bookmarks.listBookmarks:
     get:
       operationId: listLatrBookmarks
