@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { floatingGlassClasses } from "@/components/shared/floatingChromeStyles";
 import { appChromeMarginClassName } from "@/components/shared/appChromeStyles";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ type FeedHeaderProps = {
   children?: ReactNode;
   className?: string;
   leading?: ReactNode;
+  desktopSidebarToggle?: boolean;
 };
 
 export function FeedHeader({
@@ -24,7 +25,9 @@ export function FeedHeader({
   children,
   className,
   leading,
+  desktopSidebarToggle = false,
 }: FeedHeaderProps) {
+  const { isMobile, open, openMobile } = useSidebar();
   return (
     <header
       data-slot="feed-header"
@@ -37,7 +40,7 @@ export function FeedHeader({
       )}
     >
       {leading}
-      <SidebarTrigger className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 -ml-0.5 rounded-md border-0 bg-transparent shadow-none hover:bg-muted/50 aria-expanded:bg-muted/50 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 sm:-ml-1 md:hidden" />
+      <SidebarTrigger aria-expanded={isMobile ? openMobile : open} className={cn("h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 -ml-0.5 rounded-md border-0 bg-transparent shadow-none hover:bg-muted/50 aria-expanded:bg-muted/50 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 sm:-ml-1", !desktopSidebarToggle && "md:hidden")} />
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="mr-auto min-w-0 px-1 sm:px-0">
           <h1 className="truncate text-base font-bold text-foreground">{title}</h1>

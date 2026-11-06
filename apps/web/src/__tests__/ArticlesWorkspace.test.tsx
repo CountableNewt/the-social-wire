@@ -55,6 +55,42 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("toggles both side panels without losing editor or metadata edits", async () => {
+    await show();
+    const title = screen.getByLabelText("Article Title");
+    fireEvent.change(title, { target: { value: "Still Writing" } });
+    fireEvent.change(screen.getByLabelText("Article Excerpt"), { target: { value: "Retained Metadata" } });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize Drafts" }), { key: "ArrowRight", shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Hide Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide Metadata" }));
+    expect(screen.queryByRole("complementary", { name: "Article Library" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
+    expect(screen.getByLabelText("Article Title")).toBe(title);
+    fireEvent.click(screen.getByRole("button", { name: "Show Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Metadata" }));
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe("Still Writing");
+    expect((screen.getByLabelText("Article Excerpt") as HTMLTextAreaElement).value).toBe("Retained Metadata");
+    expect(screen.getByRole("separator", { name: "Resize Drafts" }).getAttribute("aria-valuenow")).toBe("264");
+    const sidebarToggle = screen.getByRole("button", { name: "Toggle Sidebar" });
+    expect(sidebarToggle.className).not.toContain("md:hidden");
+    const expanded = sidebarToggle.getAttribute("aria-expanded");
+    fireEvent.click(sidebarToggle);
+    expect(sidebarToggle.getAttribute("aria-expanded")).not.toBe(expanded);
+    fireEvent.click(sidebarToggle);
+    expect(sidebarToggle.getAttribute("aria-expanded")).toBe(expanded);
+  });
+  it("resizes opposite panel edges with keyboard bounds", async () => {
+    await show();
+    const metadata = screen.getByRole("separator", { name: "Resize Metadata" });
+    fireEvent.keyDown(metadata, { key: "ArrowLeft" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("296");
+    fireEvent.keyDown(metadata, { key: "End" });
+    fireEvent.keyDown(metadata, { key: "ArrowLeft" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("480");
+    fireEvent.keyDown(metadata, { key: "Home" });
+    fireEvent.keyDown(metadata, { key: "ArrowRight" });
+    expect(metadata.getAttribute("aria-valuenow")).toBe("208");
+  });
   it("renders the actual block editor and publishes only after explicit confirmation", async () => {
     const publish = publishingSpy();
     await show();
