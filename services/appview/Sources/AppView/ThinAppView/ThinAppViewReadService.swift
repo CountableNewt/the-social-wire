@@ -11,18 +11,21 @@ actor ThinAppViewReadService {
   private let telemetry: OperationsTelemetryBuffer?
   private let logger: Logger
   private let circlePrivateState: (any CirclePrivateStateStoring)?
+  private let contentVerifier: (any AuthoritativeContentVerifying)?
 
   init(
     store: any ThinAppViewStore,
     projectionCache: (any AppViewProjectionCacheStore)? = nil,
     telemetry: OperationsTelemetryBuffer? = nil,
     circlePrivateState: (any CirclePrivateStateStoring)? = nil,
+    contentVerifier: (any AuthoritativeContentVerifying)? = nil,
     logger: Logger
   ) {
     self.store = store
     self.projectionCache = projectionCache
     self.telemetry = telemetry
     self.circlePrivateState = circlePrivateState
+    self.contentVerifier = contentVerifier
     self.logger = logger
   }
 
@@ -414,6 +417,17 @@ actor ThinAppViewReadService {
     )
   }
 
+  func publicContentScopes(auth: AuthContext, selector: AppViewFeedSelector) async throws -> [AppViewPublicationScope] {
+    let section: String
+    switch selector.kind {
+    case .subscribed: section = "subscribed"
+    case .following: section = "following"
+    case .folder: section = "folder:" + selector.id
+    case .publication, .list: return []
+    }
+    return Array(try await store.publicationScopes(viewerDid: auth.did, sectionKey: section).prefix(8))
+  }
+
   func hasFeedProjection(auth: AuthContext) async throws -> Bool {
     try await store.hasViewerFeedProjection(viewerDid: auth.did)
   }
@@ -574,8 +588,25 @@ actor ThinAppViewReadService {
   }
 
   func entryDetail(auth: AuthContext, entryId: String) async throws -> AppViewEntryDetailResponse {
-    guard let item = try await store.fetchContentItem(uri: entryId) else {
+    guard let indexed = try await store.fetchContentItem(uri: entryId) else {
       throw HTTPError(.notFound, message: "Entry not found in AppView index")
+    }
+    var item = indexed
+    if let contentVerifier, let parsed = RenderFieldExtractor.parseAtUri(entryId),
+      ThinAppViewConfig.canonicalContentCollections.contains(parsed.collection) {
+      var present: Bool?
+      do { present = try await contentVerifier.verify(entryURI: entryId) }
+      catch is CancellationError { throw CancellationError() }
+      catch {
+        try Task.checkCancellation()
+        logger.debug("Authoritative entry check unavailable; serving indexed projection")
+      }
+      if present == false { throw HTTPError(.notFound, message: "Entry no longer exists on its PDS") }
+      // Verification may update or remove the projection. Never serve the pre-check body afterward.
+      guard let current = try await store.fetchContentItem(uri: entryId) else {
+        throw HTTPError(.notFound, message: "Entry not found in AppView index")
+      }
+      item = current
     }
     let render = try await store.fetchContentRender(uri: entryId)
     let isRead = try await store.readStates(viewerDid: auth.did, entries: [item])[entryId] ?? false
