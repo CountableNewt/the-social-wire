@@ -11,6 +11,7 @@ import type {
 import { normalizeHttpUrlToHttps } from "@/lib/publicResourceUrl";
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 import { socialWireXrpc } from "@/lib/socialWireXrpc";
+import { sourceRefreshErrorFromResponse } from "@/lib/publicationSourceRefreshError";
 
 export function isThinAppViewEnabled(): boolean {
   return process.env.NEXT_PUBLIC_USE_THIN_APPVIEW !== "false";
@@ -380,6 +381,8 @@ export async function enrollAuthorsInAppView(
     signal,
   });
   if (!res.ok) {
+    const partial = sourceRefreshErrorFromResponse(res.status, await res.json().catch(() => undefined));
+    if (partial) throw partial;
     throw new Error(`Thin AppView enroll failed (${res.status})`);
   }
 }

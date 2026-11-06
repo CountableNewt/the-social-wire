@@ -49,6 +49,19 @@ function extractOpenAPIPaths(yaml: string): string[] {
 }
 
 describe("OpenAPI route drift", () => {
+  it("documents reconciled RSS source failures without treating enrollment as successful", () => {
+    const document = Bun.YAML.parse(readFileSync(OPENAPI_PATH, "utf8")) as {
+      paths: Record<string, { post: { responses: Record<string, { content?: Record<string, { schema: { $ref: string } }> }> } }>;
+      components: { schemas: Record<string, { allOf: Array<{ properties?: Record<string, unknown> }> }> };
+    };
+    const enrollment = document.paths["/v1/appview/enroll"]!.post.responses;
+    expect(enrollment["503"]?.content?.["application/json"]?.schema.$ref).toBe("#/components/schemas/AppViewEnrollmentError");
+    const details = document.components.schemas.AppViewEnrollmentError!.allOf[1]!.properties!;
+    expect(details.articlesUpdated).toEqual(expect.objectContaining({ type: "boolean", enum: [true] }));
+    expect(details.sourceFailures).toEqual(expect.objectContaining({ type: "array" }));
+    expect(details.unavailablePublicationIds).toEqual(expect.objectContaining({ type: "array", uniqueItems: true }));
+  });
+
   it("documents paths registered in gateway and appview router sources", () => {
     const yaml = readFileSync(OPENAPI_PATH, "utf8");
     const routerSources = [

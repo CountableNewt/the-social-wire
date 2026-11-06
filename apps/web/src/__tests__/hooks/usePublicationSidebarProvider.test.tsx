@@ -23,6 +23,7 @@ import * as gatewayAuth from "@/lib/latrGatewayUserAuth";
 import * as upstreamDpop from "@/lib/latrGatewayUpstreamDpop";
 import { socialWireXrpc } from "@/lib/socialWireXrpc";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
+import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
 
 function deferred() {
   let resolve!: () => void;
@@ -89,6 +90,24 @@ function cacheActiveSources(mounted: ReturnType<typeof mountProvider>, rows = [s
 afterEach(() => { while (observers.length) observers.pop()!(); cleanup(); mock.restore(); });
 
 describe("PublicationSidebarProvider", () => {
+  for (const countFailure of [false, true]) {
+    it(`preserves a publisher warning only after articles and counts update (count failure=${countFailure})`, async () => {
+      const { result, sources, feeds, unread } = mountProvider();
+      await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
+      const warning = new PublicationSourceRefreshError(["publisher.test"]);
+      sources.mockImplementation(async ({ onBatch }) => { await onBatch(); throw warning; });
+      if (countFailure) unread.mockRejectedValue(new Error("counts unavailable"));
+      let error: unknown;
+      await act(async () => { error = await result.current.refresh.mutateAsync().catch(error => error); });
+      await waitFor(() => expect(result.current.refresh.isError).toBe(true));
+      expect(feeds).toHaveBeenCalledTimes(1);
+      expect(unread).toHaveBeenCalledTimes(1);
+      expect(error instanceof PublicationSourceRefreshError).toBe(!countFailure);
+      if (countFailure) expect((error as Error).message).toBe("counts unavailable");
+      else expect(error).toBe(warning);
+    });
+  }
+
   for (const action of ["markEntryUnread", "markEntriesUnread"] as const) {
     it(`rejects a delayed bootstrap seed for an absent publication after aggregate ${action}`, async () => {
       const env = process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
