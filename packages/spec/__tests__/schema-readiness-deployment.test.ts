@@ -33,7 +33,7 @@ describe("schema readiness deployment contract", () => {
       const config = JSON.parse(read(`railway/${service}.json`));
       expect(config.deploy.startCommand).toBeUndefined();
       expect(config.build.watchPatterns).toContain("/database/migrations/**");
-      const nativeGate = ["/services/jetstream-ingest/Package.swift", "/services/jetstream-ingest/Package.resolved", "/services/jetstream-ingest/Sources/**"].every((path) => config.build.watchPatterns.includes(path));
+      const nativeGate = config.build.watchPatterns.includes("/tools/schema-ready/**");
       const watchesGate = nativeGate || config.build.watchPatterns.includes("/services/jetstream-ingest/**") ||
         ["/services/jetstream-ingest/cmd/schema-ready/**", "/services/jetstream-ingest/internal/schemaready/**", "/services/jetstream-ingest/go.mod", "/services/jetstream-ingest/go.sum"].every((path) => config.build.watchPatterns.includes(path));
       expect(watchesGate).toBe(true);
@@ -41,17 +41,20 @@ describe("schema readiness deployment contract", () => {
     });
   }
 
-  it("keeps both consolidated Swift classes on the schema-gated image", () => {
+  it("keeps maintenance on the standalone schema-gated image", () => {
     const iac = read(".railway/railway.ts");
     const build = iac.slice(iac.indexOf("const indexingBuild"), iac.indexOf("const longRunningDeploy"));
     const deploy = iac.slice(iac.indexOf("const longRunningDeploy"), iac.indexOf("export default"));
     expect(build).toContain('dockerfilePath: "/services/indexing-worker/Dockerfile"');
     for (const path of ["/services/indexing-worker/**", "/database/migrations/**",
-      "/services/jetstream-ingest/Package.swift", "/services/jetstream-ingest/Package.resolved",
-      "/services/jetstream-ingest/Sources/**"]) {
+      "/tools/schema-ready/**"]) {
       expect(build).toContain(`"${path}"`);
     }
-    expect(iac.match(/build: indexingBuild/g)).toHaveLength(2);
+    expect(iac.match(/build: indexingBuild/g)).toHaveLength(1);
+    expect(iac).toContain('watchPatterns: ["/__global_projection_retired__/**"]');
+    expect(iac).toContain('watchPatterns: ["/__global_ingress_retired__/**"]');
+    expect(iac).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
+    expect(iac).toContain('OPERATIONS_RECOVERY_ENABLED: "false"');
     expect(iac.match(/deploy: longRunningDeploy/g)).toHaveLength(3);
     expect(deploy).toContain('healthcheckPath: "/startupz"');
     expect(Number(deploy.match(/healthcheckTimeout: (\d+)/)?.[1])).toBeGreaterThan(90);
@@ -65,8 +68,7 @@ describe("schema readiness deployment contract", () => {
   it("keeps the consolidated IaC entrypoint and rebuild dependencies", () => {
     const iac = read(".railway/railway.ts");
     expect(iac).not.toContain("startCommand:");
-    expect(iac).toContain('"/services/jetstream-ingest/Sources/**"');
-    expect(iac).toContain('"/services/jetstream-ingest/Package.resolved"');
+    expect(iac).toContain('"/tools/schema-ready/**"');
     expect(iac).toContain('"/database/migrations/**"');
   });
 

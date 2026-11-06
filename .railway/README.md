@@ -1,3 +1,29 @@
+# Reader maintenance rollout
+
+Global Ingress Controller and Projection Pool are retired while The Wire and
+related corpus products are inactive. Their resource declarations stay in this
+partial to preserve ownership and checkpoint history; impossible watch patterns
+prevent branch pushes from restarting them. Stop their existing deployments only
+after the provider-backed App View reader path is accepted. Do not delete their
+resources, replay history, usage, or cursors during this cutover.
+
+Coordinator runs `THIN_APPVIEW_WORKER_MODE=maintenance`: fenced RSS polling and
+retention, with no global ingestion, projection, replay, or ingestion freshness
+requirement. Gateway and App View use the independent `tools/schema-ready` gate;
+Database Migrator remains the sole migration owner. Public content uses bounded
+Constellation discovery and Slingshot hydration, with scoped authoritative PDS
+reads for history and missing links. Viewer state and auth trust remain on PDS.
+
+Development tracks `dev`; Production tracks `main` and is promoted only after
+Development acceptance. Apply exact environment/service patches for this rollout.
+Do not apply this entire partial: it also owns dormant podcast resources, and a
+broad apply could reactivate services outside the release scope. Region, secrets,
+and database references must be verified against each environment before release.
+
+---
+
+The following records the previous indexing topology for rollback context.
+
 # Railway infrastructure partial
 
 `railway.ts` owns the three consolidated indexing service classes in
