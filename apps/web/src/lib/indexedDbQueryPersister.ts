@@ -65,17 +65,24 @@ export function createIndexedDbQueryPersister({
     if (!canUseIndexedDb() || !pendingClient) return;
     const client = pendingClient;
     pendingClient = null;
-    void withStore(dbName, storeName, "readwrite", (store) =>
-      store.put(client, key)
-    ).catch(() => {
-      /* IndexedDB can be unavailable in private mode; persistence is best effort. */
-    });
+    try {
+      // Preparing bounded feeds can serialize large records. Coalesce that CPU
+      // work with disk writes instead of repeating it for every cache event.
+      const prepared = prepareClient(client);
+      void withStore(dbName, storeName, "readwrite", (store) =>
+        store.put(prepared, key)
+      ).catch(() => {
+        /* IndexedDB can be unavailable in private mode; persistence is best effort. */
+      });
+    } catch {
+      /* Invalid/unserializable snapshots must not interrupt the active UI. */
+    }
   };
 
   return {
     persistClient: async (client) => {
       if (!canUseIndexedDb()) return;
-      pendingClient = prepareClient(client);
+      pendingClient = client;
       if (pendingTimer != null) return;
       pendingTimer = window.setTimeout(() => {
         pendingTimer = null;
