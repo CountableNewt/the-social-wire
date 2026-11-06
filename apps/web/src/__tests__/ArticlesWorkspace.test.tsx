@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import * as Scheduling from "@/hooks/useSkejScheduling";
+import * as Semble from "@/hooks/useSembleReadLater";
 import * as Entitlements from "@/hooks/useProEntitlements";
 import * as Auth from "@/hooks/useAuth";
 import * as Drafts from "@/hooks/articles/useArticleDrafts";
@@ -49,6 +50,7 @@ beforeEach(() => {
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => {} }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(seed);
@@ -63,6 +65,7 @@ async function show(openDraft = true) {
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
   await screen.findByRole("region", { name: "Article Library" });
   if (openDraft) {
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
     fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
     await waitFor(() => expect(screen.getByRole("option", { name: "First Publication" })).toBeTruthy());
   }
@@ -74,10 +77,12 @@ function publishingSpy() {
 describe("article publishing workspace", () => {
   it("starts in the full-page library even when a draft was restored", async () => {
     await show(false);
-    expect(screen.getByRole("button", { name: "Drafts" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "Scheduled" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Published" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Working Article/ })).toBeTruthy();
+    const sections = within(screen.getByRole("navigation", { name: "Article Sections" })).getAllByRole("button");
+    expect(sections.map(button => button.textContent)).toEqual(["Research", "Drafts", "Scheduled", "Published"]);
+    expect(screen.getByRole("button", { name: "Research" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Drafts" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("region", { name: "Research Library" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Working Article/ })).toBeNull();
     expect(screen.queryByLabelText("Article Title")).toBeNull();
     expect(screen.queryByRole("complementary", { name: "Article Details" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Hide Metadata" })).toBeNull();

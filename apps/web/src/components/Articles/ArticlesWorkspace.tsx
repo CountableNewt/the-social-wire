@@ -54,7 +54,7 @@ function ArticlesViewer({ did }: { did: string }) {
   const [publishedArticle, setPublishedArticle] = useState<PublishedArticle>();
   const [metadataVisible, setMetadataVisible] = useState(true);
   const [metadataWidth, setMetadataWidth] = useState(320);
-  const [tab, setTab] = useState<ArticleLibraryTab>("drafts");
+  const [tab, setTab] = useState<ArticleLibraryTab>("research");
   const [mode, setMode] = useState<ArticleBodyMode>("editor");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string>();

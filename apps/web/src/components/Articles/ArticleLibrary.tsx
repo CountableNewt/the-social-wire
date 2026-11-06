@@ -24,7 +24,7 @@ export function ArticleLibrary({ tab, onTabChange, drafts, loading, busy, onOpen
 }) {
   return <section aria-label="Article Library" className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
     <nav aria-label="Article Sections" className="mb-6 flex w-full flex-wrap gap-2 border-b pb-3">
-      {(["drafts", "scheduled", "published", "research"] as const).map(value => <button type="button" key={value} className={buttonVariants({ variant: tab === value ? "secondary" : "ghost" })} aria-pressed={tab === value} disabled={busy} onClick={() => onTabChange(value)}>{value === "drafts" ? "Drafts" : value === "scheduled" ? "Scheduled" : value === "published" ? "Published" : "Research"}</button>)}
+      {(["research", "drafts", "scheduled", "published"] as const).map(value => <button type="button" key={value} className={buttonVariants({ variant: tab === value ? "secondary" : "ghost" })} aria-pressed={tab === value} disabled={busy} onClick={() => onTabChange(value)}>{value === "drafts" ? "Drafts" : value === "scheduled" ? "Scheduled" : value === "published" ? "Published" : "Research"}</button>)}
     </nav>
     {tab === "research" ? research : tab === "scheduled" ? scheduled : tab === "drafts" ? <>
       <p className="mb-4 text-sm text-muted-foreground">Private Drafts · This Browser Only</p>
