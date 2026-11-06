@@ -84,8 +84,12 @@ enum AppViewRouterBuilder {
     }
 
     if config.podcastsEnabled, let podcastStore {
-      let podcastService = PodcastService(store: podcastStore, http: httpClient,
+      var podcastService = PodcastService(store: podcastStore, http: httpClient,
         repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient, plcURL: config.core.atprotoPLCURL, logger: logger))
+      let resolver = podcastService
+      let feedResolution = PodcastFeedResolutionQueue { key in _ = try await resolver.resolve(key) }
+      backgroundTasks?.register { await feedResolution.shutdown() }
+      podcastService.feedResolution = feedResolution
       let routes = PodcastRoutes(service: podcastService)
       let podcasts = protected.group().add(middleware: PodcastPrivateStorageMiddleware())
       routes.register(on: podcasts)
