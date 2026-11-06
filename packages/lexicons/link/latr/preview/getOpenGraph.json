@@ -1,0 +1,91 @@
+{
+  "lexicon": 1,
+  "id": "link.latr.preview.getOpenGraph",
+  "defs": {
+    "main": {
+      "description": "L@tr XRPC method link.latr.preview.getOpenGraph.",
+      "type": "query",
+      "parameters": {
+        "type": "params",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 8192,
+            "maxGraphemes": 2048
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 2048,
+              "maxGraphemes": 512
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 8192,
+              "maxGraphemes": 2048
+            },
+            "image": {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 8192,
+              "maxGraphemes": 2048
+            },
+            "siteName": {
+              "type": "string",
+              "maxLength": 512,
+              "maxGraphemes": 128
+            },
+            "author": {
+              "type": "string",
+              "maxLength": 512,
+              "maxGraphemes": 128
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "InvalidUrl"
+        },
+        {
+          "name": "AuthRequired"
+        },
+        {
+          "name": "InvalidToken"
+        },
+        {
+          "name": "InvalidDpop"
+        },
+        {
+          "name": "ClientAuthRequired"
+        },
+        {
+          "name": "SavedItemNotFound"
+        },
+        {
+          "name": "Conflict"
+        },
+        {
+          "name": "RateLimitExceeded"
+        },
+        {
+          "name": "UpstreamFailure"
+        }
+      ]
+    }
+  }
+}

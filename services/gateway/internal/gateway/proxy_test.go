@@ -132,3 +132,37 @@ func mustOpen(t *testing.T, path string) *os.File {
 	t.Cleanup(func() { f.Close() })
 	return f
 }
+
+func TestLatrPreviewProxy(t *testing.T) {
+	const path = "/xrpc/link.latr.preview.getOpenGraph"
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != path || r.URL.Query().Get("url") != "https://example.com/story?a=1&b=2" {
+			t.Errorf("preview target changed: %s %s", r.Method, r.URL)
+		}
+		if r.Header.Get("DPoP") != "latr-proof" || r.Header.Get("X-Latr-API-Key") != "server-key" {
+			t.Error("preview must use L@tr proof and server credentials")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"title":"Story","image":"https://example.com/photo.jpg"}`))
+	}))
+	defer up.Close()
+	p := Proxy{Config: Config{LatrURL: up.URL, LatrClientID: "id", LatrAPIKey: "server-key"}, Public: up.Client()}
+	for _, route := range Routes {
+		if route.Path != path {
+			continue
+		}
+		if route.Public {
+			t.Fatal("preview must require viewer authentication")
+		}
+		r := httptest.NewRequest("GET", "https://gateway.invalid"+path+"?url=https%3A%2F%2Fexample.com%2Fstory%3Fa%3D1%26b%3D2", nil)
+		r = r.WithContext(gatewaycore.ContextWithAuth(r.Context(), gatewaycore.AuthContext{DID: "did:plc:viewer", Authorization: "DPoP token", DPoP: "gateway-proof"}))
+		r.Header.Set("X-Latr-Gateway-DPoP", "latr-proof")
+		w := httptest.NewRecorder()
+		p.Handler(route).ServeHTTP(w, r)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"title":"Story"`) {
+			t.Fatalf("preview response: %d %s", w.Code, w.Body.String())
+		}
+		return
+	}
+	t.Fatal("missing preview route")
+}

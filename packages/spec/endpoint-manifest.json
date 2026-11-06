@@ -274,6 +274,13 @@
     {
       "surface": "openapi",
       "method": "GET",
+      "path": "/xrpc/link.latr.preview.getOpenGraph",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "link.latr.preview.getOpenGraph"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
       "path": "/xrpc/link.latr.bookmarks.listBookmarks",
       "classification": "foreign-xrpc",
       "xrpcNsid": "link.latr.bookmarks.listBookmarks"
