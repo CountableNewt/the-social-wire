@@ -1,5 +1,7 @@
 "use client";
 
+import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -223,6 +225,7 @@ export function useFeedDisplayPreferences() {
 
   const setDiscoveryFeedVisible = useCallback(
     (feed: "wire" | "circle" | "finance" | "sports" | "social" | "podcasts", visible: boolean) => {
+      if (isRetiredReaderFeed(feed)) return;
       mutation.mutate({
         ...preferences,
         [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial", podcasts: "showPodcasts" } as const)[feed]]: visible,

@@ -1,73 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import * as Navigation from "next/navigation";
 import * as WireHooks from "@/hooks/useWireFeed";
 import * as CircleHooks from "@/hooks/useCircleFeed";
 import * as ReadPublicationPage from "@/app/read/[...pubId]/ReadPubPage";
 import ReadIndexPage from "@/app/read/page";
-import { CircleNewsExperience } from "@/components/Circle/CircleNewsExperience";
 
-const replace = mock(() => undefined);
-const refetchCatalog = mock(() => Promise.resolve());
-const refetchEdition = mock(() => Promise.resolve());
-const restores: Array<() => void> = [];
-let state: ReturnType<typeof CircleHooks.useCircleEdition>;
+const restores: (() => void)[] = [];
+const replace = mock(() => {});
+let query: string;
+let previousEnv: string | undefined;
+let wire: ReturnType<typeof spyOn>;
+let circle: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  previousEnv = process.env.NEXT_PUBLIC_APP_ENV;
+  query = "feed=circle"; replace.mockClear();
+  const params = spyOn(Navigation, "useSearchParams").mockImplementation(() => new URLSearchParams(query) as ReturnType<typeof Navigation.useSearchParams>);
+  const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace } as unknown as ReturnType<typeof Navigation.useRouter>);
+  wire = spyOn(WireHooks, "useWireFeedCatalog").mockReturnValue({ data: { enabled: true, available: true } } as ReturnType<typeof WireHooks.useWireFeedCatalog>);
+  circle = spyOn(CircleHooks, "useCircleEdition");
+  const page = spyOn(ReadPublicationPage, "default").mockImplementation(({ wireFeed, circleFeed, aggregateFeed }) => <p>{wireFeed || circleFeed ? "Retired Feed" : aggregateFeed?.kind}</p>);
+  restores.push(...[params, router, wire, circle, page].map(spy => () => spy.mockRestore()));
+});
+afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); if (previousEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = previousEnv; });
 
-describe("Circle read route integration", () => {
-  beforeEach(() => {
-    replace.mockClear();
-    refetchCatalog.mockClear();
-    refetchEdition.mockClear();
-    state = {
-      catalog: {
-        data: { enabled: true, available: false },
-        isLoading: false, isError: false, refetch: refetchCatalog,
-      },
-      data: undefined,
-      isLoading: false, isRefetching: false, isError: false,
-      refetch: refetchEdition,
-    } as unknown as typeof state;
-    const search = spyOn(Navigation, "useSearchParams").mockReturnValue(
-      new URLSearchParams("feed=circle") as ReturnType<typeof Navigation.useSearchParams>);
-    const router = spyOn(Navigation, "useRouter").mockReturnValue(
-      { replace } as unknown as ReturnType<typeof Navigation.useRouter>);
-    const wire = spyOn(WireHooks, "useWireFeedCatalog").mockReturnValue(
-      { data: { enabled: false, available: false }, isLoading: false } as ReturnType<typeof WireHooks.useWireFeedCatalog>);
-    const circleCatalog = spyOn(CircleHooks, "useCircleCatalog").mockImplementation(() => state.catalog);
-    const circleEdition = spyOn(CircleHooks, "useCircleEdition").mockImplementation(() => state);
-    // Keep the actual route's Circle flag and content while isolating unrelated reader panes.
-    const publication = spyOn(ReadPublicationPage, "default").mockImplementation(({ circleFeed }) =>
-      circleFeed ? <CircleNewsExperience onSelect={() => undefined} /> : <p>Other Feed</p>);
-    restores.push(...[search, router, wire, circleCatalog, circleEdition, publication].map((spy) => () => spy.mockRestore()));
-  });
-
-  afterEach(() => {
-    cleanup();
-    for (const restore of restores.splice(0).reverse()) restore();
-  });
-
-  it("lets unavailable corpus reach the explanatory Circle view and retry its catalog", async () => {
+describe("retired discovery reader routes", () => {
+  it.each(["local", "dev", "prod"].flatMap(environment => ["wire", "circle"].map(feed => [environment, feed])))("in %s replaces retired %s URLs without consulting their catalogs", async (environment, feed) => {
+    process.env.NEXT_PUBLIC_APP_ENV = environment;
+    query = `feed=${feed}&entry=keep`;
     await act(async () => { render(<ReadIndexPage />); });
-    expect(screen.getByRole("heading", { name: "Your Circle Is Not Ready Yet" })).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(refetchCatalog).toHaveBeenCalledTimes(1);
-    expect(refetchEdition).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
-  });
-
-  it("keeps a failed direct Circle route on its retryable error state", async () => {
-    state.catalog.data = undefined;
-    state.catalog.isError = true;
-    await act(async () => { render(<ReadIndexPage />); });
-    expect(screen.getByRole("heading", { name: "Your Circle Could Not Load" })).toBeDefined();
-    expect(replace).not.toHaveBeenCalled();
-  });
-
-  it("does not bypass explicit global disablement on a direct Circle route", async () => {
-    state.catalog.data!.enabled = false;
-    await act(async () => { render(<ReadIndexPage />); });
-    expect(screen.getByRole("heading", { name: "Your Circle Is Unavailable" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(refetchEdition).not.toHaveBeenCalled();
+    expect(screen.getByText("subscribed")).toBeDefined();
+    expect(replace).toHaveBeenCalledWith("/read?feed=subscribed&entry=keep");
+    expect(wire).not.toHaveBeenCalled(); expect(circle).not.toHaveBeenCalled();
+    expect(screen.queryByText("Retired Feed")).toBeNull();
   });
 });
