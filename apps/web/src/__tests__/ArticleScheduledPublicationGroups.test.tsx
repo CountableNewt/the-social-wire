@@ -29,7 +29,7 @@ it("groups scheduled articles by publication and passes future document identity
   const thumb = spyOn(Thumbnail, "ArticleLibraryThumbnail").mockImplementation(() => <span data-testid="article-thumbnail" />);
   restores.push(() => thumb.mockRestore());
   const first = schedule("one"), second = schedule("two", publications[1].uri), unknown = schedule("three", `at://${did}/site.standard.publication/unknown`);
-  render(<ArticleScheduledList scheduler={scheduler([first, second, unknown])} isPro onCanceled={onCanceled} publications={publications} />);
+  render(<ArticleScheduledList did={did} scheduler={scheduler([first, second, unknown])} isPro onCanceled={onCanceled} publications={publications} />);
   expect(within(screen.getByRole("region", { name: "First Journal" })).getByText("Article one")).toBeTruthy();
   expect(within(screen.getByRole("region", { name: "Second Journal" })).getByText("Article two")).toBeTruthy();
   expect(within(screen.getByRole("region", { name: "Other Publications" })).getByText("Article three")).toBeTruthy();
@@ -39,7 +39,7 @@ it("groups scheduled articles by publication and passes future document identity
 it("preserves rescheduling and cancellation confirmation in grouped rows", async () => {
   const thumb = spyOn(Thumbnail, "ArticleLibraryThumbnail").mockImplementation(() => <span />); restores.push(() => thumb.mockRestore());
   const item = schedule("one");
-  render(<ArticleScheduledList scheduler={scheduler([item])} isPro onCanceled={onCanceled} publications={publications} />);
+  render(<ArticleScheduledList did={did} scheduler={scheduler([item])} isPro onCanceled={onCanceled} publications={publications} />);
   fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
   fireEvent.change(screen.getByLabelText("Publish At"), { target: { value: "2099-01-02T12:00" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Time" }));
