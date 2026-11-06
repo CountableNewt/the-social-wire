@@ -77,13 +77,13 @@ describe("PublicationTabs", () => {
     cleanup();
   });
 
-  it("shows all feeds by default and hides only explicitly excluded feeds", () => {
+  it("shows only active feeds by default and ignores retired feeds in stale visibility sets", () => {
     const { rerender } = render(
       <SidebarProvider>
         <PublicationTabs activeTab={null} onTabChange={() => undefined} />
       </SidebarProvider>,
     );
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
     rerender(
       <SidebarProvider>
         <PublicationTabs
@@ -93,10 +93,9 @@ describe("PublicationTabs", () => {
         />
       </SidebarProvider>,
     );
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(
-      screen.getByRole("tab", { name: "Your Circle" }),
-    ).toBeDefined();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "Following" })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "Your Circle" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Finance, Beta" })).toBeNull();
     rerender(
       <SidebarProvider>
@@ -127,55 +126,26 @@ describe("PublicationTabs", () => {
     expect(screen.queryByText("Mark All As Unread")).toBeNull();
   });
 
-  it("renders The Wire without a bulk-read context menu", () => {
-    const onWireSelect = mock(() => undefined);
-    render(
-      <SidebarProvider>
-        <PublicationTabs
-          activeTab={null}
-          onTabChange={() => undefined}
-          wireActive
-          onWireSelect={onWireSelect}
-        />
-      </SidebarProvider>,
-    );
-
-    const wire = screen.getByRole("tab", { name: "The Wire" });
-    expect(wire.textContent).not.toContain("Beta");
-    expect(wire.querySelector("svg")?.classList.contains("lucide-rss")).toBe(
-      true,
-    );
-    expect(wire.getAttribute("aria-selected")).toBe("true");
-    fireEvent.click(wire);
-    expect(onWireSelect).toHaveBeenCalledTimes(1);
-    fireEvent.contextMenu(wire);
-    expect(screen.queryByText("Mark All As Read")).toBeNull();
+  it("does not render retired Wire or Circle tabs even with active state and stale enabled preferences", () => {
+    const onWireSelect = mock(() => undefined), onCircleSelect = mock(() => undefined), onTabChange = mock((tab: "subscribed" | "following") => tab);
+    render(<SidebarProvider><PublicationTabs activeTab={null} onTabChange={onTabChange}
+      visibleFeeds={new Set(["wire", "circle", "subscribed", "following"])}
+      wireActive circleActive onWireSelect={onWireSelect} onCircleSelect={onCircleSelect} /></SidebarProvider>);
+    expect(screen.queryByRole("tab", { name: "The Wire" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Your Circle" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("tab", { name: "Subscribed" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Following" }));
+    expect(onTabChange.mock.calls).toEqual([["subscribed"], ["following"]]);
+    expect(onWireSelect).not.toHaveBeenCalled(); expect(onCircleSelect).not.toHaveBeenCalled();
   });
 
-  it("renders Your Circle as an independent authenticated feed tab", () => {
-    const onCircleSelect = mock(() => undefined);
-    render(
-      <SidebarProvider>
-        <PublicationTabs
-          activeTab={null}
-          onTabChange={() => undefined}
-          circleActive
-          onCircleSelect={onCircleSelect}
-        />
-      </SidebarProvider>,
-    );
-
-    const circle = screen.getByRole("tab", { name: "Your Circle" });
-    expect(circle.textContent).not.toContain("Beta");
-    expect(
-      circle.querySelector("svg")?.classList.contains("lucide-network"),
-    ).toBe(true);
-    expect(circle.getAttribute("aria-selected")).toBe("true");
-    fireEvent.click(circle);
-    expect(onCircleSelect).toHaveBeenCalledTimes(1);
-    fireEvent.contextMenu(circle);
-    expect(screen.queryByText("Mark All As Read")).toBeNull();
+  it("hides News when stale visibility only includes retired feeds", () => {
+    render(<SidebarProvider><PublicationTabs activeTab={null} onTabChange={() => undefined} visibleFeeds={new Set(["wire", "circle"])} /></SidebarProvider>);
+    expect(screen.queryByRole("tablist", { name: "Publication Source" })).toBeNull();
+    expect(screen.queryByText("News")).toBeNull();
   });
+
 });
 
 test("Finance belongs to Topics with its icon, Beta badge, and selection behavior", () => {
@@ -241,7 +211,7 @@ test("hides empty Topics and News sections independently", () => {
   expect(screen.queryByRole("tab", { name: "Finance, Beta" })).toBeNull();
 });
 
-test("keeps every feed destination visible before catalogs load", () => {
+test("keeps active feed destinations visible before catalogs load without resurrecting retired feeds", () => {
   render(
     <SidebarProvider>
       <PublicationTabs activeTab="subscribed" onTabChange={() => undefined} />
@@ -249,14 +219,14 @@ test("keeps every feed destination visible before catalogs load", () => {
     </SidebarProvider>,
   );
   for (const name of [
-    "The Wire",
-    "Your Circle",
     "Finance, Beta",
     "Subscribed",
     "Following",
   ]) {
     expect(screen.getByRole("tab", { name })).toBeDefined();
   }
+  expect(screen.queryByRole("tab", { name: "The Wire" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Your Circle" })).toBeNull();
 });
 
 test("keeps unread counts aligned inside the feed buttons", () => {
