@@ -27,4 +27,5 @@ body:json {
 docs {
   Backfill recent entries for followed author DIDs after discovery. Requires `ENABLE_THIN_APPVIEW=true`.
   Add more DIDs to the JSON array as needed (max 500 per request).
+  HTTP 503 can include articlesUpdated: true and sourceFailures after healthy sources commit and counters reconcile. Refresh article pages before presenting partial success; sourceFailures contain only category, kind, hostname, optional HTTP status, and count. When available, unavailablePublicationIds contains sorted, deduplicated canonical RSS IDs for failed subscribed feeds; match exact IDs rather than hostnames before offering unsubscribe. These private IDs encode feed URLs and must not be logged. Infrastructure, PDS, counter, and request cancellation failures omit these fields.
 }
