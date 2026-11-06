@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, mock, spyOn } from "bun:test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render as renderView, screen, waitFor, within } from "@testing-library/react";
 import type { useSkejScheduling } from "@/hooks/useSkejScheduling";
 import type { ArticlePublication } from "@/lib/articles/articlePublishingTypes";
 import type { SkejArticleScheduleSummary } from "@/lib/skej/skejSchedulingClient";
@@ -8,6 +9,7 @@ import * as Thumbnail from "@/components/Articles/ArticleLibraryThumbnail";
 
 const did = "did:plc:writer";
 const publications: ArticlePublication[] = ["First", "Second"].map(name => ({ uri: `at://${did}/site.standard.publication/${name.toLowerCase()}`, cid: name, name: `${name} Journal`, url: `https://${name.toLowerCase()}.test`, host: "unknown", record: {} }));
+const render = (ui: React.ReactNode) => renderView(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 const restores: (() => void)[] = [];
 const cancel = mock(async () => {}), reschedule = mock(async () => {}), onCanceled = mock(async () => {});
 function schedule(id: string, site = publications[0].uri): SkejArticleScheduleSummary {
