@@ -56,7 +56,7 @@ describe("other-user profile page", () => {
   it("reuses profile identity and content tabs while keeping private likes and own controls separate", async () => {
     show();
     expect(screen.getByRole("heading", { name: "Other Person he/they" })).toBeTruthy();
-    expect(screen.getByText("he/they").tagName).toBe("SUB");
+    expect(screen.getByText("he/they").closest("h2")?.tagName).toBe("H2");
     expect(screen.getByText("A profile biography")).toBeTruthy();
     for (const name of ["Posts", "Replies", "Media", "Likes"]) expect(screen.getByRole("button", { name })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publications" }) === null).toBe(true);

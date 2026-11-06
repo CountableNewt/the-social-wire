@@ -1,7 +1,7 @@
 "use client";
 
 import { CachedImage } from "@/components/shared/CachedImage";
-import { ProfilePronouns } from "@/components/shared/ProfilePronouns";
+import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
 
 import type { ReactNode } from "react";
 import {
@@ -110,7 +110,7 @@ export function SocialPostCard({
           reposterIdentity?.filter ||
           reposterIdentity?.noOverride
             ? "by an account"
-            : <>by <SocialProfileLink actor={repost.did} className="hover:underline">{repost.displayName || repost.handle}<ProfilePronouns pronouns={repost.pronouns} /></SocialProfileLink></>}
+            : <>by <SocialProfileLink actor={repost.did} className="hover:underline"><ProfileDisplayName name={repost.displayName || repost.handle} pronouns={repost.pronouns} /></SocialProfileLink></>}
           </span></p>
       ) : null}
       {reply ? (
@@ -143,8 +143,7 @@ export function SocialPostCard({
             actor={post.author.did}
             className="block truncate text-sm font-semibold hover:underline"
           >
-            {name}
-            {!identity.blur && !identity.filter && !identity.noOverride ? <ProfilePronouns pronouns={post.author.pronouns} /> : null}
+            <ProfileDisplayName name={name} pronouns={!identity.blur && !identity.filter && !identity.noOverride ? post.author.pronouns : undefined} />
           </SocialProfileLink>
           {!identity.blur && !identity.filter && !identity.noOverride ? (
             <SocialProfileLink actor={post.author.did} className="block truncate text-xs text-muted-foreground hover:underline">
