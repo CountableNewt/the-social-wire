@@ -33,10 +33,16 @@ const railwayServices = [
 describe("CI workflow configuration", () => {
   it("checks only the active Swift runtime targets behind the required aggregate gate", () => {
     const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, { needs?: string[]; if?: string; strategy?: { matrix: { service: string[] } }; env?: Record<string, string>; steps: { run?: string; env?: Record<string, string> }[] }>;
+      jobs: Record<string, { needs?: string[]; if?: string; strategy?: { matrix: { include: { service: string; package: string }[] } }; env?: Record<string, string>; steps: { run?: string; env?: Record<string, string> }[] }>;
     };
     const backend = parsed.jobs["swift-active-backend"];
-    expect(backend.strategy?.matrix.service).toEqual(["gateway", "appview", "indexing-worker", "jetstream-ingest"]);
+    expect(backend.strategy?.matrix.include).toEqual([
+      { service: "gateway", package: "services/gateway" },
+      { service: "appview", package: "services/appview" },
+      { service: "indexing-worker", package: "services/indexing-worker" },
+      { service: "schema-ready", package: "tools/schema-ready" },
+    ]);
+    expect(backend.env?.SCHEMA_READY_TEST_DATABASE_URL).toContain("tsw_backend_test");
     expect(backend.if).toContain("outputs.swift_backend == 'true'");
     expect(backend.steps.some(step => step.run === "swift test --force-resolved-versions -j 2")).toBe(true);
     expect(backend.env?.ANALYTICS_TEST_DATABASE_URL).toContain("tsw_backend_test");
@@ -89,12 +95,14 @@ describe("CI workflow configuration", () => {
     expect(workflow).toContain("wire-corpus-serving-verifier-postgres.test.ts");
   });
   it("packages active Swift services while preserving excluded corpus images", () => {
-    for (const image of ["gateway", "indexing-worker", "appview", "jetstream-ingest"]) {
+    for (const image of ["gateway", "indexing-worker", "appview"]) {
       const dockerfile = readFileSync(join(repositoryRoot, `services/${image}/Dockerfile`), "utf8");
       expect(dockerfile).toMatch(/^FROM swift:6\.4\.2-jammy/m);
       expect(dockerfile).not.toMatch(/^FROM golang:/m);
       expect(dockerfile).toContain("--force-resolved-versions");
       expect(dockerfile).toContain("--product schema-ready");
+      expect(dockerfile).toContain("--package-path tools/schema-ready");
+      expect(dockerfile).not.toContain("services/jetstream-ingest");
       expect(dockerfile).not.toContain("COPY packages/go");
       expect(dockerfile).toContain("-name '*.resources'");
       expect(dockerfile).toContain("-name '*.bundle'");
@@ -104,11 +112,10 @@ describe("CI workflow configuration", () => {
     for (const configName of ["gateway", "appview"]) {
       const config = JSON.parse(readFileSync(join(repositoryRoot, `railway/${configName}.json`), "utf8"));
       expect(config.build.watchPatterns).not.toContain("/packages/go/**");
-      expect(config.build.watchPatterns).toContain("/services/jetstream-ingest/Sources/**");
-      expect(config.build.watchPatterns).toContain("/services/jetstream-ingest/Package.resolved");
+      expect(config.build.watchPatterns).toContain("/tools/schema-ready/**");
     }
     const indexingBuild = railwayInfrastructure.slice(railwayInfrastructure.indexOf("const indexingBuild"), railwayInfrastructure.indexOf("const longRunningDeploy"));
-    expect(indexingBuild).toContain('"/services/jetstream-ingest/Sources/**"');
+    expect(indexingBuild).toContain('"/tools/schema-ready/**"');
     expect(indexingBuild).not.toContain('"/packages/go/**"');
   });
 

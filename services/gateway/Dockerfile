@@ -1,15 +1,15 @@
 FROM swift:6.4.2-jammy AS builder
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev libzstd-dev pkg-config \
+  && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev pkg-config \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 # Copy canonical package inputs only; local SwiftPM mirrors must not enter images.
-COPY services/jetstream-ingest/Package.swift services/jetstream-ingest/Package.resolved /src/services/jetstream-ingest/
-COPY services/jetstream-ingest/Sources /src/services/jetstream-ingest/Sources
-COPY services/jetstream-ingest/Tests /src/services/jetstream-ingest/Tests
-RUN swift build --package-path services/jetstream-ingest -c release --product schema-ready --force-resolved-versions -j 4 \
+COPY tools/schema-ready/Package.swift tools/schema-ready/Package.resolved /src/tools/schema-ready/
+COPY tools/schema-ready/Sources /src/tools/schema-ready/Sources
+COPY tools/schema-ready/Tests /src/tools/schema-ready/Tests
+RUN swift build --package-path tools/schema-ready -c release --product schema-ready --force-resolved-versions -j 4 \
   && mkdir -p /out/lib /out/bin \
-  && cp services/jetstream-ingest/.build/release/schema-ready /out/bin/schema-ready \
+  && cp tools/schema-ready/.build/release/schema-ready /out/bin/schema-ready \
   && cp -a /usr/lib/swift/linux/*.so* /out/lib/
 COPY database/migrations /src/database/migrations
 RUN /out/bin/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
@@ -22,7 +22,7 @@ RUN swift build --package-path services/gateway -c release --product Gateway --f
 
 FROM ubuntu:22.04
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates libssl3 libcurl4 libsqlite3-0 libicu70 libxml2 libzstd1 \
+  && apt-get install -y --no-install-recommends ca-certificates libssl3 libcurl4 libsqlite3-0 libicu70 libxml2 \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --no-create-home appuser
 COPY --from=builder /out/lib/ /usr/lib/swift/linux/
