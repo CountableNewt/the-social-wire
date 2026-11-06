@@ -33,7 +33,7 @@ beforeEach(() => {
   spyOn(FeedPreferences, "useFeedDisplayPreferences").mockReturnValue({
     preferences: {
       ...DEFAULT_FEED_DISPLAY_PREFERENCES,
-      showWire: false, showCircle: false, showFinance: false,
+      showWire: true, showCircle: true, showFinance: false,
       visibleFeeds: ["readLater", "archive"],
     },
     setFeedVisible, setFeedUnreadCountVisible,
@@ -52,12 +52,14 @@ afterEach(() => {
   mock.restore();
 });
 
-test("all feeds expose independent visibility controls", () => {
+test("active feeds expose independent visibility controls without retired products", () => {
   render(<FeedSettingsSection />);
   expect(screen.queryByText("Always Visible")).toBeNull();
-  for (const label of ["The Wire", "Your Circle", "Finance", "Sports", "Social", "Podcasts", "Subscribed", "Following"]) {
+  for (const label of ["Finance", "Sports", "Social", "Podcasts", "Subscribed", "Following"]) {
     expect(screen.getByRole("switch", { name: `Show ${label}` })).toBeDefined();
   }
+  expect(screen.queryByRole("switch", { name: "Show The Wire" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show Your Circle" })).toBeNull();
   fireEvent.click(screen.getByRole("switch", { name: "Show Read Later" }));
   expect(setFeedVisible).toHaveBeenCalledWith("readLater", false);
   fireEvent.click(screen.getByRole("switch", { name: "Show Archive" }));

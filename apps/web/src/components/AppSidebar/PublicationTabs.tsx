@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type { ReaderNavigationFeed } from "@/lib/feedPreferences";
+import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 import type { PublicationTab } from "./appSidebarConstants";
 import { SidebarSectionUnreadBadge } from "./SidebarSectionUnreadBadge";
 import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
@@ -47,7 +48,7 @@ export function PublicationTabs({
   if (
     visibleFeeds &&
     !["wire", "circle", "subscribed", "following"].some((feed) =>
-      visibleFeeds.has(feed as ReaderNavigationFeed),
+      !isRetiredReaderFeed(feed) && visibleFeeds.has(feed as ReaderNavigationFeed),
     )
   )
     return null;
@@ -59,7 +60,7 @@ export function PublicationTabs({
         role="tablist"
         aria-label="Publication Source"
       >
-        {visibleFeeds?.has("wire") !== false ? (
+        {!isRetiredReaderFeed("wire") && visibleFeeds?.has("wire") !== false ? (
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
@@ -74,7 +75,7 @@ export function PublicationTabs({
             </SidebarMenuButton>
           </SidebarMenuItem>
         ) : null}
-        {visibleFeeds?.has("circle") !== false ? (
+        {!isRetiredReaderFeed("circle") && visibleFeeds?.has("circle") !== false ? (
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"

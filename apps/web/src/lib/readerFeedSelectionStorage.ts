@@ -1,3 +1,5 @@
+import { isRetiredReaderFeed } from "./retiredReaderFeeds";
+
 export type ReaderFeedSelection =
   | "wire"
   | "circle"
@@ -30,7 +32,7 @@ export function loadReaderFeedSelection(
   try {
     const value = storage.getItem(READER_FEED_SELECTION_STORAGE_KEY);
     if (isReaderFeedSelection(value)) {
-      return value;
+      return isRetiredReaderFeed(value) ? "subscribed" : value;
     }
     const legacy = storage.getItem(LEGACY_PUBLICATION_TAB_STORAGE_KEY);
     return legacy === "subscribed" || legacy === "following" ? legacy : null;
@@ -44,7 +46,7 @@ export function saveReaderFeedSelection(
   feed: ReaderFeedSelection,
 ): void {
   try {
-    storage.setItem(READER_FEED_SELECTION_STORAGE_KEY, feed);
+    storage.setItem(READER_FEED_SELECTION_STORAGE_KEY, isRetiredReaderFeed(feed) ? "subscribed" : feed);
   } catch {
     // Private browsing and quota failures must not block reader navigation.
   }
