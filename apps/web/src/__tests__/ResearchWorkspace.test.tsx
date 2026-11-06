@@ -24,6 +24,25 @@ it("browses Semble and Margin while suppressing unsafe source links", () => {
   expect(screen.getByText("“A Passage”")).toBeTruthy(); expect(screen.getByText("My Note")).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Open Source" })).toBeNull();
 });
+it("moves the selected source styling together with the visible research content", () => {
+  show();
+  const semble = screen.getByRole("button", { name: "Semble" });
+  const margin = screen.getByRole("button", { name: "Margin" });
+  expect(semble.classList.contains("bg-secondary")).toBe(true);
+  expect(margin.classList.contains("bg-secondary")).toBe(false);
+  fireEvent.click(margin);
+  expect(margin.getAttribute("aria-pressed")).toBe("true");
+  expect(margin.classList.contains("bg-secondary")).toBe(true);
+  expect(semble.getAttribute("aria-pressed")).toBe("false");
+  expect(semble.classList.contains("bg-secondary")).toBe(false);
+  expect(screen.getByRole("heading", { name: "Revisit This Essay" })).toBeTruthy();
+  fireEvent.click(semble);
+  expect(semble.getAttribute("aria-pressed")).toBe("true");
+  expect(semble.classList.contains("bg-secondary")).toBe(true);
+  expect(margin.getAttribute("aria-pressed")).toBe("false");
+  expect(margin.classList.contains("bg-secondary")).toBe(false);
+  expect(screen.getByRole("heading", { name: "Research Sources" })).toBeTruthy();
+});
 it("keeps Margin usable after Semble failure and offers retry", async () => {
   collections({ collections: [], isPending: false, error: new Error("Semble Unavailable"), refetch: retry }); show();
   expect(screen.getByRole("alert").textContent).toContain("Semble Unavailable");
