@@ -24,6 +24,21 @@ describe("thinAppViewClient", () => {
     expect(isThinAppViewEnabled()).toBe(false);
   });
 
+  it("preserves typed publisher failures but keeps generic enrollment errors as failures", async () => {
+    const { enrollAuthorsInAppView } = await import("@/lib/thinAppViewClient");
+    const { PublicationSourceRefreshError } = await import("@/lib/publicationSourceRefreshError");
+    for (const partial of [true, false]) {
+      const session = gatewayOAuthSession(mock(async () => Response.json({
+        error: "Service Unavailable", message: "Enrollment unavailable",
+        ...(partial ? { articlesUpdated: true, unavailablePublicationIds: ["rss:world"], sourceFailures: [{ category: "rss_backoff", kind: "other", host: "publisher.test", count: 1 }] } : {}),
+      }, { status: 503 })));
+      const error = await enrollAuthorsInAppView(session, [], ["https://publisher.test/rss"]).catch(error => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error instanceof PublicationSourceRefreshError).toBe(partial);
+      if (error instanceof PublicationSourceRefreshError) expect(error.unavailablePublicationIds).toEqual(["rss:world"]);
+    }
+  });
+
   it("listEntriesFromAppView requires appViewScope and sends scope params", async () => {
     const fetchHandler = mock(async (url: string) => {
       expect(url).toContain("publicationScopeAtUris=");

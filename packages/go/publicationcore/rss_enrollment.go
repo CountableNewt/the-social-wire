@@ -186,7 +186,7 @@ func (e *Enroller) ingestFeeds(ctx context.Context, feeds []string, explicit boo
 						}
 						return e.RSS.Ingest(ctx, feed)
 					})
-					results <- result{n, err}
+					results <- result{n, thinappviewcore.WrapRSSSourceFailure(feed, err)}
 				}()
 			}
 			pending = append(pending[:i], pending[i+1:]...)
