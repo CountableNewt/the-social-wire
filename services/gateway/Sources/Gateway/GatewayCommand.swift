@@ -49,7 +49,8 @@ struct Serve: AsyncParsableCommand {
 
     let httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
     let ingestionHealth = GatewayIngestionHealth(
-      baseURL: config.projectionPoolBaseURL, httpClient: httpClient)
+      baseURL: config.projectionPoolBaseURL, httpClient: httpClient,
+      enabled: config.globalIngestionEnabled)
     let dependencyProbe = Self.gatewayDependencyProbe(
       appViewBaseURL: config.appViewBaseURL,
       ingestionHealth: ingestionHealth,
@@ -119,7 +120,9 @@ struct Serve: AsyncParsableCommand {
         )
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { try await app.run() }
-          group.addTask { try await ingestionHealth.runForever() }
+          if config.globalIngestionEnabled {
+            group.addTask { try await ingestionHealth.runForever() }
+          }
           if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
           if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           try await group.next()
@@ -189,7 +192,9 @@ struct Serve: AsyncParsableCommand {
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { await pgPool.run() }
           group.addTask { try await app.run() }
-          group.addTask { try await ingestionHealth.runForever() }
+          if config.globalIngestionEnabled {
+            group.addTask { try await ingestionHealth.runForever() }
+          }
           if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
           if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           try await group.next()

@@ -14,7 +14,7 @@ import Testing
 struct GatewayIngestionHealthTests {
   @Test("missing and unobserved ingestion evidence stays unknown")
   func missing() async throws {
-    let health = GatewayIngestionHealth(baseURL: nil) { _ in
+    let health = GatewayIngestionHealth(baseURL: nil, enabled: true) { _ in
       Issue.record("Missing Pool must not be contacted")
       return 200
     }
@@ -30,7 +30,7 @@ struct GatewayIngestionHealthTests {
   func sampleExpiry(status: UInt) async throws {
     let at = Date(timeIntervalSince1970: 1_000)
     let clock = HealthTestValue(at)
-    let health = GatewayIngestionHealth(baseURL: "http://pool/", lifetime: 45,
+    let health = GatewayIngestionHealth(baseURL: "http://pool/", enabled: true, lifetime: 45,
       now: { clock.withLock { $0 } }) { url in
       #expect(url == "http://pool")
       return status
@@ -51,13 +51,13 @@ struct GatewayIngestionHealthTests {
 
   @Test("network failure is explicit degradation, cancellation preserves the last sample")
   func errorsAndCancellation() async throws {
-    let failed = GatewayIngestionHealth(baseURL: "http://pool") { _ in
+    let failed = GatewayIngestionHealth(baseURL: "http://pool", enabled: true) { _ in
       throw HTTPClientError.connectTimeout
     }
     try await failed.collectOnce()
     #expect(await failed.snapshot().poolReadiness == "unavailable")
     #expect(await failed.snapshot().completeness == .degraded)
-    let cancelled = GatewayIngestionHealth(baseURL: "http://pool") { _ in
+    let cancelled = GatewayIngestionHealth(baseURL: "http://pool", enabled: true) { _ in
       throw CancellationError()
     }
     await #expect(throws: CancellationError.self) { try await cancelled.collectOnce() }
@@ -68,7 +68,7 @@ struct GatewayIngestionHealthTests {
   func noOverlap() async throws {
     let started = AsyncStream<Void>.makeStream()
     let calls = HealthTestValue(0)
-    let health = GatewayIngestionHealth(baseURL: "http://pool") { _ in
+    let health = GatewayIngestionHealth(baseURL: "http://pool", enabled: true) { _ in
       let call = calls.withLock { $0 += 1; return $0 }
       if call > 1 { return 200 }
       started.continuation.yield(())
@@ -130,7 +130,7 @@ struct GatewayIngestionHealthTests {
   func servingReadiness(appViewReady: Bool, poolEvidence: (UInt, TimeInterval)) async throws {
     let (poolStatus, evidenceLifetime) = poolEvidence
     let calls = HealthTestValue(0)
-    let health = GatewayIngestionHealth(baseURL: "http://pool", lifetime: evidenceLifetime) { _ in
+    let health = GatewayIngestionHealth(baseURL: "http://pool", enabled: true, lifetime: evidenceLifetime) { _ in
       calls.withLock { $0 += 1 }
       return poolStatus
     }
@@ -145,7 +145,7 @@ struct GatewayIngestionHealthTests {
         .test(.live) { upstream in
           let port = try #require(upstream.port)
           let config = try GatewayServiceConfig.fromEnvironment([
-            "APP_ENV": "local", "SQLITE_DB_PATH": path,
+            "APP_ENV": "local", "SQLITE_DB_PATH": path, "GLOBAL_INGESTION_ENABLED": "true",
             "APPVIEW_BASE_URL": "http://localhost:\(port)",
           ])
           let cache = try SQLiteCache(path: path, logger: Logger(label: "health-test"))

@@ -4,23 +4,28 @@ import Foundation
 /// One independent, non-overlapping collector shared by readiness, freshness, and heartbeats.
 /// Serving requests only read the snapshot; they never contact the ingestion workers.
 actor GatewayIngestionHealth {
+  private let enabled: Bool
   private let baseURL: String?
   private let check: @Sendable (String) async throws -> UInt
   private let now: @Sendable () -> Date
   private let lifetime: TimeInterval
-  private var latest: GatewayIngestionHealthSnapshot = .unknown
+  private var latest: GatewayIngestionHealthSnapshot
   private var collecting = false
 
-  init(baseURL: String?, httpClient: HTTPClient) {
+  init(baseURL: String?, httpClient: HTTPClient, enabled: Bool = false) {
+    self.enabled = enabled
+    self.latest = enabled ? .unknown : .disabled
     self.baseURL = baseURL
     self.check = { try await GatewayDependencyHTTPProbe.status(baseURL: $0, httpClient: httpClient) }
     self.now = Date.init
     self.lifetime = 45
   }
 
-  init(baseURL: String?, lifetime: TimeInterval = 45,
+  init(baseURL: String?, enabled: Bool = false, lifetime: TimeInterval = 45,
        now: @escaping @Sendable () -> Date = Date.init,
        check: @escaping @Sendable (String) async throws -> UInt) {
+    self.enabled = enabled
+    self.latest = enabled ? .unknown : .disabled
     self.baseURL = baseURL
     self.check = check
     self.now = now
@@ -31,6 +36,7 @@ actor GatewayIngestionHealth {
 
   func collectOnce() async throws {
     try Task.checkCancellation()
+    guard enabled else { return }
     guard !collecting else { return }
     collecting = true
     defer { collecting = false }
@@ -59,6 +65,7 @@ actor GatewayIngestionHealth {
   }
 
   func runForever() async throws {
+    guard enabled else { return }
     while !Task.isCancelled {
       try await collectOnce()
       // Schedule from completion: no overlap or catch-up bursts after a slow sample.

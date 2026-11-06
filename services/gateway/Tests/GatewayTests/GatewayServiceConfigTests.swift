@@ -40,6 +40,7 @@ struct GatewayServiceConfigTests {
       "APP_ENV": "dev",
       "DATABASE_URL": "postgresql://localhost/gateway-test",
       "PDS_ATTESTATION_RECEIPT_SECRET": "shared-hosted-attestation-receipt-secret",
+      "GLOBAL_INGESTION_ENABLED": "true",
       "PROJECTION_POOL_BASE_URL": " http://projection-pool.railway.internal:8080/ ",
       "CHARYBDIS_BASE_URL": "http://charybdis.railway.internal:8082",
     ])
@@ -53,10 +54,27 @@ struct GatewayServiceConfigTests {
       "APP_ENV": "dev",
       "DATABASE_URL": "postgresql://localhost/gateway-test",
       "PDS_ATTESTATION_RECEIPT_SECRET": "shared-hosted-attestation-receipt-secret",
+      "GLOBAL_INGESTION_ENABLED": "true",
       "CHARYBDIS_BASE_URL": "http://charybdis.railway.internal:8082",
     ])
 
     #expect(config.projectionPoolBaseURL == "http://charybdis.railway.internal:8082")
+  }
+
+  @Test(
+    "stale retired-worker settings cannot enable global ingestion",
+    arguments: [nil, "false"] as [String?])
+  func retiredOriginsAreInert(value: String?) throws {
+    var environment = [
+      "APP_ENV": "dev", "DATABASE_URL": "postgresql://localhost/gateway-test",
+      "PDS_ATTESTATION_RECEIPT_SECRET": "shared-hosted-attestation-receipt-secret",
+      "PROJECTION_POOL_BASE_URL": "obsolete-invalid-origin",
+      "CHARYBDIS_BASE_URL": "also-obsolete",
+    ]
+    environment["GLOBAL_INGESTION_ENABLED"] = value
+    let config = try GatewayServiceConfig.fromEnvironment(environment)
+    #expect(!config.globalIngestionEnabled)
+    #expect(config.projectionPoolBaseURL == nil)
   }
 
   @Test("invalid Wire modes fail closed")
