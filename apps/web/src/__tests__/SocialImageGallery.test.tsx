@@ -83,11 +83,11 @@ function pointer(target: Element, type: string, x: number, y: number, id = 1) {
 const secondImage = { ...image, thumb: "https://publisher.example/two.jpg", fullsize: "https://publisher.example/two-original.jpg", alt: "Second Photo" };
 
 describe("Social Image Gallery", () => {
-  it("preloads every slide and retains the loaded image until the next slide finishes", () => {
+  it("defers offscreen slides and retains the loaded image until the next slide finishes", () => {
     render(<SocialImageGallery images={[image, secondImage]} />);
     const slides = screen.getAllByRole("img", { hidden: true });
     expect(slides.map(img => img.getAttribute("src"))).toEqual([image.thumb, secondImage.thumb]);
-    expect(slides.every(img => img.getAttribute("loading") === "eager")).toBe(true);
+    expect(slides.every(img => img.getAttribute("loading") === "lazy")).toBe(true);
     fireEvent.load(slides[0]);
     fireEvent.click(screen.getByRole("button", { name: "Next Photo" }));
     expect(screen.getByRole("img")).toBe(slides[0]);
@@ -120,6 +120,32 @@ describe("Social Image Gallery", () => {
     fireEvent.error(slides[1]);
     expect(screen.getByRole("status").textContent).toBe("Image Couldn’t Be Loaded");
     expect(screen.getByRole("button", { name: "Open Image 2: Second Photo" }).getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("recovers from an image error when the same slide subsequently loads successfully", () => {
+    render(<SocialImageGallery images={[image]} />);
+    const slide = screen.getByRole("img");
+    fireEvent.error(slide);
+    expect(screen.getByRole("status").textContent).toBe("Image Couldn’t Be Loaded");
+    fireEvent.load(slide);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("img")).toBe(slide);
+    expect(screen.getByRole("button", { name: "Open Image 1: A portrait" }).getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("does not carry a failed source into a replacement image while its successful load settles", () => {
+    const view = render(<SocialImageGallery images={[image]} />);
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.getByRole("status")).toBeTruthy();
+    view.rerender(<SocialImageGallery images={[secondImage]} />);
+    expect(screen.queryByRole("status")).toBeNull();
+    const replacement = screen.getByRole("img");
+    expect(replacement.getAttribute("src")).toBe(secondImage.thumb);
+    const open = screen.getByRole("button", { name: "Open Image 1: Second Photo" });
+    expect(open.getAttribute("aria-busy")).toBe("true");
+    fireEvent.load(replacement);
+    expect(open.getAttribute("aria-busy")).toBe("false");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("reserves the same uncropped viewport across mixed image ratios and loading", () => {
@@ -293,7 +319,7 @@ describe("Social Image Gallery", () => {
     expect(many).toContain("carousel");
     expect(many).toContain("Next Photo");
     expect(many.match(/<img /g)?.length).toBe(2);
-    expect(many.match(/loading="eager"/g)?.length).toBe(2);
+    expect(many.match(/loading="lazy"/g)?.length).toBe(2);
     expect(many).toContain("absolute inset-0");
   });
   it("opens the full-size dialog, resets zoom on reopen and does not navigate the post", async () => {

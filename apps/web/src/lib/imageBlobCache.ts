@@ -6,6 +6,7 @@ const DB_VERSION = 2;
 const STORED_AT_INDEX = "storedAt";
 const MAX_ENTRIES = 400;
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const CACHE_OPEN_TIMEOUT_MS = 250;
 
 type CachedImageRow = {
   url: string;
@@ -15,16 +16,57 @@ type CachedImageRow = {
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let abandonedOpen: IDBOpenDBRequest | null = null;
 
-const inFlightImageFetches = new Map<string, Promise<Blob | undefined>>();
+type ImageFetch = { reload: boolean; promise: Promise<Blob | undefined>; persistence?: Promise<void> };
+const inFlightImageFetches = new Map<string, ImageFetch>();
+const pendingInvalidations = new Map<string, Promise<void>>();
+
+function isImageContentType(type: string): boolean {
+  return /^image\/[a-z0-9][a-z0-9.+-]*$/i.test(type.split(";")[0].trim());
+}
+
+function isImageBlob(blob: Blob | undefined): blob is Blob {
+  return !!blob && blob.size > 0 && typeof blob.type === "string" && isImageContentType(blob.type);
+}
+
+function isUsableRow(row: CachedImageRow | undefined): row is CachedImageRow {
+  return !!row && isImageBlob(row.blob) && typeof row.contentType === "string" && isImageContentType(row.contentType) && Number.isFinite(row.storedAt) && Date.now() - row.storedAt <= MAX_AGE_MS;
+}
+
+async function deleteCachedBlob(url: string, invalidOnly = false): Promise<void> {
+  try {
+    const db = await openImageCacheDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite"), store = tx.objectStore(STORE);
+      if (invalidOnly) {
+        const request = store.get(url);
+        request.onsuccess = () => { if (!isUsableRow(request.result)) store.delete(url); };
+      } else store.delete(url);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error("IndexedDB deletion failed"));
+    });
+  } catch { /* Image caching is optional. */ }
+}
 
 function openImageCacheDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB unavailable"));
   }
+  // IndexedDB open requests cannot be canceled. Once blocked or timed out,
+  // skip this optional cache rather than queue more opens behind that request.
+  if (abandonedOpen) return Promise.reject(new Error("Image cache temporarily unavailable"));
   if (!dbPromise) {
-    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const pending = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let abandoned = false;
+      const abandon = (message: string) => {
+        abandoned = true;
+        abandonedOpen = request;
+        clearTimeout(deadline);
+        reject(new Error(message));
+      };
+      const deadline = setTimeout(() => abandon("Image cache open timed out"), CACHE_OPEN_TIMEOUT_MS);
       request.onupgradeneeded = () => {
         const db = request.result;
         const store = db.objectStoreNames.contains(STORE)
@@ -34,19 +76,28 @@ function openImageCacheDb(): Promise<IDBDatabase> {
           store.createIndex(STORED_AT_INDEX, "storedAt");
         }
       };
-      let blocked = false;
       request.onblocked = () => {
-        blocked = true;
-        reject(new Error("Image cache upgrade is blocked by another tab"));
+        abandon("Image cache upgrade is blocked by another tab");
       };
       request.onsuccess = () => {
+        clearTimeout(deadline);
         const db = request.result;
-        if (blocked) { db.close(); return; }
-        db.onversionchange = () => { db.close(); dbPromise = null; };
+        if (abandoned) {
+          db.close();
+          if (abandonedOpen === request) abandonedOpen = null;
+          return;
+        }
+        db.onversionchange = () => { db.close(); if (dbPromise === opening) dbPromise = null; };
         resolve(db);
       };
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    }).catch(error => { dbPromise = null; throw error; });
+      request.onerror = () => {
+        clearTimeout(deadline);
+        if (abandonedOpen === request) abandonedOpen = null;
+        reject(request.error ?? new Error("IndexedDB open failed"));
+      };
+    });
+    const opening = pending.catch(error => { if (dbPromise === opening) dbPromise = null; throw error; });
+    dbPromise = opening;
   }
   return dbPromise;
 }
@@ -54,32 +105,27 @@ function openImageCacheDb(): Promise<IDBDatabase> {
 async function readCachedBlob(url: string): Promise<Blob | null> {
   try {
     const db = await openImageCacheDb();
-    return await new Promise((resolve, reject) => {
+    const row = await new Promise<CachedImageRow | undefined>((resolve, reject) => {
       const tx = db.transaction(STORE, "readonly");
       const store = tx.objectStore(STORE);
       const req = store.get(url);
       req.onsuccess = () => {
-        const row = req.result as CachedImageRow | undefined;
-        if (!row?.blob) {
-          resolve(null);
-          return;
-        }
-        if (Date.now() - row.storedAt > MAX_AGE_MS) {
-          resolve(null);
-          return;
-        }
-        resolve(row.blob);
+        resolve(req.result as CachedImageRow | undefined);
       };
       req.onerror = () => reject(req.error ?? new Error("IndexedDB read failed"));
     });
+    if (isUsableRow(row)) return row.blob;
+    if (row) await deleteCachedBlob(url, true);
+    return null;
   } catch {
     return null;
   }
 }
 
-async function writeCachedBlob(url: string, blob: Blob): Promise<void> {
+async function writeCachedBlob(url: string, blob: Blob, isCurrent: () => boolean): Promise<void> {
   try {
     const db = await openImageCacheDb();
+    if (!isCurrent()) return;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
       const store = tx.objectStore(STORE);
@@ -179,7 +225,8 @@ export function resolveDirectImageUrl(rawUrl: string): string | undefined {
  */
 export async function fetchCachedImageObjectUrl(
   rawUrl: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { reload?: boolean } = {},
 ): Promise<string | undefined> {
   const url = normalizeImageCacheKey(rawUrl);
   if (!url) return undefined;
@@ -190,40 +237,62 @@ export async function fetchCachedImageObjectUrl(
     return url;
   }
 
-  const blob = await fetchCachedImageBlob(url, signal);
+  const blob = await fetchCachedImageBlob(url, signal, options.reload ?? false);
   return blob ? URL.createObjectURL(blob) : undefined;
+}
+
+/** Drop a failed decode and retire its pending fetch before another attempt starts. */
+export async function invalidateCachedImage(rawUrl: string): Promise<void> {
+  const url = normalizeImageCacheKey(rawUrl);
+  if (!url) return;
+  inFlightImageFetches.delete(url);
+  const previous = pendingInvalidations.get(url);
+  const deletion = (async () => { await previous; await deleteCachedBlob(url); })();
+  pendingInvalidations.set(url, deletion);
+  try { await deletion; }
+  finally { if (pendingInvalidations.get(url) === deletion) pendingInvalidations.delete(url); }
 }
 
 async function fetchCachedImageBlob(
   url: string,
   signal?: AbortSignal,
+  reload = false,
 ): Promise<Blob | undefined> {
   const inFlight = inFlightImageFetches.get(url);
-  if (inFlight) return inFlight;
+  if (inFlight && (!reload || inFlight.reload)) return inFlight.promise;
+
+  const entry: ImageFetch = { reload, promise: Promise.resolve(undefined) };
+  const isCurrent = () => inFlightImageFetches.get(url) === entry;
 
   const fetchPromise = (async (): Promise<Blob | undefined> => {
-    const cached = await readCachedBlob(url);
+    await pendingInvalidations.get(url);
+    if (!isCurrent()) return undefined;
+    const cached = reload ? null : await readCachedBlob(url);
+    if (!isCurrent()) return undefined;
     if (cached) return cached;
 
     const res = await fetch(imageFetchUrl(url), {
       signal,
       referrerPolicy: "no-referrer",
-      cache: "force-cache",
+      cache: reload ? "reload" : "force-cache",
     });
-    if (!res.ok) return undefined;
+    if (!res.ok || !isImageContentType(res.headers.get("Content-Type") ?? "")) return undefined;
 
     const blob = await res.blob();
-    if (blob.size === 0) return undefined;
+    if (!isImageBlob(blob) || !isCurrent()) return undefined;
 
-    void writeCachedBlob(url, blob);
+    entry.persistence = writeCachedBlob(url, blob, isCurrent);
     return blob;
   })();
 
-  inFlightImageFetches.set(url, fetchPromise);
+  entry.promise = fetchPromise;
+  inFlightImageFetches.set(url, entry);
   try {
     return await fetchPromise;
   } finally {
-    inFlightImageFetches.delete(url);
+    const cleanup = () => { if (isCurrent()) inFlightImageFetches.delete(url); };
+    if (entry.persistence) void entry.persistence.finally(cleanup);
+    else cleanup();
   }
 }
 

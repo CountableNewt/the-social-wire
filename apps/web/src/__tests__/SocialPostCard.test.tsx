@@ -45,6 +45,18 @@ function card(value: AppBskyFeedDefs.FeedViewPost, prefs = moderation) {
 }
 
 describe("Social Post Rendering", () => {
+  it("names stable post sections so background embed growth can preserve the reading position", () => {
+    const value = item({ embed: { $type: "app.bsky.embed.external#view", external: {
+      uri: "https://example.com/article", title: "Article", description: "Preview",
+    } } });
+    const html = renderToStaticMarkup(<SocialPostCard item={value} moderation={moderation} actions={<button>Reply</button>} />);
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    for (const section of ["author", "body", "embed", "actions"]) {
+      expect(element.querySelector(`[data-social-feed-section="${section}"]`)).not.toBeNull();
+    }
+    expect(element.querySelector('[data-social-feed-section="actions"]')!.textContent).toBe("Reply");
+  });
   it("places a compact timestamp in the author header using the post creation time", () => {
     const value = item({ indexedAt: "2026-10-10T12:00:00.000Z" });
     const html = card(value);

@@ -25,8 +25,8 @@ export const SocialExternalEmbed = memo(function SocialExternalEmbed({ external,
   }, []);
   const thumb = socialHttpsUrl(external.thumb);
   const fallback = <a href={href} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl border bg-muted/30 hover:bg-muted/60">
-    {thumb ? <div className="relative h-48 w-full bg-muted sm:h-60"><img src={thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="absolute inset-0 h-full w-full object-contain" /></div> : null}
-    <div className="flex flex-col gap-1 p-3">
+    {thumb ? <div data-social-feed-section={JSON.stringify([href, "preview-image"])} className="relative h-48 w-full bg-muted sm:h-60"><img src={thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="absolute inset-0 h-full w-full object-contain" /></div> : null}
+    <div data-social-feed-section={JSON.stringify([href, "preview-body"])} className="flex flex-col gap-1 p-3">
       <p className="text-sm font-medium">{external.title}</p>
       <p className="line-clamp-3 text-sm text-muted-foreground">{external.description}</p>
       <p className="text-xs text-muted-foreground">{new URL(href).hostname}</p>
