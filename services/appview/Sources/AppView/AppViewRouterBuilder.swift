@@ -190,6 +190,7 @@ enum AppViewRouterBuilder {
     let skyreaderIngestionService = ThinAppViewSkyreaderIngestionService(
       repo: repo,
       rssIngestion: rssIngestion,
+      store: thinAppViewStore,
       logger: logger
     )
     let contentVerifier: AuthoritativeContentVerifier? = config.globalIngestionEnabled ? nil

@@ -87,7 +87,8 @@ actor ThinAppViewEnrollService {
     auth: AuthContext,
     authorDids: [String],
     feedUrls: [String] = [],
-    recentOnly: Bool = true
+    recentOnly: Bool = true,
+    explicitRSSRefresh: Bool = false
   ) async throws -> Int {
     let uniqueAuthors = Array(
       Set(authorDids.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
@@ -109,10 +110,18 @@ actor ThinAppViewEnrollService {
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
     if let skyreaderIngestion, !priorityFeedUrls.isEmpty {
-      indexed += try await skyreaderIngestion.ingestViewerSubscriptions(
-        auth: auth,
-        priorityFeedUrls: priorityFeedUrls
-      )
+      if explicitRSSRefresh {
+        do {
+          indexed += try await skyreaderIngestion.refreshViewerSubscriptions(auth: auth, feedUrls: priorityFeedUrls)
+        } catch let partial as AppViewEnrollmentPartialFailure {
+          throw AppViewEnrollmentPartialFailure(indexed: indexed + partial.indexed, failures: partial.failures)
+        }
+      } else {
+        indexed += try await skyreaderIngestion.ingestViewerSubscriptions(
+          auth: auth,
+          priorityFeedUrls: priorityFeedUrls
+        )
+      }
     }
 
     logger.info(

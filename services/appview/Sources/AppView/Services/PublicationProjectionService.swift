@@ -68,6 +68,22 @@ actor PublicationProjectionService {
     try? await projectionCache.invalidateSidebarProjection(viewerDid: viewerDid)
   }
 
+  /// Unlike background badge warming, explicit enrollment must surface a failed
+  /// recount before claiming that healthy-source results are ready to reconcile.
+  func reconcileEnrollmentCounters(auth: AuthContext) async throws {
+    try Task.checkCancellation()
+    let rows: [SidebarPublicationRow]
+    if let cached = sidebarRowCacheByViewer[auth.did] {
+      rows = Array(cached.values)
+    } else {
+      rows = try await sidebar(auth: auth).allPublicationRows
+    }
+    _ = try await thinStore.refreshUnreadCounters(viewerDid: auth.did, scopes: unreadScopes(from: rows))
+    try await projectionCache?.invalidateUnreadCounts(viewerDid: auth.did, publicationId: nil)
+    try await projectionCache?.invalidateFirstPage(viewerDid: auth.did, publicationId: nil)
+    try Task.checkCancellation()
+  }
+
   func sidebar(
     auth: AuthContext,
     phase: SidebarBuildPhase = .full
