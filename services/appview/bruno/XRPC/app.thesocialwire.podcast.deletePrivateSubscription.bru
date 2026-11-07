@@ -1,0 +1,23 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.deletePrivateSubscription
+  type: http
+  seq: 301
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.deletePrivateSubscription
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "showId": "{{privatePodcastShowId}}"
+}
+}

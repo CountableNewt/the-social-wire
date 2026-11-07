@@ -879,7 +879,7 @@ final class SocialWireGatewayClient {
     func podcastDownloadRequest(media: String, expectedViewer: String, challenge: HTTPURLResponse? = nil) async throws -> URLRequest {
         guard let url = URL(string: media, relativeTo: baseURL)?.absoluteURL,
               url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path == "/v1/podcasts/media" else { throw SocialWireError.invalidURL }
+              url.path == "/xrpc/app.thesocialwire.podcast.getMedia" else { throw SocialWireError.invalidURL }
         let session = try await auth.validSession()
         guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
         return try await auth.dpop.withNonceSequence(for: session.pdsURL) { [self] in
@@ -902,7 +902,7 @@ final class SocialWireGatewayClient {
 
     func podcastAsset(url: URL, expectedViewer: String) async throws -> Data {
         guard url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path.hasPrefix("/v1/podcasts/") else { throw SocialWireError.invalidURL }
+              url.path == "/xrpc/app.thesocialwire.podcast.getImage" else { throw SocialWireError.invalidURL }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let response = try await authorizedRequest(method: "GET", path: url.path,
             query: Dictionary(query.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last }),

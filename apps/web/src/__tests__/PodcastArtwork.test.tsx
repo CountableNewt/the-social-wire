@@ -43,7 +43,7 @@ it("keeps authenticated chapter artwork in the same bounds after loading", async
   const createSpy = spyOn(URL, "createObjectURL").mockReturnValue("blob:chapter-artwork");
   const revokeSpy = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   restores.push(() => authSpy.mockRestore(), () => fetchSpy.mockRestore(), () => createSpy.mockRestore(), () => revokeSpy.mockRestore());
-  const view = render(<PodcastArtwork src="/v1/podcasts/image?episodeId=private&kind=chapter&index=0" alt="Private Chapter Artwork" size={48} />);
+  const view = render(<PodcastArtwork src="/xrpc/app.thesocialwire.podcast.getImage?episodeId=private&kind=chapter&index=0" alt="Private Chapter Artwork" size={48} />);
   await waitFor(() => expect(view.container.querySelector("img")).not.toBeNull());
   const loaded = view.container.querySelector("img")!;
   expect(loaded.src).toBe("blob:chapter-artwork");

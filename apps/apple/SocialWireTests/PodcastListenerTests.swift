@@ -31,10 +31,10 @@ struct PodcastListenerTests {
         }
         #expect(try episode("https://example.com/audio.mp3").permitsPublicProcessing)
         #expect(try !episode("https://example.com/audio.mp3", visibility: "private").permitsPublicProcessing)
-        #expect(try episode("/v1/podcasts/media?episodeId=private-episode").isPrivate)
+        #expect(try episode("/xrpc/app.thesocialwire.podcast.getMedia?episodeId=private-episode").isPrivate)
         #expect(try episode("https://example.com/audio.mp3?access_token=cdn-token&signature=cdn-signature").permitsPublicProcessing)
         #expect(try !episode("https://example.com/audio.mp3?signature=cdn-signature", visibility: "private").permitsPublicProcessing)
-        #expect(try !episode("https://api.example.com/v1/podcasts/media?episodeId=private-episode").permitsPublicProcessing)
+        #expect(try !episode("https://api.example.com/xrpc/app.thesocialwire.podcast.getMedia?episodeId=private-episode").permitsPublicProcessing)
         #expect(!PodcastPrivacy.permitsPublicURL("https://example.com/feed.xml?access_token=subscriber-token"))
         #expect(try !episode("https://user:secret@example.com/audio.mp3").permitsPublicProcessing)
         let show = try JSONDecoder().decode(PodcastShow.self, from: Data(#"{"id":"private-show","title":"Private Show","sourceKind":"private-rss","visibility":"private"}"#.utf8))
@@ -51,7 +51,7 @@ struct PodcastListenerTests {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PodcastDownloads")
         let directory = root.appendingPathComponent(PodcastDownloadStore.key(viewer))
         let indexKey = "podcast-download-index.\(PodcastDownloadStore.key(viewer))"
-        let episode = try JSONDecoder().decode(PodcastEpisode.self, from: Data(#"{"id":"private-episode","showId":"private-show","title":"Private/Show: Episode","publishedAt":"2026-10-04T00:00:00Z","audioUrl":"/v1/podcasts/media?episodeId=private-episode","audioMimeType":"audio/mp4","visibility":"private","transcripts":[]}"#.utf8))
+        let episode = try JSONDecoder().decode(PodcastEpisode.self, from: Data(#"{"id":"private-episode","showId":"private-show","title":"Private/Show: Episode","publishedAt":"2026-10-04T00:00:00Z","audioUrl":"/xrpc/app.thesocialwire.podcast.getMedia?episodeId=private-episode","audioMimeType":"audio/mp4","visibility":"private","transcripts":[]}"#.utf8))
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode([episode.id: episode]).write(to: directory.appendingPathComponent("episodes.json"))
         try Data([1, 2, 3]).write(to: directory.appendingPathComponent(PodcastDownloadStore.key(episode.id)))
@@ -70,7 +70,7 @@ struct PodcastListenerTests {
         #expect(store.episodes[episode.id]?.isPrivate == true)
         #expect(store.storageBytes == 3)
         #expect(store.exportFilename(for: episode) == "Private-Show- Episode.m4a")
-        let show = try JSONDecoder().decode(PodcastShow.self, from: Data(#"{"id":"private-show","title":"Show","sourceKind":"private-rss","hosts":[{"name":"Offline Host","imageUrl":"/v1/podcasts/artwork?assetId=host"}]}"#.utf8))
+        let show = try JSONDecoder().decode(PodcastShow.self, from: Data(#"{"id":"private-show","title":"Show","sourceKind":"private-rss","hosts":[{"name":"Offline Host","imageUrl":"/xrpc/app.thesocialwire.podcast.getImage?showId=private-show&kind=host&index=0"}]}"#.utf8))
         store.remember(show)
         store.configure(viewer: nil)
         store.configure(viewer: viewer)
@@ -100,7 +100,7 @@ struct PodcastListenerTests {
 
     @Test("Artwork ownership changes even when two viewers request the same private URL")
     func artworkViewerIdentity() {
-        let url = "/v1/podcasts/image?showId=private-show&kind=artwork"
+        let url = "/xrpc/app.thesocialwire.podcast.getImage?showId=private-show&kind=artwork"
         #expect(PodcastArtworkIdentity(viewer: "did:plc:alice", url: url) != PodcastArtworkIdentity(viewer: "did:plc:bob", url: url))
         #expect(PodcastArtworkIdentity(viewer: "did:plc:alice", url: url) != PodcastArtworkIdentity(viewer: nil, url: url))
         #expect(PodcastArtworkIdentity(viewer: "did:plc:alice", url: url) != PodcastArtworkIdentity(viewer: "did:plc:alice", url: url + "&index=1"))

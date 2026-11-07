@@ -89,12 +89,12 @@ it("private artwork uses viewer-authenticated bytes and revokes them on account 
     if(createDescriptor) Object.defineProperty(URL,"createObjectURL",createDescriptor); else Reflect.deleteProperty(URL,"createObjectURL");
     if(revokeDescriptor) Object.defineProperty(URL,"revokeObjectURL",revokeDescriptor); else Reflect.deleteProperty(URL,"revokeObjectURL");
   });
-  const view = render(<PodcastArtwork src="/v1/podcasts/image?showId=private&kind=artwork" alt="Private Artwork" size={64} />);
+  const view = render(<PodcastArtwork src="/xrpc/app.thesocialwire.podcast.getImage?showId=private&kind=artwork" alt="Private Artwork" size={64} />);
   await waitFor(()=>expect(screen.getByRole("img",{name:"Private Artwork"}).getAttribute("src")).toBe("blob:did:plc:viewer-a"));
   expect(fetch.mock.calls[0]?.[0]).toBe(oauth);
   did="did:plc:viewer-b";
   fetch.mockImplementation(()=>new Promise(()=>{}));
-  view.rerender(<PodcastArtwork src="/v1/podcasts/image?showId=private&kind=artwork" alt="Private Artwork" size={64} />);
+  view.rerender(<PodcastArtwork src="/xrpc/app.thesocialwire.podcast.getImage?showId=private&kind=artwork" alt="Private Artwork" size={64} />);
   expect(screen.getByRole("img",{name:"Private Artwork"}).getAttribute("src")).toBeNull();
   expect(revoked).toContain("blob:did:plc:viewer-a");
 });

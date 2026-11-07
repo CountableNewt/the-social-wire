@@ -1,0 +1,32 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.putState",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Replace Podcast State",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Conflict"
+        }
+      ]
+    }
+  }
+}

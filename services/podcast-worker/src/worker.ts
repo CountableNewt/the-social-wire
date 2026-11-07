@@ -107,7 +107,7 @@ export class PodcastWorker {
       await this.storage.file(audioKey).write(Bun.file(files.audio),{type:"audio/mp4"});
       await this.storage.file(videoKey).write(Bun.file(files.video),{type:"video/mp4"});
       const publicBase=(process.env.PODCAST_PUBLIC_GATEWAY_URL??"https://api.thesocialwire.app").replace(/\/$/,"");
-      return {audioKey,videoKey,publicAudioUrl:`${publicBase}/v1/podcasts/public/assets?clipId=${clipId}&format=audio`,publicVideoUrl:`${publicBase}/v1/podcasts/public/assets?clipId=${clipId}&format=video`,audioUrl:`/v1/podcasts/assets?clipId=${clipId}&format=audio`,videoUrl:`/v1/podcasts/assets?clipId=${clipId}&format=video`,durationSeconds:Number(job.payload_json.endSeconds)-Number(job.payload_json.startSeconds)};
+      return {audioKey,videoKey,publicAudioUrl:`${publicBase}/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=${clipId}&format=audio`,publicVideoUrl:`${publicBase}/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=${clipId}&format=video`,audioUrl:`/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=${clipId}&format=audio`,videoUrl:`/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=${clipId}&format=video`,durationSeconds:Number(job.payload_json.endSeconds)-Number(job.payload_json.startSeconds)};
     });
   }
 }

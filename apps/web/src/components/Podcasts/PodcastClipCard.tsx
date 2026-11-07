@@ -94,8 +94,8 @@ function ViewerClipCard({ clip, episode, onChanged }: { clip: PodcastClip; episo
       <button className={button} disabled={busy || !ready} onClick={() => void run(async signal => { setProgress("Loading Video Preview"); await loadVideo(signal); check(); setComposerVersion(value => value + 1); setComposer(true); })}>Post to Bluesky</button>
       {clip.status === "failed" ? <button className={button} disabled={busy} onClick={() => void run(async signal => {
         const oauth = requireSession();
-        const job = clip.jobId ? { id: clip.jobId } : await podcastRequest<{ id: string }>(oauth, `jobs?clipId=${encodeURIComponent(clip.id)}`, "GET", undefined, signal);
-        check(); await podcastRequest(oauth, "jobs", "POST", { jobId: job.id }, signal); check(); await onChanged?.();
+        const job = clip.jobId ? { id: clip.jobId } : await podcastRequest<{ id: string }>(oauth, `getJob?clipId=${encodeURIComponent(clip.id)}`, "GET", undefined, signal);
+        check(); await podcastRequest(oauth, "retryJob", "POST", { jobId: job.id }, signal); check(); await onChanged?.();
       })}>Retry Exports</button> : null}
       {(["audio", "video"] as const).map(format => (format === "audio" ? clip.audioUrl : clip.videoUrl) ? <button key={format} className={button} disabled={busy} onClick={() => void run(async signal => {
         const blob = await fetchPodcastClipAsset({ session: requireSession(), clipId: clip.id, format, signal, assertCurrentAccount });

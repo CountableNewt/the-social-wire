@@ -28,11 +28,11 @@ function setup() {
 it("uses private resolution exclusively and never creates a public PDS record", async () => {
   const fixture = setup();
   const write = spyOn(client, "writePodcastSubscription").mockResolvedValue();
-  const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => path === "shows" ? { shows: [] } as T : { show: { id: "private", title: "Members Audio", sourceKind: "private-rss", visibility: "private" } } as T);
+  const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => path === "getShows" ? { shows: [] } as T : { show: { id: "private", title: "Members Audio", sourceKind: "private-rss", visibility: "private" } } as T);
   restores.push(() => write.mockRestore(), () => request.mockRestore());
   const { result } = renderHook(() => useImportOpmlPodcasts(false), { wrapper: fixture.wrapper });
   await act(async () => { await result.current.importer.mutateAsync({ feeds: [feed], privateFeeds: true, onProgress() {} }); });
-  expect(request).toHaveBeenCalledWith(fixture.oauth, "private/resolve", "POST", { url: feed.feedUrl });
+  expect(request).toHaveBeenCalledWith(fixture.oauth, "resolvePrivateShow", "POST", { url: feed.feedUrl });
   expect(write).not.toHaveBeenCalled();
   await waitFor(() => expect(result.current.importer.data?.imported).toHaveLength(1));
   expect(fixture.events).toEqual([{ viewerDid: fixture.oauth.did }]);
@@ -42,7 +42,7 @@ it("stops an account-switched import after resolution and before subscription wr
   const fixture = setup();
   let resolved: (value: unknown) => void = () => {};
   const write = spyOn(client, "writePodcastSubscription").mockResolvedValue();
-  const request = spyOn(client, "podcastRequest").mockImplementation(<T,>(_oauth: OAuthSession, path: string): Promise<T> => path === "shows" ? Promise.resolve({ shows: [] } as T) : new Promise<T>(resolve => { resolved = value => resolve(value as T); }));
+  const request = spyOn(client, "podcastRequest").mockImplementation(<T,>(_oauth: OAuthSession, path: string): Promise<T> => path === "getShows" ? Promise.resolve({ shows: [] } as T) : new Promise<T>(resolve => { resolved = value => resolve(value as T); }));
   restores.push(() => write.mockRestore(), () => request.mockRestore());
   const { result, rerender } = renderHook(() => useImportOpmlPodcasts(false), { wrapper: fixture.wrapper });
   let pending: Promise<unknown> = Promise.resolve();
@@ -69,7 +69,7 @@ it("notifies the current viewer after a partially successful public import", asy
   const fixture = setup();
   const write = spyOn(client,"writePodcastSubscription").mockResolvedValue();
   const request = spyOn(client,"podcastRequest").mockImplementation(async <T,>(_oauth:OAuthSession,path:string,_method?:string,body?:unknown):Promise<T> => {
-    if(path==="shows")return {shows:[]} as T;
+    if(path==="getShows")return {shows:[]} as T;
     if((body as {url?:string})?.url?.includes("failed"))throw new Error("Resolve Failed");
     return {show:{id:"imported",title:"Imported",sourceKind:"rss"}} as T;
   });
