@@ -203,10 +203,8 @@ struct NewsShellView: View {
             Tab("News", systemImage: "newspaper", value: NewsRootSection.feeds) {
                 sectionPager(.feeds, items: feedDestinations.map(NewsNavigationItem.init(feed:)))
             }
-            if !topicDestinations.isEmpty {
-                Tab("Topics", systemImage: "square.grid.2x2", value: NewsRootSection.topics) {
-                    sectionPager(.topics, items: topicDestinations.map(NewsNavigationItem.init(feed:)))
-                }
+            Tab("Topics", systemImage: "square.grid.2x2", value: NewsRootSection.topics) {
+                sectionPager(.topics, items: topicDestinations.map(NewsNavigationItem.init(feed:)))
             }
             Tab("Lists", systemImage: "list.bullet", value: NewsRootSection.lists) {
                 listsWorkspace

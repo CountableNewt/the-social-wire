@@ -55,26 +55,16 @@ final class NewsShellSmokeUITests: XCTestCase {
         confirmation.buttons["Cancel"].tap()
     }
 
-    func testTopicFeedsRemainReachableFromNativeTopicsTab() {
+    func testRetiredTopicControlsStayHiddenInNativeShell() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists"]
         app.launch()
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
-
-        selectDestination("Finance", in: app)
-        let chooseFinance = app.buttons["Choose Feed"]
-        XCTAssertTrue(chooseFinance.waitForExistence(timeout: 5))
-        chooseFinance.tap()
-        guard dismissPicker("Finance Feeds", in: app) else { return }
-
-        selectDestination("Sports", in: app)
-        XCTAssertTrue(app.staticTexts["Fixture Football Story"].waitForExistence(timeout: 5))
-        let sportsPicker = app.buttons["sports-feed-picker"]
-        XCTAssertTrue(sportsPicker.waitForExistence(timeout: 5))
-        sportsPicker.tap()
-        XCTAssertTrue(app.buttons["Football"].waitForExistence(timeout: 5))
-        guard dismissPicker("Sports Feeds", in: app) else { return }
-
+        selectRoot("Topics", in: app)
+        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Choose Feed"].exists)
+        XCTAssertFalse(app.buttons["Finance"].exists)
+        XCTAssertFalse(app.buttons["Sports"].exists)
         selectDestination("Subscribed", in: app)
         XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 3))
     }
@@ -149,8 +139,8 @@ final class NewsShellSmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["lists.createName"].exists)
         app.buttons["Done"].firstMatch.tap()
 
-        selectDestination("Finance", in: app)
-        XCTAssertTrue(app.buttons["Choose Feed"].waitForExistence(timeout: 5))
+        selectRoot("Topics", in: app)
+        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
         selectDestination("Lists", in: app)
         XCTAssertTrue(app.staticTexts["No Lists Yet"].waitForExistence(timeout: 3))
         selectDestination("Read Later", in: app)
