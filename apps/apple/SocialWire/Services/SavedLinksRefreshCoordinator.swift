@@ -21,6 +21,7 @@ final class SavedLinksRefreshCoordinator {
                 if generation == currentGeneration { self.task = nil }
             }
             repeat {
+                guard !Task.isCancelled, generation == currentGeneration else { return }
                 refreshAgain = false
                 let succeeded = await load()
                 guard !Task.isCancelled, generation == currentGeneration else { return }
