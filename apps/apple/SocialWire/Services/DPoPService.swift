@@ -26,6 +26,7 @@ actor DPoPService {
         preemptsBackground: Bool = true,
         operation: @escaping @MainActor @Sendable () async throws -> Value
     ) async throws -> Value {
+        try Task.checkCancellation()
         let origin = originKey(for: url), id = UUID()
         if !background && preemptsBackground { backgroundSequenceCancellation[origin]?() }
         try await withTaskCancellationHandler {
