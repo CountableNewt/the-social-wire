@@ -11,7 +11,7 @@ import Testing
 
 struct PodcastSearchProxyTests {
   @Test func forwardsPrivateQueryInBodyWithViewerTrustAndNoStore() async throws {
-    let path = "/v1/podcasts/search"
+    let path = "/xrpc/app.thesocialwire.podcast.findPodcasts"
     let secret = String(repeating: "s", count: 32)
     let payload = #"{"query":"Private Café + Science","scope":"library","limit":20}"#
     let upstream = Router()

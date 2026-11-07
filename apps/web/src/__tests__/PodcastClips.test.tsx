@@ -58,7 +58,7 @@ describe("Static podcast clip exports", () => {
       await waitFor(() =>
         expect(requests).toHaveBeenCalledWith(
           oauth,
-          "clips",
+          "createClip",
           "POST",
           expect.objectContaining({
             includeCaptions: false,

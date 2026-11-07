@@ -173,7 +173,7 @@ struct SocialWireGatewayClientTests {
             .init(status: 200, body: "{}", headers: [ATProtoSessionDPoP.receiptHeaderName: "download-receipt"]),
         ])
         defer { auth.signOut() }
-        let request = try await gateway.podcastDownloadRequest(media: "/v1/podcasts/media?source=test", expectedViewer: "did:plc:test")
+        let request = try await gateway.podcastDownloadRequest(media: "/xrpc/app.thesocialwire.podcast.getMedia?source=test", expectedViewer: "did:plc:test")
         #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.receiptHeaderName) == "download-receipt")
         #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.preparedUpstreamDPoPHeaderName) == "true")
         #expect(await transport.recordedRequests().count == 1)

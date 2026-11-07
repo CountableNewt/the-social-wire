@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.retryJob",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Create or Request Podcast Jobs",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "jobId"
+          ],
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

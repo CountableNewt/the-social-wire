@@ -1,5 +1,5 @@
 {
-  "originHash" : "e7d052dfe98743cf847f9d9d993dbbd3d93f1ed49eeebbab0a6aca2463e24372",
+  "originHash" : "5b0172f6de983ef084b9ab917ddc76dd13d1777d7a7ebc94762b516cf188a598",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -40,7 +40,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/gateway-core.git",
       "state" : {
-        "revision" : "c442f6a85210056f5c8b12da75e62a7aaa27d9a2"
+        "revision" : "d504847ef1321f7fb2bb1c38eef8812ea6b10d9c"
       }
     },
     {
@@ -394,7 +394,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Stygian-Tech/thin-app-view-core.git",
       "state" : {
-        "revision" : "17a2d8c777b69ab471dec98b52232a245901f49a"
+        "revision" : "984ff9ab19241f6a495b8e419b2894e7df5d49bb"
       }
     },
     {

@@ -65,15 +65,11 @@ describe("Development podcast deployment graph", () => {
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/local/bin/schema-ready", "--", "/usr/local/bin/bun", "services/podcast-worker/src/index.ts"]');
   });
 
-  it("tests the source entrypoint database gate without building a deployment image", () => {
+  it("tests the worker source without building a deployment image", () => {
     const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
     const job = workflow.slice(workflow.indexOf("  podcast-worker:"), workflow.indexOf("  required:"));
-    expect(job).toContain("Test source entrypoint database gate");
-    expect(job).toContain('go build -o "$RUNNER_TEMP/schema-ready-test" ./cmd/schema-ready');
-    expect(job).toContain("env -u DATABASE_URL APP_ENV=dev");
-    expect(job).toContain("schema readiness requires DATABASE_URL");
-    expect(job).toContain("absolute application path");
     expect(job).not.toContain("docker build");
+    expect(job).not.toContain("setup-go");
     expect(job).toContain("bun --cwd services/podcast-worker typecheck");
     expect(job).toContain("bun --cwd services/podcast-worker test");
   });

@@ -5,25 +5,9 @@ import { join } from "node:path";
 const OPENAPI_PATH = join(import.meta.dir, "../openapi.yaml");
 const GATEWAY_SOURCES = join(
   import.meta.dir,
-  "../../../services/gateway/internal/gateway"
+  "../../../services/gateway/Sources/Gateway/Routes"
 );
-const GATEWAY_CORE_SOURCES = join(
-  import.meta.dir,
-  "../../../packages/go/gatewaycore"
-);
-const APPVIEW_SOURCES = join(
-  import.meta.dir,
-  "../../../services/appview/internal"
-);
-const OPERATIONS_SOURCES = join(
-  import.meta.dir,
-  "../../../packages/go/operationsapi"
-);
-const OPERATIONS_ROUTES = join(OPERATIONS_SOURCES, "http_mutations.go");
-const OPERATIONS_PROXY_ROUTES = join(
-  GATEWAY_SOURCES,
-  "proxy.go"
-);
+const OPERATIONS_PROXY_ROUTES = join(GATEWAY_SOURCES, "OperationsProxyRoutes.swift");
 
 function collectRouterFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -32,7 +16,7 @@ function collectRouterFiles(dir: string): string[] {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...collectRouterFiles(full));
-    } else if ((entry.name.endsWith(".go") && !entry.name.endsWith("_test.go")) || entry.name.endsWith(".swift")) {
+    } else if (entry.name.endsWith(".swift")) {
       files.push(full);
     }
   }
@@ -65,34 +49,31 @@ describe("OpenAPI route drift", () => {
   it("documents paths registered in gateway and appview router sources", () => {
     const yaml = readFileSync(OPENAPI_PATH, "utf8");
     const routerSources = [
-      ...collectRouterFiles(GATEWAY_SOURCES),
-      ...collectRouterFiles(GATEWAY_CORE_SOURCES),
-      ...collectRouterFiles(APPVIEW_SOURCES),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
-      ...collectRouterFiles(OPERATIONS_SOURCES),
     ]
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
     const paths = extractOpenAPIPaths(yaml);
 
-    for (const path of paths) {
-      // Literal ServeMux patterns contain a method prefix; route inventories and
-      // register helpers contain the bare path. Ignore test-only declarations.
-      const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      expect(new RegExp(`"(?:[A-Z]+ )?${escaped}"`).test(routerSources), path).toBe(true);
-    }
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const registered = (path: string) => {
+      // Hummingbird routes spell parameters as :name, and loops interpolate the final
+      // path or NSID segment from a literal name list.
+      const route = path.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, ":$1");
+      if (new RegExp(`"${escape(route)}"`).test(routerSources)) return true;
+      const split = Math.max(route.lastIndexOf("/"), route.startsWith("/xrpc/") ? route.lastIndexOf(".") : -1);
+      const [prefix, segment] = [route.slice(0, split + 1), route.slice(split + 1)];
+      return routerSources.includes(`"${prefix}\\(`) && routerSources.includes(`"${segment}"`);
+    };
+    for (const path of paths) expect(registered(path), path).toBe(true);
   });
 
   it("documents every directly registered literal /v1 path", () => {
     const documented = new Set(extractOpenAPIPaths(readFileSync(OPENAPI_PATH, "utf8")));
     const routeFiles = [
-      ...collectRouterFiles(GATEWAY_SOURCES),
-      ...collectRouterFiles(GATEWAY_CORE_SOURCES),
-      ...collectRouterFiles(APPVIEW_SOURCES),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
-      ...collectRouterFiles(OPERATIONS_SOURCES),
     ];
     const directlyRegistered = routeFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");
@@ -363,17 +344,12 @@ describe("OpenAPI route drift", () => {
     }
   });
 
-  it("keeps service statuses and Gateway pass-through behavior aligned", () => {
-    const service = readFileSync(OPERATIONS_ROUTES, "utf8");
+  it("keeps Gateway pass-through behavior aligned with Operations statuses", () => {
     const proxy = readFileSync(OPERATIONS_PROXY_ROUTES, "utf8");
-
-    expect(service).toContain("status: 201");
-    expect(service).toContain("status: 202");
-    expect(service).toContain("status = 202");
-    expect(collectRouterFiles(OPERATIONS_SOURCES).map(file => readFileSync(file, "utf8")).join("\n")).toContain("HTTPError{410,");
-    expect(readFileSync(join(OPERATIONS_SOURCES, "http_handler.go"), "utf8")).toContain("HTTPError{404,");
-    expect(proxy).toContain("w.WriteHeader(reply.StatusCode)");
-    expect(proxy.match(/w\.WriteHeader\(reply\.StatusCode\)/g)).toHaveLength(2);
+    // Accepted/created mutation statuses are forwarded unchanged, buffered or streamed.
+    expect(proxy.match(/status: Self\.status\(Int\(reply\.status\.code\)\)/g)).toHaveLength(1);
+    expect(proxy).toContain("let status = Self.status(Int(reply.status.code))");
+    expect(proxy).toContain("guard (100...599).contains(code) else { return .badGateway }");
   });
 });
 
@@ -386,9 +362,9 @@ describe("L@tr bookmark state transport compatibility", () => {
     expect(block).toContain("    patch:");
     expect(block).toContain("operationId: setLatrBookmarkStatePatchCompatibility");
     expect(block.match(/responses:\n[\s\S]*?401/g)).toHaveLength(2);
-    const routes = readFileSync(join(GATEWAY_SOURCES, "routes.go"), "utf8");
-    expect(routes).toContain('{Method: "PATCH", Path: "/xrpc/link.latr.bookmarks.setState"');
-    expect(routes).toContain('{Method: "POST", Path: "/xrpc/link.latr.bookmarks.setState"');
+    const routes = readFileSync(join(GATEWAY_SOURCES, "LatrProxyRoutes.swift"), "utf8");
+    expect(routes).toContain('group.patch("/xrpc/link.latr.bookmarks.setState")');
+    expect(routes).toContain('group.post("/xrpc/link.latr.bookmarks.setState")');
     const bruno = readFileSync(join(import.meta.dir, "../../../services/gateway/bruno/Latr/Set Bookmark State PATCH Compatibility.bru"), "utf8");
     expect(bruno).toContain("patch {");
     expect(bruno).toContain("X-Latr-Gateway-DPoP:");

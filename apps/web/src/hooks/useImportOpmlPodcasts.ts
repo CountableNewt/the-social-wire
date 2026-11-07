@@ -23,7 +23,7 @@ export function useImportOpmlPodcasts(enabled: boolean) {
     queryFn: async () => {
       const oauth = getOAuthSession();
       if (!oauth || oauth.did !== viewer) throw new Error("Sign In To Import Podcasts");
-      return (await podcastRequest<{ shows: PodcastShow[] }>(oauth, "shows")).shows;
+      return (await podcastRequest<{ shows: PodcastShow[] }>(oauth, "getShows")).shows;
     },
   });
   const importer = useMutation({
@@ -35,7 +35,7 @@ export function useImportOpmlPodcasts(enabled: boolean) {
         }
       };
       assertViewer();
-      const current = await podcastRequest<{ shows: PodcastShow[] }>(oauth!, "shows");
+      const current = await podcastRequest<{ shows: PodcastShow[] }>(oauth!, "getShows");
       assertViewer();
       try {
         return await importOpmlPodcasts({
@@ -44,7 +44,7 @@ export function useImportOpmlPodcasts(enabled: boolean) {
           assertViewer,
           resolve: async (url, privateFeed) => {
             assertViewer();
-            const response = await podcastRequest<{ show?: PodcastShow; shows?: PodcastShow[] }>(oauth!, privateFeed ? "private/resolve" : "resolve", "POST", { url });
+            const response = await podcastRequest<{ show?: PodcastShow; shows?: PodcastShow[] }>(oauth!, privateFeed ? "resolvePrivateShow" : "resolveShow", "POST", { url });
             const show = response.show ?? response.shows?.[0];
             if (!show) throw new Error("No Audio Podcast Found");
             return show;

@@ -91,7 +91,7 @@ export async function podcastRequest<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await gatewayFetch(oauth, `/v1/podcasts/${path}`, {
+  const response = await gatewayFetch(oauth, `/xrpc/app.thesocialwire.podcast.${path}`, {
     method,
     signal,
     ...(body === undefined
@@ -119,7 +119,7 @@ export async function podcastRequest<T>(
   return response.json() as Promise<T>;
 }
 export function podcastMediaPath(episodeId: string): string {
-  return `media?episodeId=${encodeURIComponent(episodeId)}`;
+  return `/xrpc/app.thesocialwire.podcast.getMedia?episodeId=${encodeURIComponent(episodeId)}`;
 }
 export async function writePodcastSubscription(
   oauth: OAuthSession,
@@ -129,7 +129,7 @@ export async function writePodcastSubscription(
 ): Promise<void> {
   if (show.visibility === "private" || show.sourceKind === "private-rss") {
     if (!remove) throw new Error("Private feeds subscribe through the private RSS service");
-    await podcastRequest(oauth, `private/subscriptions?showId=${encodeURIComponent(show.id)}`, "DELETE");
+    await podcastRequest(oauth, "deletePrivateSubscription", "POST", { showId: show.id });
     return;
   }
   const agent = createOAuthAgent(oauth);
@@ -211,16 +211,16 @@ export async function publishPodcastClip(
       endMillis: Math.round(clip.endSeconds * 1000),
       audioUrl:
         clip.publicAudioUrl ??
-        `${gatewayBaseUrl()}/v1/podcasts/public/assets?clipId=${encodeURIComponent(clip.id)}&format=audio`,
+        `${gatewayBaseUrl()}/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=${encodeURIComponent(clip.id)}&format=audio`,
       videoUrl:
         clip.publicVideoUrl ??
-        `${gatewayBaseUrl()}/v1/podcasts/public/assets?clipId=${encodeURIComponent(clip.id)}&format=video`,
+        `${gatewayBaseUrl()}/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=${encodeURIComponent(clip.id)}&format=video`,
       sourceUrl: episode.audioUrl,
       createdAt: clip.createdAt,
     },
   });
   assertCurrentAccount?.();
-  await podcastRequest(oauth, "clips/publish", "POST", {
+  await podcastRequest(oauth, "publishClip", "POST", {
     clipId: clip.id,
     uri: result.data.uri,
   });
@@ -244,17 +244,13 @@ export async function unpublishPodcastClip(
     });
   }
   assertCurrentAccount?.();
-  await podcastRequest(
-    oauth,
-    `clips?clipId=${encodeURIComponent(clip.id)}`,
-    "DELETE",
-  );
+  await podcastRequest(oauth, "deleteClip", "POST", { clipId: clip.id });
 }
 export async function publicPodcastClip(
   uri: string,
 ): Promise<PodcastClip | null> {
   const response = await fetch(
-    `${gatewayBaseUrl()}/v1/podcasts/public/clips?uri=${encodeURIComponent(uri)}`,
+    `${gatewayBaseUrl()}/xrpc/app.thesocialwire.podcast.getPublicClip?uri=${encodeURIComponent(uri)}`,
     { cache: "no-store" },
   );
   if (!response.ok) return null;

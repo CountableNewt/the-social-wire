@@ -6,7 +6,7 @@ import ThinAppViewCore
 struct PodcastImageRoutes {
   let service: PodcastService
   func register(on group: RouterGroup<GatewayRequestContext>) {
-    group.get("/v1/podcasts/image") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getImage") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let query = request.uri.queryParameters
       let kind = query.get("kind") ?? "artwork"
@@ -24,7 +24,7 @@ struct PodcastImageRoutes {
         if kind == "showArtwork" { url = episode.showArtworkUrl }
         if kind == "chapter", episode.chapters.indices.contains(index) {
           let chapter = episode.chapters[index]
-          if chapter.artworkUrl?.hasPrefix("/v1/podcasts/image?") == true {
+          if chapter.artworkUrl?.hasPrefix("/xrpc/app.thesocialwire.podcast.getImage?") == true {
             guard let images = try? await PodcastEmbeddedChapterArtwork.shared.artwork(episode: episode, viewer: auth.did, http: service.http),
               let image = images.first(where: { abs($0.startSeconds - chapter.startSeconds) < 0.5 })
             else { throw HTTPError(.notFound) }

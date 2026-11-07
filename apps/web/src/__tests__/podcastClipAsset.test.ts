@@ -12,7 +12,7 @@ it("fetches draft MP4 through authenticated gateway and guards each async bounda
   let checks = 0;
   const abort = new AbortController();
   const blob = await fetchPodcastClipAsset({ session, clipId: "private/id", format: "video", signal: abort.signal, assertCurrentAccount: () => { checks++; } });
-  expect(fetch).toHaveBeenCalledWith(session, "/v1/podcasts/assets?clipId=private%2Fid&format=video", { signal: abort.signal });
+  expect(fetch).toHaveBeenCalledWith(session, "/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=private%2Fid&format=video", { signal: abort.signal });
   expect(blob.type).toBe("video/mp4"); expect(checks).toBe(3);
 });
 it("rejects wrong media types and discards stale account media", async () => {

@@ -12,19 +12,19 @@ struct PodcastPrivateStorageMiddlewareTests {
   func unavailableStorage() async throws {
     let router = Router(context: GatewayRequestContext.self)
     let privateRoutes = router.group().add(middleware: PodcastPrivateStorageMiddleware())
-    privateRoutes.post("/v1/podcasts/private/resolve") { _, _ -> Response in
+    privateRoutes.post("/xrpc/app.thesocialwire.podcast.resolvePrivateShow") { _, _ -> Response in
       throw PodcastStoreError.privateStorageUnavailable
     }
-    privateRoutes.get("/v1/podcasts/shows") { _, _ -> Response in
+    privateRoutes.get("/xrpc/app.thesocialwire.podcast.getShows") { _, _ -> Response in
       Response(status: .ok)
     }
     try await Application(router: router).test(.router) { client in
-      let unavailable = try await client.execute(uri: "/v1/podcasts/private/resolve", method: .post)
+      let unavailable = try await client.execute(uri: "/xrpc/app.thesocialwire.podcast.resolvePrivateShow", method: .post)
       #expect(unavailable.status == .serviceUnavailable)
       let body = String(decoding: unavailable.body.readableBytesView, as: UTF8.self)
       #expect(body.contains("Private Podcast Storage Is Unavailable"))
       #expect(!body.contains("key") && !body.contains("token") && !body.contains("AES"))
-      let publicShows = try await client.execute(uri: "/v1/podcasts/shows", method: .get)
+      let publicShows = try await client.execute(uri: "/xrpc/app.thesocialwire.podcast.getShows", method: .get)
       #expect(publicShows.status == .ok)
     }
   }

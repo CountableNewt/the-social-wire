@@ -1,0 +1,31 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getAnalysis",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read Podcast Analysis",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "episodeId": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

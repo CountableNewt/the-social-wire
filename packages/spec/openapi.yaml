@@ -5422,377 +5422,52 @@ paths:
                   minimum: 0
                   maximum: 9007199254740991
 
-  /v1/podcasts/search:
-    post:
-      tags: [Podcasts]
-      summary: Search Podcasts
-      description: Searches stored titles, descriptions and show host names in subscribed public and viewer-owned private podcasts. No directory requests, PDS hydration or feed fetches. Matching ignores case and diacritics and requires every whitespace-separated term. Results order shows before episodes then stable ID. At most 500 stored rows are scanned per page; a page may be empty with hasMore true. Continue with the opaque cursor until hasMore false. Cursors are bound to viewer, normalized query, kind and showId. Responses are private, no-store. Explicit scope directory searches Podcast Index public names/topics only, never library text or feed URLs. Directory returns candidates (not catalog records), empty shows/episodes, directoryLimit 50, hasMore false and no cursor; at most min(limit,50) public HTTPS podcast candidates from one provider response. No provider pagination or auto subscription. Directory rejects showId/cursor, episode kind, URL or credential-shaped input. Provider fetches have an eight-second deadline, two MiB body cap, exact URL redirect allowlist, public DNS pinning, descriptive User-Agent, no auth headers, five-minute result cache (128 entries), coalescing, two concurrent calls and a self-imposed 20 cache misses/minute per AppView process.
-      security: [{ATProtoOAuthDPoP: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/PodcastSearchRequest'}
-            example: {query: technology, scope: library, kind: all, limit: 20}
-      responses:
-        '200':
-          description: Sanitized Library Search Page
-          headers:
-            Cache-Control: {schema: {type: string, example: 'private, no-store'}}
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/PodcastSearchResponse'}
-        '400': {description: Invalid Search Or Cursor, Or Directory URL/Credential Input}
-        '401': {description: Authentication Required}
-        '502': {description: Podcast Index Unavailable Or Invalid Provider Response}
-        '503': {description: Private Storage Authentication Failed Or Directory Request Budget Busy}
-  /v1/podcasts/private/resolve:
-    post:
-      tags: [Podcasts]
-      summary: Subscribe To A Private RSS Podcast
-      description: Authenticated viewer-owned subscription and catalog. HTTPS path and query tokens remain server-side. No public PDS subscription, catalog, bridge, silence job, or clip is created. URL userinfo is unsupported.
-      security: [{ATProtoOAuthDPoP: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {type: object, required: [url], properties: {url: {type: string}}}
-            example: {url: '{{privatePodcastFeedUrl}}'}
-      responses:
-        '200':
-          description: Private Subscription And Redacted Catalog
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/PodcastResolveResponse'}
-        '400': {description: Invalid Or Unavailable Private Feed}
-        '401': {description: Authentication Required}
-        '503': {description: Private Storage Key Missing Or Authentication Failed}
-  /v1/podcasts/private/refresh:
-    post:
-      tags: [Podcasts]
-      summary: Refresh A Private RSS Subscription
-      security: [{ATProtoOAuthDPoP: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {type: object, required: [showId], properties: {showId: {type: string}}}
-            example: {showId: '{{privatePodcastShowId}}'}
-      responses:
-        '200':
-          description: Viewer-Owned Refreshed Catalog
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/PodcastResolveResponse'}
-        '404': {description: Subscription Not Owned By Viewer}
-        '401': {description: Authentication Required}
-        '503': {description: Private Storage Key Missing Or Authentication Failed}
-  /v1/podcasts/private/subscriptions:
-    delete:
-      tags: [Podcasts]
-      summary: Remove A Private RSS Subscription
-      description: Deletes only the viewer's private catalog and removes its episodes from their queue and progress. Source credentials are removed from the application database.
-      security: [{ATProtoOAuthDPoP: []}]
-      parameters: [{in: query, name: showId, required: true, schema: {type: string}}]
-      responses:
-        '200': {description: Subscription Removed}
-        '404': {description: Subscription Not Owned By Viewer}
-        '401': {description: Authentication Required}
-        '503': {description: Private Storage Key Missing Or Authentication Failed}
-  /v1/podcasts/resolve:
-    post:
-      summary: Create or Request Podcast Resolve
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object"}
-            example: {"url": "https://example.com/podcast.xml"}
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastResolveResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/shows:
-    get:
-      summary: Read Podcast Shows
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastShowsResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/episodes:
-    get:
-      summary: Read Podcast Episodes
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      description: With no showId returns the viewer subscribed public and private episodes sorted by publication time. queue=true returns owned queued episodes in queue order. Private episodes contain authenticated media proxy URLs.
-      parameters: [{"in": "query", "name": "showId", "schema": {"type": "string"}}, {"in": "query", "name": "episodeId", "schema": {"type": "string"}}, {"in": "query", "name": "cursor", "schema": {"type": "string"}}, {"in": "query", "name": "limit", "schema": {"type": "string"}}, {"in": "query", "name": "queue", "schema": {"type": "boolean"}}]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastEpisodesResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/transcript:
-    get:
-      summary: Read Podcast Transcript
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "episodeId", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastTranscriptsResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/state:
-    get:
-      summary: Read Podcast State
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastStateSnapshot" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-    put:
-      summary: Replace Podcast State
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object", "required": ["expectedRevision", "state"], "properties": {"expectedRevision": {"type": "integer", "minimum": 0}, "state": {"$ref": "#/components/schemas/PodcastListenerState"}}}
-            example: {"expectedRevision": 0, "state": {"subscriptions": [], "queue": [], "progress": {}, "playbackSpeed": 1, "removeSilences": false, "manualLinks": []}}
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastStateSnapshot" }
-        "409":
-          description: Revision Conflict - Reload and Reapply the Current Intent
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/analysis:
-    get:
-      summary: Read Podcast Analysis
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "episodeId", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastAnalysisResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-    post:
-      summary: Create or Request Podcast Analysis
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "episodeId", "schema": {"type": "string"}}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object"}
-            example: {"episodeId": "{{podcastEpisodeId}}"}
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastJob" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/clips:
-    get:
-      summary: Read Podcast Clips
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastClipsResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-    post:
-      summary: Create or Request Podcast Clips
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object"}
-            example: {"episodeId": "{{podcastEpisodeId}}", "startSeconds": 0, "endSeconds": 30, "title": "Clip", "includeCaptions": true}
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastClipPreparationResponse" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-    delete:
-      summary: Remove Podcast Clips
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "clipId", "required": true, "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/clips/publish:
-    post:
-      summary: Create or Request Podcast Clips Publish
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object"}
-            example: {"clipId": "{{podcastClipId}}", "uri": "{{podcastClipUri}}"}
-      responses:
-        "200":
-          description: Podcast Result
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/jobs:
-    get:
-      summary: Read Podcast Jobs
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "jobId", "schema": {"type": "string"}}, {"in": "query", "name": "showId", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastJob" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-    post:
-      summary: Create or Request Podcast Jobs
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "jobId", "schema": {"type": "string"}}, {"in": "query", "name": "showId", "schema": {"type": "string"}}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {"type": "object"}
-            example: {"jobId": "{{podcastJobId}}"}
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastJob" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/assets:
-    get:
-      summary: Read Podcast Assets
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "clipId", "schema": {"type": "string"}}, {"in": "query", "name": "format", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-        "206":
-          description: Partial Audio or Video Content
-        "416":
-          description: Range Not Satisfiable
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/image:
-    get:
-      tags: [Podcasts]
-      summary: Get Supplied Podcast Artwork Or Host Photo
-      description: Authenticated bounded raster proxy. Private images are resolved only from the viewer-owned encrypted catalog; source credentials never appear in URLs or responses. Images are validated by their bytes and served with nosniff.
-      security: [{ATProtoOAuthDPoP: []}]
-      parameters:
-        - {in: query, name: showId, schema: {type: string}}
-        - {in: query, name: episodeId, schema: {type: string}}
-        - {in: query, name: kind, schema: {type: string, enum: [artwork, showArtwork, host, chapter], default: artwork}}
-        - {in: query, name: index, schema: {type: integer, minimum: 0, maximum: 999, default: 0}}
-      responses:
-        '200': {description: Supplied Raster Image, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}, image/gif: {schema: {type: string, format: binary}}, image/webp: {schema: {type: string, format: binary}}, image/avif: {schema: {type: string, format: binary}}}}
-        '400': {description: Invalid Image Selector}
-        '401': {description: Authentication Required}
-        '404': {description: Image Not Found Or Not Owned By Viewer}
-        '415': {description: Unsupported Or Invalid Image Bytes}
-        '502': {description: Source Image Unavailable}
-        '503': {description: Private Storage Unavailable}
-  /v1/podcasts/media:
-    get:
-      summary: Read Podcast Media
-      tags: [Podcasts]
-      security: [{ BearerAuth: [] }]
-      parameters: [{"in": "query", "name": "episodeId", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-        "206":
-          description: Partial Audio or Video Content
-        "416":
-          description: Range Not Satisfiable
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/public/clips:
-    get:
-      summary: Read Podcast Public Clips
-      tags: [Podcasts]
-      parameters: [{"in": "query", "name": "clipId", "schema": {"type": "string"}}, {"in": "query", "name": "uri", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PodcastClip" }
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-  /v1/podcasts/public/assets:
-    get:
-      summary: Read Podcast Public Assets
-      tags: [Podcasts]
-      parameters: [{"in": "query", "name": "clipId", "schema": {"type": "string"}}, {"in": "query", "name": "format", "schema": {"type": "string"}}]
-      responses:
-        "200":
-          description: Podcast Result
-        "206":
-          description: Partial Audio or Video Content
-        "416":
-          description: Range Not Satisfiable
-        "404":
-          description: Podcasts Disabled or Resource Unavailable
-
+  /xrpc/app.thesocialwire.podcast.findPodcasts:
+    post: {"operationId":"podcastFindPodcasts","summary":"Search Podcasts","description":"Searches stored titles, descriptions and show host names in subscribed public and viewer-owned private podcasts. No directory requests, PDS hydration or feed fetches. Matching ignores case and diacritics and requires every whitespace-separated term. Results order shows before episodes then stable ID. At most 500 stored rows are scanned per page; a page may be empty with hasMore true. Continue with the opaque cursor until hasMore false. Cursors are bound to viewer, normalized query, kind and showId. Responses are private, no-store. Explicit scope directory searches Podcast Index public names/topics only, never library text or feed URLs. Directory returns candidates (not catalog records), empty shows/episodes, directoryLimit 50, hasMore false and no cursor; at most min(limit,50) public HTTPS podcast candidates from one provider response. No provider pagination or auto subscription. Directory rejects showId/cursor, episode kind, URL or credential-shaped input. Provider fetches have an eight-second deadline, two MiB body cap, exact URL redirect allowlist, public DNS pinning, descriptive User-Agent, no auth headers, five-minute result cache (128 entries), coalescing, two concurrent calls and a self-imposed 20 cache misses/minute per AppView process. Procedure (POST) so private viewer search text stays out of URLs and access logs.","tags":["Podcasts"],"security":[{"ATProtoOAuthDPoP":[]}],"responses":{"200":{"description":"Sanitized Library Search Page","headers":{"Cache-Control":{"schema":{"type":"string","example":"private, no-store"}}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastSearchResponse"}}}},"400":{"description":"Invalid Search Or Cursor","Or Directory URL/Credential Input":null},"401":{"description":"Authentication Required"},"502":{"description":"Podcast Index Unavailable Or Invalid Provider Response"},"503":{"description":"Private Storage Authentication Failed Or Directory Request Budget Busy"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastSearchRequest"},"example":{"query":"technology","scope":"library","kind":"all","limit":20}}}}}
+  /xrpc/app.thesocialwire.podcast.resolvePrivateShow:
+    post: {"operationId":"podcastResolvePrivateShow","summary":"Subscribe To A Private RSS Podcast","description":"Authenticated viewer-owned subscription and catalog. HTTPS path and query tokens remain server-side. No public PDS subscription, catalog, bridge, silence job, or clip is created. URL userinfo is unsupported.","tags":["Podcasts"],"security":[{"ATProtoOAuthDPoP":[]}],"responses":{"200":{"description":"Private Subscription And Redacted Catalog","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastResolveResponse"}}}},"400":{"description":"Invalid Or Unavailable Private Feed"},"401":{"description":"Authentication Required"},"503":{"description":"Private Storage Key Missing Or Authentication Failed"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["url"],"properties":{"url":{"type":"string"}}},"example":{"url":"{{privatePodcastFeedUrl}}"}}}}}
+  /xrpc/app.thesocialwire.podcast.refreshPrivateShow:
+    post: {"operationId":"podcastRefreshPrivateShow","summary":"Refresh A Private RSS Subscription","tags":["Podcasts"],"security":[{"ATProtoOAuthDPoP":[]}],"responses":{"200":{"description":"Viewer-Owned Refreshed Catalog","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastResolveResponse"}}}},"401":{"description":"Authentication Required"},"404":{"description":"Subscription Not Owned By Viewer"},"503":{"description":"Private Storage Key Missing Or Authentication Failed"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["showId"],"properties":{"showId":{"type":"string"}}},"example":{"showId":"{{privatePodcastShowId}}"}}}}}
+  /xrpc/app.thesocialwire.podcast.deletePrivateSubscription:
+    post: {"operationId":"podcastDeletePrivateSubscription","summary":"Remove A Private RSS Subscription","description":"Deletes only the viewer's private catalog and removes its episodes from their queue and progress. Source credentials are removed from the application database.","tags":["Podcasts"],"security":[{"ATProtoOAuthDPoP":[]}],"responses":{"200":{"description":"Subscription Removed"},"401":{"description":"Authentication Required"},"404":{"description":"Subscription Not Owned By Viewer"},"503":{"description":"Private Storage Key Missing Or Authentication Failed"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["showId"],"properties":{"showId":{"type":"string","maxLength":2048}}}}}}}
+  /xrpc/app.thesocialwire.podcast.resolveShow:
+    post: {"operationId":"podcastResolveShow","summary":"Create or Request Podcast Resolve","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastResolveResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"},"example":{"url":"https://example.com/podcast.xml"}}}}}
+  /xrpc/app.thesocialwire.podcast.getShows:
+    get: {"operationId":"podcastGetShows","summary":"Read Podcast Shows","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastShowsResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}}}
+  /xrpc/app.thesocialwire.podcast.getEpisodes:
+    get: {"operationId":"podcastGetEpisodes","summary":"Read Podcast Episodes","description":"With no showId returns the viewer subscribed public and private episodes sorted by publication time. queue=true returns owned queued episodes in queue order. Private episodes contain authenticated media proxy URLs.","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastEpisodesResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"parameters":[{"in":"query","name":"showId","schema":{"type":"string"}},{"in":"query","name":"episodeId","schema":{"type":"string"}},{"in":"query","name":"cursor","schema":{"type":"string"}},{"in":"query","name":"limit","schema":{"type":"string"}},{"in":"query","name":"queue","schema":{"type":"boolean"}}]}
+  /xrpc/app.thesocialwire.podcast.getTranscript:
+    get: {"operationId":"podcastGetTranscript","summary":"Read Podcast Transcript","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastTranscriptsResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"parameters":[{"in":"query","name":"episodeId","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.getState:
+    get: {"operationId":"podcastGetState","summary":"Read Podcast State","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastStateSnapshot"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}}}
+  /xrpc/app.thesocialwire.podcast.putState:
+    post: {"operationId":"podcastPutState","summary":"Replace Podcast State","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastStateSnapshot"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"},"409":{"description":"Revision Conflict - Reload and Reapply the Current Intent"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["expectedRevision","state"],"properties":{"expectedRevision":{"type":"integer","minimum":0},"state":{"$ref":"#/components/schemas/PodcastListenerState"}}},"example":{"expectedRevision":0,"state":{"subscriptions":[],"queue":[],"progress":{},"playbackSpeed":1,"removeSilences":false,"manualLinks":[]}}}}}}
+  /xrpc/app.thesocialwire.podcast.getAnalysis:
+    get: {"operationId":"podcastGetAnalysis","summary":"Read Podcast Analysis","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastAnalysisResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"parameters":[{"in":"query","name":"episodeId","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.requestAnalysis:
+    post: {"operationId":"podcastRequestAnalysis","summary":"Create or Request Podcast Analysis","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastJob"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["episodeId"],"properties":{"episodeId":{"type":"string","maxLength":2048}}}}}}}
+  /xrpc/app.thesocialwire.podcast.listClips:
+    get: {"operationId":"podcastListClips","summary":"Read Podcast Clips","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastClipsResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}}}
+  /xrpc/app.thesocialwire.podcast.createClip:
+    post: {"operationId":"podcastCreateClip","summary":"Create or Request Podcast Clips","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastClipPreparationResponse"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"},"example":{"episodeId":"{{podcastEpisodeId}}","startSeconds":0,"endSeconds":30,"title":"Clip","includeCaptions":true}}}}}
+  /xrpc/app.thesocialwire.podcast.deleteClip:
+    post: {"operationId":"podcastDeleteClip","summary":"Remove Podcast Clips","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result"},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["clipId"],"properties":{"clipId":{"type":"string","maxLength":2048}}}}}}}
+  /xrpc/app.thesocialwire.podcast.publishClip:
+    post: {"operationId":"podcastPublishClip","summary":"Create or Request Podcast Clips Publish","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result"},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"},"example":{"clipId":"{{podcastClipId}}","uri":"{{podcastClipUri}}"}}}}}
+  /xrpc/app.thesocialwire.podcast.getJob:
+    get: {"operationId":"podcastGetJob","summary":"Read Podcast Jobs","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastJob"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"parameters":[{"in":"query","name":"jobId","schema":{"type":"string"}},{"in":"query","name":"showId","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.retryJob:
+    post: {"operationId":"podcastRetryJob","summary":"Create or Request Podcast Jobs","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastJob"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["jobId"],"properties":{"jobId":{"type":"string","maxLength":2048}}}}}}}
+  /xrpc/app.thesocialwire.podcast.getClipAsset:
+    get: {"operationId":"podcastGetClipAsset","summary":"Read Podcast Assets","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result"},"206":{"description":"Partial Audio or Video Content"},"404":{"description":"Podcasts Disabled or Resource Unavailable"},"416":{"description":"Range Not Satisfiable"}},"parameters":[{"in":"query","name":"clipId","schema":{"type":"string"}},{"in":"query","name":"format","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.getImage:
+    get: {"operationId":"podcastGetImage","summary":"Get Supplied Podcast Artwork Or Host Photo","description":"Authenticated bounded raster proxy. Private images are resolved only from the viewer-owned encrypted catalog; source credentials never appear in URLs or responses. Images are validated by their bytes and served with nosniff.","tags":["Podcasts"],"security":[{"ATProtoOAuthDPoP":[]}],"responses":{"200":{"description":"Supplied Raster Image","content":{"image/png":{"schema":{"type":"string","format":"binary"}},"image/jpeg":{"schema":{"type":"string","format":"binary"}},"image/gif":{"schema":{"type":"string","format":"binary"}},"image/webp":{"schema":{"type":"string","format":"binary"}},"image/avif":{"schema":{"type":"string","format":"binary"}}}},"400":{"description":"Invalid Image Selector"},"401":{"description":"Authentication Required"},"404":{"description":"Image Not Found Or Not Owned By Viewer"},"415":{"description":"Unsupported Or Invalid Image Bytes"},"502":{"description":"Source Image Unavailable"},"503":{"description":"Private Storage Unavailable"}},"parameters":[{"in":"query","name":"showId","schema":{"type":"string"}},{"in":"query","name":"episodeId","schema":{"type":"string"}},{"in":"query","name":"kind","schema":{"type":"string","enum":["artwork","showArtwork","host","chapter"],"default":"artwork"}},{"in":"query","name":"index","schema":{"type":"integer","minimum":0,"maximum":999,"default":0}}]}
+  /xrpc/app.thesocialwire.podcast.getMedia:
+    get: {"operationId":"podcastGetMedia","summary":"Read Podcast Media","tags":["Podcasts"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Podcast Result"},"206":{"description":"Partial Audio or Video Content"},"404":{"description":"Podcasts Disabled or Resource Unavailable"},"416":{"description":"Range Not Satisfiable"}},"parameters":[{"in":"query","name":"episodeId","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.getPublicClip:
+    get: {"operationId":"podcastGetPublicClip","summary":"Read Podcast Public Clips","tags":["Podcasts"],"responses":{"200":{"description":"Podcast Result","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PodcastClip"}}}},"404":{"description":"Podcasts Disabled or Resource Unavailable"}},"parameters":[{"in":"query","name":"clipId","schema":{"type":"string"}},{"in":"query","name":"uri","schema":{"type":"string"}}]}
+  /xrpc/app.thesocialwire.podcast.getPublicClipAsset:
+    get: {"operationId":"podcastGetPublicClipAsset","summary":"Read Podcast Public Assets","tags":["Podcasts"],"responses":{"200":{"description":"Podcast Result"},"206":{"description":"Partial Audio or Video Content"},"404":{"description":"Podcasts Disabled or Resource Unavailable"},"416":{"description":"Range Not Satisfiable"}},"parameters":[{"in":"query","name":"clipId","schema":{"type":"string"}},{"in":"query","name":"format","schema":{"type":"string"}}]}
 tags:
   - name: Health
     description: Service health

@@ -21,7 +21,7 @@ struct PodcastEpisode: Codable, Identifiable, Hashable, Sendable {
             .max { $0.startSeconds < $1.startSeconds }
     }
     var isPrivate: Bool {
-        visibility == "private" || URLComponents(string: audioUrl)?.path == "/v1/podcasts/media"
+        visibility == "private" || URLComponents(string: audioUrl)?.path == "/xrpc/app.thesocialwire.podcast.getMedia"
     }
     var permitsPublicProcessing: Bool {
         guard !isPrivate, let components = URLComponents(string: audioUrl) else { return false }

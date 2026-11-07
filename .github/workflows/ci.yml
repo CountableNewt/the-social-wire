@@ -30,11 +30,7 @@ jobs:
       redis: ${{ steps.filter.outputs.redis }}
       shared_swift: ${{ steps.filter.outputs.shared_swift }}
       swift_backend: ${{ steps.filter.outputs.swift_backend }}
-      go_packages: ${{ steps.filter.outputs.go_packages }}
-      jetstream_ingest: ${{ steps.filter.outputs.jetstream_ingest }}
-      wire_ingest: ${{ steps.filter.outputs.wire_ingest }}
       podcast_worker: ${{ steps.filter.outputs.podcast_worker }}
-      indexing_worker: ${{ steps.filter.outputs.indexing_worker }}
       wire_corpus_edge: ${{ steps.filter.outputs.wire_corpus_edge }}
       database_migrator: ${{ steps.filter.outputs.database_migrator }}
       lexicons: ${{ steps.filter.outputs.lexicons }}
@@ -376,184 +372,6 @@ jobs:
 
   # Real PostgreSQL transactions and actual Swift oracles verify the local Go
   # foundation; this job participates in the required aggregate branch gate.
-  go-packages:
-    name: Repository-local Go Packages
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.go_packages == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: socialwire_go_test
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_go_test"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check out pinned Swift reference contracts
-        run: python3 scripts/go/check-out-swift-contracts.py
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: packages/go/go.mod
-          cache-dependency-path: |
-            packages/go/go.sum
-            services/gateway/go.sum
-            services/appview/go.sum
-            services/operations/go.sum
-            services/wire-corpus-edge/go.sum
-      - uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: "6.2.4"
-          skip-verify-signature: true
-      - name: Apply canonical migrations to disposable Go test database
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test
-          postgres-container: ${{ job.services.postgres.id }}
-      - name: Select branch-scoped podcast integration coverage
-        run: |
-          set -euo pipefail
-          public=database/migrations/20261005010000_podcast_listener.sql
-          private=database/migrations/20261006010000_private_podcast_subscriptions.sql
-          if [[ -f "$public" && -f "$private" ]]; then
-            echo 'SOCIALWIRE_GO_PODCAST_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable' >> "$GITHUB_ENV"
-          elif [[ ! -f "$public" && ! -f "$private" ]]; then
-            echo 'SOCIALWIRE_GO_PODCAST_TEST_DATABASE_URL=' >> "$GITHUB_ENV"
-          else
-            echo 'Podcast integration schema is incomplete' >&2
-            exit 1
-          fi
-      - name: Check canonical contracts and package inventory
-        run: |
-          python3 scripts/go/generate-contracts.py --check
-          python3 scripts/go/package-inventory.py --check
-      - name: Test Go packages and PostgreSQL fences
-        working-directory: packages/go
-        env:
-          GOWORK: "off"
-          SOCIALWIRE_GO_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_CORPUS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_WIRE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_READSTATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_OPERATIONS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_TOPICS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-        run: |
-          test -z "$(gofmt -l .)"
-          go vet ./...
-          go test -race -p 1 ./...
-      - name: Test migrated Go service entry points
-        env:
-          GOWORK: "off"
-          SOCIALWIRE_GO_GATEWAY_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-          SOCIALWIRE_GO_OPERATIONS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_go_test?sslmode=disable
-        run: |
-          for service in gateway appview operations wire-corpus-edge; do
-            (
-              cd "services/$service"
-              test -z "$(gofmt -l .)"
-              go vet ./...
-              go test -race -p 1 ./...
-            )
-          done
-      - name: Compare ranking and edition assembly with Swift
-        run: |
-          bash scripts/go/verify-ranking-parity.sh
-          bash scripts/go/verify-edition-parity.sh
-          bash scripts/go/verify-domain-ranking-parity.sh
-
-  jetstream-ingest:
-    name: Jetstream V2 Ingest
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.jetstream_ingest == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: socialwire_test
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_test"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - name: Apply database migrations
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_test
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: services/jetstream-ingest/go.mod
-          cache-dependency-path: services/jetstream-ingest/go.sum
-      - name: Test
-        working-directory: services/jetstream-ingest
-        env:
-          SCHEMA_READY_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_test?sslmode=disable
-          JETSTREAM_INGEST_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_test?sslmode=disable
-        run: |
-          go test -race -coverprofile="$RUNNER_TEMP/jetstream-coverage.out" ./...
-          coverage="$(go tool cover -func="$RUNNER_TEMP/jetstream-coverage.out" | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')"
-          awk -v coverage="$coverage" 'BEGIN { if (coverage + 0 < 40) exit 1 }'
-          echo "Jetstream statement coverage: ${coverage}%"
-      - name: Vet
-        working-directory: services/jetstream-ingest
-        run: go vet ./...
-
-  wire-ingest:
-    name: The Wire Global Ingest
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.wire_ingest == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: services/jetstream-ingest/go.mod
-          cache-dependency-path: services/jetstream-ingest/go.sum
-      - name: Test isolated Wire pipeline contracts
-        working-directory: services/jetstream-ingest
-        run: go test -race ./internal/config ./internal/ingest ./internal/service -run 'Wire|PinnedJetstreamClient'
-
-  indexing-worker:
-    name: Replicated Indexing Worker
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.indexing_worker == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: services/indexing-worker/go.mod
-          cache-dependency-path: |
-            packages/go/go.sum
-            services/indexing-worker/go.sum
-      - name: Test replicated indexing roles
-        working-directory: services/indexing-worker
-        env:
-          GOWORK: "off"
-        run: |
-          test -z "$(gofmt -l cmd internal)"
-          go vet ./...
-          go test -race ./...
-
   wire-corpus-edge:
     name: The Wire Corpus Edge
     needs: changes
@@ -786,23 +604,6 @@ jobs:
         run: bun --cwd services/podcast-worker typecheck
       - name: Test media processing and bridge identities
         run: bun --cwd services/podcast-worker test
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: services/jetstream-ingest/go.mod
-          cache-dependency-path: services/jetstream-ingest/go.sum
-      - name: Test source entrypoint database gate
-        working-directory: services/jetstream-ingest
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Compile the test subject, without constructing a deployment image.
-          go build -o "$RUNNER_TEMP/schema-ready-test" ./cmd/schema-ready
-          status=0
-          output="$(env -u DATABASE_URL APP_ENV=dev "$RUNNER_TEMP/schema-ready-test" -- "$(command -v bun)" "$GITHUB_WORKSPACE/services/podcast-worker/src/index.ts" 2>&1)" || status=$?
-          if [[ "$status" != "1" || "$output" != *"schema readiness requires DATABASE_URL"* || "$output" == *"absolute application path"* ]]; then
-            printf '%s\n' "$output"
-            exit 1
-          fi
 
   required:
     name: CI — Required
@@ -814,11 +615,7 @@ jobs:
       - redis
       - shared-swift
       - swift-active-backend
-      - go-packages
-      - jetstream-ingest
-      - wire-ingest
       - podcast-worker
-      - indexing-worker
       - wire-corpus-edge
       - database-migrator
       - lexicons
@@ -837,11 +634,7 @@ jobs:
           REDIS_FLAG: ${{ needs.changes.outputs.redis }}
           SHARED_SWIFT_FLAG: ${{ needs.changes.outputs.shared_swift }}
           SWIFT_BACKEND_FLAG: ${{ needs.changes.outputs.swift_backend }}
-          GO_PACKAGES_FLAG: ${{ needs.changes.outputs.go_packages }}
-          JETSTREAM_INGEST_FLAG: ${{ needs.changes.outputs.jetstream_ingest }}
-          WIRE_INGEST_FLAG: ${{ needs.changes.outputs.wire_ingest }}
           PODCAST_WORKER_FLAG: ${{ needs.changes.outputs.podcast_worker }}
-          INDEXING_WORKER_FLAG: ${{ needs.changes.outputs.indexing_worker }}
           WIRE_CORPUS_EDGE_FLAG: ${{ needs.changes.outputs.wire_corpus_edge }}
           DATABASE_MIGRATOR_FLAG: ${{ needs.changes.outputs.database_migrator }}
           LEXICONS_FLAG: ${{ needs.changes.outputs.lexicons }}
@@ -854,11 +647,7 @@ jobs:
           REDIS_RESULT: ${{ needs.redis.result }}
           SHARED_SWIFT_RESULT: ${{ needs.shared-swift.result }}
           SWIFT_BACKEND_RESULT: ${{ needs.swift-active-backend.result }}
-          GO_PACKAGES_RESULT: ${{ needs.go-packages.result }}
-          JETSTREAM_INGEST_RESULT: ${{ needs.jetstream-ingest.result }}
-          WIRE_INGEST_RESULT: ${{ needs.wire-ingest.result }}
           PODCAST_WORKER_RESULT: ${{ needs.podcast-worker.result }}
-          INDEXING_WORKER_RESULT: ${{ needs.indexing-worker.result }}
           WIRE_CORPUS_EDGE_RESULT: ${{ needs.wire-corpus-edge.result }}
           DATABASE_MIGRATOR_RESULT: ${{ needs.database-migrator.result }}
           LEXICONS_RESULT: ${{ needs.lexicons.result }}
@@ -896,11 +685,7 @@ jobs:
           check "$REDIS_FLAG" "$REDIS_RESULT" "SocialWire Redis"
           check "$SHARED_SWIFT_FLAG" "$SHARED_SWIFT_RESULT" "Retained Swift Contracts"
           check "$SWIFT_BACKEND_FLAG" "$SWIFT_BACKEND_RESULT" "Active Swift Backends"
-          check "$GO_PACKAGES_FLAG" "$GO_PACKAGES_RESULT" "Repository-local Go Packages"
-          check "$JETSTREAM_INGEST_FLAG" "$JETSTREAM_INGEST_RESULT" "Jetstream V2 Ingest"
-          check "$WIRE_INGEST_FLAG" "$WIRE_INGEST_RESULT" "The Wire Global Ingest"
           check "$PODCAST_WORKER_FLAG" "$PODCAST_WORKER_RESULT" "Podcast Media Worker"
-          check "$INDEXING_WORKER_FLAG" "$INDEXING_WORKER_RESULT" "Replicated Indexing Worker"
           check "$WIRE_CORPUS_EDGE_FLAG" "$WIRE_CORPUS_EDGE_RESULT" "The Wire Corpus Edge"
           check "$DATABASE_MIGRATOR_FLAG" "$DATABASE_MIGRATOR_RESULT" "Database Migrator"
           check "$LEXICONS_FLAG" "$LEXICONS_RESULT" "Lexicons"

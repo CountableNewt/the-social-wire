@@ -16,7 +16,7 @@ struct PodcastArtworkView: View {
 #else
                 if let image = NSImage(data: privateData) { Image(nsImage: image).resizable().scaledToFill() }
 #endif
-            } else if let url, !url.hasPrefix("/v1/podcasts/"), let remote = URL(string: url), remote.scheme == "https" {
+            } else if let url, !url.hasPrefix("/xrpc/app.thesocialwire.podcast."), let remote = URL(string: url), remote.scheme == "https" {
                 AsyncImage(url: remote) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
             } else { placeholder }
         }

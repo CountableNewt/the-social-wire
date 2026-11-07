@@ -28,7 +28,7 @@ export function usePodcastClips(episodeId?: string) {
       if (pending || !viewer || oauth?.did !== viewer || controller.signal.aborted) return;
       pending = true;
       try {
-        const page = await podcastRequest<{ clips: PodcastClip[] }>(oauth, "clips", "GET", undefined, controller.signal);
+        const page = await podcastRequest<{ clips: PodcastClip[] }>(oauth, "listClips", "GET", undefined, controller.signal);
         if (!controller.signal.aborted && epoch.current === revision && getOAuthSession()?.did === viewer)
           setState({ viewer, revision, clips: page.clips, error: null, loading: false });
       } catch {

@@ -1,0 +1,63 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getImage",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Authenticated bounded raster proxy. Private images are resolved only from the viewer-owned encrypted catalog; source credentials never appear in URLs or responses. Images are validated by their bytes and served with nosniff.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "showId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "episodeId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "kind": {
+            "type": "string",
+            "default": "artwork",
+            "knownValues": [
+              "artwork",
+              "showArtwork",
+              "host",
+              "chapter"
+            ],
+            "maxLength": 4096
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999,
+            "default": 0
+          }
+        }
+      },
+      "output": {
+        "encoding": "*/*"
+      },
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "UnsupportedMediaType"
+        },
+        {
+          "name": "UpstreamFailure"
+        },
+        {
+          "name": "Unavailable"
+        }
+      ]
+    }
+  }
+}

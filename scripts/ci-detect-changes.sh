@@ -98,7 +98,6 @@ filter_changed apple \
   '.github/workflows/ci.yml'
 
 # Retained Swift package contracts remain independent from retired service runtimes.
-# Shared Go hosts and their schema gates are checked once by go_packages below.
 
 filter_changed redis \
   'scripts/go/check-out-swift-contracts.py' \
@@ -144,38 +143,6 @@ filter_changed swift_backend \
   '.railway/railway.ts' \
   '.github/workflows/ci.yml'
 
-filter_changed jetstream_ingest \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
-  'packages/go/**' \
-  'services/jetstream-ingest/**' \
-  'database/migrations/**' \
-  'services/jetstream-ingest/internal/ingest/testdata/jetstream-v2-go-sdk-v0.2.0-events.json' \
-  'railway/jetstream-ingest.json' \
-  '.railway/**' \
-  '.github/workflows/ci.yml'
-
-filter_changed wire_ingest \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
-  'packages/go/**' \
-  'services/jetstream-ingest/**' \
-  'database/migrations/**' \
-  'railway/wire-jetstream-ingest.json' \
-  '.github/workflows/ci.yml'
-
-
-
-filter_changed indexing_worker \
-  'packages/go/**' \
-  'services/jetstream-ingest/cmd/schema-ready/**' \
-  'services/jetstream-ingest/internal/schemaready/**' \
-  'services/jetstream-ingest/go.mod' \
-  'services/jetstream-ingest/go.sum' \
-  'services/indexing-worker/**' \
-  'database/migrations/**' \
-  '.railway/**' \
-  '.github/workflows/ci.yml'
 
 filter_changed wire_corpus_edge \
   'services/wire-corpus-edge/**' \
@@ -271,25 +238,3 @@ filter_changed podcast_worker \
   'package.json' \
   'bun.lock'
 
-filter_changed go_packages \
-  'services/gateway/**' \
-  'services/appview/**' \
-  'services/operations/**' \
-  'services/wire-corpus-edge/**' \
-  'railway/gateway.json' \
-  'railway/appview.json' \
-  'railway/operations.json' \
-  'railway/wire-corpus-edge.json' \
-  'services/*/go.mod' \
-  'services/*/go.sum' \
-  'services/*/cmd/**' \
-  'services/*/internal/**' \
-  'services/*/Sources/*Core/**' \
-  'packages/go/**' \
-  'packages/swift/**' \
-  'packages/read-state/**' \
-  'packages/lexicons/**' \
-  'packages/spec/**' \
-  'scripts/go/**' \
-  'database/migrations/**' \
-  '.github/workflows/ci.yml'

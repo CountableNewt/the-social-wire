@@ -10,11 +10,11 @@ Verification guides for each surface in the monorepo. Tests live **in the owning
 | GatewayCore | [api.md](./api.md) | `cd packages/swift/GatewayCore && swift test` | `gateway` |
 | Gateway | [api.md](./api.md) | `cd services/gateway && swift test` | `gateway` |
 | AppView | [appview.md](./appview.md) | `cd services/appview && swift test` | `appview` |
-| Replicated indexing roles | [worker.md](./worker.md) | `cd services/indexing-worker && go test -race ./...` | `indexing-worker` |
+| Replicated indexing roles | [worker.md](./worker.md) | `cd services/indexing-worker && go test -race ./...` | Not run in CI (Go) |
 | ThinAppViewCore | [worker.md](./worker.md#thinappviewcore) | `cd packages/swift/ThinAppViewCore && swift test` | `appview` |
 | OperationsCore | [operations.md](./operations.md) | `cd packages/swift/OperationsCore && swift test` | `operations` |
 | Operations service | [operations.md](./operations.md) | `cd services/operations && swift test` | `operations` |
-| Jetstream V2 Ingest | [operations.md](./operations.md) | `(cd services/jetstream-ingest && go test ./... && go vet ./...)` | `jetstream-ingest` |
+| Jetstream V2 Ingest | [operations.md](./operations.md) | `(cd services/jetstream-ingest && go test ./... && go vet ./...)` | Not run in CI (Go) |
 | iOS | [apple.md](./apple.md) | Xcode **Cmd+U** | `apple` |
 | Database migrations | [database.md](./database.md) | `DATABASE_URL=… bash scripts/apply-database-migrations.sh` | `database-migrator` (empty DB + idempotence) |
 | Lexicons | [web.md](./web.md#lexicons) | `cd packages/lexicons && bun test` | `lexicons` |

@@ -258,8 +258,8 @@ describe("Persistent podcast player", () => {
   it("loads selected chapter artwork without restarting audio", async () => {
     const env = environment();
     const chaptered = { ...episode, chapters: [{ startSeconds: 0, title: "Intro" }] };
-    const artworkUrl = "/v1/podcasts/image?episodeId=episode&kind=chapter&index=0";
-    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("episodes?")
+    const artworkUrl = "/xrpc/app.thesocialwire.podcast.getImage?episodeId=episode&kind=chapter&index=0";
+    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("getEpisodes?")
       ? { episodes: [{ ...chaptered, chapters: [{ ...chaptered.chapters[0], artworkUrl }] }] }
       : { revision: 1, state: initialPodcastState() }) as T);
     restores.push(() => request.mockRestore());
@@ -267,7 +267,7 @@ describe("Persistent podcast player", () => {
     restores.push(() => play.mockRestore());
     render(<PodcastPlayerProvider><Controls route="Podcasts" item={chaptered} /></PodcastPlayerProvider>);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play Fixture" })));
-    await waitFor(() => expect(request.mock.calls.some(call => call[1] === "episodes?episodeId=episode")).toBe(true));
+    await waitFor(() => expect(request.mock.calls.some(call => call[1] === "getEpisodes?episodeId=episode")).toBe(true));
     await screen.findByRole("img", { name: "Chapter Artwork: Intro" });
     expect(play).toHaveBeenCalledTimes(1);
     expect(env.element.src).toBe(episode.audioUrl);
@@ -305,7 +305,7 @@ describe("Persistent podcast player", () => {
 
   it("honors the preview start when a restored episode loads instead of resuming beyond the clip end", async () => {
     const env = environment();
-    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("transcript?") ? { transcripts: [] } : path === "clips" ? { clips: [] } : { revision: 1, state: initialPodcastState() }) as T);
+    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("getTranscript?") ? { transcripts: [] } : path === "listClips" ? { clips: [] } : { revision: 1, state: initialPodcastState() }) as T);
     restores.push(() => request.mockRestore());
     window.localStorage.setItem("the-social-wire.podcast-state.v1:did:plc:viewer-a", JSON.stringify({
       episode, state: { ...initialPodcastState(), progress: { episode: { positionSeconds: 80, durationSeconds: 120, completed: false, updatedAt: "2026-10-06" } } }, pending: {},
@@ -368,8 +368,8 @@ describe("Persistent podcast player", () => {
   it("opens clip tools from the player and preserves playback on close", async () => {
     const env = environment();
     const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => {
-      if (path.startsWith("transcript?")) return { transcripts: [{ url: "https://publisher.test/transcript", type: "text/plain", cues: [{ startSeconds: 20, text: "A transcript cue" }] }] } as T;
-      if (path === "clips") return { clips: [] } as T;
+      if (path.startsWith("getTranscript?")) return { transcripts: [{ url: "https://publisher.test/transcript", type: "text/plain", cues: [{ startSeconds: 20, text: "A transcript cue" }] }] } as T;
+      if (path === "listClips") return { clips: [] } as T;
       return { revision: 1, state: initialPodcastState() } as T;
     });
     restores.push(() => request.mockRestore());
@@ -377,7 +377,7 @@ describe("Persistent podcast player", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play Fixture" })));
     const trigger = await screen.findByRole("button", { name: "Clip" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(request.mock.calls.some(call => call[1] === "clips" || call[1].startsWith("transcript?"))).toBe(false);
+    expect(request.mock.calls.some(call => call[1] === "listClips" || call[1].startsWith("getTranscript?"))).toBe(false);
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "Clip for Social Media" });
@@ -395,7 +395,7 @@ describe("Persistent podcast player", () => {
   });
   it("shows private-feed availability without loading clip drafts", async () => {
     environment();
-    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("transcript?") ? { transcripts: [] } : { revision: 1, state: initialPodcastState() }) as T);
+    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("getTranscript?") ? { transcripts: [] } : { revision: 1, state: initialPodcastState() }) as T);
     restores.push(() => request.mockRestore());
     const player: PlayerContext = { episode: { ...episode, visibility: "private" }, playing: false, position: 0, duration: 120, state: initialPodcastState(), error: null, silence: null, play: async () => {}, toggle() {}, seek() {}, changeState: async () => {}, setRemoveSilences: async () => {}, clearError() {} };
     render(<PodcastPlayerProvider><PodcastPlayerView player={player} /></PodcastPlayerProvider>);
@@ -403,11 +403,11 @@ describe("Persistent podcast player", () => {
     await screen.findByRole("dialog");
     expect(screen.getByText("Clips Are Unavailable for Private Feeds")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Prepare Exports" })).toBeNull();
-    expect(request.mock.calls.some(call => call[1] === "clips")).toBe(false);
+    expect(request.mock.calls.some(call => call[1] === "listClips")).toBe(false);
   });
   it("closes the clip dialog when the playing episode changes", async () => {
     environment();
-    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("transcript?") ? { transcripts: [] } : path === "clips" ? { clips: [] } : { revision: 1, state: initialPodcastState() }) as T);
+    const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path.startsWith("getTranscript?") ? { transcripts: [] } : path === "listClips" ? { clips: [] } : { revision: 1, state: initialPodcastState() }) as T);
     restores.push(() => request.mockRestore());
     const player: PlayerContext = { episode, playing: false, position: 0, duration: 120, state: initialPodcastState(), error: null, silence: null, play: async () => {}, toggle() {}, seek() {}, changeState: async () => {}, setRemoveSilences: async () => {}, clearError() {} };
     const view = render(<PodcastPlayerProvider><PodcastPlayerView player={player} /></PodcastPlayerProvider>);
@@ -472,14 +472,14 @@ describe("Persistent podcast player", () => {
     const paths: { path: string; method?: string }[] = [];
     const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string, method?: string, body?: unknown): Promise<T> => {
       paths.push({ path, method });
-      if (path.startsWith("analysis")) return { status: "complete", analysisVersion: "v2", intervals: [{ start: 10, end: 20 }] } as T;
+      if (/^(get|request)Analysis/.test(path)) return { status: "complete", analysisVersion: "v2", intervals: [{ start: 10, end: 20 }] } as T;
       return { revision: 1, state: body ? (body as { state: client.PodcastState }).state : { ...initialPodcastState(), removeSilences: true } } as T;
     });
     restores.push(() => request.mockRestore());
     render(<PodcastPlayerProvider><Controls route="Podcasts" /></PodcastPlayerProvider>);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play Fixture" })));
     await screen.findByRole("complementary", { name: "Podcast Player" });
-    await waitFor(() => expect(paths.some((call) => call.path === "analysis" && call.method === "POST")).toBe(true));
+    await waitFor(() => expect(paths.some((call) => call.path === "requestAnalysis" && call.method === "POST")).toBe(true));
     await act(async () => { env.element.currentTime = 6; env.element.dispatchEvent(new window.Event("timeupdate")); });
     expect(env.element.currentTime).toBe(6);
     await act(async () => { env.element.currentTime = 15; env.element.dispatchEvent(new window.Event("timeupdate")); });
@@ -489,22 +489,22 @@ describe("Persistent podcast player", () => {
   it("loads private audio with authenticated media fetch and disables public analysis", async () => {
     const env = environment();
     const fetch = spyOn(gateway, "gatewayFetch").mockImplementation(async (_oauth, path) => {
-      if (path.startsWith("/v1/podcasts/media?")) return new Response(new Blob(["private audio"], { type: "audio/mpeg" }));
+      if (path.startsWith("/xrpc/app.thesocialwire.podcast.getMedia?")) return new Response(new Blob(["private audio"], { type: "audio/mpeg" }));
       return Response.json({ revision: 1, state: initialPodcastState() });
     });
     restores.push(() => fetch.mockRestore());
     const create = spyOn(URL, "createObjectURL").mockReturnValue("blob:private-audio");
     const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     restores.push(() => create.mockRestore(), () => revoke.mockRestore());
-    render(<PodcastPlayerProvider><Controls route="Podcasts" item={{ ...episode, visibility: "private", audioUrl: "/v1/podcasts/media?episodeId=episode" }} /></PodcastPlayerProvider>);
+    render(<PodcastPlayerProvider><Controls route="Podcasts" item={{ ...episode, visibility: "private", audioUrl: "/xrpc/app.thesocialwire.podcast.getMedia?episodeId=episode" }} /></PodcastPlayerProvider>);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play Fixture" })));
     await waitFor(() => expect(env.element.src).toBe("blob:private-audio"));
-    expect(fetch.mock.calls.some((call) => call[1] === "/v1/podcasts/media?episodeId=episode")).toBe(true);
+    expect(fetch.mock.calls.some((call) => call[1] === "/xrpc/app.thesocialwire.podcast.getMedia?episodeId=episode")).toBe(true);
     expect(screen.queryByRole("checkbox", { name: "Remove Silences" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Playback Defaults" }));
     await screen.findByRole("dialog", { name: "Playback Defaults" });
     expect(screen.getByText("Silence removal is unavailable for private feeds.")).toBeDefined();
-    expect(fetch.mock.calls.some((call) => call[1].includes("analysis"))).toBe(false);
+    expect(fetch.mock.calls.some((call) => call[1].includes("Analysis"))).toBe(false);
   });
   it("keeps audio across route children, seeks and changes pitch-preserving speed", async () => {
     const env = environment();

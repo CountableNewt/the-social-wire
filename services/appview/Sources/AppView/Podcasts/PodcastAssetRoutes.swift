@@ -10,7 +10,7 @@ struct PodcastAssetRoutes {
   let workerURL: String
   let secret: String
   func registerMedia(on group: RouterGroup<GatewayRequestContext>) {
-    group.get("/v1/podcasts/media") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getMedia") { request, context async throws -> Response in
       guard let auth = context.authContext, let id = request.uri.queryParameters.get("episodeId"),
         let episode = try await service.episode(id: id, viewer: auth.did)
       else { throw HTTPError(.notFound) }
@@ -48,13 +48,13 @@ struct PodcastAssetRoutes {
   }
   func register(on group: RouterGroup<GatewayRequestContext>, router: Router<GatewayRequestContext>)
   {
-    group.get("/v1/podcasts/assets") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getClipAsset") { request, context async throws -> Response in
       guard let auth = context.authContext, let id = request.uri.queryParameters.get("clipId"),
         let clip = try await service.store.clip(id: id, viewer: auth.did), clip.status == "complete"
       else { throw HTTPError(.notFound) }
       return try await proxy(request: request, clip: clip, publicAsset: false)
     }
-    router.get("/v1/podcasts/public/assets") { request, _ async throws -> Response in
+    router.get("/xrpc/app.thesocialwire.podcast.getPublicClipAsset") { request, _ async throws -> Response in
       guard let id = request.uri.queryParameters.get("clipId"),
         let clip = try await service.store.clip(id: id, viewer: nil, publishedOnly: true),
         let uri = clip.publishedUri,

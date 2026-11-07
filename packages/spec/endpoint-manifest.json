@@ -734,140 +734,163 @@
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/search",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.findPodcasts",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.findPodcasts"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/resolve",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/shows",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/episodes",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/transcript",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/state",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "PUT",
-      "path": "/v1/podcasts/state",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/analysis",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.resolvePrivateShow",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.resolvePrivateShow"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/analysis",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/clips",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.refreshPrivateShow",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.refreshPrivateShow"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/clips",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "DELETE",
-      "path": "/v1/podcasts/clips",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.deletePrivateSubscription",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.deletePrivateSubscription"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/clips/publish",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.resolveShow",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.resolveShow"
     },
     {
       "surface": "openapi",
       "method": "GET",
-      "path": "/v1/podcasts/jobs",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.getShows",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getShows"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getEpisodes",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getEpisodes"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getTranscript",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getTranscript"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getState",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getState"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/jobs",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.putState",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.putState"
     },
     {
       "surface": "openapi",
       "method": "GET",
-      "path": "/v1/podcasts/assets",
-      "classification": "media-proxy"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/media",
-      "classification": "media-proxy"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/public/clips",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/podcasts/public/assets",
-      "classification": "media-proxy"
+      "path": "/xrpc/app.thesocialwire.podcast.getAnalysis",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getAnalysis"
     },
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/podcasts/private/resolve",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/podcasts/private/refresh",
-      "classification": "first-party-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "DELETE",
-      "path": "/v1/podcasts/private/subscriptions",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.requestAnalysis",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.requestAnalysis"
     },
     {
       "surface": "openapi",
       "method": "GET",
-      "path": "/v1/podcasts/image",
-      "classification": "first-party-rest"
+      "path": "/xrpc/app.thesocialwire.podcast.listClips",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.listClips"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.podcast.createClip",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.createClip"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.podcast.deleteClip",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.deleteClip"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.podcast.publishClip",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.publishClip"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getJob",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getJob"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.podcast.retryJob",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.retryJob"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getClipAsset",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getClipAsset"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getImage",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getImage"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getMedia",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getMedia"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getPublicClip",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getPublicClip"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.podcast.getPublicClipAsset",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.podcast.getPublicClipAsset"
     },
     {
       "surface": "openapi",

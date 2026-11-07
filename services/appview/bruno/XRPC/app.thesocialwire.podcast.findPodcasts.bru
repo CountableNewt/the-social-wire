@@ -1,0 +1,26 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.findPodcasts
+  type: http
+  seq: 322
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.findPodcasts
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "query": "technology",
+  "scope": "library",
+  "kind": "all",
+  "limit": 20
+}
+}

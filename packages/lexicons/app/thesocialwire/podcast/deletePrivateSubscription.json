@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.deletePrivateSubscription",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Deletes only the viewer's private catalog and removes its episodes from their queue and progress. Source credentials are removed from the application database.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "showId"
+          ],
+          "properties": {
+            "showId": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Unavailable"
+        }
+      ]
+    }
+  }
+}

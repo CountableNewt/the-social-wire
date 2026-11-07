@@ -10,7 +10,7 @@ import Testing
 @testable import Gateway
 
 struct PodcastMediaProxyTests {
-  @Test(arguments: ["/v1/podcasts/image", "/v1/podcasts/media", "/v1/podcasts/assets"])
+  @Test(arguments: ["/xrpc/app.thesocialwire.podcast.getImage", "/xrpc/app.thesocialwire.podcast.getMedia", "/xrpc/app.thesocialwire.podcast.getClipAsset"])
   func authenticatedMediaPassesAppViewTrustMiddleware(path: String) async throws {
     let secret = String(repeating: "s", count: 32)
     let upstream = Router(context: GatewayRequestContext.self)
@@ -35,7 +35,7 @@ struct PodcastMediaProxyTests {
     }
   }
 
-  @Test(arguments: ["/v1/podcasts/public/assets", "/v1/podcasts/public/clips"])
+  @Test(arguments: ["/xrpc/app.thesocialwire.podcast.getPublicClipAsset", "/xrpc/app.thesocialwire.podcast.getPublicClip"])
   func publicMediaDoesNotForwardViewerCredentials(path: String) async throws {
     let upstream = Router(context: GatewayRequestContext.self)
     upstream.get(RouterPath(path)) { request, _ -> Response in

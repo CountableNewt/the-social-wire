@@ -1,0 +1,23 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.resolvePrivateShow
+  type: http
+  seq: 320
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.resolvePrivateShow
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "url": "{{privatePodcastFeedUrl}}"
+}
+}
