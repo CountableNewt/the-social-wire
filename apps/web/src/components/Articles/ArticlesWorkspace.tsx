@@ -73,7 +73,7 @@ function ArticlesViewer({ did }: { did: string }) {
   const [failure, setFailure] = useState<string>();
   const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [assetState, setAssetState] = useState<{ draftId?: string; urls: Record<string, string> }>({ urls: {} });
+  const [assetState, setAssetState] = useState<{ key?: string; urls: Record<string, string> }>({ urls: {} });
   const [publishedUrl, setPublishedUrl] = useState<string>();
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
@@ -81,18 +81,28 @@ function ArticlesViewer({ did }: { did: string }) {
   const publication = publications.data?.find(value => value.uri === draft?.publicationUri);
   const assets = draft?.assets ?? [];
   const draftId = draft?.id;
-  const assetUrls = assetState.draftId === draftId ? assetState.urls : {};
-  const assetKey = assets.map(asset => asset.id).join(",");
+  const assetKey = JSON.stringify(assets.map(asset => asset.id));
+  const assetLoadKey = JSON.stringify([did, draftId, assetKey, local.syncing, editorOpen]);
+  const assetUrls = assetState.key === assetLoadKey ? assetState.urls : {};
+  const cover = assets.find(asset => asset.id === draft?.coverAssetId);
+  const coverUrl = draft?.coverAssetId ? assetUrls[draft.coverAssetId] : undefined;
   useEffect(() => {
     let cancelled = false;
     const urls: Record<string, string> = {};
-    void Promise.all(assetKey.split(",").filter(Boolean).map(async id => {
-      if (!draftId) return;
-      const blob = await getArticleDraftAsset(did, draftId, id);
-      if (blob) urls[id] = URL.createObjectURL(blob);
-    })).then(() => { if (!cancelled) setAssetState({ draftId, urls: { ...urls } }); else Object.values(urls).forEach(URL.revokeObjectURL); }).catch(error => { Object.values(urls).forEach(URL.revokeObjectURL); if (!cancelled) setFailure(error instanceof Error ? error.message : "Draft images could not be loaded."); });
-    return () => { cancelled = true; Object.values(urls).forEach(URL.revokeObjectURL); };
-  }, [did, draftId, assetKey]);
+    // Sync can restore bytes without changing asset IDs. Retry those reads when
+    // sync finishes or the editor reopens, and let each image load independently.
+    for (const id of JSON.parse(assetKey) as string[]) {
+      if (!draftId) continue;
+      void getArticleDraftAsset(did, draftId, id).then(blob => {
+        if (!blob || cancelled) return;
+        urls[id] = URL.createObjectURL(blob);
+        setAssetState({ key: assetLoadKey, urls: { ...urls } });
+      }).catch(error => {
+        if (!cancelled) setFailure(error instanceof Error ? error.message : "Draft images could not be loaded.");
+      });
+    }
+    return () => { cancelled = true; Object.values(urls).forEach(url => URL.revokeObjectURL(url)); };
+  }, [did, draftId, assetKey, assetLoadKey]);
   const resolveImage = (url: string) => url.startsWith("article-asset://") ? assetUrls[url.slice("article-asset://".length)] : /^https:\/\//.test(url) ? url : undefined;
   async function perform(action: () => Promise<unknown>) {
     if (actionLock.current) return;
@@ -259,8 +269,8 @@ function ArticlesViewer({ did }: { did: string }) {
           {draft.scheduleRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">{isPostSchedulingEnabled() ? "Scheduling Was Requested. This Draft Is Locked to Prevent Duplicate Publication. Review or Cancel Its Schedule in Scheduled. If the Request Failed, Refresh Schedules Before Taking Further Action." : "Scheduling Was Requested. This Draft Remains Locked While Post Scheduling Is Disabled."}</p> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && confirmedCanceled ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(async () => { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined, publicationClaimId: undefined }); await local.persist(); }); }}>Unlock Canceled Draft</Button> : null}
           {draft.publishedUri ? <p className="mb-4 rounded-lg bg-muted p-3 text-sm">Published to Your PDS. {publishedUrl ? <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open Article</a> : null} Published article editing will be available in a later phase.</p> : null}
+          {coverUrl ? <img src={coverUrl} alt={cover?.alt || "Article Cover"} className="mb-5 max-h-72 w-full rounded-xl object-contain" /> : null}
           {mode === "viewer" ? <header className="mb-5 space-y-2"><h1 className="break-words text-3xl font-semibold leading-tight">{draft.title || "Untitled Article"}</h1>{draft.excerpt ? <p className="whitespace-pre-wrap text-muted-foreground">{draft.excerpt}</p> : null}</header> : <label className="mb-5 block"><span className="mb-2 block text-sm font-medium">Title</span><Input aria-label="Article Title" placeholder="Untitled Article" value={draft.title} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ title: event.target.value })} className="h-auto py-2 text-xl font-semibold" /></label>}
-          {draft.coverAssetId && assetUrls[draft.coverAssetId] ? <img src={assetUrls[draft.coverAssetId]} alt={assets.find(asset => asset.id === draft.coverAssetId)?.alt ?? ""} className="mb-5 max-h-72 w-full rounded-xl object-cover" /> : null}
           <ArticleBodyViews draftId={draft.id} markdown={draft.markdown} mode={mode} onModeChange={setMode} onChange={markdown => local.update({ markdown })} editorRef={editor} resolveImageURL={resolveImage} onImageFiles={(files, index) => addImages(files, index)} readOnly={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} busy={busy} controls={<ArticleImageInput label="Add Images" multiple disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onFiles={files => addImages(files)} />} />
         </section>
         <aside id="article-metadata" aria-label="Article Details" hidden={!metadataVisible} style={{ "--article-metadata-width": `${metadataWidth}px` } as React.CSSProperties} className={`${floatingGlassClasses} relative m-4 min-h-0 shrink-0 p-4 lg:w-[var(--article-metadata-width)] lg:max-w-[40%] ${metadataVisible ? "" : "hidden"}`}>
@@ -274,9 +284,9 @@ function ArticlesViewer({ did }: { did: string }) {
           <label className="block space-y-1 text-sm"><span>Excerpt</span><textarea aria-label="Article Excerpt" value={draft.excerpt} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ excerpt: event.target.value })} rows={3} className="w-full rounded-md border bg-background p-2 text-sm" /></label>
           <label className="block space-y-1 text-sm"><span>Path</span><Input aria-label="Article Path" placeholder="/my-article" value={draft.path} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ path: event.target.value })} /></label>
           <label className="block space-y-1 text-sm"><span>Tags</span><Input aria-label="Article Tags" placeholder="Comma-Separated Tags" value={draft.tags.join(", ")} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ tags: event.target.value.split(",").map(tag => tag.trimStart()) })} /></label>
+          {coverUrl ? <img src={coverUrl} alt={cover?.alt || "Article Cover"} className="aspect-video w-full rounded-lg object-contain" /> : null}
           <ArticleImageInput label="Choose Cover Image" disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onFiles={files => addImages(files, undefined, true)} />
           {draft.coverAssetId ? <Button variant="ghost" size="sm" disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => local.update({ coverAssetId: undefined })}>Remove Cover</Button> : null}
-          {assets.map(asset => <label key={asset.id} className="block space-y-1 text-xs"><span className="block truncate">{asset.name} · Image Description</span><Input aria-label={`Image Description: ${asset.name}`} value={asset.alt} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ assets: assets.map(value => value.id === asset.id ? { ...value, alt: event.target.value } : value) })} /></label>)}
           <Button variant="destructive" size="sm" disabled={busy || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setDeleting(true)}>Delete Private Draft</Button>
           </div>
         </aside>
