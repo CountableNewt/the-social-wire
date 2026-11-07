@@ -29,6 +29,7 @@ let scheduleRows: unknown[];
 let publishedRows: PublishedArticle[];
 const scheduleArticle = mock(async (_input: unknown, _time: string): Promise<unknown> => { void _input; void _time; return {}; });
 const persist = mock(async () => {});
+const createDraft = mock(async (_publicationUri?: string) => { void _publicationUri; return storedDraft; });
 const restores: (() => void)[] = [];
 const originalRAF = Object.getOwnPropertyDescriptor(globalThis, "requestAnimationFrame");
 const originalCancelRAF = Object.getOwnPropertyDescriptor(globalThis, "cancelAnimationFrame");
@@ -51,6 +52,7 @@ beforeEach(() => {
   const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storedDraft = seed;
+  createDraft.mockClear();
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
@@ -58,7 +60,7 @@ beforeEach(() => {
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(() => { storedDraft = seed; return seed; });
     const [syncing, setSyncing] = useState(false);
-    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: async () => {}, create: async () => draft, remove: async () => {} };
+    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: async () => {}, create: createDraft, remove: async () => {} };
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
   const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => storedDraft); restores.push(() => stored.mockRestore());
@@ -71,7 +73,7 @@ async function show(openDraft = true) {
   if (openDraft) {
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
     fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
-    await waitFor(() => expect(screen.getByRole("option", { name: "First Publication" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("option", { name: /^First Publication/ })).toBeTruthy());
   }
 }
 function publishingSpy() {
@@ -79,6 +81,39 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("keeps pckt visible but disabled and creates drafts for the first supported blog", async () => {
+    const pckt = { ...publications[0]!, uri: `at://${did}/site.standard.publication/pckt`, name: "My pckt Blog", host: "pckt" as const, url: "https://mine.pckt.blog" };
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([pckt, ...publications]); restores.push(() => pubs.mockRestore());
+    await show();
+    const option = screen.getByRole("option", { name: /My pckt Blog.*Does Not Support External Editors/ }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    expect(screen.getByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New Article" }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalledWith(publications[0]!.uri));
+  });
+  it("does not create drafts when only pckt blogs exist", async () => {
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }]); restores.push(() => pubs.mockRestore());
+    await show(false);
+    await screen.findByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/);
+    const button = screen.getByRole("button", { name: "New Article" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+  it("keeps existing pckt drafts read-only until reassigned to a supported blog", async () => {
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }, publications[1]!]); restores.push(() => pubs.mockRestore());
+    const publish = publishingSpy();
+    await show();
+    for (const name of ["Save Draft", "Publish Article", "Schedule Article", "Choose Cover Image"]) expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    expect(publish).not.toHaveBeenCalled();
+    expect(scheduleArticle).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Article Publication"), { target: { value: publications[1]!.uri } });
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Publish Article" }).hasAttribute("disabled")).toBe(false);
+    expect(storedDraft.title).toBe(seed.title);
+  });
   it("shows the selected cover above the title and in details without a stray description field", async () => {
     seed.assets = [{ id: "cover", name: "Cover.png", mimeType: "image/png", width: 1200, height: 600, alt: "A mountain lake" }];
     seed.coverAssetId = "cover";

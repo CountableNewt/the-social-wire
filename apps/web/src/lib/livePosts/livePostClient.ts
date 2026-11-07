@@ -7,6 +7,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { createOAuthAgent } from "@/lib/atprotoClient";
 import { createAuthenticatedAppViewAgent } from "@/lib/blueskySocialClient";
 import { articleDraftRecordKey, articlePublicationHost, listArticlePublications } from "@/lib/articles/articlePublishingClient";
+import { assertArticlePublicationEditable } from "@/lib/articles/articlePublicationCapabilities";
 import type { ArticleRecord } from "@/lib/articles/articlePublishingTypes";
 import { formatLiveTimestamp, liveTimestampSettings, validateLiveTimestampSettings, type LiveTimestampSettings } from "./livePostTimestamp";
 import { appendLiveArticleContent, livePostText } from "./livePostContent";
@@ -103,7 +104,11 @@ export async function createEvent(session: OAuthSession, input: CreateLiveEventI
   if (!input.title.trim() || utf8Length(input.title) > 500 || !["blog", "bluesky", "both"].includes(input.destination)) throw new Error("Choose a title and destination for the live event.");
   const tags = [...new Set(input.tags.map(t => t.trim().replace(/^#/, "")).filter(Boolean))];
   if (tags.length > 20 || tags.some(t => utf8Length(t) > 128 || /[\r\n]/.test(t))) throw new Error("Use at most 20 tags of 128 characters each.");
-  if (input.destination !== "bluesky" && !(await listArticlePublications(session, signal)).some(p => p.uri === input.publicationUri)) throw new Error("Select one of your publications.");
+  if (input.destination !== "bluesky") {
+    const publication = (await listArticlePublications(session, signal)).find(p => p.uri === input.publicationUri);
+    if (!publication) throw new Error("Select one of your publications.");
+    assertArticlePublicationEditable(publication);
+  }
   const rkey = operation ? await articleDraftRecordKey(operation.operationId, operation.createdAt) : TID.nextStr(), now = operation?.createdAt ?? new Date().toISOString();
   const event: LiveEvent = { $type: LIVE_EVENT_COLLECTION, uri: `at://${session.did}/${LIVE_EVENT_COLLECTION}/${rkey}`, cid: "", title: input.title.trim(), tags, destination: input.destination, ...(input.destination !== "bluesky" ? { publicationUri: input.publicationUri } : {}), ...(input.sourceEvent ? { sourceEvent: input.sourceEvent } : {}), ...(input.startsAt ? { startsAt: input.startsAt } : {}), ...(input.endsAt ? { endsAt: input.endsAt } : {}), ...settings, entries: [], createdAt: now, updatedAt: now };
   if (operation) {
@@ -157,6 +162,11 @@ export async function publishLiveUpdate(session: OAuthSession, event: LiveEvent,
   const settings = liveTimestampSettings(operation.timestampSettings ?? current);
   const heading = formatLiveTimestamp(operation.createdAt, settings);
   const next = { ...current, ...liveTimestampSettings({ timestampFormat: current.timestampFormat ?? settings.timestampFormat, timeZone: current.timeZone ?? settings.timeZone }), updatedAt: operation.createdAt }, entry = { id: operation.operationId, createdAt: operation.createdAt, text: text.trim() } as LiveEvent["entries"][number];
+  const publication = current.destination !== "bluesky" ? (await listArticlePublications(session, signal)).find(p => p.uri === current.publicationUri) : undefined;
+  if (current.destination !== "bluesky") {
+    if (!publication) throw new Error("The event publication is unavailable.");
+    assertArticlePublicationEditable(publication);
+  }
   const media = await prepareLivePostMedia({ session, draft: { text, ...attachments }, signal, assertCurrentAccount: operation.assertCurrentAccount });
   if (media) validatePreparedLivePostMedia(media);
   if (attachmentsFingerprint) { entry.attachmentsFingerprint = attachmentsFingerprint; entry.media = media; }
@@ -164,7 +174,6 @@ export async function publishLiveUpdate(session: OAuthSession, event: LiveEvent,
   // Each operation uses one stable identity across post/article/event retries.
   const updateKey = await articleDraftRecordKey(operation.operationId, operation.createdAt);
   if (current.destination !== "bluesky") {
-    const publication = (await listArticlePublications(session, signal)).find(p => p.uri === current.publicationUri);
     if (!publication) throw new Error("The event publication is unavailable.");
     const host = articlePublicationHost(publication.record), docKey = current.articleRef ? recordKey(current.articleRef.uri, session.did, DOCUMENT) : rkey;
     let previous: ArticleRecord = {};
@@ -172,15 +181,13 @@ export async function publishLiveUpdate(session: OAuthSession, event: LiveEvent,
     const path = previous.path ?? (host === "offprint" ? `/a/${docKey}-live` : `/live-${docKey}`);
     const record: ArticleRecord = { ...previous, $type: DOCUMENT, site: publication.uri, title: current.title, path, publishedAt: previous.publishedAt ?? operation.createdAt, updatedAt: operation.createdAt, tags: current.tags, content: appendLiveArticleContent(host, previous.content as ArticleRecord | undefined, heading, text.trim(), media, session.did), textContent: [previous.textContent, heading, text.trim()].filter(Boolean).join("\n\n") };
     if (new TextEncoder().encode(JSON.stringify(record)).length > 900_000) throw new Error("The live article has reached its safe record size limit.");
-    if (host === "pckt" && !record.langs) record.langs = ["en"];
     entry.articleRef = await reference(session.did, DOCUMENT, docKey, record); next.articleRef = entry.articleRef; next.articleUrl = `${publication.url}${path}`;
     writes.push({ $type: `com.atproto.repo.applyWrites#${current.articleRef ? "update" : "create"}`, collection: DOCUMENT, rkey: docKey, value: record });
-    if (host === "offprint" || host === "pckt") {
-      const collection = host === "offprint" ? "app.offprint.document.article" : "blog.pckt.document";
+    if (host === "offprint") {
+      const collection = "app.offprint.document.article";
       let wrapper: ArticleRecord = {};
       if (current.articleRef) { const { data } = await agent.com.atproto.repo.getRecord({ repo: session.did, collection, rkey: docKey }, { signal }); wrapper = data.value as ArticleRecord; const ref = wrapper.document as LiveReference; if (ref?.uri !== current.articleRef.uri || ref.cid !== current.articleRef.cid) throw new Error("The native article wrapper changed."); }
-      if (host === "pckt" && !current.articleRef) { const pk = recordKey(publication.uri, session.did, "site.standard.publication"); const { data } = await agent.com.atproto.repo.getRecord({ repo: session.did, collection: "blog.pckt.publication", rkey: pk }, { signal }); const ref = (data.value as ArticleRecord).publication as LiveReference; if (ref?.uri !== publication.uri || ref.cid !== publication.cid) throw new Error("The native publication is unavailable."); wrapper.site = data.uri; }
-      writes.push({ $type: `com.atproto.repo.applyWrites#${current.articleRef ? "update" : "create"}`, collection, rkey: docKey, value: { ...wrapper, $type: collection, document: { ...(host === "offprint" ? { $type: "com.atproto.repo.strongRef" } : {}), ...entry.articleRef } } });
+      writes.push({ $type: `com.atproto.repo.applyWrites#${current.articleRef ? "update" : "create"}`, collection, rkey: docKey, value: { ...wrapper, $type: collection, document: { $type: "com.atproto.repo.strongRef", ...entry.articleRef } } });
     }
   }
   if (rich) {

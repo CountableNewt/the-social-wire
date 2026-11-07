@@ -1,5 +1,6 @@
 import { buildArticleNativeContent, buildDocumentRecord, prepareContentOffload } from "@stygian/anypub-kit";
 import { markdownCodeText, markdownHeadingText, parseMarkdownBlocks } from "@stygian/markdown-editor/model";
+import { assertArticlePublicationEditable } from "./articlePublicationCapabilities";
 import type { ArticlePublishInput, ArticleRecord } from "./articlePublishingTypes";
 
 export type ScheduledArticleDocument = ArticleRecord & { $type: "site.standard.document"; title: string; site: string; publishedAt: string };
@@ -8,6 +9,7 @@ export type PreparedScheduledArticle = { record: ScheduledArticleDocument; publi
 /** Prepare private editor content without uploading assets or creating public PDS records. */
 export async function prepareScheduledArticle(input: ArticlePublishInput, scheduledAt: string, signal?: AbortSignal): Promise<PreparedScheduledArticle> {
   signal?.throwIfAborted();
+  assertArticlePublicationEditable(input.publication);
   if (input.existing) throw new Error("Only New Articles Can Be Scheduled.");
   if (["offprint", "pckt"].includes(input.publication.host)) throw new Error("Scheduling for This Publication Requires Native Wrapper Support.");
   if (input.cover || input.bodyAssets?.length || /article-asset:|blob:|data:/i.test(input.markdown)) throw new Error("Scheduled Articles Cannot Include Uploaded Images Yet.");

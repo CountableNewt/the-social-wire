@@ -7,6 +7,7 @@ import { isMissingOAuthScope, SCOPE_RECOVERY_MESSAGE } from "@/lib/oauthScopeRec
 import { buildArticleNativeContent } from "./articleNativeContent";
 import type { ArticleBlob, ArticleHost, ArticleImageAsset, ArticlePublication, ArticlePublishInput, ArticlePublishResult, ArticleRecord, PublishedArticle } from "./articlePublishingTypes";
 export type { ArticleImageAsset, ArticlePublication, ArticlePublishInput, ArticlePublishResult, PublishedArticle } from "./articlePublishingTypes";
+import { articlePublicationDisabledReason, assertArticlePublicationEditable } from "./articlePublicationCapabilities";
 const DOCUMENT = "site.standard.document";
 const PUBLICATION = "site.standard.publication";
 const bytes = (text: string) => new TextEncoder().encode(text).length;
@@ -22,6 +23,7 @@ function siteUrl(value: unknown): string {
   return url.href.replace(/\/$/, "");
 }
 export function articlePublicationHost(record: ArticleRecord): ArticleHost {
+  if (articlePublicationDisabledReason({ host: "unknown", url: typeof record.url === "string" ? record.url : "", record })) return "pckt";
   const hint = JSON.stringify(record.theme ?? "").toLowerCase();
   for (const host of ["leaflet", "markpub", "offprint", "pckt"] as const) if (hint.includes(host)) return host;
   const hostname = new URL(siteUrl(record.url)).hostname.toLowerCase();
@@ -108,7 +110,6 @@ function articlePath(input: ArticlePublishInput, rkey: string): string {
   if (/[?#\\\u0000-\u0020]/.test(raw) || raw.split("/").some(part => part === ".." || part === ".")) throw new Error("Choose a relative article path without query parameters or traversal.");
   let path = `/${raw.replace(/^\/+/, "")}`;
   if (input.publication.host === "offprint" && !path.startsWith(`/a/${rkey}-`)) path = `/a/${rkey}-${path.replace(/^\/a\/[^-]+-/, "").replace(/^\//, "").replace(/[^a-zA-Z0-9-]+/g, "-")}`;
-  if (input.publication.host === "pckt" && !input.existing) path += `-${rkey.slice(-7)}`;
   return path;
 }
 const articlePublicationNotSubmitted = new WeakSet<object>();
@@ -130,6 +131,7 @@ export async function publishArticle(session: OAuthSession, input: ArticlePublis
 }
 async function publishArticleAttempt(session: OAuthSession, input: ArticlePublishInput, signal: AbortSignal | undefined, submission: { attempted: boolean }): Promise<ArticlePublishResult> {
   signal?.throwIfAborted();
+  assertArticlePublicationEditable(input.publication);
   const publicationKey = key(input.publication.uri, session.did, PUBLICATION);
   if (!input.title.trim() || !input.markdown.trim()) throw new Error("An article needs a title and content.");
   validateText(input.title, 5000, 500, "Article title");
@@ -143,6 +145,7 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
   const currentPub = publication.data.value as ArticleRecord;
   if (currentPub.$type !== PUBLICATION) throw new Error("Invalid publication record.");
   const url = siteUrl(currentPub.url), host = articlePublicationHost(currentPub);
+  assertArticlePublicationEditable({ host, url, record: currentPub });
   if (host !== input.publication.host) throw new Error("The publication host changed. Refresh before publishing.");
   const rkey = input.existing ? key(input.existing.uri, session.did, DOCUMENT) : input.recordKey ?? newKey();
   if (!/^[234567abcdefghij][234567abcdefghijklmnopqrstuvwxyz]{12}$/.test(rkey)) throw new Error("Article document keys must be valid TIDs.");
@@ -165,46 +168,33 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
     previous = current.data.value as ArticleRecord;
     if (previous.site !== input.publication.uri) throw new Error("An existing article cannot move to another publication.");
   }
-  let pcktSite: string | undefined;
-  if (host === "pckt") {
-    const pckt = await agent.com.atproto.repo.getRecord({ repo: session.did, collection: "blog.pckt.publication", rkey: publicationKey }, { signal });
-    const value = pckt.data.value as ArticleRecord, ref = value.publication as { uri?: string; cid?: string } | undefined;
-    pcktSite = `at://${session.did}/blog.pckt.publication/${publicationKey}`;
-    if (pckt.data.uri !== pcktSite || value.$type !== "blog.pckt.publication" || ref?.uri !== input.publication.uri || ref.cid !== publication.data.cid) throw new Error("The pckt publication does not reference this current standard publication.");
-    const verification = await fetch(`${url}/.well-known/site.standard.publication`, { signal, credentials: "omit", redirect: "error" });
-    if (!verification.ok || (await verification.text()).trim() !== input.publication.uri) throw new Error("The pckt site could not verify this publication.");
-  }
   const native = buildArticleNativeContent(host, input.markdown, input.bodyAssets ?? [], input.description), content = native.content;
   if (host === "markpub" || host === "unknown") {
     const text = content.text as ArticleRecord;
     if (bytes(String(text.markdown)) > 100 * 1024) { text.textBlob = (await uploadBlob(session, new Blob([String(text.markdown)], { type: "text/markdown" }), signal)).blob; text.markdown = String(text.markdown).slice(0, 1000); }
   } else if (host === "leaflet" && bytes(JSON.stringify(content.pages)) > 100 * 1024) {
     content.blobPages = (await uploadBlob(session, new Blob([JSON.stringify(content.pages)], { type: "application/json" }), signal)).blob; content.pages = []; content.blobs = [];
-  } else if (host === "pckt" && bytes(JSON.stringify(content.items)) > 20_000) {
-    content.blob = (await uploadBlob(session, new Blob([JSON.stringify(content.items)], { type: "application/json" }), signal)).blob; delete content.items; content.references = [];
   } else if (host === "offprint" && bytes(JSON.stringify(content)) >= 900_000) throw new Error("Offprint article content exceeds its record size limit.");
   const now = new Date().toISOString(), path = articlePath(input, rkey);
   const record: ArticleRecord = { ...previous, $type: DOCUMENT, site: input.publication.uri, title: input.title.trim(), publishedAt: previous.publishedAt ?? now, updatedAt: now, path, content, textContent: native.textContent };
   delete record.description; delete record.coverImage; delete record.tags;
   if (input.description?.trim()) record.description = input.description.trim();
   if (input.cover) record.coverImage = input.cover.blob;
-  if (input.tags.length || host === "pckt") record.tags = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))];
-  if (host === "pckt") record.langs = ["en"];
+  if (input.tags.length) record.tags = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))];
   const cid = (await cidForLex(lexParse(JSON.stringify(record), { strict: true }))).toString();
   const writes: { $type: "com.atproto.repo.applyWrites#create" | "com.atproto.repo.applyWrites#update"; collection: string; rkey: string; value: ArticleRecord }[] = [{ $type: `com.atproto.repo.applyWrites#${input.existing ? "update" : "create"}`, collection: DOCUMENT, rkey, value: record }];
   let wrapperUri: string | undefined;
-  if (host === "offprint" || host === "pckt") {
-    const collection = host === "offprint" ? "app.offprint.document.article" : "blog.pckt.document";
+  if (host === "offprint") {
+    const collection = "app.offprint.document.article";
     if (input.existing && !input.existing.wrapperUri) throw new Error("Load the native article wrapper before updating this article.");
     const wrapperKey = input.existing?.wrapperUri ? key(input.existing.wrapperUri, session.did, collection) : rkey;
     wrapperUri = `at://${session.did}/${collection}/${wrapperKey}`;
-    if (host === "pckt" && wrapperKey !== rkey) throw new Error("The pckt wrapper must share the canonical document key.");
     if (input.existing) {
       const wrapper = await agent.com.atproto.repo.getRecord({ repo: session.did, collection, rkey: wrapperKey }, { signal });
       const ref = (wrapper.data.value as ArticleRecord).document as { uri?: string; cid?: string } | undefined;
       if (wrapper.data.cid !== input.existing.wrapperCid || ref?.uri !== uri || ref.cid !== input.existing.cid) throw new Error("The native article wrapper changed. Reload before publishing.");
     }
-    writes.push({ $type: `com.atproto.repo.applyWrites#${input.existing ? "update" : "create"}`, collection, rkey: wrapperKey, value: { $type: collection, document: { ...(host === "offprint" ? { $type: "com.atproto.repo.strongRef" } : {}), uri, cid }, ...(pcktSite ? { site: pcktSite } : {}) } });
+    writes.push({ $type: `com.atproto.repo.applyWrites#${input.existing ? "update" : "create"}`, collection, rkey: wrapperKey, value: { $type: collection, document: { $type: "com.atproto.repo.strongRef", uri, cid } } });
   }
   signal?.throwIfAborted();
   const wrapperCid = writes[1] ? (await cidForLex(lexParse(JSON.stringify(writes[1].value), { strict: true }))).toString() : undefined;

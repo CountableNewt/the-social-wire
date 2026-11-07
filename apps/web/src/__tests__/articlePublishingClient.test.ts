@@ -250,19 +250,22 @@ describe("direct PDS article publishing", () => {
     expect(socialErrorMessage(headerError)).toBe(SCOPE_RECOVERY_MESSAGE);
     expect(fetchHandler).toHaveBeenCalledTimes(2);
   });
-  it("verifies pckt publication ownership and writes its same-key wrapper", async () => {
-    const pub = publication("pckt"), calls = agent(pub);
-    calls.get.mockImplementation(async params => params.collection === "site.standard.publication" ? { data: { uri: pub.uri, cid: pub.cid, value: pub.record } } : { data: { uri: `at://${did}/blog.pckt.publication/site`, cid: "pckt-pub", value: { $type: "blog.pckt.publication", publication: { uri: pub.uri, cid: pub.cid } } as ArticleRecord } });
-    const verification = spyOn(globalThis, "fetch").mockResolvedValue(new Response(pub.uri));
-    restores.push(() => verification.mockRestore());
-    const result = await publishArticle(session, input("pckt"));
-    const writes = calls.apply.mock.calls[0][0].writes;
-    expect(writes[1].rkey).toBe(writes[0].rkey);
-    expect(writes[1].value).toMatchObject({ $type: "blog.pckt.document", document: { uri: result.uri, cid: result.cid }, site: `at://${did}/blog.pckt.publication/site` });
-    expect(verification.mock.calls[0][1]).toMatchObject({ credentials: "omit", redirect: "error" });
-    verification.mockResolvedValueOnce(new Response("at://someone-else/site.standard.publication/site"));
-    await expect(publishArticle(session, input("pckt"))).rejects.toThrow("could not verify");
-    expect(calls.apply).toHaveBeenCalledTimes(1);
+  it("rejects pckt without network reads, uploads, or record writes", async () => {
+    const calls = agent(publication("pckt"));
+    const failure = await publishArticle(session, input("pckt")).catch(error => error);
+    expect(failure.message).toContain("pckt Does Not Support External Editors");
+    expect(wasArticlePublicationNotSubmitted(failure)).toBe(true);
+    expect(calls.latest).not.toHaveBeenCalled();
+    expect(calls.get).not.toHaveBeenCalled();
+    expect(calls.apply).not.toHaveBeenCalled();
+  });
+  it("rejects a freshly fetched pckt publication despite a supported caller host", async () => {
+    const pub = publication("markpub"), calls = agent({ ...pub, record: { ...pub.record, url: "https://journal.pckt.blog", theme: { $type: "leaflet.theme" } } });
+    const failure = await publishArticle(session, { ...input("markpub"), markdown: "text ".repeat(25000) }).catch(error => error);
+    expect(failure.message).toContain("pckt Does Not Support External Editors");
+    expect(calls.apply).not.toHaveBeenCalled();
+    expect(wasArticlePublicationNotSubmitted(failure)).toBe(true);
+    expect(articlePublicationHost({ url: "https://journal.pckt.blog", theme: { $type: "leaflet.theme" } })).toBe("pckt");
   });
   it("offloads large Markdown as a text blob and keeps canonical plaintext", async () => {
     const calls = agent(publication("markpub"));

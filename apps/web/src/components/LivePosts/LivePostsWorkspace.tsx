@@ -5,6 +5,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLivePosts } from "@/hooks/useLivePosts";
 import { liveEventPhase, type AtmoEvent } from "@/lib/livePosts/atmoEventClient";
+import { articlePublicationDisabledReason } from "@/lib/articles/articlePublicationCapabilities";
 import type { LiveUpdateAttachmentsDraft } from "@/lib/livePosts/livePostMedia";
 import type { ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
 import { socialErrorMessage } from "@/lib/blueskySocialClient";
@@ -45,6 +46,8 @@ function LivePostsViewer() {
   const [confirmEndUri, setConfirmEndUri] = useState<string>();
   const [endFailure, setEndFailure] = useState<string>();
   const event = live.events.find(value => value.uri === selectedUri);
+  const publication = event?.destination !== "bluesky" ? live.publications.find(value => value.uri === event?.publicationUri) : undefined;
+  const disabledPublicationReason = publication ? articlePublicationDisabledReason(publication) : undefined;
   const text = event ? drafts[event.uri] ?? "" : "";
   const failureSource = failure ?? live.error ?? live.publicationsError;
   const error = failureSource ? typeof failureSource === "string" ? failureSource : livePostErrorMessage(failureSource) : undefined;
@@ -53,7 +56,7 @@ function LivePostsViewer() {
     setSelectedUri(created.uri); setNewEvent(false); setFailure(undefined);
   }
   async function publish(linkPreview?: ComposeLinkPreview) {
-    if (!event || event.endedAt || live.pending) return;
+    if (!event || event.endedAt || live.pending || disabledPublicationReason) return;
     const uri = event.uri;
     try {
       const media = { ...attachments[uri], ...(linkPreview ? { linkPreview } : {}) };
@@ -97,8 +100,8 @@ function LivePostsViewer() {
           {!event ? <LivePostSchedule rows={rows} loading={live.loading || live.rsvpLoading} pending={live.pending} onNewEvent={() => openNew()} /> : <>
             <Button variant="ghost" size="sm" className="mb-3" disabled={live.pending} onClick={() => { setSelectedUri(undefined); setFailure(undefined); }}>View Schedule</Button>
             <header className="mb-4 space-y-2"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="break-words text-2xl font-semibold">{event.title}</h2>{!event.endedAt ? <Button variant="outline" disabled={live.pending} onClick={() => { setEndFailure(undefined); setConfirmEndUri(event.uri); }}>End Live Post</Button> : null}</div><p className="text-sm text-muted-foreground">{destinationLabels[event.destination]}</p>{event.tags.length ? <p className="break-words text-xs text-muted-foreground">{event.tags.map(tag => `#${tag}`).join(" ")}</p> : null}</header>
-            {!event.endedAt && event.destination !== "bluesky" ? <LivePostTimestampSettings key={`${event.uri}:${event.cid}`} event={event} pending={live.pending} now={new Date(now).toISOString()} onSave={live.updateTimestampSettings} /> : null}
-            {event.endedAt ? <p role="status" className={`${floatingGlassClasses} mb-6 p-4 text-sm`}>Live Post Ended. Published Updates Remain Available.</p> : <LivePostUpdateComposer key={event.uri} event={event} text={text} onTextChange={value => setDrafts(previous => ({ ...previous, [event.uri]: value }))} attachments={attachments[event.uri] ?? {}} onAttachmentsChange={value => setAttachments(previous => ({ ...previous, [event.uri]: value }))} pending={live.pending} failure={failure} onPublish={publish} />}
+            {!event.endedAt && !disabledPublicationReason && event.destination !== "bluesky" ? <LivePostTimestampSettings key={`${event.uri}:${event.cid}`} event={event} pending={live.pending} now={new Date(now).toISOString()} onSave={live.updateTimestampSettings} /> : null}
+            {event.endedAt ? <p role="status" className={`${floatingGlassClasses} mb-6 p-4 text-sm`}>Live Post Ended. Published Updates Remain Available.</p> : disabledPublicationReason ? <p role="status" className={`${floatingGlassClasses} mb-6 p-4 text-sm`}>{disabledPublicationReason}</p> : <LivePostUpdateComposer key={event.uri} event={event} text={text} onTextChange={value => setDrafts(previous => ({ ...previous, [event.uri]: value }))} attachments={attachments[event.uri] ?? {}} onAttachmentsChange={value => setAttachments(previous => ({ ...previous, [event.uri]: value }))} pending={live.pending} failure={failure} onPublish={publish} />}
             <LivePostHistory event={event} />
           </>}
         </section>
