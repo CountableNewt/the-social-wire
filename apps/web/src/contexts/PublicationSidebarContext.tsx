@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ENTRIES_QUERY_KEY, type EntriesPage } from "@/hooks/useEntries";
 import { queueBootstrapFeedRefresh } from "@/hooks/useProactiveFeedRefresh";
 import { consumeBootstrapStream } from "@/lib/bootstrapStreamClient";
-import { captureFeedRefreshRevisions, getViewerReadStateRevision } from "@/lib/feedRefreshCoordinator";
+import { captureFeedRefreshRevisions, getViewerReadStateRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import {
   markBootstrapPerf,
   resetBootstrapPerf,
@@ -86,6 +86,7 @@ const PublicationSidebarContext =
 const EMPTY_PUBLICATION_ROWS: SidebarProjectionState["allPublicationRows"] = [];
 
 const RECENT_BOOTSTRAP_REUSE_MS = 30_000;
+export const MANUAL_SIDEBAR_REFRESH_TIMEOUT_MS = 30_000;
 const bootstrapCompletedAtByDid = new Map<string, number>();
 
 export function PublicationSidebarProvider({ children }: { children: ReactNode }) {
@@ -174,6 +175,7 @@ function PublicationSidebarProviderInner({
     ) => {
       const oauth = getOAuthSession();
       if (!oauth || !did) return;
+      controller.signal.throwIfAborted();
 
       resetBootstrapPerf();
       const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
@@ -204,6 +206,7 @@ function PublicationSidebarProviderInner({
       const generation = ++streamGenerationRef.current;
       const feedRevisions = captureFeedRefreshRevisions(qc);
       const readStateRevision = getViewerReadStateRevision(qc, did);
+      const readRevision = readFeedRefreshRevision(qc, oauth);
       streamSawSidebarSectionRef.current = false;
       pendingAutoSelectPublicationIdRef.current = null;
       bootstrapFeedPublicationIdRef.current = null;
@@ -221,7 +224,7 @@ function PublicationSidebarProviderInner({
           signal: controller.signal,
           handlers: {
             onEvent: (event) => {
-              if (generation !== streamGenerationRef.current || controller.signal.aborted) return;
+              if (generation !== streamGenerationRef.current || controller.signal.aborted || getOAuthSession() !== oauth) return;
               if (event.kind === "error" || event.kind === "warning") streamFailure = new Error(event.payload.message);
               if (event.kind === "done") sawDone = true;
               if (event.kind === "lists") {
@@ -267,7 +270,7 @@ function PublicationSidebarProviderInner({
                   event.payload.publicationId;
               }
               if (event.kind === "entriesPage" && !options.force) {
-                writeStreamedEntriesPage(qc, did, event.payload, "all", feedRevisions, readStateRevision);
+                writeStreamedEntriesPage(qc, did, event.payload, "all", feedRevisions, readStateRevision, { session: oauth, revision: readRevision });
                 bootstrapFeedPublicationIdRef.current =
                   event.payload.publicationId;
                 if (
@@ -326,7 +329,7 @@ function PublicationSidebarProviderInner({
                 streamSawSidebarSectionRef.current;
 
               setStreamProjection((currentStream) => {
-                if (generation !== streamGenerationRef.current || controller.signal.aborted) return currentStream;
+                if (controller.signal.aborted || generation !== streamGenerationRef.current || getOAuthSession() !== oauth) return currentStream;
                 if (skipLegacySidebarFolders) return currentStream;
                 const baseline =
                   qc.getQueryData<PublicationSidebarProjection>(
@@ -353,7 +356,7 @@ function PublicationSidebarProviderInner({
               });
             },
             onError: (error) => {
-              if (generation !== streamGenerationRef.current) return;
+              if (controller.signal.aborted || generation !== streamGenerationRef.current || getOAuthSession() !== oauth) return;
               streamFailure = error;
               setProjectionError(error);
             },
@@ -365,7 +368,7 @@ function PublicationSidebarProviderInner({
           if (!sawDone) throw new Error("Publication refresh ended before completion. Try Refresh again.");
         }
       } catch (error) {
-        if (generation !== streamGenerationRef.current) return;
+        if (controller.signal.aborted || generation !== streamGenerationRef.current || getOAuthSession() !== oauth) return;
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setProjectionError(
             error instanceof Error ? error : new Error(String(error))
@@ -468,6 +471,11 @@ function PublicationSidebarProviderInner({
         const oauth = getOAuthSession();
         if (!oauth) throw new Error("OAuth session required");
         const signal = controller.signal;
+        const assertSession = () => {
+          signal.throwIfAborted();
+          if (getOAuthSession() !== oauth) throw new DOMException("Account changed", "AbortError");
+        };
+        const readRevision = readFeedRefreshRevision(qc, oauth);
         setRefreshMessage("Checking Publications…");
         // Remember the operation's starting rows too: an old Unread row can
         // disappear during one paint and resurface later without being new.
@@ -476,15 +484,16 @@ function PublicationSidebarProviderInner({
         }).flatMap(query => (query.state.data as InfiniteData<EntriesPage> | undefined)?.pages.flatMap(page => page.entries.map(entry => entry.entryId)) ?? []));
         const newArticleIds = new Set<string>();
         const updateArticles = async () => {
-          signal.throwIfAborted();
+          assertSession();
           await refreshReaderFeeds({
             queryClient: qc, viewerDid: did, oauthSession: oauth, signal,
+            isCurrentSession: () => getOAuthSession() === oauth,
             onNewArticleIds: ids => {
-              signal.throwIfAborted();
+              assertSession();
               for (const id of ids) if (!startingArticleIds.has(id)) newArticleIds.add(id);
             },
           });
-          signal.throwIfAborted();
+          assertSession();
         };
         const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
         const cached = qc.getQueryData<PublicationSidebarProjection>(queryKey);
@@ -496,7 +505,7 @@ function PublicationSidebarProviderInner({
         const checkSources = (rows: typeof cachedRows) => refreshPublicationSources({
           oauthSession: oauth, rows, signal,
           onProgress: (completed, total) => {
-            signal.throwIfAborted();
+            assertSession();
             setRefreshMessage(authoritativeApplied && completed === total ? "Updating Articles…" : `Checking ${total} Publications…`);
           },
           onBatch: async () => {
@@ -518,7 +527,7 @@ function PublicationSidebarProviderInner({
             () => ({ error: undefined as unknown }), error => ({ error })
           ) : undefined;
           const response = await sidebarRequest;
-          signal.throwIfAborted();
+          assertSession();
           if (response.viewerDid !== did) throw new Error("Publication details are unavailable. Try Refresh again.");
           // The POST returns the complete authoritative sidebar. Supersede any
           // older initial stream without selecting an article or replacing history.
@@ -533,6 +542,13 @@ function PublicationSidebarProviderInner({
           const allRows = new Map(response.allPublicationRows.map(row => [row.publicationId, row]));
           for (const row of following.values()) if (!allRows.has(row.publicationId)) allRows.set(row.publicationId, row);
           const projection = { ...response, followingTabPublications: [...following.values()], allPublicationRows: [...allRows.values()] };
+          const readChanged = readFeedRefreshRevision(qc, oauth) !== readRevision;
+          if (readChanged) {
+            projection.unreadCountsByPublicationId = previous?.unreadCountsByPublicationId;
+            projection.unreadCountsGeneration = previous?.unreadCountsGeneration;
+            projection.unreadCountsAccuracy = previous?.unreadCountsAccuracy;
+            projection.unreadCountsCountedAt = previous?.unreadCountsCountedAt;
+          }
           qc.setQueryData(queryKey, previous?.unreadCountsByPublicationId && !projection.unreadCountsByPublicationId
             ? applyUnreadCountsEvent(projection, previous.unreadCountsByPublicationId ?? {}, {
                 generation: previous.unreadCountsGeneration,
@@ -548,7 +564,7 @@ function PublicationSidebarProviderInner({
           authoritativeApplied = true;
           releaseAuthority();
           const outcome = await seed;
-          signal.throwIfAborted();
+          assertSession();
           const currentRows = () => readerRefreshRows(qc, did, qc.getQueryData<PublicationSidebarProjection>(queryKey) ?? projection);
           const rows = currentRows();
           let sourceFailure: unknown;
@@ -561,20 +577,20 @@ function PublicationSidebarProviderInner({
               // Removed sources cannot fail the current scope. Every seed worker
               // has settled before rechecking the authoritative source set.
               try { await checkSources(rows); } catch (error) {
-                signal.throwIfAborted();
+                assertSession();
                 sourceFailure = error;
               }
             }
           } else {
             try { await checkSources(rows); } catch (error) {
-              signal.throwIfAborted();
+              assertSession();
               sourceFailure = error;
             }
           }
-          signal.throwIfAborted();
+          assertSession();
           setRefreshMessage("Updating Unread Counts…");
-          await refreshReaderUnreadCounts({ queryClient: qc, viewerDid: did, oauthSession: oauth, publicationIds: currentRows().map(row => row.publicationId), signal });
-          signal.throwIfAborted();
+          await refreshReaderUnreadCounts({ queryClient: qc, viewerDid: did, oauthSession: oauth, publicationIds: currentRows().map(row => row.publicationId), signal, isCurrentSession: () => getOAuthSession() === oauth });
+          assertSession();
           if (sourceFailure) throw sourceFailure;
           const newArticleCount = newArticleIds.size;
           setRefreshMessage(newArticleCount > 0 ? `${newArticleCount} New ${newArticleCount === 1 ? "Article" : "Articles"} Loaded` : "Refresh Complete");

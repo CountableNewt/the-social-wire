@@ -4,7 +4,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import type { EntriesPage } from "@/hooks/useEntries";
 import * as appView from "@/lib/thinAppViewClient";
 import { refreshAggregateFeed } from "@/lib/refreshAggregateFeed";
-import { advanceFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { advanceFeedRefreshRevision, recordReadEntryMutations } from "@/lib/feedRefreshCoordinator";
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
 const key = ["aggregateEntries", "did:plc:viewer", "subscribed", "", "all"];
@@ -30,7 +30,7 @@ it("preserves loaded history and cancels pagination before merging the fresh hea
 });
 
 it("does not overwrite read confirmation or a replaced OAuth session", async () => {
-  for (const change of ["revision", "session"] as const) {
+  for (const change of ["revision", "read", "session"] as const) {
     client.setQueryData(key, initial);
     let finish!: (page: EntriesPage) => void;
     let started!: () => void;
@@ -40,7 +40,9 @@ it("does not overwrite read confirmation or a replaced OAuth session", async () 
     let current = true;
     const pending = refresh({ isCurrentSession: () => current });
     await requested;
-    if (change === "revision") advanceFeedRefreshRevision(client, key); else current = false;
+    if (change === "revision") advanceFeedRefreshRevision(client, key);
+    else if (change === "read") recordReadEntryMutations(client, oauth, ["head"]);
+    else current = false;
     finish({ entries: [entry("stale") ] }); await pending;
     expect(client.getQueryData<InfiniteData<EntriesPage>>(key)).toEqual(initial);
     fetch.mockRestore();
