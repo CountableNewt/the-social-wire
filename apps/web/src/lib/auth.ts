@@ -20,6 +20,7 @@ import { buildAtprotoLoopbackClientId } from "@atproto/oauth-types";
 import { AT_PROTO_OAUTH_SCOPES } from "@/lib/atprotoOAuthScopes";
 import { normalizeAppEnv, readAppEnvRaw } from "@/lib/appEnv";
 import { resolveHostedOAuthClientId } from "@/lib/oauthClientMetadata";
+import { createOAuthHandleResolverFetch } from "@/lib/oauthHandleResolverFetch";
 import { atprotoScopesForNetwork, getAtprotoNetwork, localLoopbackOAuthScopes, authorizationScopesForClient, compactLoopbackClientId } from "@/lib/atprotoNetwork";
 
 import { BRAND_ACCOUNT_OAUTH_SCOPES } from "@/lib/brandAccounts/brandAccountScopes";
@@ -303,7 +304,7 @@ async function raceWithTimeout<T>(
 
 function createFetchWithDeadline(
   timeoutMs: number,
-  base: typeof fetch = fetch
+  base: typeof fetch = createOAuthHandleResolverFetch()
 ): typeof fetch {
   const wrapped = (input: RequestInfo | URL, init?: RequestInit) => {
     const controller = new AbortController();
