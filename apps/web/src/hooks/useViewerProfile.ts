@@ -1,6 +1,6 @@
 "use client";
 
-import { Agent } from "@atproto/api";
+import { Agent, type AppBskyActorDefs } from "@atproto/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
 import {
@@ -21,6 +21,7 @@ export type ViewerProfileSlice = {
   handle?: string;
   displayName?: string;
   pronouns?: string;
+  verification?: AppBskyActorDefs.VerificationState;
   avatar?: string;
   description?: string;
   banner?: string;
@@ -62,6 +63,7 @@ export function useViewerProfile() {
           handle: d.handle,
           displayName: d.displayName,
           pronouns: d.pronouns,
+          verification: d.verification,
           avatar: d.avatar,
           description: d.description,
           banner: d.banner,
