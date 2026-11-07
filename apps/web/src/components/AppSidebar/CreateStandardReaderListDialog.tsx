@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import {
   Dialog,
   DialogClose,
@@ -243,17 +244,17 @@ export function CreateStandardReaderListDialog({
             void addCreator();
           }}
         >
-          <label className="grid gap-1.5 text-sm font-medium">
-            Creator Account
-            <input
-              aria-label="Creator Account"
+          <div className="grid gap-1.5 text-sm font-medium">
+            <label htmlFor="reader-list-creator-account">Creator Account</label>
+            <ActorTypeaheadInput
+              id="reader-list-creator-account"
               placeholder="Creator Handle Or DID"
               className={inputClass}
               value={creatorInput}
-              onChange={(event) => setCreatorInput(event.target.value)}
+              onValueChange={setCreatorInput}
               disabled={saving || pending}
             />
-          </label>
+          </div>
           <Button
             type="submit"
             variant="outline"

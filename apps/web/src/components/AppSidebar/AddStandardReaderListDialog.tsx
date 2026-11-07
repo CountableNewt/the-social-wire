@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import {
   Dialog,
   DialogClose,
@@ -143,21 +144,21 @@ export function AddStandardReaderListDialog({
               void search();
             }}
           >
-            <label className="grid gap-1.5 text-sm font-medium">
-              List Creator
-              <input
-                aria-label="List Creator"
+            <div className="grid gap-1.5 text-sm font-medium">
+              <label htmlFor="reader-list-creator">List Creator</label>
+              <ActorTypeaheadInput
+                id="reader-list-creator"
                 placeholder="Creator Handle Or DID"
                 value={creator}
-                onChange={(event) => {
-                  setCreator(event.target.value);
+                onValueChange={(value) => {
+                  setCreator(value);
                   setSearched(false);
                 }}
                 className={inputClass}
                 required
                 disabled={saving || pending !== null}
               />
-            </label>
+            </div>
             <Button
               type="submit"
               variant="outline"

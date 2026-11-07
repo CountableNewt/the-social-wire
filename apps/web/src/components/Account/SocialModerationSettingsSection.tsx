@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { moderateProfile } from "@atproto/api";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useSocialModerationSettings } from "@/hooks/useSocialModerationSettings";
@@ -63,7 +64,7 @@ function SocialModerationControls() {
       </div> : null}
       <form className="flex flex-col gap-2" onSubmit={event => { event.preventDefault(); lookup.mutate(actor); }}>
         <label htmlFor="social-labeler-search" className="text-sm font-semibold">Add Labeler</label>
-        <input id="social-labeler-search" value={actor} onChange={event => { setActor(event.target.value); lookup.reset(); }} placeholder="Handle or DID" className="rounded-md border bg-background px-3 py-2 text-sm" autoCapitalize="none" autoCorrect="off" />
+        <ActorTypeaheadInput id="social-labeler-search" value={actor} onValueChange={value => { setActor(value); lookup.reset(); }} placeholder="Handle or DID" disabled={busy || lookup.isPending} />
         <Button className="self-start" variant="outline" type="submit" disabled={!actor.trim() || lookup.isPending || busy}>Find Labeler</Button>
       </form>
       {lookup.data ? <div className="flex flex-wrap items-center gap-2"><span className="min-w-0 break-words text-sm">{displayName(lookup.data.profile)}</span><Button disabled={busy || data.labelers.some(item => item.did === lookup.data.did)} onClick={() => change.mutate({ type: "subscribe", did: lookup.data.did }, { onSuccess: () => { lookup.reset(); setActor(""); } })}>Subscribe</Button></div> : null}

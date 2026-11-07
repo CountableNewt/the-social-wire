@@ -10,6 +10,7 @@ import { useBlueskySocialCatalog } from "@/hooks/useBlueskySocialCatalog";
 import { useSocialLists } from "@/hooks/useSocialLists";
 import { addSocialListMember, deleteSocialList, removeSocialListMember, saveSocialList } from "@/lib/socialListsClient";
 import { socialErrorMessage, socialFeedHref } from "@/lib/blueskySocialClient";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -54,7 +55,7 @@ function SocialListsViewer() {
         {own ? <><Button variant="outline" onClick={() => { mutation.reset(); setEditor({ uri: list.uri, name: list.name, description: list.description ?? "" }); }}>Edit List</Button><Button variant="destructive" onClick={() => setDeleting(true)}>Delete List</Button></> : null}
       </div>
       <h3 className="font-medium">Members</h3>
-      {own ? <form className="flex gap-2" onSubmit={event => { event.preventDefault(); mutation.mutate(session => addSocialListMember(session, list.uri, actor), { onSuccess: () => setActor("") }); }}><Input aria-label="Member Handle Or DID" value={actor} onChange={event => setActor(event.target.value)} placeholder="Handle or DID" /><Button type="submit" disabled={mutation.isPending || !actor.trim()}>Add Member</Button></form> : null}
+      {own ? <form className="flex gap-2" onSubmit={event => { event.preventDefault(); mutation.mutate(session => addSocialListMember(session, list.uri, actor), { onSuccess: () => setActor("") }); }}><ActorTypeaheadInput id="social-list-member" aria-label="Member Handle Or DID" value={actor} onValueChange={setActor} disabled={mutation.isPending} placeholder="Handle or DID" wrapperClassName="min-w-0 flex-1" /><Button type="submit" disabled={mutation.isPending || !actor.trim()}>Add Member</Button></form> : null}
       {members.map(item => {
         const decision = moderateProfile(item.subject, moderation!);
         if (decision.ui("profileList").filter || decision.ui("profileList").blur || decision.ui("profileList").noOverride || decision.ui("displayName").blur || decision.ui("displayName").noOverride) return null;

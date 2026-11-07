@@ -11,9 +11,9 @@ const feeds = [
 ] as const;
 
 type DiscoveryFeedDisplaySettingsProps = {
-  preferences: Pick<FeedDisplayPreferences, "showWire" | "showCircle" | "showFinance" | "showSports" | "showSocial" | "showPodcasts">;
+  preferences: Pick<FeedDisplayPreferences, (typeof feeds)[number]["preference"]>;
   isPending: boolean;
-  onVisibilityChange: (feed: "wire" | "circle" | "finance" | "sports" | "social" | "podcasts", visible: boolean) => void;
+  onVisibilityChange: (feed: (typeof feeds)[number]["id"], visible: boolean) => void;
 };
 
 export function DiscoveryFeedDisplaySettings({

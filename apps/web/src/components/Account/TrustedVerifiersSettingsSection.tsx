@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useSocialVerification } from "@/contexts/SocialVerificationContext";
 import { resolveVerifierProfile } from "@/lib/socialVerification";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -35,7 +35,16 @@ export function TrustedVerifiersSettingsSection() {
       <p className="text-sm text-muted-foreground">Show Bluesky verification badges and trust additional accounts that issue verifications. These settings apply to this account in this browser.</p>
       <div className="flex min-h-12 items-center justify-between gap-4 text-sm font-medium"><span>Bluesky Verification</span><Switch aria-label="Bluesky Verification" checked={preferences.includesBlueskyVerification} disabled={!available || pending} onCheckedChange={checked => change(() => update(previous => ({ ...previous, includesBlueskyVerification: checked })))} /></div>
       <form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); void add(); }}>
-        <label className="min-w-0 flex-1 space-y-1 text-sm"><span>Verifier Handle or DID</span><Input aria-label="Verifier Handle or DID" placeholder="@verifier.example" autoCapitalize="none" autoCorrect="off" value={actor} disabled={!available || pending} onChange={event => setActor(event.target.value)} /></label>
+        <div className="min-w-0 flex-1 space-y-1 text-sm">
+          <label htmlFor="trusted-verifier-actor">Verifier Handle or DID</label>
+          <ActorTypeaheadInput
+            id="trusted-verifier-actor"
+            placeholder="@verifier.example"
+            value={actor}
+            disabled={!available || pending}
+            onValueChange={setActor}
+          />
+        </div>
         <Button type="submit" variant="outline" disabled={!available || pending || !actor.trim()}>{pending ? "Adding…" : "Add Verifier"}</Button>
       </form>
       <p className="text-xs text-muted-foreground">Trusting an account displays badges only for its valid verification records. It does not verify that account or change what others see.</p>
