@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StandardReaderListsWorkspace: View {
     @Environment(SocialWireAppModel.self) private var appModel
+    @Environment(\.openURL) private var openURL
     @Binding var isProfilePresented: Bool
     @State private var listPage = ""
     @State private var compactColumn = NavigationSplitViewColumn.sidebar
@@ -13,6 +14,8 @@ struct StandardReaderListsWorkspace: View {
     @State private var deferredReadEntryID: String?
     @State private var deferredReadViewerDID: String?
     @State private var entryOpenRevision = 0
+    @State private var entryPendingTaggedSave: EntryListItem?
+    @State private var refreshFeedback = 0
 
     private var model: StandardReaderListsModel { appModel.standardReaderLists }
 
@@ -41,6 +44,8 @@ struct StandardReaderListsWorkspace: View {
             Text(list.owned ? "Delete \(list.name) from your PDS?" : "Remove \(list.name) from your saved lists?")
         }
         .sensoryFeedback(.success, trigger: feedback)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: refreshFeedback)
+        .sheet(item: $entryPendingTaggedSave) { entry in taggedSaveSheet(entry) }
         .onChange(of: model.filter) { _, _ in
             entryOpenRevision += 1
             settleDeferredRead()
@@ -245,6 +250,21 @@ struct StandardReaderListsWorkspace: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("lists.entry.\(item.entryId)")
+                        .contextMenu {
+                            if item.originalWebsiteURL != nil {
+                                Button("Open on Website", systemImage: "safari") { openWebsite(item) }
+                            }
+                            Button("Open in Native Reader", systemImage: "doc.richtext") { open(item) }
+                            Button("Save", systemImage: "bookmark") { Task { await save(item) } }
+                            Button(appModel.isSembleReadLaterEnabled ? "Save With Note" : "Save With Tags",
+                                   systemImage: appModel.isSembleReadLaterEnabled ? "note.text.badge.plus" : "tag") {
+                                entryPendingTaggedSave = item
+                            }
+                            Button(rowModel(item).isRead ? "Mark As Unread" : "Mark As Read",
+                                   systemImage: rowModel(item).isRead ? "book.closed" : "book") {
+                                Task { await appModel.toggleRead(item) }
+                            }
+                        }
                         .task {
                             if item.entryId == model.entries.last?.entryId { await model.loadFeed(nextPage: true) }
                         }
@@ -261,6 +281,7 @@ struct StandardReaderListsWorkspace: View {
                     entryOpenRevision += 1
                     settleDeferredRead()
                     await model.loadFeed()
+                    refreshFeedback += 1
                 }
                 Picker("Articles", selection: $listModel.filter) {
                     Text("All").tag(ReaderFilter.all)
@@ -272,6 +293,39 @@ struct StandardReaderListsWorkspace: View {
             .accessibilityIdentifier("lists.articles")
         } else {
             ContentUnavailableView("Select a List", systemImage: "list.bullet.rectangle")
+        }
+    }
+
+    private func openWebsite(_ entry: EntryListItem) {
+        guard let url = entry.originalWebsiteURL else { return }
+        Task {
+            await appModel.recordExternalEntryOpen(entry)
+            openURL(url)
+        }
+    }
+
+    private func save(_ entry: EntryListItem, tags: [String] = [], note: String? = nil) async {
+        await appModel.saveEntry(
+            entryId: entry.entryId,
+            url: entry.originalUrl.flatMap(URL.init(string:)),
+            title: entry.title,
+            excerpt: entry.summary,
+            tags: tags,
+            note: note
+        )
+        feedback += 1
+    }
+
+    @ViewBuilder
+    private func taggedSaveSheet(_ entry: EntryListItem) -> some View {
+        if appModel.isSembleReadLaterEnabled {
+            SembleNoteEditorSheet { note in await save(entry, note: note) }
+        } else {
+            SavedTagEditorSheet(
+                title: "Save With Tags",
+                initialTags: [],
+                suggestions: appModel.currentSavedTagCounts.map(\.tag)
+            ) { tags in await save(entry, tags: tags) }
         }
     }
 
