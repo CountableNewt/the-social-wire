@@ -28,6 +28,8 @@ final class LatrGatewayClient {
         case exhausted
     }
 
+    private var sessionReceiptCache = GatewaySessionReceiptCache()
+
     private let auth: ATProtoOAuthService
     private let transportBaseURL: URL
     private let proofBaseURL: URL
@@ -45,12 +47,19 @@ final class LatrGatewayClient {
         self.urlSession = urlSession
     }
 
-    func listBookmarks(tag: String? = nil) async throws -> [MergedLatrSave] {
+    func listBookmarks(
+        tag: String? = nil,
+        onPage: (@MainActor ([MergedLatrSave]) -> Void)? = nil
+    ) async throws -> [MergedLatrSave] {
+        let start = ProcessInfo.processInfo.systemUptime
+        var pages = 0
+        defer { LoadingDiagnostics.log("saved-list end pages=\(pages) totalMs=\(LoadingDiagnostics.milliseconds(since: start))") }
         let normalizedTag = try tag.map(LatrPayloadValidator.validateTag)
         var cursor: String?
         var rows: [MergedLatrSave] = []
+        var seenCursors: Set<String> = []
         repeat {
-            var query = [URLQueryItem(name: "limit", value: "50")]
+            var query = [URLQueryItem(name: "limit", value: "100")]
             if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
             if let normalizedTag { query.append(URLQueryItem(name: "tag", value: normalizedTag)) }
             let data = try await request(
@@ -59,11 +68,44 @@ final class LatrGatewayClient {
                 query: query
             )
             let page = try JSONDecoder().decode(LatrListBookmarksOutput.self, from: data)
+            pages += 1
+            LoadingDiagnostics.log("saved-list page=\(pages) rows=\(page.bookmarks.count) elapsedMs=\(LoadingDiagnostics.milliseconds(since: start))")
             rows.append(contentsOf: page.bookmarks.map(Self.row))
+            onPage?(rows.sorted { $0.savedAt > $1.savedAt })
             cursor = page.cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
             if cursor?.isEmpty == true { cursor = nil }
+            if let cursor, !seenCursors.insert(cursor).inserted {
+                throw SocialWireError.badResponse("Saved links pagination did not advance.")
+            }
         } while cursor != nil
         return rows.sorted { $0.savedAt > $1.savedAt }
+    }
+
+    func preview(for url: URL) async throws -> OpenGraphPreview {
+        let start = ProcessInfo.processInfo.systemUptime
+        let resource = LoadingDiagnostics.resource(url)
+        var outcome = "failed-or-cancelled"
+        var preemptions = 0
+        defer { LoadingDiagnostics.log("preview end resource=\(resource) outcome=\(outcome) preemptions=\(preemptions) totalMs=\(LoadingDiagnostics.milliseconds(since: start))") }
+        while true {
+            try Task.checkCancellation()
+            do {
+                let data = try await request(
+                    method: "GET",
+                    xrpc: .getOpenGraph,
+                    query: [URLQueryItem(name: "url", value: url.absoluteString)]
+                )
+                let preview = try JSONDecoder().decode(OpenGraphPreview.self, from: data)
+                outcome = "success"
+                return preview
+            } catch is CancellationError {
+                // A foreground request can preempt this background lease. Retry
+                // only while the row's own task is still alive.
+                try Task.checkCancellation()
+                preemptions += 1
+                try await Task.sleep(for: .milliseconds(300))
+            }
+        }
     }
 
     func listTags() async throws -> [LatrTagCount] {
@@ -194,8 +236,10 @@ final class LatrGatewayClient {
     }
 
     private func migrateLegacyPage(_ input: LatrMigrateBookmarksInput) async throws -> Data {
+        let queuedAt = ProcessInfo.processInfo.systemUptime
         let session = try await auth.validSession()
         return try await auth.dpop.withNonceSequence(for: session.pdsURL) { [self] in
+            LoadingDiagnostics.log("latr acquired route=migration authAndQueueMs=\(LoadingDiagnostics.milliseconds(since: queuedAt))")
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }
@@ -223,6 +267,7 @@ final class LatrGatewayClient {
                         preparedSession: prepared
                     ))
                 } catch AttestationCeremonyError.refreshRequired {
+                    sessionReceiptCache = GatewaySessionReceiptCache()
                     return .refreshRequired
                 }
             }
@@ -277,8 +322,10 @@ final class LatrGatewayClient {
             return try await requestWithinNonceSequence(method: method, xrpc: xrpc, query: query, body: body,
                 bodyCarriesUpstreamProof: bodyCarriesUpstreamProof, preparedSession: preparedSession)
         }
+        let queuedAt = ProcessInfo.processInfo.systemUptime
         let session = try await auth.validSession()
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, background: xrpc == .getOpenGraph) { [self] in
+            LoadingDiagnostics.log("latr acquired route=\(xrpc.nsid) authAndQueueMs=\(LoadingDiagnostics.milliseconds(since: queuedAt))")
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }
@@ -305,7 +352,9 @@ final class LatrGatewayClient {
             if let preparedSession {
                 prepared = preparedSession
             } else {
+                let start = ProcessInfo.processInfo.systemUptime
                 prepared = try await preparedGatewaySession()
+                LoadingDiagnostics.log("latr session route=\(xrpc.nsid) ms=\(LoadingDiagnostics.milliseconds(since: start))")
             }
             do {
                 return try await requestOnce(
@@ -317,6 +366,7 @@ final class LatrGatewayClient {
                     prepared: prepared
                 )
             } catch AttestationCeremonyError.refreshRequired {
+                sessionReceiptCache = GatewaySessionReceiptCache()
                 if ceremony + 1 == ceremonyLimit {
                     if preparedSession != nil { throw AttestationCeremonyError.refreshRequired }
                     throw SocialWireError.badResponse(
@@ -328,6 +378,18 @@ final class LatrGatewayClient {
         throw SocialWireError.badResponse("Gateway session attestation did not complete.")
     }
 
+    private func measuredData(for request: URLRequest, route: String, attempt: Int) async throws -> (Data, URLResponse) {
+        let start = ProcessInfo.processInfo.systemUptime
+        do {
+            let result = try await urlSession.data(for: request)
+            LoadingDiagnostics.log("latr response route=\(route) attempt=\(attempt) status=\((result.1 as? HTTPURLResponse)?.statusCode ?? 0) bytes=\(result.0.count) ms=\(LoadingDiagnostics.milliseconds(since: start))")
+            return result
+        } catch {
+            LoadingDiagnostics.log("latr failure route=\(route) attempt=\(attempt) error=\(LoadingDiagnostics.failure(error)) ms=\(LoadingDiagnostics.milliseconds(since: start))")
+            throw error
+        }
+    }
+
     private func requestOnce(
         method: String,
         xrpc: LatrXRPCMethod,
@@ -336,10 +398,13 @@ final class LatrGatewayClient {
         bodyCarriesUpstreamProof: Bool,
         prepared: PreparedGatewaySession
     ) async throws -> Data {
+        let proofStart = ProcessInfo.processInfo.systemUptime
         let session = prepared.session
         let preparedUpstreamProof = bodyCarriesUpstreamProof
             ? nil
             : try await upstreamProofPool(for: xrpc, session: session)
+
+        LoadingDiagnostics.log("latr proofs route=\(xrpc.nsid) ms=\(LoadingDiagnostics.milliseconds(since: proofStart))")
 
         func signedRequest() async throws -> URLRequest {
             var request = URLRequest(url: url)
@@ -391,7 +456,7 @@ final class LatrGatewayClient {
         }
 
         let initial = try await signedRequest()
-        let (data, response) = try await urlSession.data(for: initial)
+        let (data, response) = try await measuredData(for: initial, route: xrpc.nsid, attempt: 1)
         guard let http = response as? HTTPURLResponse else {
             throw SocialWireError.badResponse("Missing L@tr gateway response.")
         }
@@ -401,7 +466,7 @@ final class LatrGatewayClient {
         }
         if shouldRetryNonceChallenge(http) {
             let retry = try await signedRequest()
-            let (retryData, retryResponse) = try await urlSession.data(for: retry)
+            let (retryData, retryResponse) = try await measuredData(for: retry, route: xrpc.nsid, attempt: 2)
             guard let retryHTTP = retryResponse as? HTTPURLResponse else {
                 throw SocialWireError.badResponse("Missing L@tr gateway response.")
             }
@@ -444,10 +509,12 @@ final class LatrGatewayClient {
     private func preparedGatewaySession() async throws -> PreparedGatewaySession {
         let session = try await auth.validSession()
         if !LatrGatewayEnvironment.usesDirectExternalGateway {
-            return PreparedGatewaySession(
-                session: session,
-                attestationReceipt: try await warmSessionAttestation(session: session)
-            )
+            if let receipt = sessionReceiptCache.value(for: session) {
+                return PreparedGatewaySession(session: session, attestationReceipt: receipt)
+            }
+            let receipt = try await warmSessionAttestation(session: session)
+            sessionReceiptCache.store(receipt, for: session)
+            return PreparedGatewaySession(session: session, attestationReceipt: receipt)
         }
         return PreparedGatewaySession(session: session, attestationReceipt: nil)
     }
@@ -523,7 +590,9 @@ final class LatrGatewayClient {
         for spec in specs {
             let url = session.pdsURL.appending(path: "xrpc/\(spec.nsid)")
             for _ in 0 ..< spec.count {
+                try Task.checkCancellation()
                 await auth.dpop.advancePdsDpopNonce(session: session, urlSession: urlSession)
+                try Task.checkCancellation()
                 proofs.append(
                     try await auth.dpop.proof(
                         method: spec.httpMethod,
@@ -567,6 +636,10 @@ final class LatrGatewayClient {
 
     nonisolated static func proofSpecs(for method: LatrXRPCMethod) -> [(nsid: String, httpMethod: String, count: Int)] {
         switch method {
+        case .getOpenGraph:
+            // L@tr independently attests the PDS session before resolving previews.
+            // The Social Wire gateway's own session proof cannot be reused for this hop.
+            [("com.atproto.server.getSession", "GET", 1)]
         case .listBookmarks:
             [("com.atproto.repo.listRecords", "GET", 9)]
         case .listTags:
