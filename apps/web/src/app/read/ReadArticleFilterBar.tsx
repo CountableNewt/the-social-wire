@@ -129,7 +129,7 @@ export function ReadArticleFilterBar() {
     : partialRefresh ? partialRefresh.statusMessage : refresh.isError ? "Refresh Incomplete — Try Again" : refreshMessage;
   return (
     <FeedHeader title={feedTitle} subtitle={
-      projectionError && !refreshMessage && !refresh.isError ? <span role="alert" className="text-destructive" title={projectionError.message}>Couldn’t refresh. Try Refresh.</span> : refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" title={partialRefresh?.message} className={cn("hidden sm:inline", refresh.isError && !partialRefresh && "text-destructive")}>{refreshStatus}{partialRefresh ? <span className="sr-only">. {partialRefresh.message}</span> : null}</span> : undefined
+      projectionError && !refreshMessage && !refresh.isError && !refresh.isPending ? <span role="alert" className="text-destructive" title={projectionError.message}>Couldn’t refresh. Try Refresh.</span> : refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" title={partialRefresh?.message} className={cn("hidden sm:inline", refresh.isError && !partialRefresh && "text-destructive")}>{refreshStatus}{partialRefresh ? <span className="sr-only">. {partialRefresh.message}</span> : null}</span> : undefined
     } mobileStatus={
       refreshStatus ? <span role="status" aria-live="polite" aria-atomic="true" className={refresh.isError && !partialRefresh ? "text-destructive" : undefined}>{refreshStatus}{partialRefresh ? <span className="block text-xs">{partialRefresh.hosts.join(", ")}</span> : null}</span> : undefined
     }>

@@ -94,6 +94,9 @@ export async function refreshReaderFeeds({
       assertSession();
       const query = activeQueries[nextIndex++];
       const scope = feedScope(query.queryKey)!;
+      const revision = generations.get(query.queryHash);
+      if (revision === undefined || getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
+        queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
       try {
         const freshPage = await awaitWithAbort(listAggregateFeedFromAppView({
           ...scope,
@@ -104,7 +107,8 @@ export async function refreshReaderFeeds({
         // Read gestures own their flags; a response from before a gesture or a
         // newer manual refresh cannot replace the current cache.
         if (readFeedRefreshRevision(queryClient, oauthSession) !== readRevision ||
-            getFeedRefreshRevision(queryClient, query.queryKey) !== generations.get(query.queryHash)) continue;
+            getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
+            queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
         queryClient.setQueryData<InfiniteData<EntriesPage>>(query.queryKey, current =>
           mergeFeedRefreshForFilter(current, freshPage, scope.filter)
         );

@@ -40,7 +40,7 @@ import { publicationEntryIsCached } from "@/lib/unreadCounts";
 import { PDS_READ_STATE_SYNC_EVENT, loadPDSReadStateSync, pdsReadStateEnabled, usesPDSReadState } from "@/lib/pdsReadStateRuntime";
 import { PDSReadStateSyncNotice } from "@/components/Account/PDSReadStateSyncNotice";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import { invalidateReadFeedRefreshes, recordReadEntryMutations } from "@/lib/feedRefreshCoordinator";
+import { cancelViewerFeedRefreshes, invalidateReadFeedRefreshes, recordReadEntryMutations } from "@/lib/feedRefreshCoordinator";
 import type { EntriesPage } from "@/hooks/useEntries";
 
 type LocalReadAction = {
@@ -163,7 +163,9 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     setMutationError(undefined);
     bumpReadEpoch();
     recordReadEntryMutations(queryClient, oauth, [entryId]);
-    void queryClient.cancelQueries({ predicate: query => isViewerReadFeed(query.queryKey, oauth.did) }).then(() => {
+    // Public read actions already retire the viewer query generation. Avoid
+    // cancelling the replacement cold request while installing optimistic rows.
+    void Promise.resolve().then(() => {
       if (actionIsCurrent(entryId, action)) patchReadFeedRows(queryClient, oauth.did, entryId, read);
     }).catch(() => {});
     let queue = writes.current.get(oauth);
@@ -230,6 +232,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     (entryId: string, options?: MarkEntryReadOptions) => {
       const pending = pendingEntryReadState(entryId);
       if (pending === true || pending !== false && readMap[entryId]) return;
+      if (viewerDid) void cancelViewerFeedRefreshes(queryClient, viewerDid);
       const readAt = new Date().toISOString();
       syncReadMarkToAppView(entryId, readAt);
       setReadMap((prev) => {
@@ -263,6 +266,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
 
   const markEntryUnread = useCallback(
     (entryId: string, options?: MarkEntryReadOptions) => {
+      if (viewerDid) void cancelViewerFeedRefreshes(queryClient, viewerDid);
       syncUnreadMarkToAppView(entryId);
       if (viewerDid) {
         queryClient.setQueriesData<InfiniteData<EntriesPage>>(
@@ -321,6 +325,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
   const markEntriesRead = useCallback(
     (entryIds: string[], options?: MarkEntriesReadOptions) => {
       if (entryIds.length === 0) return;
+      if (viewerDid) void cancelViewerFeedRefreshes(queryClient, viewerDid);
       const unique = [...new Set(entryIds)];
       let didMarkAny = false;
       setReadMap((prev) => {
@@ -362,6 +367,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
   const markEntriesUnread = useCallback(
     (entryIds: string[], options?: MarkEntriesReadOptions) => {
       if (entryIds.length === 0) return;
+      if (viewerDid) void cancelViewerFeedRefreshes(queryClient, viewerDid);
       const unique = [...new Set(entryIds)];
       const unreadIds = new Set(unique);
       for (const id of unique) syncUnreadMarkToAppView(id);

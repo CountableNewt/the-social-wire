@@ -1,3 +1,4 @@
+import { invalidateReadFeedRefreshes, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import { describe, expect, it } from "bun:test";
 import { QueryClient, type InfiniteData } from "@tanstack/react-query";
 
@@ -8,7 +9,7 @@ import {
   applyUnreadCountsEvent,
   writeStreamedEntriesPage,
 } from "@/lib/bootstrapStreamState";
-import { invalidateReadFeedRefreshes, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { advanceFeedRefreshRevision, cancelViewerFeedRefreshes, captureFeedRefreshRevisions, getFeedRefreshRevision, getViewerReadStateRevision } from "@/lib/feedRefreshCoordinator";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 import { ENTRIES_QUERY_KEY, type EntriesPage } from "@/hooks/useEntries";
 
@@ -67,6 +68,41 @@ function row(
 }
 
 describe("writeStreamedEntriesPage", () => {
+  for (const filter of ["all", "unread"] as const) {
+    for (const source of ["live_projection", "projection_cache"] as const) {
+      it(`rejects ${source} ${filter} bootstrap data after a read change with no target query`, async () => {
+        const qc = new QueryClient();
+        const viewer = "did:plc:absent-viewer";
+        const publicationId = "at://did:plc:author/site.standard.publication/absent";
+        const key = [...ENTRIES_QUERY_KEY(viewer, publicationId), filter];
+        const revisions = captureFeedRefreshRevisions(qc);
+        const readRevision = getViewerReadStateRevision(qc, viewer);
+        await cancelViewerFeedRefreshes(qc, viewer);
+        expect(getFeedRefreshRevision(qc, key)).toBe(0);
+        const payload = { publicationId: encodeURIComponent(publicationId), source,
+          cachedAt: "2026-01-01T00:00:00Z", entries: [{ entryId: "old", title: "Old", isRead: true, publishedAt: "2026-01-01" }] };
+        writeStreamedEntriesPage(qc, viewer, payload, filter, revisions, readRevision);
+        expect(qc.getQueryState(key)).toBeUndefined();
+        // A new stream after the action can still seed the same absent scope.
+        writeStreamedEntriesPage(qc, viewer, payload, filter, captureFeedRefreshRevisions(qc), getViewerReadStateRevision(qc, viewer));
+        expect(qc.getQueryData(key)).toBeDefined();
+        qc.clear();
+      });
+    }
+  }
+
+  it("accepts an absent scope when only another viewer changed read state", async () => {
+    const qc = new QueryClient();
+    const viewer = "did:plc:viewer";
+    const publicationId = "at://did:plc:author/site.standard.publication/absent";
+    const revisions = captureFeedRefreshRevisions(qc);
+    const readRevision = getViewerReadStateRevision(qc, viewer);
+    await cancelViewerFeedRefreshes(qc, "did:plc:other");
+    writeStreamedEntriesPage(qc, viewer, { publicationId, source: "live_projection", entries: [] }, "all", revisions, readRevision);
+    expect(qc.getQueryData([...ENTRIES_QUERY_KEY(viewer, publicationId), "all"])).toBeDefined();
+    qc.clear();
+  });
+
   const publicationId = "rss:aHR0cHM6Ly9leGFtcGxlLnRlc3QvcnNz";
   const queryKey = [...ENTRIES_QUERY_KEY("did:plc:viewer", publicationId), "all"];
   const cached = {
@@ -76,6 +112,55 @@ describe("writeStreamedEntriesPage", () => {
     ],
     pageParams: [undefined, "next"],
   };
+
+  for (const filter of ["all", "unread"] as const) {
+    for (const source of ["live_projection", "projection_cache"] as const) {
+      it(`rejects ${source} ${filter} chunks after a read-state cancellation`, async () => {
+        const qc = new QueryClient();
+        const key = [...ENTRIES_QUERY_KEY("did:plc:viewer", publicationId), filter];
+        // Capture before the eventual target scope even exists in the cache.
+        const revisions = captureFeedRefreshRevisions(qc);
+        qc.setQueryData(key, cached, { updatedAt: 1 });
+        await cancelViewerFeedRefreshes(qc, "did:plc:viewer");
+        qc.setQueryData<InfiniteData<EntriesPage>>(key, current => ({
+          ...current!, pages: current!.pages.map(page => ({ ...page, entries: page.entries.map(entry => ({ ...entry, isRead: false })) })),
+        }));
+        await qc.invalidateQueries({ queryKey: key, exact: true, refetchType: "none" });
+        const before = qc.getQueryState(key)!;
+        writeStreamedEntriesPage(qc, "did:plc:viewer", {
+          publicationId: encodeURIComponent(publicationId), source,
+          cachedAt: "2099-01-01T00:00:00Z",
+          entries: [{ ...cached.pages[0].entries[0], isRead: true }],
+        }, filter, revisions);
+        const after = qc.getQueryState(key)!;
+        expect(after.data).toBe(before.data);
+        expect(after.dataUpdatedAt).toBe(before.dataUpdatedAt);
+        expect(after.isInvalidated).toBe(true);
+        expect(qc.getQueryDefaults(key)).toEqual({});
+        expect(qc.getQueryCache().getAll()).toHaveLength(1);
+        qc.clear();
+      });
+    }
+  }
+
+  it("copies nonzero stream-start generations and looks up the complete normalized query identity", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(queryKey, cached, { updatedAt: 1 });
+    advanceFeedRefreshRevision(qc, queryKey);
+    const revisions = captureFeedRefreshRevisions(qc);
+    advanceFeedRefreshRevision(qc, [...queryKey.slice(0, -1), "unread"]);
+    advanceFeedRefreshRevision(qc, ["entries", "did:plc:other", publicationId, "all"]);
+    const payload = { publicationId: encodeURIComponent(publicationId), entries: [fresh], source: "live_projection" as const };
+    writeStreamedEntriesPage(qc, "did:plc:viewer", payload, "all", revisions);
+    expect(qc.getQueryData<InfiniteData<EntriesPage>>(queryKey)?.pages[0].entries[0]).toEqual(fresh);
+    advanceFeedRefreshRevision(qc, queryKey);
+    const before = qc.getQueryState(queryKey)!;
+    writeStreamedEntriesPage(qc, "did:plc:viewer", { ...payload, entries: [] }, "all", revisions);
+    expect(qc.getQueryState(queryKey)?.data).toBe(before.data);
+    expect(qc.getQueryState(queryKey)?.dataUpdatedAt).toBe(before.dataUpdatedAt);
+    expect(revisions(queryKey)).toBe(1);
+    qc.clear();
+  });
 
   for (const id of [publicationId, encodeURIComponent(publicationId)]) {
     it(`preserves all cached pages and freshness when unavailable (${id})`, () => {
@@ -196,23 +281,7 @@ describe("writeStreamedEntriesPage", () => {
       });
     }
 
-    for (const filter of ["all", "unread"] as const) {
-      it(`rejects ${source} ${filter} writes after a read mutation without advancing freshness`, () => {
-        const qc = new QueryClient();
-        const key = [...ENTRIES_QUERY_KEY("did:plc:viewer", publicationId), filter];
-        qc.setQueryData(key, cached, { updatedAt: existingUpdatedAt });
-        const before = qc.getQueryData<InfiniteData<EntriesPage>>(key);
-        const session = {};
-        const snapshot = { session, revision: readFeedRefreshRevision(qc, session) };
-        invalidateReadFeedRefreshes(qc, session);
-        writeStreamedEntriesPage(qc, "did:plc:viewer", {
-          publicationId, entries: [], source, cachedAt: freshCachedAt,
-        }, filter, snapshot);
-        expect(qc.getQueryData<InfiniteData<EntriesPage>>(key)).toBe(before);
-        expect(qc.getQueryState(key)?.dataUpdatedAt).toBe(existingUpdatedAt);
-        qc.clear();
-      });
-    }
+
   }
 
   for (const entries of [[], [{ entryId: "stream", title: "Stream", publishedAt: "2026-01-01" }]]) {
@@ -505,4 +574,16 @@ describe("applySidebarFoldersEvent", () => {
     expect(merged).toBe(base);
     expect(merged.folderSections?.[0]?.publications[0]?.title).toBe("Alpha");
   });
+});
+
+
+it("rejects streamed entries after the same OAuth session changes read state", () => {
+  const client = new QueryClient();
+  const session = { did: "did:plc:viewer" };
+  const snapshot = { session, revision: readFeedRefreshRevision(client, session) };
+  invalidateReadFeedRefreshes(client, session);
+  const publicationId = "at://did:plc:author/site.standard.publication/absent";
+  writeStreamedEntriesPage(client, session.did, { publicationId, source: "live_projection", entries: [] }, "all", undefined, undefined, snapshot);
+  expect(client.getQueryData([...ENTRIES_QUERY_KEY(session.did, publicationId), "all"])).toBeUndefined();
+  client.clear();
 });

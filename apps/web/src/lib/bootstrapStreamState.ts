@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
-import { readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { getFeedRefreshRevision, getViewerReadStateRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 import type { ParsedBootstrapStreamEvent } from "@/lib/bootstrapStreamModels";
@@ -400,10 +400,14 @@ export function writeStreamedEntriesPage(
   viewerDid: string,
   payload: Extract<ParsedBootstrapStreamEvent, { kind: "entriesPage" }>["payload"],
   articleFilter: "all" | "unread" = "all",
+  revisionAtStreamStart?: (queryKey: readonly unknown[]) => number,
+  readStateRevisionAtStreamStart?: number,
   readSnapshot?: { session: object; revision: number }
 ): void {
   // Missing evidence is not an authoritative empty feed, nor a fresh snapshot.
   if (payload.source === "unavailable") return;
+  if (readStateRevisionAtStreamStart !== undefined &&
+    readStateRevisionAtStreamStart !== getViewerReadStateRevision(queryClient, viewerDid)) return;
   if (readSnapshot && readFeedRefreshRevision(queryClient, readSnapshot.session) !== readSnapshot.revision) return;
   const updatedAt = payload.source === "projection_cache"
     ? Date.parse(payload.cachedAt ?? "")
@@ -411,6 +415,8 @@ export function writeStreamedEntriesPage(
   if (updatedAt !== undefined && !Number.isFinite(updatedAt)) return;
   const publicationKey = normalizeAtRepoParam(payload.publicationId);
   const queryKey = [...ENTRIES_QUERY_KEY(viewerDid, publicationKey), articleFilter] as const;
+  if (revisionAtStreamStart &&
+    revisionAtStreamStart(queryKey) !== getFeedRefreshRevision(queryClient, queryKey)) return;
   const currentState = queryClient.getQueryState(queryKey);
   // Projection timestamps describe the data, unlike the time the stream arrives.
   // In particular, a delayed warm chunk must not roll back a newer feed fetch.

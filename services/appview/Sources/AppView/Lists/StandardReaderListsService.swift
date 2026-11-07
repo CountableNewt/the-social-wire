@@ -18,6 +18,7 @@ actor StandardReaderListsService {
   private var siteCacheRevision = 0
   private var siteURLCache: [String: (url: String?, expiresAt: Date)] = [:]
   private var publicationDetailsCache: [String: StandardReaderListPublicationDTO] = [:]
+  private var publicationDetailLoads: [String: (revision: Int, task: Task<StandardReaderListPublicationRead?, Never>)] = [:]
   private let publicationProjection: PublicationProjectionService?
 
   init(reader: any StandardReaderListReading, publicationProjection: PublicationProjectionService? = nil) {
@@ -203,22 +204,10 @@ actor StandardReaderListsService {
     let missing = list.publications.filter { siteURLCache[$0]?.expiresAt ?? .distantPast <= Date() }
     for start in stride(from: 0, to: missing.count, by: 5) {
       let batch = Array(missing.dropFirst(start).prefix(5))
-      let values = await withTaskGroup(of: (String, String?, StandardReaderListPublicationDTO?).self) { group in
+      await withTaskGroup(of: Void.self) { group in
         for uri in batch {
-          group.addTask {
-            if let publication = try? await self.reader.publicationDetails(uri) {
-              return (uri, publication.siteURL, publication.details)
-            }
-            return (uri, nil, nil)
-          }
+          group.addTask { await self.loadPublicationDetails(uri, revision: cacheRevision) }
         }
-        var values: [(String, String?, StandardReaderListPublicationDTO?)] = []
-        for await value in group { values.append(value) }
-        return values
-      }
-      for (uri, url, details) in values where siteCacheRevision == cacheRevision {
-        siteURLCache[uri] = (url, Date().addingTimeInterval(url == nil ? 60 : 3600))
-        if let details { publicationDetailsCache[uri] = details }
       }
     }
     if siteURLCache.count > 2000 { siteURLCache = siteURLCache.filter { $0.value.expiresAt > Date() } }
@@ -232,6 +221,27 @@ actor StandardReaderListsService {
           publicationScopeAtUris: scope.publicationScopeAtUris, publicationSiteUrls: urls),
         sectionKeys: [], updatedAt: scope.updatedAt)
     }
+  }
+
+  /// Public publication metadata is shared by lists and viewers. Coalesce concurrent
+  /// misses without allowing a pre-refresh lookup to populate the next cache generation.
+  private func loadPublicationDetails(_ uri: String, revision: Int) async {
+    guard siteCacheRevision == revision else { return }
+    if let cached = siteURLCache[uri], cached.expiresAt > Date() { return }
+    let task: Task<StandardReaderListPublicationRead?, Never>
+    if let existing = publicationDetailLoads[uri], existing.revision == revision {
+      task = existing.task
+    } else {
+      let reader = self.reader
+      task = Task { try? await reader.publicationDetails(uri) }
+      publicationDetailLoads[uri] = (revision, task)
+    }
+    let publication = await task.value
+    if publicationDetailLoads[uri]?.revision == revision { publicationDetailLoads[uri] = nil }
+    guard siteCacheRevision == revision else { return }
+    let url = publication?.siteURL
+    siteURLCache[uri] = (url, Date().addingTimeInterval(url == nil ? 60 : 3600))
+    if let details = publication?.details { publicationDetailsCache[uri] = details }
   }
 
   private func enriched(_ response: StandardReaderListsResponse, viewerDid: String) async -> StandardReaderListsResponse {
