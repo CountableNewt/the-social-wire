@@ -20,7 +20,7 @@ const push = mock(() => {});
 const replace = mock(() => {});
 let params: URLSearchParams;
 let catalogError: Error | undefined;
-let profileValue = { did: post.author.did, handle: "other.test", displayName: "Other Person", description: "A profile biography", postsCount: 8, viewer: {} };
+let profileValue = { did: post.author.did, handle: "other.test", displayName: "Other Person", pronouns: "he/they", description: "A profile biography", postsCount: 8, viewer: {} };
 const restores: (() => void)[] = [];
 let cache: QueryClient;
 beforeEach(() => {
@@ -37,7 +37,7 @@ beforeEach(() => {
   }
   params = new URLSearchParams({ actor: post.author.did, returnTo: "/social?feed=original" });
   catalogError = undefined; push.mockClear(); replace.mockClear();
-  profileValue = { did: post.author.did, handle: "other.test", displayName: "Other Person", description: "A profile biography", postsCount: 8, viewer: {} };
+  profileValue = { did: post.author.did, handle: "other.test", displayName: "Other Person", pronouns: "he/they", description: "A profile biography", postsCount: 8, viewer: {} };
   cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const router = spyOn(Navigation, "useRouter").mockReturnValue({ push, replace } as unknown as ReturnType<typeof Navigation.useRouter>);
   const path = spyOn(Navigation, "usePathname").mockReturnValue("/social/profile");
@@ -55,7 +55,8 @@ function show() { return render(<QueryClientProvider client={cache}><SidebarProv
 describe("other-user profile page", () => {
   it("reuses profile identity and content tabs while keeping private likes and own controls separate", async () => {
     show();
-    expect(screen.getByRole("heading", { name: "Other Person" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Other Person he/they" })).toBeTruthy();
+    expect(screen.getByText("he/they").closest("h2")?.tagName).toBe("H2");
     expect(screen.getByText("A profile biography")).toBeTruthy();
     for (const name of ["Posts", "Replies", "Media", "Likes"]) expect(screen.getByRole("button", { name })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publications" }) === null).toBe(true);
@@ -70,6 +71,7 @@ describe("other-user profile page", () => {
     show();
     expect(screen.getByText("Profile withheld by your moderation settings.")).toBeTruthy();
     expect(screen.queryByText("Other Person") === null).toBe(true);
+    expect(screen.queryByText("he/they")).toBeNull();
     expect(screen.queryByRole("button", { name: "Posts" }) === null).toBe(true);
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
   });
@@ -99,6 +101,7 @@ describe("other-user profile page", () => {
     show();
     await waitFor(() => expect(screen.getByRole("button", { name: "Log In Again" })).toBeTruthy());
     expect(screen.queryByText("Other Person") === null).toBe(true);
+    expect(screen.queryByText("he/they")).toBeNull();
   });
   it("validates internal profile destinations and rejects external Back destinations", () => {
     expect(socialProfilePageHref("did:plc:other", "/social/explore?q=trees&type=people")).toContain("returnTo=%2Fsocial%2Fexplore%3Fq%3Dtrees%26type%3Dpeople");

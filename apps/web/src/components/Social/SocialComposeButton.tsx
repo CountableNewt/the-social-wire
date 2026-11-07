@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SquarePen } from "lucide-react";
 import type { AppBskyDraftDefs } from "@atproto/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { useSkejScheduling } from "@/hooks/useSkejScheduling";
 import { scheduledInstant } from "@/components/ContentCalendar/calendarDates";
 import { ScheduleTimingControls } from "./ScheduleTimingControls";
@@ -141,6 +142,7 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
 
   async function publish(allowMissingAlt = false) {
     if (busy.current || publishedRef.current || !valid || !session || !draft.loaded) return;
+    if (mode === "schedule" && !isPostSchedulingEnabled()) { setError("Post Scheduling Is Not Enabled."); return; }
     if (mode === "schedule" && segments.some(segment => segment.media)) { setError("Attachments Are Not Yet Supported For Scheduled Posts. Choose Post Now."); return; }
     if (!allowMissingAlt && !publication.current?.segments.some(item => item.attempted) && segments.some(segment => missingMediaAlt(segment.media))) { setAltWarning(true); return; }
     setAltWarning(false);
@@ -215,8 +217,8 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
           {segments.length > 1 ? <p className="text-xs text-muted-foreground">Threads Publish in Order. Each Post Replies to the Previous Post.</p> : null}
           {locked ? <p role="status" className="text-sm text-muted-foreground">{completed} of {segments.length} Posts Published. Retry Continues This Thread.</p> : null}
           {locked && !pending ? discardRequested ? <div className="rounded-xl border p-3 text-sm"><p>Discard the Remaining Draft? Published Posts Will Stay on Bluesky. A Post With an Unconfirmed Result May Also Have Published.</p><div className="mt-2 flex gap-2"><Button type="button" variant="destructive" onClick={() => { void draft.clear().then(() => { resetDraft(); setError(undefined); }).catch(() => setError("Draft Could Not Be Cleared")); }}>Discard Remaining Draft</Button><Button type="button" variant="outline" onClick={() => setDiscardRequested(false)}>Keep Draft</Button></div></div> : <Button type="button" variant="outline" onClick={() => setDiscardRequested(true)}>{segments.length > 1 ? "Start a New Thread" : "Start A New Post"}</Button> : null}
-          {isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && toolsAvailable ? <p className="text-xs text-muted-foreground">Multi-account support and scheduling require Pro.</p> : null}
-          {(isPro && mode === "schedule") ? <SchedulingReadiness connected={scheduler.readiness.data?.connected} pending={scheduler.readiness.isPending} failed={scheduler.readiness.isError} connectUrl={scheduler.connectUrl} retry={() => { void scheduler.readiness.refetch(); }} /> : null}
+          {isPostSchedulingEnabled() && isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && toolsAvailable ? <p className="text-xs text-muted-foreground">{isPostSchedulingEnabled() ? "Multi-account support and scheduling require Pro." : "Multi-account support requires Pro."}</p> : null}
+          {(isPostSchedulingEnabled() && isPro && mode === "schedule") ? <SchedulingReadiness connected={scheduler.readiness.data?.connected} pending={scheduler.readiness.isPending} failed={scheduler.readiness.isError} connectUrl={scheduler.connectUrl} retry={() => { void scheduler.readiness.refetch(); }} /> : null}
           {!draft.loaded ? <p role="status">Restoring Draft…</p> : <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{draft.saving ? "Saving Draft…" : draft.status}</p>}
           {draft.pendingCleanups ? <div role="status" className="text-sm text-muted-foreground">Post Published. Draft Cleanup Will Retry.<Button type="button" variant="outline" disabled={pending} onClick={() => { void draft.retryCleanups().catch(() => {}); }}>Retry Draft Cleanup</Button></div> : null}
           {draft.completed || published ? <Button type="button" variant="outline" disabled={pending || draft.saving} onClick={() => { void retryDraftSync(); }}>Finish Draft Cleanup</Button> : null}

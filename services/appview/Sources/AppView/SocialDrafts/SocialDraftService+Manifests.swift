@@ -69,6 +69,7 @@ extension SocialDraftService {
       for old in previous.attachments {
         let references = try await connection.query("""
           SELECT EXISTS(SELECT 1 FROM private_social_draft_bindings WHERE owner=\(owner) AND asset_id=\(old.assetId)::uuid)
+            OR EXISTS(SELECT 1 FROM private_article_draft_bindings WHERE owner=\(owner) AND asset_id=\(old.assetId)::uuid)
           """, logger: self.logger)
         var referenced = false
         for try await row in references { referenced = try row.decode(Bool.self) }

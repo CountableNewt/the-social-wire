@@ -6,6 +6,7 @@ import { isMissingOAuthScope, SCOPE_RECOVERY_MESSAGE } from "@/lib/oauthScopeRec
 import type { SocialModerationOpts } from "@/lib/socialModerationTypes";
 import { hydrateSocialReplies } from "./hydrateSocialReplies";
 import { socialModerationScope } from "./socialQueryScope";
+import { configureSocialVideoViewValidation } from "./socialVideoViewValidation";
 
 export type SocialFeed = {
   kind: "following" | "feed" | "list";
@@ -34,7 +35,9 @@ export type BlueskySocialPage = {
 export function createAuthenticatedAppViewAgent(session: OAuthSession): Agent {
   const network = getAtprotoNetwork();
   const agent = network.appLabelers === undefined ? new Agent(session) : new LocalAppViewAgent(session, network.appLabelers);
-  return agent.withProxy("bsky_appview", network.appViewDid);
+  const proxied = agent.withProxy("bsky_appview", network.appViewDid);
+  configureSocialVideoViewValidation(proxied);
+  return proxied;
 }
 
 function validFeedUri(uri: string, kind: "feed" | "list"): boolean {
@@ -214,13 +217,6 @@ export async function getBlueskySocialPage(args: {
   return { ...response.data, feed: args.deferReplyHydration ? response.data.feed : await hydrateSocialReplies(agent, response.data.feed, args.signal) };
 }
 
-export async function hydrateBlueskySocialPage(session: OAuthSession, page: BlueskySocialPage, signal: AbortSignal, moderation: ModerationOpts): Promise<BlueskySocialPage> {
-  const agent = createAuthenticatedAppViewAgent(session);
-  if (moderation.userDid !== session.did) throw new Error("Your account changed. Please reload this feed.");
-  agent.configureLabelers(moderation.prefs.labelers.map(labeler => labeler.did));
-  return { ...page, feed: await hydrateSocialReplies(agent, page.feed, signal) };
-}
-
 /** Keep repost identity while deduplicating overlaps between paginated results. */
 export function socialPostIdentity(item: AppBskyFeedDefs.FeedViewPost): string {
   const reason = item.reason;
@@ -248,4 +244,12 @@ export function socialErrorMessage(error: unknown): string {
   if (isMissingOAuthScope(error) || (error instanceof Error && error.message === SCOPE_RECOVERY_MESSAGE)) return SCOPE_RECOVERY_MESSAGE;
   if (error instanceof Error && /moderation settings|account changed|social feed link|Choose one social feed/.test(error.message)) return error.message;
   return "This social feed could not be loaded. Please retry.";
+}
+
+/** Optional reply decoration runs after the moderated timeline has painted. */
+export async function hydrateBlueskySocialPage(session: OAuthSession, page: BlueskySocialPage, signal: AbortSignal, moderation: ModerationOpts): Promise<BlueskySocialPage> {
+  const agent = createAuthenticatedAppViewAgent(session);
+  if (moderation.userDid !== session.did) throw new Error("Your account changed. Please reload this feed.");
+  agent.configureLabelers(moderation.prefs.labelers.map(labeler => labeler.did));
+  return { ...page, feed: await hydrateSocialReplies(agent, page.feed, signal) };
 }

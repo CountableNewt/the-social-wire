@@ -57,16 +57,18 @@ export function SocialVideoPlayer({ video, src }: { video: AppBskyEmbedVideo.Vie
     };
   }, [src, attempt]);
   const ratio = video.aspectRatio;
+  const validRatio = ratio && Number.isFinite(ratio.width) && Number.isFinite(ratio.height) && ratio.width > 0 && ratio.height > 0;
+  const aspectRatio = validRatio ? `${ratio.width} / ${ratio.height}` : "16 / 9";
   return <div className="flex min-w-0 flex-col gap-2">
-    <div className="relative">
+    <div className="relative overflow-hidden rounded-xl bg-black" style={{ aspectRatio }}>
     <video ref={ref} controls playsInline preload="metadata" poster={socialHttpsUrl(video.thumbnail)}
-      aria-label={video.alt || "Post Video"} width={ratio?.width} height={ratio?.height}
-      style={ratio && ratio.width > 0 && ratio.height > 0 ? { aspectRatio: `${ratio.width} / ${ratio.height}` } : undefined}
-      onError={() => setFailed(true)} className="block h-auto w-full rounded-xl" />
+      aria-label={video.alt || "Post Video"} width={validRatio ? ratio.width : undefined} height={validRatio ? ratio.height : undefined}
+      style={{ aspectRatio }}
+      onError={() => setFailed(true)} className="block h-full w-full object-contain" />
     {video.alt ? <SocialAltTextBadge alt={video.alt} label="View Video Alt Text" /> : null}
-    </div>
-    {failed ? <div role="status" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+    {failed ? <div role="status" className="absolute inset-0 flex flex-wrap items-center justify-center gap-3 bg-background/90 p-3 text-sm text-muted-foreground">
       <p>Video Could Not Be Loaded.</p><Button size="sm" variant="outline" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry Video</Button>
     </div> : null}
+    </div>
   </div>;
 }

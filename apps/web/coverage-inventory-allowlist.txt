@@ -17,12 +17,8 @@ src/components/AppSidebar/AppSidebarSkeleton.tsx
 src/components/AppSidebar/AssignFolderDialog.tsx
 src/components/AppSidebar/NewFolder/types.ts
 src/components/AppSidebar/PublicationTabButton.tsx
-src/components/EntryDetail/EntryArticleEmbed.tsx
-src/components/EntryDetail/EntryArticleEmbedInner.tsx
 src/components/EntryDetail/EntryArticleEmbedTypes.ts
 src/components/EntryDetail/EntryDetail.tsx
-src/components/EntryDetail/IframeArticleEmbed.tsx
-src/components/EntryDetail/OEmbedArticleView.tsx
 src/components/EntryList/EntryListVirtualPane.types.ts
 src/components/SavedLinks/SavedLinkPublicationChip.tsx
 src/components/SavedLinks/SavedLinkRowActions.tsx
@@ -33,11 +29,7 @@ src/components/shared/ResizableListColumn.tsx
 src/hooks/usePublicationSidebarProjection.ts
 src/hooks/useSavedLinkPublication.ts
 src/hooks/useSavedLinkSocialEntry.ts
-src/lib/embedProbeCache.ts
 src/lib/latrGatewayDebugClient.ts
-src/lib/oEmbedCache.ts
-src/lib/oEmbedClient.ts
-src/lib/sanitizeOEmbedHtml.ts
 
 # TSW-107: Existing authenticated integration surfaces awaiting rendered coverage.
 # Circle query/action provider integration with the editorial layout; feed/action contracts are covered.
@@ -56,6 +48,7 @@ src/components/Podcasts/PodcastBridgeStatus.tsx
 src/lib/podcasts/publicClip.ts
 
 # Articles domain types contain only erased TypeScript declarations.
+src/lib/articles/articleDraftCloudTypes.ts
 src/lib/articles/articleDraftTypes.ts
 src/lib/articles/articlePublishingTypes.ts
 

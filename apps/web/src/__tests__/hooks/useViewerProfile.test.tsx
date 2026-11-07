@@ -18,7 +18,7 @@ let queryClient: QueryClient;
 const restores: (() => void)[] = [];
 const oauthFetch = mock(async (path: string) => {
   expect(String(path)).toContain("com.atproto.repo.getRecord");
-  return Response.json({ uri: `at://${alice}/app.bsky.actor.profile/self`, cid, value: { $type: "app.bsky.actor.profile", displayName: "PDS Alice", description: "Repository fallback" } });
+  return Response.json({ uri: `at://${alice}/app.bsky.actor.profile/self`, cid, value: { $type: "app.bsky.actor.profile", displayName: "PDS Alice", pronouns: "she/her", description: "Repository fallback" } });
 });
 function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -72,12 +72,12 @@ describe("viewer profile public read boundary", () => {
       expect(url.origin).toBe(BSKY_APPVIEW_PUBLIC);
       expect(url.searchParams.get("actor")).toBe(alice);
       expect(new Headers(init?.headers).has("Authorization")).toBe(false);
-      return Response.json({ did: alice, handle: "alice.test", displayName: "Alice", banner: "https://images.test/banner.png", followersCount: 0, followsCount: 12, postsCount: 34 });
+      return Response.json({ did: alice, handle: "alice.test", displayName: "Alice", pronouns: "they/them", banner: "https://images.test/banner.png", followersCount: 0, followsCount: 12, postsCount: 34 });
     }, { preconnect: globalThis.fetch.preconnect }));
     restores.push(() => fetch.mockRestore());
     const { result } = renderHook(() => useViewerProfile(), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toMatchObject({ did: alice, banner: "https://images.test/banner.png", followersCount: 0, followsCount: 12, postsCount: 34 });
+    expect(result.current.data).toMatchObject({ did: alice, pronouns: "they/them", banner: "https://images.test/banner.png", followersCount: 0, followsCount: 12, postsCount: 34 });
     expect(oauthFetch).not.toHaveBeenCalled();
   });
 
@@ -86,7 +86,7 @@ describe("viewer profile public read boundary", () => {
     restores.push(() => fetch.mockRestore());
     const { result } = renderHook(() => useViewerProfile(), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual({ did: alice, handle: alice, displayName: "PDS Alice", description: "Repository fallback" });
+    expect(result.current.data).toEqual({ did: alice, handle: alice, displayName: "PDS Alice", pronouns: "she/her", description: "Repository fallback" });
     expect(oauthFetch).toHaveBeenCalledTimes(1);
     expect(String(oauthFetch.mock.calls[0]?.[0])).toContain("com.atproto.repo.getRecord");
     expect(result.current.data?.followersCount).toBeUndefined();

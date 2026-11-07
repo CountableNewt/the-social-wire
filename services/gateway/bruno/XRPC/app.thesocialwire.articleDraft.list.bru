@@ -1,0 +1,26 @@
+meta {
+  name: XRPC app.thesocialwire.articleDraft.list
+  type: http
+  seq: 120
+}
+
+get {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.articleDraft.list?limit=20
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}
+
+docs {
+  Owner-only encrypted server-side article drafts. Never writes draft content or images to the PDS.
+  Responses are private, no-store and nosniff; authenticated DID determines ownership.
+  Use canonical lowercase UUID articleDraftId and articleDraftMutationId values.
+  CAS expectedRevision is 0 for creation; reuse a mutation ID only with its identical request.
+  Tombstones never resurrect. Upload private photos through socialDraft reserve/upload first,
+  then bind them atomically with put attachments [{localAssetId, assetId}].
+  list uses exclusive UUID cursor pagination (limit 1..20) and includes tombstones.
+}

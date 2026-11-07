@@ -75,6 +75,7 @@ enum AppViewRouterBuilder {
       repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient, plcURL: config.core.atprotoPLCURL, logger: logger))))
       .register(on: protected)
     SocialDraftRoutes(service: socialDraftService).register(on: protected)
+    ArticleDraftRoutes(service: socialDraftService).register(on: protected)
     if config.toolsEnabled, let analyticsStore {
       let reader = AnalyticsHTTPReader(repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient,
         plcURL: config.core.atprotoPLCURL, logger: logger), http: httpClient)

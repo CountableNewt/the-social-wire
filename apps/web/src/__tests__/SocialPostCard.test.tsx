@@ -45,6 +45,64 @@ function card(value: AppBskyFeedDefs.FeedViewPost, prefs = moderation) {
 }
 
 describe("Social Post Rendering", () => {
+  it("shows profile pronouns beside the author name", () => {
+    const element = document.createElement("div");
+    element.innerHTML = card(item({ author: { ...author, pronouns: "  they/them  " } }));
+    const pronouns = Array.from(element.querySelectorAll("span")).find(node => node.textContent === "they/them")!;
+    expect(pronouns.textContent).toBe("they/them");
+    expect(pronouns.closest("a")!.textContent).toBe("Other they/them");
+  });
+  it("omits absent and blank author pronouns", () => {
+    for (const pronouns of [undefined, "", "   "]) {
+      const element = document.createElement("div");
+      element.innerHTML = card(item({ author: { ...author, pronouns } }));
+      expect(element.querySelector("[data-social-feed-section=author] a.block")?.textContent).toBe("Other");
+    }
+  });
+  it("shows the reposter's own pronouns beside their attribution name", () => {
+    const value = item();
+    value.reason = { $type: "app.bsky.feed.defs#reasonRepost", by: {
+      did: "did:plc:reposter", handle: "reposter.test", displayName: "Reposter", pronouns: "she/her",
+    }, indexedAt: value.post.indexedAt };
+    const element = document.createElement("div");
+    element.innerHTML = card(value);
+    const pronouns = Array.from(element.querySelectorAll("span")).find(node => node.textContent === "she/her")!;
+    expect(pronouns.textContent).toBe("she/her");
+    expect(pronouns.closest("a")!.textContent).toBe("Reposter she/her");
+  });
+  it("hides pronouns with moderated author and reposter identities", () => {
+    const hidden = { ...author, pronouns: "private-pronouns", labels: [{
+      src: "did:plc:labeler", uri: `at://${author.did}/app.bsky.actor.profile/self`, val: "!hide", cts: "2026-10-09T10:00:00Z",
+    }] };
+    expect(card(item({ author: hidden }))).not.toContain("private-pronouns");
+    const value = item();
+    value.reason = { $type: "app.bsky.feed.defs#reasonRepost", by: hidden, indexedAt: value.post.indexedAt };
+    expect(card(value)).not.toContain("private-pronouns");
+  });
+  it("shows a quoted author's pronouns beside the quoted name", () => {
+    const html = card(item({ embed: { $type: "app.bsky.embed.record#view", record: {
+      $type: "app.bsky.embed.record#viewRecord", uri: "at://did:plc:quoted/app.bsky.feed.post/abc", cid: item().post.cid,
+      author: { did: "did:plc:quoted", handle: "quoted.test", displayName: "Quoted", pronouns: "he/him" },
+      value: { $type: "app.bsky.feed.post", text: "Quoted post", createdAt: "2026-10-09T10:00:00.000Z" },
+      indexedAt: "2026-10-09T10:00:00.000Z",
+    } } }));
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    const pronouns = Array.from(element.querySelectorAll("blockquote span")).find(node => node.textContent === "he/him")!;
+    expect(pronouns.closest("a")!.textContent).toBe("Quoted he/him");
+  });
+  it("names stable post sections so background embed growth can preserve the reading position", () => {
+    const value = item({ embed: { $type: "app.bsky.embed.external#view", external: {
+      uri: "https://example.com/article", title: "Article", description: "Preview",
+    } } });
+    const html = renderToStaticMarkup(<SocialPostCard item={value} moderation={moderation} actions={<button>Reply</button>} />);
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    for (const section of ["author", "body", "embed", "actions"]) {
+      expect(element.querySelector(`[data-social-feed-section="${section}"]`)).not.toBeNull();
+    }
+    expect(element.querySelector('[data-social-feed-section="actions"]')!.textContent).toBe("Reply");
+  });
   it("places a compact timestamp in the author header using the post creation time", () => {
     const value = item({ indexedAt: "2026-10-10T12:00:00.000Z" });
     const html = card(value);
@@ -182,6 +240,7 @@ describe("Social Post Rendering", () => {
             author: {
               did: "did:plc:quoted",
               handle: "quoted.test",
+              pronouns: "quoted-private-pronouns",
               viewer: { muted: true },
             },
             value: {
@@ -208,6 +267,7 @@ describe("Social Post Rendering", () => {
     );
     expect(html).not.toContain("Quoted secret");
     expect(html).not.toContain("quoted.jpg");
+    expect(html).not.toContain("quoted-private-pronouns");
   });
   it("uses UTF-8 facets and refuses unsafe link protocols", () => {
     const record = {
@@ -247,7 +307,12 @@ describe("Social Post Rendering", () => {
         },
       },
     }));
-    expect(html).toContain('class="mx-auto block h-auto max-h-60 w-auto max-w-full"');
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    const image = element.querySelector("img")!;
+    expect(image.className).toContain("absolute inset-0 h-full w-full object-contain");
+    expect(image.parentElement!.className).toContain("h-48");
+    expect(image.parentElement!.className).toContain("sm:h-60");
     expect(html).not.toContain("object-cover");
   });
   it("rejects unsafe external embed and image URLs", () => {

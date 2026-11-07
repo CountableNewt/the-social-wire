@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.articleDraft.get",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Owner-only encrypted server-private article drafts. Authentication required; owner comes only from the authenticated DID. Never publishes drafts or images to the PDS. Responses use private, no-store and nosniff. Storage unavailable returns Unavailable. Saves use expectedRevision CAS and durable mutationId idempotency; tombstones never resurrect. Explicit Publish/Schedule remain separate actions. Clients resolve unlocked cross-device conflicts by payload.updatedAt (latest edit wins); ties, tombstones, and publication/schedule claims prefer the server.",
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Conflict"
+        },
+        {
+          "name": "UploadPending"
+        },
+        {
+          "name": "Quota"
+        },
+        {
+          "name": "Unavailable"
+        }
+      ],
+      "parameters": {
+        "type": "params",
+        "required": [
+          "draftId"
+        ],
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.articleDraft.defs#document"
+        }
+      }
+    }
+  }
+}
