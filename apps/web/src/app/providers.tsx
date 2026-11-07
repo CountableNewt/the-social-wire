@@ -9,6 +9,7 @@ import {
   type Query,
 } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { SocialVerificationProvider } from "@/contexts/SocialVerificationContext";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AppearanceProvider } from "@/hooks/useAppearance";
 import { createIndexedDbQueryPersister } from "@/lib/indexedDbQueryPersister";
@@ -84,7 +85,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <Suspense fallback={null}><TabUsageObserver /></Suspense>
           <CircleViewerCacheCleanup />
           <SocialViewerCacheCleanup />
-          <PodcastPlayerProvider>{children}</PodcastPlayerProvider>
+          <SocialVerificationProvider><PodcastPlayerProvider>{children}</PodcastPlayerProvider></SocialVerificationProvider>
         </AuthProvider>
       </PersistQueryClientProvider>
     </AppearanceProvider>

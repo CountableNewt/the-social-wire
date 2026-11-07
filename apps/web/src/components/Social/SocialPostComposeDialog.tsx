@@ -1,8 +1,9 @@
 "use client";
 
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AppBskyFeedPost, moderateProfile, type ModerationOpts, type AppBskyFeedDefs } from "@atproto/api";
+import { moderateProfile, type ModerationOpts, type AppBskyFeedDefs } from "@atproto/api";
 import { useComposeLinkPreview } from "@/hooks/useComposeLinkPreview";
 import { SocialComposeLinkCard } from "./SocialComposeLinkCard";
 import { useComposerDraft } from "@/hooks/useComposerDraft";
@@ -69,7 +70,7 @@ function SocialAccountPostComposeDialog({ post, moderation, mode, trigger }: Com
   const recipient = identity.filter || identity.blur || identity.noOverride ? "Account" : `@${post.author.handle}`;
   const quote = mode === "quote";
   const title = quote ? "Quote Post" : "Reply";
-  const disabled = !session || moderation.userDid !== session.did || (quote ? post.viewer?.embeddingDisabled : post.viewer?.replyDisabled) || !AppBskyFeedPost.validateRecord(post.record).success;
+  const disabled = !session || moderation.userDid !== session.did || (quote ? post.viewer?.embeddingDisabled : post.viewer?.replyDisabled) || !validateSocialPostRecord(post.record).success;
 
   function changeOpen(value: boolean) {
     if (busy.current) return;

@@ -1,5 +1,5 @@
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import {
-  AppBskyFeedPost,
   moderatePost,
   type AppBskyFeedDefs,
   type ModerationOpts,
@@ -10,7 +10,7 @@ export function moderateSocialPost(
   post: AppBskyFeedDefs.PostView,
   options: ModerationOpts,
 ) {
-  const record = AppBskyFeedPost.validateRecord(post.record);
+  const record = validateSocialPostRecord(post.record);
   return moderatePost(
     record.success
       ? post

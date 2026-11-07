@@ -177,6 +177,14 @@ describe("Bluesky post creation", () => {
     });
     await createBlueskyPost({ session, text: "@missing.test" });
   });
+  it("replies to a long upstream post while keeping newly authored text limits", async () => {
+    let writes = 0;
+    const session = sessionFor(request => { writes++; expect(request.body!.record).toMatchObject({ text: "Short Reply", reply: { parent: { uri: replyTo.uri } } }); return result; });
+    const target = { ...replyTo, record: { ...replyTo.record, text: "🦋".repeat(1100) } };
+    await expect(createBlueskyPost({ session, text: "Short Reply", replyTo: target })).resolves.toEqual(result);
+    await expect(createBlueskyPost({ session, text: "x".repeat(301), replyTo: target })).rejects.toThrow("at most 300 characters");
+    expect(writes).toBe(1);
+  });
   it("posts a reply with the exact target as root and parent directly to the viewer PDS", async () => {
     const session = sessionFor(request => {
       expect(request.method).toBe("com.atproto.repo.createRecord");

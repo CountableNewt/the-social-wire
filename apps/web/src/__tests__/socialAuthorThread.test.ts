@@ -6,6 +6,15 @@ function node(id: string, parent?: AppBskyFeedDefs.ThreadViewPost, author = "did
   return { $type: "app.bsky.feed.defs#threadViewPost", post: { $type: "app.bsky.feed.defs#postView", uri: `at://${author}/app.bsky.feed.post/${id}`, cid: "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", author: { did: author, handle: "op.test" }, record: { $type: "app.bsky.feed.post", text: id, createdAt: "2026-10-10T00:00:00Z", ...(parent ? { reply: { root: { uri: parent.post.uri, cid: parent.post.cid }, parent: { uri: parent.post.uri, cid: parent.post.cid } } } : {}) }, indexedAt: "2026-10-10T00:00:00Z", replyCount: 0 }, replies: [] };
 }
 describe("OP authored thread", () => {
+  it("retains author-thread ancestry and count for complete long posts", () => {
+    const root = node("root"), self = node("self", root);
+    root.post.record = { ...(root.post.record as object), text: "🦋".repeat(1000) };
+    self.post.record = { ...(self.post.record as object), text: "Long reply ".repeat(400) };
+    root.replies = [self]; self.parent = root;
+    expect(socialAuthorThread(root, moderation)).toEqual({ count: 2, partial: false });
+    expect(socialAuthorThreadRoot(self).post.uri).toBe(root.post.uri);
+    expect(socialAuthorThreadUri({ post: { ...root.post, replyCount: 1 } })).toBe(root.post.uri);
+  });
   it("includes root and self-replies but stops at other authors", () => {
     const root = node("root"); const self = node("self", root); const other = node("other", root, "did:plc:other");
     self.replies = [node("self2", self)]; other.replies = [node("op-through-other", other)]; root.replies = [self, other];

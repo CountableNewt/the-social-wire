@@ -1,6 +1,7 @@
 "use client";
 
-import { AppBskyFeedPost, AppBskyFeedDefs, type ModerationOpts } from "@atproto/api";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
+import { AppBskyFeedDefs, type ModerationOpts } from "@atproto/api";
 import { MessagesSquare } from "lucide-react";
 import { SocialAuthorThreadIndicator } from "./SocialAuthorThreadIndicator";
 import { SocialPostCard } from "./SocialPostCard";
@@ -16,7 +17,7 @@ export function InteractiveSocialPost({ item, moderation, showReplyParentActions
   const navigation = useSocialPostNavigation();
   if (isSocialInteractionHidden(resolvedItem, moderation)) return null;
   const content = moderateSocialPost(item.post, moderation).ui("contentList");
-  const showContext = !content.filter && !content.blur && !content.noOverride && AppBskyFeedPost.validateRecord(item.post.record).success;
+  const showContext = !content.filter && !content.blur && !content.noOverride && validateSocialPostRecord(item.post.record).success;
   const grouped = showContext && !!resolvedItem.reply && !(AppBskyFeedDefs.isPostView(resolvedItem.reply.parent) && resolvedItem.reply.parent.uri === item.post.uri);
   const parent = resolvedItem.reply && AppBskyFeedDefs.isPostView(resolvedItem.reply.parent) ? resolvedItem.reply.parent : undefined;
   const root = resolvedItem.reply?.root;

@@ -1,4 +1,5 @@
-import { AppBskyFeedDefs, AppBskyFeedPost, type ModerationOpts } from "@atproto/api";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
+import { AppBskyFeedDefs, type ModerationOpts } from "@atproto/api";
 import { moderateSocialPost } from "@/components/Social/socialModeration";
 import { socialReplyMetadata } from "./socialReplyMetadata";
 import { isSocialInteractionHidden } from "./socialInteractionModeration";
@@ -8,7 +9,7 @@ export function displayedSocialReplyParent(item: AppBskyFeedDefs.FeedViewPost, m
   const parent = item.reply?.parent;
   if (!AppBskyFeedDefs.isPostView(parent) || parent.uri === item.post.uri) return undefined;
   for (const post of [item.post, parent]) {
-    if (!AppBskyFeedPost.validateRecord(post.record).success) return undefined;
+    if (!validateSocialPostRecord(post.record).success) return undefined;
     const content = moderateSocialPost(post, moderation).ui("contentList");
     if (content.filter || content.blur || content.noOverride) return undefined;
   }

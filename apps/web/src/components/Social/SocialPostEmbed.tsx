@@ -1,3 +1,4 @@
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import {
   AppBskyEmbedExternal,
   AppBskyEmbedImages,
@@ -97,7 +98,7 @@ export function SocialPostEmbed({
         Quoted content unavailable.
       </p>
     );
-  const record = AppBskyFeedPost.validateRecord(quote.value);
+  const record = validateSocialPostRecord(quote.value);
   if (!record.success)
     return (
       <p className="text-sm text-muted-foreground">
@@ -145,7 +146,7 @@ export function SocialPostEmbed({
           actor={quote.author.did}
           className="text-sm font-medium hover:underline"
         >
-          <ProfileDisplayName name={quote.author.displayName || quote.author.handle} pronouns={quote.author.pronouns} />
+          <ProfileDisplayName name={quote.author.displayName || quote.author.handle} pronouns={quote.author.pronouns} subject={quote.author} />
         </SocialProfileLink>
       )}
       <SocialRichText record={record.value} />

@@ -45,6 +45,28 @@ function card(value: AppBskyFeedDefs.FeedViewPost, prefs = moderation) {
 }
 
 describe("Social Post Rendering", () => {
+  it("renders the complete body and trailing facets after upstream post text limits", () => {
+    const prefix = "🦋".repeat(1100) + "\n\n", text = prefix + "Complete Tail";
+    const value = item({ record: { $type: "app.bsky.feed.post", text, createdAt: "2026-10-09T10:00:00.000Z", facets: [{ index: { byteStart: new TextEncoder().encode(prefix).length, byteEnd: new TextEncoder().encode(text).length }, features: [{ $type: "app.bsky.richtext.facet#link", uri: "https://example.com/tail" }] }] } });
+    const element = document.createElement("div"); element.innerHTML = card(value);
+    const body = element.querySelector('[data-social-feed-section="body"]')!;
+    expect(body.textContent).toBe("🦋".repeat(1100) + "Complete Tail");
+    expect(body.querySelector("a")?.textContent).toBe("Complete Tail");
+    expect(body.querySelector("a")?.getAttribute("href")).toBe("https://example.com/tail");
+    expect(body.querySelector('[class*="line-clamp"]')).toBeNull();
+  });
+  it("renders the full long quoted post and still moderates words beyond character 300", () => {
+    const text = "Visible content ".repeat(250) + "secret-tail";
+    const quoted = item({ embed: { $type: "app.bsky.embed.record#view", record: {
+      $type: "app.bsky.embed.record#viewRecord", uri: "at://did:plc:quoted/app.bsky.feed.post/long", cid: item().post.cid,
+      author: { did: "did:plc:quoted", handle: "quoted.test" },
+      value: { $type: "app.bsky.feed.post", text, createdAt: "2026-10-09T10:00:00.000Z" }, indexedAt: "2026-10-09T10:00:00.000Z",
+    } } });
+    expect(card(quoted)).toContain("secret-tail");
+    const muted: ModerationOpts = { ...moderation, prefs: { ...moderation.prefs, mutedWords: [{ value: "secret-tail", targets: ["content"], actorTarget: "all" }] } };
+    expect(card(quoted, muted)).not.toContain("secret-tail");
+    expect(card(item({ record: { $type: "app.bsky.feed.post", text, createdAt: "2026-10-09T10:00:00.000Z" } }), muted)).not.toContain("secret-tail");
+  });
   it("shows profile pronouns beside the author name", () => {
     const element = document.createElement("div");
     element.innerHTML = card(item({ author: { ...author, pronouns: "  they/them  " } }));
