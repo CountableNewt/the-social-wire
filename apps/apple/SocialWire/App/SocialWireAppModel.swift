@@ -263,6 +263,7 @@ final class SocialWireAppModel {
                 self.pendingRestoredFeedSelection = nil
                 self.pendingRestorationRevision = nil
                 self.bootstrapCoordinator.reset()
+                self.resetSavedLinkSessionState()
                 self.isLoading = false
                 self.sidebarFetching = false
                 self.folderPublicationsLoading = false
@@ -885,15 +886,7 @@ final class SocialWireAppModel {
         gatewayAllPublicationRows = []
         gatewayFolderMap = [:]
         appViewRoutesAvailable = true
-        savedLinksRefreshCoordinator.reset()
-        savedLinksPrewarmTask?.cancel()
-        savedLinksPrewarmTask = nil
-        savedLinksPrewarmID = UUID()
-        savedLinksSnapshotViewerDID = nil
-        savedPreviewCache = SavedLinkPreviewCache()
-        savedPreviewCacheViewerDID = nil
-        savedLinks = []
-        archivedSavedLinks = []
+        resetSavedLinkSessionState()
         entries = []
         selectedEntry = nil
         selectedPublication = nil
@@ -3856,9 +3849,28 @@ final class SocialWireAppModel {
         return normalized.isEmpty ? nil : "site:\(normalized)"
     }
 
+    private func resetSavedLinkSessionState() {
+        savedLinksRefreshCoordinator.reset()
+        savedLinksPrewarmTask?.cancel()
+        savedLinksPrewarmTask = nil
+        savedLinksPrewarmID = UUID()
+        savedLinksSnapshotViewerDID = nil
+        savedPreviewCache = SavedLinkPreviewCache()
+        savedPreviewCacheViewerDID = nil
+        savedPreviewRequests = []
+        savedLinks = []
+        archivedSavedLinks = []
+    }
+
+    private func ownsSavedLinkRequest(_ identity: ReaderSessionIdentity) -> Bool {
+        !Task.isCancelled && identity.matches(session: authService.session, loginIdentity: authService.loginIdentity)
+    }
+
     func enrichSavedLinkPreview(_ save: MergedLatrSave) async {
         guard !isSembleReadLaterEnabled, save.needsPreview, let viewerDID else { return }
-        let key = "\(viewerDID)|\(save.id)"
+        let identity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
+        guard ownsSavedLinkRequest(identity) else { return }
+        let key = "\(authService.loginIdentity)|\(save.id)"
         restoreSavedPreviewCache(viewerDID: viewerDID)
         if let cached = savedPreviewCache.metadata(for: save.id) {
             LoadingDiagnostics.log("preview cache-hit")
@@ -3870,22 +3882,28 @@ final class SocialWireAppModel {
 
         var metadata = LatrSaveMetadata()
         var url = save.url
-        if url == nil, let subject = save.subjectUri,
-           let detail = try? await gateway.fetchAppViewEntryDetail(entryId: subject) {
-            metadata.title = detail.title
-            metadata.publishedAt = detail.publishedAt
-            metadata.linkedWebUrl = detail.canonicalURL?.absoluteString
-            url = detail.canonicalURL
+        if url == nil, let subject = save.subjectUri {
+            let detail = try? await gateway.fetchAppViewEntryDetail(entryId: subject)
+            guard ownsSavedLinkRequest(identity) else { return }
+            if let detail {
+                metadata.title = detail.title
+                metadata.publishedAt = detail.publishedAt
+                metadata.linkedWebUrl = detail.canonicalURL?.absoluteString
+                url = detail.canonicalURL
+            }
         }
-        if let url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-           let preview = try? await latrGateway.preview(for: url) {
-            metadata.title = metadata.title ?? preview.title
-            metadata.excerpt = preview.description
-            metadata.image = preview.image
-            metadata.site = preview.siteName
-            metadata.author = preview.author
+        if let url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            let preview = try? await latrGateway.preview(for: url)
+            guard ownsSavedLinkRequest(identity) else { return }
+            if let preview {
+                metadata.title = metadata.title ?? preview.title
+                metadata.excerpt = preview.description
+                metadata.image = preview.image
+                metadata.site = preview.siteName
+                metadata.author = preview.author
+            }
         }
-        guard self.viewerDID == viewerDID,
+        guard ownsSavedLinkRequest(identity),
               metadata.title != nil || metadata.image != nil || metadata.excerpt != nil else { return }
         savedPreviewCache.store(metadata, for: save.id)
         if let body = try? JSONEncoder().encode(savedPreviewCache) {
@@ -3922,16 +3940,19 @@ final class SocialWireAppModel {
             return
         }
         guard let viewerDID else { return }
+        let identity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
+        guard ownsSavedLinkRequest(identity) else { return }
         restoreSavedPreviewCache(viewerDID: viewerDID)
         restoreSavedLinksSnapshot(viewerDID: viewerDID)
         scheduleSavedLinksPrewarm(viewerDID: viewerDID)
         await savedLinksRefreshCoordinator.refresh(force: force) { [weak self] in
-            guard let self, self.viewerDID == viewerDID else { return false }
-            return await self.loadSavedLinks(viewerDID: viewerDID)
+            guard let self, self.ownsSavedLinkRequest(identity) else { return false }
+            return await self.loadSavedLinks(viewerDID: viewerDID, identity: identity)
         }
     }
 
-    private func loadSavedLinks(viewerDID: String) async -> Bool {
+    private func loadSavedLinks(viewerDID: String, identity: ReaderSessionIdentity) async -> Bool {
+        guard ownsSavedLinkRequest(identity) else { return false }
         let start = ProcessInfo.processInfo.systemUptime
         var outcome = "failed"
         defer { LoadingDiagnostics.log("saved-refresh end outcome=\(outcome) totalMs=\(LoadingDiagnostics.milliseconds(since: start)) active=\(savedLinks.count) archived=\(archivedSavedLinks.count)") }
@@ -3943,17 +3964,19 @@ final class SocialWireAppModel {
                     let migrationStart = ProcessInfo.processInfo.systemUptime
                     defer { LoadingDiagnostics.log("saved-migration ms=\(LoadingDiagnostics.milliseconds(since: migrationStart))") }
                     let conflicts = try await latrGateway.migrateLegacyIfNeeded(viewerDID: viewerDID)
+                    guard ownsSavedLinkRequest(identity) else { return false }
                     if conflicts > 0 {
                         errorMessage = "\(conflicts) legacy bookmark conflict\(conflicts == 1 ? " was" : "s were") left unchanged and will be retried later."
                     }
                 } catch {
+                    guard ownsSavedLinkRequest(identity) else { return false }
                     attemptedBookmarkMigration = false
                     errorMessage = error.localizedDescription
                     return false
                 }
             }
             let bookmarks = try await latrGateway.listBookmarks { [weak self] page in
-                guard let self, self.viewerDID == viewerDID, !Task.isCancelled else { return }
+                guard let self, self.ownsSavedLinkRequest(identity) else { return }
                 // Keep cached later pages visible until the complete refresh replaces them.
                 let fetchedIDs = Set(page.map(\.id))
                 let remaining = (savedLinks + archivedSavedLinks).filter { !fetchedIDs.contains($0.id) }
@@ -3963,13 +3986,13 @@ final class SocialWireAppModel {
                 savedLinks = visible.filter { ($0.state ?? "unread") != "archived" }
                 archivedSavedLinks = visible.filter { ($0.state ?? "unread") == "archived" }
                 LoadingDiagnostics.log("saved-list painted rows=\(page.count)")
-            }.map { save in
-                guard let preview = savedPreviewCache.metadata(for: save.id) else { return save }
-                return save.mergingPreview(preview)
             }
-            guard self.viewerDID == viewerDID, !Task.isCancelled else { return false }
-            savedLinks = bookmarks.filter { ($0.state ?? "unread") != "archived" }
-            archivedSavedLinks = bookmarks.filter { ($0.state ?? "unread") == "archived" }
+            guard ownsSavedLinkRequest(identity) else { return false }
+            let enriched = bookmarks.map { save in
+                savedPreviewCache.metadata(for: save.id).map { save.mergingPreview($0) } ?? save
+            }
+            savedLinks = enriched.filter { ($0.state ?? "unread") != "archived" }
+            archivedSavedLinks = enriched.filter { ($0.state ?? "unread") == "archived" }
             savedLinksSnapshotViewerDID = viewerDID
             persistSavedLinksSnapshot(viewerDID: viewerDID)
             scheduleSavedLinksPrewarm(viewerDID: viewerDID)
@@ -4007,6 +4030,7 @@ final class SocialWireAppModel {
 
     private func scheduleSavedLinksPrewarm(viewerDID: String) {
         guard savedLinksPrewarmTask == nil, !savedLinks.isEmpty, !isSembleReadLaterEnabled else { return }
+        let identity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         let requestID = UUID()
         savedLinksPrewarmID = requestID
         savedLinksPrewarmTask = Task(priority: .utility) { [weak self] in
@@ -4016,16 +4040,18 @@ final class SocialWireAppModel {
             }
             // Let the initial feed paint before warming a small, bounded viewport.
             do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            guard self.viewerDID == viewerDID, !Task.isCancelled else { return }
+            guard ownsSavedLinkRequest(identity) else { return }
             let rows = Array(savedLinks.prefix(12))
             let thumbnails = rows.compactMap { $0.image.flatMap(URL.init(string:)) }
             let favicons = rows.compactMap { resolvedSavedLinkPublicationChip(for: $0)?.faviconURL }
             // Match rendered sizes so prefetch and visible rows share decoded cache entries.
             await ImageCacheService.shared.prefetch(urls: thumbnails, maxPixelSize: 400, concurrency: 2)
+            guard ownsSavedLinkRequest(identity) else { return }
             await ImageCacheService.shared.prefetch(urls: favicons, maxPixelSize: 32, concurrency: 2)
             for save in rows.filter({ $0.needsPreview }).prefix(4) {
-                guard self.viewerDID == viewerDID, !Task.isCancelled else { return }
+                guard ownsSavedLinkRequest(identity) else { return }
                 await enrichSavedLinkPreview(save)
+                guard ownsSavedLinkRequest(identity) else { return }
                 if let updated = savedLinks.first(where: { $0.id == save.id }),
                    let image = updated.image.flatMap(URL.init(string:)) {
                     await ImageCacheService.shared.prefetch(urls: [image], maxPixelSize: 400, concurrency: 1)

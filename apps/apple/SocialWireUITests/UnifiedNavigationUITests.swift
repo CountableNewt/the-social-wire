@@ -73,13 +73,14 @@ final class UnifiedNavigationUITests: XCTestCase {
         XCTAssertTrue(browse.isHittable)
     }
 
-    func testTopicsFeedsSwitchWithHorizontalSwipes() {
+    func testRetiredTopicFeedsAreOmittedFromNativeTopicsSection() {
         let app = launch()
         selectRoot("Topics", in: app)
-        let finance = app.descendants(matching: .any)["news-tab-content-finance"].firstMatch
-        XCTAssertTrue(finance.waitForExistence(timeout: 5))
-        finance.swipeLeft()
-        XCTAssertTrue(app.descendants(matching: .any)["news-tab-content-sports"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Finance"].exists)
+        XCTAssertFalse(app.buttons["Sports"].exists)
+        selectRoot("News", in: app)
+        assertSelectedFeed("Subscribed", in: app)
     }
 
     func testListFeedsSwitchWithHorizontalSwipes() {
@@ -112,7 +113,11 @@ final class UnifiedNavigationUITests: XCTestCase {
     private func assertSections(in app: XCUIApplication) {
         for (title, content) in [("Read Later", "saved"), ("News", "library"), ("Topics", "finance"), ("Lists", "standardLists")] {
             selectRoot(title, in: app)
-            XCTAssertTrue(app.descendants(matching: .any)["news-tab-content-\(content)"].waitForExistence(timeout: 5), title)
+            if title == "Topics" {
+                XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["news-tab-content-\(content)"].waitForExistence(timeout: 5), title)
+            }
         }
         XCTAssertFalse(app.buttons["news-customize-sections"].exists)
         XCTAssertFalse(app.buttons["news-social-timeline"].exists)
