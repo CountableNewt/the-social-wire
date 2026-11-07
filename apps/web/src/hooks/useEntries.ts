@@ -702,7 +702,7 @@ export function useAggregateFeedEntries(
       ? JSON.stringify([paintKey, oauthSessionReloadSeq]) : null,
     refetch,
   );
-  return { ...query, refetch: async () => { await refetch(); } };
+  return { ...query, refetch: async (signal?: AbortSignal) => { await refetch(signal); } };
 }
 
 /**

@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ENTRIES_QUERY_KEY, type EntriesPage } from "@/hooks/useEntries";
 import { queueBootstrapFeedRefresh } from "@/hooks/useProactiveFeedRefresh";
 import { consumeBootstrapStream } from "@/lib/bootstrapStreamClient";
-import { readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { captureFeedRefreshRevisions, getViewerReadStateRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import {
   markBootstrapPerf,
   resetBootstrapPerf,
@@ -204,6 +204,8 @@ function PublicationSidebarProviderInner({
       }
 
       const generation = ++streamGenerationRef.current;
+      const feedRevisions = captureFeedRefreshRevisions(qc);
+      const readStateRevision = getViewerReadStateRevision(qc, did);
       const readRevision = readFeedRefreshRevision(qc, oauth);
       streamSawSidebarSectionRef.current = false;
       pendingAutoSelectPublicationIdRef.current = null;
@@ -268,7 +270,7 @@ function PublicationSidebarProviderInner({
                   event.payload.publicationId;
               }
               if (event.kind === "entriesPage" && !options.force) {
-                writeStreamedEntriesPage(qc, did, event.payload, "all", { session: oauth, revision: readRevision });
+                writeStreamedEntriesPage(qc, did, event.payload, "all", feedRevisions, readStateRevision, { session: oauth, revision: readRevision });
                 bootstrapFeedPublicationIdRef.current =
                   event.payload.publicationId;
                 if (

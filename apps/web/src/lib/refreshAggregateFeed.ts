@@ -27,7 +27,7 @@ export async function refreshAggregateFeed(args: {
   signal?.throwIfAborted();
   if (readFeedRefreshRevision(queryClient, args.oauthSession) !== readRevision || !args.isCurrentSession() || getFeedRefreshRevision(queryClient, queryKey) !== revision) return;
   const fresh = await awaitWithAbort(coalesceFeedFirstPage(queryClient, args.oauthSession, queryKey, () =>
-    listAggregateFeedFromAppView({ feed: args.feed, filter: args.filter, oauthSession: args.oauthSession, signal })
+    listAggregateFeedFromAppView({ feed: args.feed, filter: args.filter, oauthSession: args.oauthSession, signal }), signal
   ), signal);
   signal?.throwIfAborted();
   if (readFeedRefreshRevision(queryClient, args.oauthSession) !== readRevision || !args.isCurrentSession() || getFeedRefreshRevision(queryClient, queryKey) !== revision) return;

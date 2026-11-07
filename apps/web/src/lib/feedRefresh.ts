@@ -151,7 +151,7 @@ async function performPublicationFeedRefresh(args: FeedRefreshArgs): Promise<boo
     articleFilter,
     queryClient,
     skipEnroll,
-  }), signal));
+  }), signal), signal);
 
   signal.throwIfAborted();
   if (!isCurrent() || readFeedRefreshRevision(queryClient, oauthSession) !== readRevision) return false;
