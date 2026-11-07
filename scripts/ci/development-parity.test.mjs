@@ -144,12 +144,6 @@ for (const kind of ['missing', 'executable', 'symlink']) test(`rejects ${kind} g
   const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
   assert.throws(() => r.verify(head), /Missing generated output|non-executable mode|regular committed file/);
 });
-for (const path of ['packages/go/migration/source-inventory.json']) {
-  test(`keeps ${path} subject to the exact source patch proof`, t => {
-    const r = lexiconRepository(t); r.write(path, 'Production-only generated change\n'); const head = r.commit();
-    assert.throws(() => r.verify(head), /missing from Development/);
-  });
-}
 const specPath = 'packages/go/spec/contracts_generated.go';
 const openapiPath = 'packages/spec/openapi.yaml';
 const manifestPath = 'packages/spec/endpoint-manifest.json';
@@ -251,4 +245,124 @@ test('verified derivation preserves dirty files, the original index and refs', t
   const status = r.git('status', '--porcelain'), refs = r.git('show-ref'), index = r.git('write-tree');
   assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [bundlePath]);
   assert.equal(r.git('status', '--porcelain'), status); assert.equal(r.git('show-ref'), refs); assert.equal(r.git('write-tree'), index);
+});
+
+const inventoryPath = 'packages/go/migration/source-inventory.json';
+const inventoryGenerator = 'scripts/go/package-inventory.py';
+const checkoutHelper = 'scripts/go/check-out-swift-contracts.py';
+const extractedManifest = 'packages/go/migration/extracted-swift-packages.json';
+function inventoryRepository(t, corruptBase = false) {
+  const r = repository(t), pinned = repository(t);
+  pinned.write('Package.swift', '// swift-tools-version: 6.0\n');
+  pinned.write('Sources/ExampleCore/Example.swift', 'public struct Example {}\n');
+  pinned.write('Tests/ExampleTests/Example.swift', '// frozen test\n');
+  const revision = pinned.commit();
+  r.write('.gitignore', '/packages/swift/ExampleCore/\n');
+  for (const path of [inventoryGenerator, checkoutHelper]) r.write(path, readFileSync(new URL('../../' + path, import.meta.url)));
+  r.write(extractedManifest, JSON.stringify({ schemaVersion: 1, packages: [{ name: 'ExampleCore', repository: pinned.cwd, revision }] }) + '\n');
+  r.write('packages/spec/package.json', '{"name":"spec"}\n');
+  const baseline = 'paths:\n  /v1/podcasts/list:\n    get: {}\n'
+    + Array.from({ length: 20 }, (_, i) => `  /existing-${i}:\n    get: {}\n`).join('');
+  const article = '  /xrpc/app.example.articleDraft.list:\n    get: {}\n';
+  r.write(openapiPath, baseline);
+  r.write('packages/example/package.json', '{"name":"example"}\n');
+  r.write('packages/example/src/example.ts', 'export const value = 1;\n');
+  r.write('packages/example/tests/fixture.json', '{"nested":true}\n');
+  r.write('services/example/Sources/ExampleCore/Example.swift', 'public struct ServiceExample {}\n');
+  r.write('packages/go/migration/retired-worker-sources.json', '{"workers":[]}\n');
+  const generate = () => {
+    for (const path of [checkoutHelper, inventoryGenerator]) execFileSync('python3', ['-I', path], { cwd: r.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  };
+  generate();
+  if (corruptBase) r.write(inventoryPath, readFileSync(join(r.cwd, inventoryPath), 'utf8') + ' ');
+  const base = r.commit(); r.git('branch', '-f', 'development', base);
+  return { ...r, base, baseline, article, generate,
+    verify: (head, development = 'development') => verifyDevelopmentParity({ cwd: r.cwd, base, head, development }),
+  };
+}
+function sharedInventoryFeature(r, { headDrift = false, developmentDrift = false } = {}) {
+  r.write(openapiPath, r.baseline + r.article); r.generate();
+  if (headDrift) r.write(inventoryPath, readFileSync(join(r.cwd, inventoryPath), 'utf8') + ' ');
+  const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  r.write(openapiPath, (r.baseline + r.article).replace('/v1/podcasts/list', '/xrpc/app.example.podcast.list'));
+  r.generate();
+  if (developmentDrift) r.write(inventoryPath, readFileSync(join(r.cwd, inventoryPath), 'utf8') + ' ');
+  r.commit(); return head;
+}
+test('exactly regenerates all inventory trees with frozen Swift contracts and selective REST retention', t => {
+  const r = inventoryRepository(t), head = sharedInventoryFeature(r);
+  assert.throws(() => r.git('merge-tree', '--write-tree', '--no-messages', `--merge-base=${r.base}`, 'development', head));
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [inventoryPath]);
+  const inventory = JSON.parse(r.git('show', `${head}:${inventoryPath}`));
+  assert.equal(inventory.packages.find(item => item.name === 'ExampleCore').sources.length, 1);
+  assert.equal(inventory.packages.find(item => item.name === 'example').files.length, 3);
+  assert.equal(inventory.serviceLibraries[0].files.length, 1);
+});
+for (const where of ['base', 'head', 'development']) test(`rejects inventory byte drift in ${where}`, t => {
+  const r = inventoryRepository(t, where === 'base');
+  const head = sharedInventoryFeature(r, { headDrift: where === 'head', developmentDrift: where === 'development' });
+  assert.throws(() => r.verify(head), /Generated output verification failed.*inventory is stale/s);
+});
+for (const path of [inventoryGenerator, checkoutHelper, extractedManifest]) test(`rejects changed trusted inventory input ${path} even when backported`, t => {
+  const r = inventoryRepository(t);
+  r.write(path, readFileSync(join(r.cwd, path), 'utf8') + '\n');
+  const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /Untrusted generator change/);
+});
+for (const path of ['packages/example/src/example.ts', 'packages/example/tests/fixture.json', 'services/example/Sources/ExampleCore/Example.swift', 'packages/go/migration/retired-worker-sources.json']) test(`retains strict source parity for inventoried ${path}`, t => {
+  const r = inventoryRepository(t);
+  r.write(path, readFileSync(join(r.cwd, path), 'utf8') + '\n'); r.generate(); const head = r.commit();
+  assert.throws(() => r.verify(head), /missing from Development|conflict.*Development/);
+});
+test('rejects a missing inventoried source even when its deletion is backported', t => {
+  const r = inventoryRepository(t);
+  unlinkSync(join(r.cwd, 'packages/example/tests/fixture.json')); const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /Generated output verification failed.*inventory is stale/s);
+});
+test('rejects inventory-only tampering without canonical source changes', t => {
+  const r = inventoryRepository(t); r.write(inventoryPath, '{}\n'); const head = r.commit();
+  assert.throws(() => r.verify(head), /Generated output verification failed.*inventory is stale/s);
+});
+for (const path of [inventoryGenerator, checkoutHelper, extractedManifest, inventoryPath]) test(`rejects missing inventory proof input ${path}`, t => {
+  const r = inventoryRepository(t); unlinkSync(join(r.cwd, path)); const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /Missing generated output|Missing trusted generation input/);
+});
+for (const kind of ['executable', 'symlink']) test(`rejects ${kind} inventory output`, t => {
+  const r = inventoryRepository(t);
+  if (kind === 'executable') chmodSync(join(r.cwd, inventoryPath), 0o755);
+  else { unlinkSync(join(r.cwd, inventoryPath)); symlinkSync('extracted-swift-packages.json', join(r.cwd, inventoryPath)); }
+  const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /non-executable mode|regular committed file/);
+});
+test('inventory proof ignores dirty working inputs and preserves refs and index', t => {
+  const r = inventoryRepository(t), head = sharedInventoryFeature(r);
+  r.write('packages/example/src/example.ts', 'dirty source'); r.git('add', 'packages/example/src/example.ts');
+  r.write(inventoryPath, 'dirty inventory');
+  const status = r.git('status', '--porcelain'), refs = r.git('show-ref'), index = r.git('write-tree');
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [inventoryPath]);
+  assert.equal(r.git('status', '--porcelain'), status); assert.equal(r.git('show-ref'), refs); assert.equal(r.git('write-tree'), index);
+});
+test('fails closed when frozen contracts cannot be materialized, ignoring existing working checkouts', t => {
+  const r = inventoryRepository(t), head = sharedInventoryFeature(r);
+  const manifest = JSON.parse(readFileSync(join(r.cwd, extractedManifest), 'utf8'));
+  rmSync(manifest.packages[0].repository, { recursive: true, force: true });
+  assert.throws(() => r.verify(head), /Generated output verification failed.*Swift contract checkout failed/s);
+});
+test('proves spec and inventory together from the same complete canonical snapshot', t => {
+  const r = inventoryRepository(t);
+  r.write(generatorPath, readFileSync(new URL('../go/generate-contracts.py', import.meta.url)));
+  r.write(manifestPath, '{"entries":[]}\n');
+  r.write('packages/lexicons/app.example.base.json', '{"lexicon":1,"id":"app.example.base","defs":{"main":{"type":"string"}}}\n');
+  const generateInventory = r.generate;
+  r.generate = () => {
+    execFileSync('python3', ['-I', generatorPath], { cwd: r.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    generateInventory();
+  };
+  r.generate(); const base = r.commit(); r.git('branch', '-f', 'development', base);
+  const head = sharedInventoryFeature(r);
+  const result = verifyDevelopmentParity({ cwd: r.cwd, base, head, development: 'development' });
+  assert.deepEqual(result.verifiedDerivedOutputs, [specPath, inventoryPath]);
 });
