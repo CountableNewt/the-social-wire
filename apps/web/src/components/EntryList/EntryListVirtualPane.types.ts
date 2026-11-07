@@ -1,4 +1,5 @@
 import type { EntryListItem } from "@/lib/atprotoClient";
+import type { RefObject } from "react";
 
 export type EntryListVirtualPaneProps = {
   visibleEntries: EntryListItem[];
@@ -14,6 +15,7 @@ export type EntryListVirtualPaneProps = {
   isFetchNextPageError?: boolean;
   fetchNextPage: () => Promise<unknown>;
   scrollStateKey: string;
+  scrollContainerRef?: RefObject<HTMLDivElement | null>;
   publicationById: ReadonlyMap<
     string,
     { name: string; faviconUrl?: string }
