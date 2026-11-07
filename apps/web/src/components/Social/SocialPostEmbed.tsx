@@ -145,7 +145,7 @@ export function SocialPostEmbed({
           actor={quote.author.did}
           className="text-sm font-medium hover:underline"
         >
-          <ProfileDisplayName name={quote.author.displayName || quote.author.handle} pronouns={quote.author.pronouns} />
+          <ProfileDisplayName name={quote.author.displayName || quote.author.handle} pronouns={quote.author.pronouns} subject={quote.author} />
         </SocialProfileLink>
       )}
       <SocialRichText record={record.value} />

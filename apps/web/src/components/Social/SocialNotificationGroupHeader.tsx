@@ -15,7 +15,7 @@ export function SocialNotificationGroupHeader({ group, moderation }: { group: So
   const identities = group.authors.map(author => {
     const decision = moderateProfile(author, moderation).ui("displayName");
     const withheld = decision.filter || decision.blur || decision.noOverride;
-    return { name: withheld ? author.handle : author.displayName || author.handle, pronouns: withheld ? undefined : author.pronouns };
+    return { subject: withheld ? undefined : author, name: withheld ? author.handle : author.displayName || author.handle, pronouns: withheld ? undefined : author.pronouns };
   });
   const names = identities.map(identity => identity.name);
   const additional = identities.length > 2 ? ` + ${identities.length - 2}` : "";
