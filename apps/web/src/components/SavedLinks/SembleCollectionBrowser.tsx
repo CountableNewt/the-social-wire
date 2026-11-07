@@ -362,7 +362,7 @@ export function SembleCollectionBrowser({
 
   return (
     <>
-      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden border-x border-border/70">
+      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden">
         <div data-floating-glass-controls ref={attachFloatingGlassControlsOverlay} className="flex flex-col">
           <header className={`m-2 shrink-0 p-4 ${floatingGlassClasses}`}>
             <div className="flex items-baseline justify-between gap-4">
