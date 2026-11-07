@@ -6,6 +6,7 @@ import { createAuthenticatedAppViewAgent } from "@/lib/blueskySocialClient";
 import { composeExternalEmbed, type ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
 import { postTextLength } from "@/lib/blueskyComposeClient";
 import { getSkejEnvironment, type SKEJ_SCHEDULING_METHODS } from "./skejEnvironment";
+import { assertPostSchedulingEnabled } from "@/lib/postScheduling";
 
 export type SkejScheduleStatus = "draft" | "scheduled" | "blocked" | "publishing" | "published" | "failed" | "canceled";
 export interface SkejScheduleRecord {
@@ -46,6 +47,7 @@ type Method = typeof SKEJ_SCHEDULING_METHODS[number];
 export type SkejSchedulingActor = { session: OAuthSession; assertCurrentActor: () => void };
 
 async function request(actor: SkejSchedulingActor, method: Method, input?: unknown, signal?: AbortSignal): Promise<unknown> {
+  assertPostSchedulingEnabled();
   actor.assertCurrentActor();
   const environment = getSkejEnvironment();
   const { data } = await createOAuthAgent(actor.session).com.atproto.server.getServiceAuth({ aud: environment.audience, lxm: method, exp: Math.floor(Date.now() / 1000) + 60 }, { signal });
@@ -91,6 +93,7 @@ export async function listSkejSchedules(actor: SkejSchedulingActor, signal?: Abo
   return body.records.map(item => summary(item, actor.session.did));
 }
 export async function createSkejSchedule(actor: SkejSchedulingActor, text: string, scheduledAt: string, linkPreview?: ComposeLinkPreview): Promise<SkejScheduleSummary> {
+  assertPostSchedulingEnabled();
   const length = postTextLength(text);
   if (!compilePostText(text).text.trim() || length.graphemes > 300 || length.bytes > 3000) throw new Error("Posts Must Contain 1–300 Characters and At Most 3,000 UTF-8 Bytes.");
   const scheduled = validateScheduledAt(scheduledAt);
@@ -112,6 +115,7 @@ function canonicalJSON(value: unknown): string {
 
 /** The payload is public in the user's at.skej.schedule record before publication. */
 export async function createSkejArticleSchedule(actor: SkejSchedulingActor, preparedDocument: SkejArticleDocument, publishRkey: string, scheduledAt: string): Promise<SkejArticleScheduleSummary> {
+  assertPostSchedulingEnabled();
   actor.assertCurrentActor();
   let scheduled: string;
   let document: SkejArticleDocument;
@@ -153,6 +157,7 @@ export async function createSkejArticleSchedule(actor: SkejSchedulingActor, prep
 }
 
 function assertEditable(actor: SkejSchedulingActor, item: SkejScheduleSummary) {
+  assertPostSchedulingEnabled();
   actor.assertCurrentActor(); summary(item, actor.session.did);
   if (!["draft", "scheduled", "blocked", "failed"].includes(item.status)) throw new Error("This Scheduled Content Can No Longer Be Changed.");
 }

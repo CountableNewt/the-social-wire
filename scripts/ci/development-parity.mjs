@@ -25,6 +25,8 @@ function ancestor(cwd, base, head) {
 const derivedOutputs = [
   { path: 'packages/go/lexicons/contracts_generated.go', generator: 'scripts/go/generate-contracts.py',
     input: path => path.startsWith('packages/lexicons/') && path.endsWith('.json') },
+  { path: 'packages/go/spec/contracts_generated.go', generator: 'scripts/go/generate-contracts.py',
+    input: path => ['packages/spec/openapi.yaml', 'packages/spec/endpoint-manifest.json'].includes(path) },
 ];
 
 function exists(cwd, ref, path) {
@@ -58,8 +60,8 @@ function generationSnapshot(cwd, ref, directory, index, outputs) {
   const paths = records.flatMap(record => {
     const separator = record.indexOf('\t');
     const metadata = record.slice(0, separator), path = record.slice(separator + 1);
-    // The trusted generator renders both bundles; only its Lexicon output is
-    // eligible for derived verification. OpenAPI/spec outputs remain strict.
+    // Both bundles must regenerate from their own committed canonical inputs.
+    // Those source inputs remain subject to the exact patch proof below.
     const needed = generators.has(path) || outputs.some(output => output.path === path) ||
       ['packages/spec/endpoint-manifest.json', 'packages/spec/openapi.yaml'].includes(path) ||
       derivedOutputs.some(output => output.input(path));

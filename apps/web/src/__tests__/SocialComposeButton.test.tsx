@@ -102,6 +102,13 @@ async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
   return await loadedField();
 }
+it("keeps immediate posting available without scheduling controls when the flag is off", async () => {
+  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+  fireEvent.change(await open(), { target: { value: "Publish Now" } });
+  expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Connect Scheduling" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Post" }).hasAttribute("disabled")).toBe(false);
+});
 
 async function loadedField() {
   await screen.findByRole("textbox", { name: "Post Text" });
@@ -252,7 +259,8 @@ it("prevents duplicate submission and closing while a post is pending", async ()
   await act(async () => resolve({ uri: "at://did:plc:viewer/app.bsky.feed.post/new", cid: "cid" }));
 });
 
-it("publishes and resolves mentions as the selected brand without replacing personal auth", async () => {
+it.each(["true", "false"])("publishes and resolves mentions as the selected brand without replacing personal auth (scheduling: %s)", async flag => {
+  process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = flag;
   const brand = { did: "did:plc:brand" } as unknown as OAuthSession;
   const linked = spyOn(brands, "useBrandAccounts").mockReturnValue([brand.did]); restores.push(() => linked.mockRestore());
   let allowed = true;
@@ -268,6 +276,7 @@ it("publishes and resolves mentions as the selected brand without replacing pers
   expect((picker as HTMLSelectElement).value).toBe(oauth.did);
   fireEvent.change(picker, { target: { value: brand.did } });
   const field = await screen.findByRole("textbox", { name: "Brand Post Text" });
+  if (flag === "false") expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
   fireEvent.change(field, { target: { value: "Hi @person", selectionStart: 10 } });
   fireEvent.click(await screen.findByRole("option", { name: "@person.test" }));
   expect(people.mock.calls[0][0].session).toBe(brand);
@@ -286,6 +295,12 @@ it("publishes and resolves mentions as the selected brand without replacing pers
   const schedule = mockSchedule();
   fireEvent.change(screen.getByRole("combobox", { name: "Post As" }), { target: { value: brand.did } });
   fireEvent.change(await screen.findByRole("textbox", { name: "Brand Post Text" }), { target: { value: "Brand Scheduled" } });
+  if (flag === "false") {
+    expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
+    expect(schedule).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledTimes(1);
+    return;
+  }
   fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
   const value = localDateTimeValue(new Date(Date.now() + 3_600_000));
   fireEvent.change(screen.getByLabelText("Publish At"), { target: { value } });
@@ -670,3 +685,7 @@ it("publishes when draft sync is down using the durable local publication journa
   fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
   expect((await loadedField()).value).toBe("");
 });
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });

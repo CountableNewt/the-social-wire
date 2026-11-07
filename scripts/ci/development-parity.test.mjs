@@ -144,12 +144,107 @@ for (const kind of ['missing', 'executable', 'symlink']) test(`rejects ${kind} g
   const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
   assert.throws(() => r.verify(head), /Missing generated output|non-executable mode|regular committed file/);
 });
-for (const path of ['packages/go/spec/contracts_generated.go', 'packages/go/migration/source-inventory.json']) {
+for (const path of ['packages/go/migration/source-inventory.json']) {
   test(`keeps ${path} subject to the exact source patch proof`, t => {
     const r = lexiconRepository(t); r.write(path, 'Production-only generated change\n'); const head = r.commit();
     assert.throws(() => r.verify(head), /missing from Development/);
   });
 }
+const specPath = 'packages/go/spec/contracts_generated.go';
+const openapiPath = 'packages/spec/openapi.yaml';
+const manifestPath = 'packages/spec/endpoint-manifest.json';
+function specRepository(t, corruptBase = false) {
+  const r = lexiconRepository(t);
+  const baseline = 'openapi: 3.1.0\npaths:\n  /v1/podcasts/list:\n    get: {}\n'
+    + Array.from({ length: 20 }, (_, i) => `  /existing-${i}:\n    get: {}\n`).join('');
+  const article = '  /xrpc/app.example.articleDraft.list:\n    get: {}\n';
+  r.write(openapiPath, baseline);
+  r.generate();
+  if (corruptBase) r.write(specPath, readFileSync(join(r.cwd, specPath), 'utf8') + '// stale baseline\n');
+  const base = r.commit(); r.git('branch', '-f', 'development', base);
+  return { ...r, base, baseline, article,
+    verify: (head, development = 'development') => verifyDevelopmentParity({ cwd: r.cwd, base, head, development }),
+  };
+}
+function sharedSpecFeature(r, { headDrift = false, developmentDrift = false } = {}) {
+  r.write(openapiPath, r.baseline + r.article); r.generate();
+  if (headDrift) r.write(specPath, readFileSync(join(r.cwd, specPath), 'utf8') + '// stale production\n');
+  const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  // Production keeps the old REST route, while Development has migrated it.
+  r.write(openapiPath, (r.baseline + r.article).replace('/v1/podcasts/list', '/xrpc/app.example.podcast.list'));
+  r.generate();
+  if (developmentDrift) r.write(specPath, readFileSync(join(r.cwd, specPath), 'utf8') + '// stale development\n');
+  r.commit();
+  return head;
+}
+test('proves a selective generated spec while Production retains unrelated podcast REST routes', t => {
+  const r = specRepository(t), head = sharedSpecFeature(r);
+  assert.throws(() => r.git('merge-tree', '--write-tree', '--no-messages', `--merge-base=${r.base}`, 'development', head));
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [specPath]);
+});
+test('proves endpoint-manifest derivation while retaining strict canonical manifest parity', t => {
+  const r = specRepository(t);
+  r.write(manifestPath, '{"entries":[],"article":true}\n'); r.generate(); const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  r.write(openapiPath, r.baseline.replace('/v1/podcasts/list', '/xrpc/app.example.podcast.list')); r.generate(); r.commit();
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [specPath]);
+});
+test('proves both generated bundles for a selective Article contract promotion', t => {
+  const r = specRepository(t);
+  r.schema('app.example.article'); r.write(openapiPath, r.baseline + r.article);
+  r.write(manifestPath, '{"entries":[],"article":true}\n'); r.generate(); const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  r.schema('app.example.podcast');
+  r.write(openapiPath, (r.baseline + r.article).replace('/v1/podcasts/list', '/xrpc/app.example.podcast.list'));
+  r.generate(); r.commit();
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [bundlePath, specPath]);
+});
+for (const path of [openapiPath, manifestPath]) test(`rejects Production-only canonical ${path} with correctly regenerated output`, t => {
+  const r = specRepository(t);
+  r.write(path, path === openapiPath ? r.baseline + r.article : '{"entries":[],"productionOnly":true}\n');
+  r.generate(); const head = r.commit();
+  assert.throws(() => r.verify(head), /missing from Development|conflict.*Development/);
+});
+for (const where of ['base', 'head', 'development']) test(`rejects generated spec drift in ${where}`, t => {
+  const r = specRepository(t, where === 'base');
+  const head = sharedSpecFeature(r, { headDrift: where === 'head', developmentDrift: where === 'development' });
+  assert.throws(() => r.verify(head), /Generated output.*drift/s);
+});
+test('rejects a stale unchanged generated spec after a canonical spec change', t => {
+  const r = specRepository(t);
+  r.write(openapiPath, r.baseline + r.article); const head = r.commit();
+  r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head); r.generate(); r.commit();
+  assert.throws(() => r.verify(head), /Generated output.*drift/s);
+});
+test('rejects Production-only generated spec tampering even without canonical changes', t => {
+  const r = specRepository(t);
+  r.write(specPath, readFileSync(join(r.cwd, specPath), 'utf8') + '// tampered\n'); const head = r.commit();
+  assert.throws(() => r.verify(head), /Generated output.*drift/s);
+});
+test('rejects a changed spec generator even when the change is backported', t => {
+  const r = specRepository(t);
+  r.write(openapiPath, r.baseline + r.article); r.generate();
+  r.write(generatorPath, readFileSync(join(r.cwd, generatorPath), 'utf8') + '\nraise SystemExit("must never execute untrusted generator")\n');
+  const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /Untrusted generator change/);
+});
+for (const kind of ['missing', 'executable', 'symlink']) test(`rejects ${kind} generated spec`, t => {
+  const r = specRepository(t);
+  r.write(openapiPath, r.baseline + r.article); r.generate();
+  if (kind === 'missing') unlinkSync(join(r.cwd, specPath));
+  if (kind === 'executable') chmodSync(join(r.cwd, specPath), 0o755);
+  if (kind === 'symlink') { unlinkSync(join(r.cwd, specPath)); symlinkSync('../../spec/openapi.yaml', join(r.cwd, specPath)); }
+  const head = r.commit(); r.git('checkout', '-q', 'development'); r.git('merge', '--ff-only', head);
+  assert.throws(() => r.verify(head), /Missing generated output|non-executable mode|regular committed file/);
+});
+test('verified spec derivation leaves the dirty worktree, index, and refs unchanged', t => {
+  const r = specRepository(t), head = sharedSpecFeature(r);
+  r.write(specPath, 'uncommitted generated spec'); r.git('add', specPath); r.write('untracked.txt', 'keep');
+  const status = r.git('status', '--porcelain'), refs = r.git('show-ref'), index = r.git('write-tree');
+  assert.deepEqual(r.verify(head).verifiedDerivedOutputs, [specPath]);
+  assert.equal(r.git('status', '--porcelain'), status); assert.equal(r.git('show-ref'), refs); assert.equal(r.git('write-tree'), index);
+});
 test('verified derivation preserves dirty files, the original index and refs', t => {
   const r = lexiconRepository(t), head = sharedLexiconFeature(r);
   r.write(bundlePath, 'uncommitted generated edit'); r.git('add', bundlePath); r.write('untracked.txt', 'keep');
