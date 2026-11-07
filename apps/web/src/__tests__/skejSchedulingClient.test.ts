@@ -1,5 +1,5 @@
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { beforeEach, afterEach, expect, spyOn, test } from "bun:test";
 import type { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Atproto from "@/lib/atprotoClient";
@@ -14,6 +14,17 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 function item(): SkejScheduleSummary {
   return { did, rkey: "schedule-one", scheduleUri: `at://${did}/at.skej.schedule/schedule-one`, scheduledAt: future, status: "scheduled", attempts: 0, record: { $type: "at.skej.schedule", scheduledAt: future, status: "scheduled", createdAt: "2026-10-11T12:00:00Z", updatedAt: "2026-10-11T12:00:00Z", timezonePolicy: "absolute_utc", recordType: "app.bsky.feed.post", publishRkey: "stable-post", retry: { attemptCount: 0, maxAttempts: 8 }, posts: [{ text: "Scheduled", publishRkey: "stable-post" }] } };
 }
+test("blocks scheduling clients before minting credentials or making requests when disabled", async () => {
+  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+  const { actor, mints, requests } = fixture();
+  await expect(getSkejSchedulingReadiness(actor)).rejects.toThrow("Post Scheduling Is Not Enabled");
+  await expect(listSkejSchedules(actor)).rejects.toThrow("Post Scheduling Is Not Enabled");
+  await expect(createSkejSchedule(actor, "Do Not Schedule", future)).rejects.toThrow("Post Scheduling Is Not Enabled");
+  await expect(createSkejArticleSchedule(actor, { $type: "site.standard.document", title: "Article", site: `at://${did}/site.standard.publication/blog`, publishedAt: future }, "stable", future)).rejects.toThrow("Post Scheduling Is Not Enabled");
+  await expect(cancelSkejSchedule(actor, item())).rejects.toThrow("Post Scheduling Is Not Enabled");
+  await expect(rescheduleSkejPost(actor, item(), future)).rejects.toThrow("Post Scheduling Is Not Enabled");
+  expect(mints).toHaveLength(0); expect(requests).toHaveLength(0);
+});
 function fixture(options: { status?: number; body?: unknown; afterMint?: () => void; respond?: (url: URL, payload?: Record<string, unknown>) => Response | Promise<Response> } = {}) {
   const mints: { aud: string; lxm: string; exp: number }[] = [];
   const requests: { url: URL; init: RequestInit; payload?: Record<string, unknown> }[] = [];
@@ -228,3 +239,7 @@ test("invalid input is definitively not submitted but preflight failure remains 
     expect((error as Error).message).toBe("List unavailable");
   }
 });
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });

@@ -77,6 +77,27 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("keeps Articles and publishing available with scheduling disabled", async () => {
+    delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+    await show(false);
+    expect(screen.queryByRole("button", { name: "Scheduled" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Working Article/ }));
+    expect(await screen.findByLabelText("Article Title")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Publish Article" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Schedule Article" })).toBeNull();
+    expect(screen.queryByText("Open Scheduled to Connect Skej.")).toBeNull();
+  });
+  it("keeps an existing schedule claim locked while scheduling is disabled", async () => {
+    delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+    seed.scheduleRecordKey = "existing-claim"; seed.publicationClaimId = "protected";
+    await show();
+    expect(screen.getByRole("button", { name: "Publish Article" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/Draft Remains Locked While Post Scheduling Is Disabled/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check Schedule" })).toBeNull();
+    expect(storedDraft.scheduleRecordKey).toBe("existing-claim");
+    expect(storedDraft.publicationClaimId).toBe("protected");
+  });
   it("leaves published history idle until its tab opens", async () => {
     const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([]); restores.push(() => history.mockRestore());
     await show(false);
@@ -490,3 +511,7 @@ describe("article publishing workspace", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 });
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });

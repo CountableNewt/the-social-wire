@@ -32,6 +32,11 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => { cleanup(); await new Promise(resolve => setTimeout(resolve, 0)); }); cache.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
 function mount(ui = <ContentCalendarAccount ownerDid={owner} actorDid={owner} />) { return render(<QueryClientProvider client={cache}><SidebarProvider>{ui}</SidebarProvider></QueryClientProvider>); }
+test("rejects the direct Content Calendar route when scheduling is disabled", () => {
+  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+  expect(() => ContentCalendarPage()).toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+  expect(Scheduling.useSkejScheduling).not.toHaveBeenCalled();
+});
 test("renders selected day posts and confirms cancellation before calling the selected account", async () => {
   mount();
   if (localCalendarDate(time) !== localCalendarDate(new Date())) fireEvent.click(screen.getByRole("button", { name: new RegExp(time.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })) }));
@@ -100,3 +105,7 @@ test("keeps calendar account actions in the shared top bar outside the scrolling
   expect(header.parentElement!.classList.contains("overflow-hidden")).toBe(true);
   expect(header.nextElementSibling!.classList.contains("overflow-y-auto")).toBe(true);
 });
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });

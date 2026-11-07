@@ -1,5 +1,5 @@
 import * as Pro from "@/hooks/useProEntitlements";
-import { afterAll, afterEach, beforeAll, expect, it, mock, spyOn } from "bun:test";
+import { beforeEach, afterAll, afterEach, beforeAll, expect, it, mock, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SidebarToolsSection } from "@/components/AppSidebar/SidebarToolsSection";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -32,3 +32,32 @@ it("marks every Tools destination as locked for Free viewers while keeping its g
   fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
   expect(onNavigate).toHaveBeenCalledWith("/analytics");
 });
+
+it("keeps Articles visible in Production without launching other gated tools", async () => {
+  const originalEnv = process.env.NEXT_PUBLIC_APP_ENV;
+  const originalTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+  try {
+    process.env.NEXT_PUBLIC_APP_ENV = "prod";
+    delete process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+    delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+    const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: false } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
+    render(<SidebarProvider><SidebarToolsSection pathname="/articles" onNavigate={() => {}} /></SidebarProvider>);
+    expect(screen.getByRole("button", { name: "Articles" }).querySelector("svg.lucide-lock-keyhole")).toBeTruthy();
+    for (const name of ["Live Post", "Livestream", "Brand Accounts", "Content Calendar", "Analytics"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  } finally {
+    if (originalEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = originalEnv;
+    if (originalTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED; else process.env.NEXT_PUBLIC_TOOLS_ENABLED = originalTools;
+  }
+});
+
+it("hides Content Calendar independently when scheduling is disabled", () => {
+  process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "false";
+  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
+  render(<SidebarProvider><SidebarToolsSection pathname="/articles" onNavigate={() => {}} /></SidebarProvider>);
+  expect(screen.getByRole("button", { name: "Articles" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Content Calendar" })).toBeNull();
+});
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
