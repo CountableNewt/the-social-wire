@@ -1,3 +1,4 @@
+import { invalidateReadFeedRefreshes, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import { describe, expect, it } from "bun:test";
 import { QueryClient, type InfiniteData } from "@tanstack/react-query";
 
@@ -573,4 +574,16 @@ describe("applySidebarFoldersEvent", () => {
     expect(merged).toBe(base);
     expect(merged.folderSections?.[0]?.publications[0]?.title).toBe("Alpha");
   });
+});
+
+
+it("rejects streamed entries after the same OAuth session changes read state", () => {
+  const client = new QueryClient();
+  const session = { did: "did:plc:viewer" };
+  const snapshot = { session, revision: readFeedRefreshRevision(client, session) };
+  invalidateReadFeedRefreshes(client, session);
+  const publicationId = "at://did:plc:author/site.standard.publication/absent";
+  writeStreamedEntriesPage(client, session.did, { publicationId, source: "live_projection", entries: [] }, "all", undefined, undefined, snapshot);
+  expect(client.getQueryData([...ENTRIES_QUERY_KEY(session.did, publicationId), "all"])).toBeUndefined();
+  client.clear();
 });

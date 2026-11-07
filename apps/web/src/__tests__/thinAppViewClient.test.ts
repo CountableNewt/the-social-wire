@@ -231,7 +231,15 @@ describe("thinAppViewClient", () => {
 function gatewayOAuthSession(
   gatewayHandler: (url: string, init?: RequestInit) => Promise<Response>
 ) {
-  globalThis.fetch = gatewayHandler as unknown as typeof fetch;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const request = new URL(url);
+    if (request.pathname === "/xrpc/app.thesocialwire.appview.listEntries" &&
+      request.searchParams.get("authorDid") === "did:plc:viewer" && request.searchParams.get("limit") === "1") {
+      expect(request.searchParams.size).toBe(2);
+      return Response.json({}, { headers: { "X-ATProto-Session-Attestation-Receipt": "reader-receipt" } });
+    }
+    return gatewayHandler(url, init);
+  }) as unknown as typeof fetch;
   const nonces = new Map<string, string>();
   let nonceIndex = 0;
   return {

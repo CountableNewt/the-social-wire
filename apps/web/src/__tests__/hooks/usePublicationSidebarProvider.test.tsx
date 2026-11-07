@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { InfiniteQueryObserver, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { InfiniteQueryObserver, QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import type { ReactNode } from "react";
@@ -8,7 +8,7 @@ import { PublicationSidebarProvider, useSidebarBootstrap } from "@/contexts/Publ
 import { ReadStateProvider, useReadState } from "@/contexts/ReadStateContext";
 import type { EntriesPage } from "@/hooks/useEntries";
 import { READ_STATE_STORAGE_KEY } from "@/lib/entryReadStateStorage";
-import { cancelViewerFeedRefreshes } from "@/lib/feedRefreshCoordinator";
+import { cancelViewerFeedRefreshes, recordReadEntryMutations } from "@/lib/feedRefreshCoordinator";
 import { effectiveEntryReadState } from "@/lib/pendingReadStateOverlay";
 import * as auth from "@/hooks/useAuth";
 import * as bootstrapClient from "@/lib/bootstrapStreamClient";
@@ -37,8 +37,10 @@ let viewerSequence = 0;
 function mountProvider(options: { initialError?: boolean; initialGate?: ReturnType<typeof deferred>; streamedEntries?: boolean } = {}) {
   const did = `did:plc:sidebar-test-${++viewerSequence}`;
   const oauthSession = { did } as OAuthSession;
+  let currentOAuth = oauthSession;
+  const changeOAuthSession = (next: OAuthSession) => { currentOAuth = next; };
   const authState = {
-    session: { did }, getOAuthSession: () => oauthSession, oauthSessionReloadSeq: 0,
+    session: { did }, getOAuthSession: () => currentOAuth, oauthSessionReloadSeq: 0,
   } as unknown as ReturnType<typeof auth.useAuth>;
   spyOn(auth, "useAuth").mockReturnValue(authState);
   spyOn(imageCache, "prefetchCachedImages").mockImplementation(() => undefined);
@@ -72,7 +74,7 @@ function mountProvider(options: { initialError?: boolean; initialGate?: ReturnTy
       </QueryClientProvider>
     );
   }
-  return { ...renderHook(() => ({ ...useSidebarBootstrap(), readState: useReadState() }), { wrapper }), did, projection, queryClient, stream, post, sources, feeds, unread, oauthSession };
+  return { ...renderHook(() => ({ ...useSidebarBootstrap(), readState: useReadState() }), { wrapper }), did, projection, queryClient, stream, post, sources, feeds, unread, oauthSession, changeOAuthSession };
 }
 
 const observers: (() => void)[] = [];
@@ -90,6 +92,52 @@ function cacheActiveSources(mounted: ReturnType<typeof mountProvider>, rows = [s
 afterEach(() => { while (observers.length) observers.pop()!(); cleanup(); mock.restore(); });
 
 describe("PublicationSidebarProvider", () => {
+  for (const isRead of [true, false]) {
+    it(`keeps a ${isRead ? "read" : "unread"} choice made during the real manual feed refresh`, async () => {
+      const mounted = mountProvider();
+      const { result, did, feeds, queryClient, oauthSession, post, unread } = mounted;
+      await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
+      const projection = cacheActiveSources(mounted);
+      post.mockResolvedValue(projection);
+      feeds.mockRestore();
+      const key = ["aggregateEntries", did, "subscribed", "", "all"];
+      const row = { entryId: "existing", title: "Existing", publishedAt: "2026-10-20T00:00:00Z", isRead: !isRead };
+      queryClient.setQueryData(key, { pages: [{ entries: [row] }], pageParams: [undefined] });
+      const requested = deferred(), released = deferred();
+      spyOn(appview, "listAggregateFeedFromAppView").mockImplementation(async () => {
+        requested.resolve(); await released.promise; return { entries: [row] };
+      });
+      let task!: Promise<void>;
+      act(() => { task = result.current.refresh.mutateAsync(); });
+      await requested.promise;
+      act(() => {
+        recordReadEntryMutations(queryClient, oauthSession, [row.entryId]);
+        queryClient.setQueryData(key, { pages: [{ entries: [{ ...row, isRead }] }], pageParams: [undefined] });
+      });
+      await act(async () => { released.resolve(); await task; });
+      expect(queryClient.getQueryData<InfiniteData<EntriesPage>>(key)?.pages[0].entries[0].isRead).toBe(isRead);
+      expect(unread).toHaveBeenCalledTimes(1);
+      expect(result.current.refreshMessage).toBe("Refresh Complete");
+    });
+  }
+
+  it("ignores a manual sidebar response after the active OAuth account changes without a rerender", async () => {
+    const { result, post, projection, queryClient, did, changeOAuthSession, sources, feeds } = mountProvider();
+    await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
+    const requested = deferred(), released = deferred();
+    post.mockImplementation(async () => { requested.resolve(); await released.promise; return { ...projection, refreshedAt: "wrong-account" }; });
+    let outcome!: Promise<unknown>;
+    act(() => { outcome = result.current.refresh.mutateAsync().catch(error => error); });
+    await requested.promise;
+    changeOAuthSession({ did: "did:plc:other" } as unknown as OAuthSession);
+    await act(async () => { released.resolve(); });
+    expect(await outcome).toHaveProperty("name", "AbortError");
+    expect(queryClient.getQueryData<projectionClient.PublicationSidebarProjection>(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did))?.refreshedAt).toBe(projection.refreshedAt);
+    expect(sources).not.toHaveBeenCalled();
+    expect(feeds).not.toHaveBeenCalled();
+  });
+
+
   for (const countFailure of [false, true]) {
     it(`preserves a publisher warning only after articles and counts update (count failure=${countFailure})`, async () => {
       const { result, sources, feeds, unread } = mountProvider();

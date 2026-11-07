@@ -4,7 +4,7 @@ import type { InfiniteData, QueryClient, QueryKey } from "@tanstack/react-query"
 import type { EntriesPage } from "@/hooks/useEntries";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
 import { awaitWithAbort } from "@/lib/awaitWithAbort";
-import { advanceFeedRefreshRevision, getFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { advanceFeedRefreshRevision, getFeedRefreshRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import { mergeFeedRefreshForFilter } from "@/lib/feedCacheMerge";
 import {
   listAggregateFeedFromAppView,
@@ -47,16 +47,25 @@ export async function refreshReaderFeeds({
   oauthSession,
   signal: callerSignal,
   onNewArticleIds,
+  isCurrentSession,
 }: {
   queryClient: QueryClient;
   viewerDid: string;
   oauthSession: OAuthSession;
   signal?: AbortSignal;
   onNewArticleIds?: (ids: readonly string[]) => void;
+  isCurrentSession?: () => boolean;
 }): Promise<{ newArticleCount: number }> {
   const signal = AbortSignal.any([...(callerSignal ? [callerSignal] : []), AbortSignal.timeout(30_000)]);
   signal.throwIfAborted();
   if (!viewerDid) return { newArticleCount: 0 };
+  const assertSession = () => {
+    signal.throwIfAborted();
+    if (isCurrentSession && !isCurrentSession()) throw new DOMException("Account changed", "AbortError");
+  };
+  assertSession();
+  const readRevision = readFeedRefreshRevision(queryClient, oauthSession);
+  const generations = new Map<string, number>();
   const filters = {
     predicate: (query: { queryKey: QueryKey }) =>
       query.queryKey[1] === viewerDid && feedScope(query.queryKey) !== undefined,
@@ -64,14 +73,13 @@ export async function refreshReaderFeeds({
 
   // Cancellation can restore pre-request data/state. Await it before invalidating
   // or reading the merge baseline so an older request cannot undo the refresh.
-  const revisions = new Map<object, number>();
   for (const query of queryClient.getQueryCache().findAll(filters)) {
-    revisions.set(query, advanceFeedRefreshRevision(queryClient, query.queryKey));
+    generations.set(query.queryHash, advanceFeedRefreshRevision(queryClient, query.queryKey));
   }
   await queryClient.cancelQueries(filters);
-  signal?.throwIfAborted();
+  assertSession();
   await queryClient.invalidateQueries({ ...filters, refetchType: "none" });
-  signal?.throwIfAborted();
+  assertSession();
   const activeQueries = queryClient.getQueryCache().findAll({ ...filters, type: "active" });
   const previousIds = new Set(activeQueries.flatMap(query =>
     (query.state.data as InfiniteData<EntriesPage> | undefined)?.pages.flatMap(page =>
@@ -83,10 +91,10 @@ export async function refreshReaderFeeds({
   let failed = false;
   const refreshNext = async () => {
     while (!failed && nextIndex < activeQueries.length) {
-      signal?.throwIfAborted();
+      assertSession();
       const query = activeQueries[nextIndex++];
       const scope = feedScope(query.queryKey)!;
-      const revision = revisions.get(query);
+      const revision = generations.get(query.queryHash);
       if (revision === undefined || getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
         queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
       try {
@@ -95,11 +103,12 @@ export async function refreshReaderFeeds({
           oauthSession,
           signal,
         }), signal);
-        signal?.throwIfAborted();
-        // Read-state actions retire direct writes as well as React Query reads.
-        // A removed/recreated query is also a different request owner.
-        if (getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
-          queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
+        assertSession();
+        // Read gestures own their flags; a response from before a gesture or a
+        // newer manual refresh cannot replace the current cache.
+        if (readFeedRefreshRevision(queryClient, oauthSession) !== readRevision ||
+            getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
+            queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
         queryClient.setQueryData<InfiniteData<EntriesPage>>(query.queryKey, current =>
           mergeFeedRefreshForFilter(current, freshPage, scope.filter)
         );
@@ -120,7 +129,7 @@ export async function refreshReaderFeeds({
   for (const result of results) {
     if (result.status === "rejected") throw result.reason;
   }
-  signal?.throwIfAborted();
+  assertSession();
   onNewArticleIds?.([...addedIds]);
   return { newArticleCount: addedIds.size };
 }
