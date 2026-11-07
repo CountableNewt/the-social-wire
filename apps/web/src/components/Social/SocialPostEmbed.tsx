@@ -1,3 +1,4 @@
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import {
   AppBskyEmbedExternal,
   AppBskyEmbedImages,
@@ -97,7 +98,7 @@ export function SocialPostEmbed({
         Quoted content unavailable.
       </p>
     );
-  const record = AppBskyFeedPost.validateRecord(quote.value);
+  const record = validateSocialPostRecord(quote.value);
   if (!record.success)
     return (
       <p className="text-sm text-muted-foreground">

@@ -17,7 +17,7 @@ describe("brand post publishing", () => {
       expect(body.record).toMatchObject({ text: " Thank You! ", reply: { parent: { uri: target.uri, cid }, root: (target.record as { reply: { root: unknown } }).reply.root } });
       return { uri: `at://${did}/app.bsky.feed.post/new`, cid };
     });
-    await publishBrandPost({ session, text: " Thank You! ", parent: target, assertCurrentActor: () => {} });
+    for (const parent of [target, { ...target, record: { ...(target.record as object), text: "🦋".repeat(1100) } }]) await publishBrandPost({ session, text: " Thank You! ", parent, assertCurrentActor: () => {} });
   });
   it("resolves mentions as the brand and blocks a changed actor before writing", async () => {
     let current = true; let writes = 0;
