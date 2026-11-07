@@ -17,8 +17,8 @@ let restore: (() => void) | undefined;
 let restoreSocial: (() => void) | undefined;
 let restoreBitmap: (() => void) | undefined;
 afterEach(() => { restoreBitmap?.(); restoreBitmap = undefined; restoreSocial?.(); restoreSocial = undefined; restore?.(); restore = undefined; });
-function fixture(options: { ambiguous?: boolean; changed?: boolean; repeated?: boolean; blog?: boolean; fresh?: boolean; rejectWrite?: boolean; host?: "leaflet" | "markpub"; decoded?: boolean } = {}) {
-  const publication = { uri: `at://${did}/site.standard.publication/pub`, cid: "pubcid", value: { $type: "site.standard.publication", name: "Blog", url: "https://example.com", theme: options.host ?? "markpub" } };
+function fixture(options: { ambiguous?: boolean; changed?: boolean; repeated?: boolean; blog?: boolean; fresh?: boolean; rejectWrite?: boolean; host?: "leaflet" | "markpub" | "pckt"; publicationUrl?: string; decoded?: boolean } = {}) {
+  const publication = { uri: `at://${did}/site.standard.publication/pub`, cid: "pubcid", value: { $type: "site.standard.publication", name: "Blog", url: options.publicationUrl ?? "https://example.com", theme: options.host ?? "markpub" } };
   const docs = new Map<string, { value: Record<string, unknown>; cid: string }>();
   const uploads: unknown[] = [];
   let current = { ...initial, ...(options.blog ? { destination: "both" as const, publicationUri: publication.uri } : {}), cid: options.changed ? "changed" : initial.cid }; const batches: Record<string, unknown>[] = [];
@@ -272,3 +272,17 @@ test("live session reads reject malformed persisted media", async () => {
   Object.assign(f.current().entries[0], { media: { images: [{ alt: "Invalid", blob: { $type: "blob", mimeType: "image/png", size: 10, ref: { $link: "invalid" } } }] } });
   await expect(getEvent(session, event.uri)).rejects.toThrow();
 });
+
+for (const options of [{ host: "pckt" as const }, { host: "markpub" as const, publicationUrl: "https://disabled.pckt.blog" }]) {
+  test(`refuses creating a live blog event for pckt before any writes (${options.host})`, async () => {
+    const f = fixture({ ...options, fresh: true });
+    await expect(createEvent(session, { title: "Unsupported Blog", destination: "both", publicationUri: `at://${did}/site.standard.publication/pub`, tags: [] }, op)).rejects.toThrow("pckt Does Not Support External Editors.");
+    expect(f.batches).toHaveLength(0); expect(f.uploads).toHaveLength(0);
+  });
+  test(`refuses updates to existing pckt live events before media upload or either destination write (${options.host})`, async () => {
+    const f = fixture({ ...options, blog: true });
+    const attachments: LiveUpdateAttachments = { images: [{ file: new Blob(["image bytes"], { type: "image/png" }), alt: "Event Photo" }] };
+    await expect(publishLiveUpdate(session, f.current(), "Update", op, attachments)).rejects.toThrow("pckt Does Not Support External Editors.");
+    expect(f.batches).toHaveLength(0); expect(f.uploads).toHaveLength(0); expect(f.docs.size).toBe(0);
+  });
+}

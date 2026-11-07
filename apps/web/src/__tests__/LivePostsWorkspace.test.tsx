@@ -367,3 +367,36 @@ test("renders ended live sessions and genuine discovered events without legacy a
   expect(screen.getByRole("button", { name: /Launch.*Ended/ })).toBeTruthy();
   expect(screen.getByText("Past").closest("details")?.querySelectorAll("button").length).toBe(2);
 });
+
+test("shows pckt publications disabled with external editor explanation and blocks forced submission", async () => {
+  const create = mock(async () => {});
+  const publication = { uri: "at://did:plc:alice/site.standard.publication/pckt", cid: "p", name: "pckt Blog", url: "https://writer.pckt.blog", host: "unknown" as const, record: {} };
+  await act(async () => { render(<LivePostNewEventDialog open onOpenChange={() => {}} publications={[publication, { ...publication, uri: "at://did:plc:alice/site.standard.publication/eligible", name: "Eligible Blog", url: "https://blog.test" }]} publicationsLoading={false} pending={false} onCreate={create} />); });
+  fireEvent.change(screen.getByRole("textbox", { name: "Event Title" }), { target: { value: "Live Event" } });
+  fireEvent.click(screen.getByRole("radio", { name: "Blog" }));
+  const option = screen.getByRole("option", { name: /pckt Blog/ }) as HTMLOptionElement;
+  expect(option.disabled).toBe(true); expect(option.textContent).toContain("pckt Does Not Support External Editors.");
+  fireEvent.change(screen.getByRole("combobox", { name: "Event Publication" }), { target: { value: publication.uri } });
+  const button = screen.getByRole("button", { name: "Create Event" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  fireEvent.submit(button.closest("form")!);
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("pckt Does Not Support External Editors."));
+  expect(create).not.toHaveBeenCalled();
+});
+test("disables blog destinations when only pckt publications exist while retaining Bluesky", async () => {
+  await act(async () => { render(<LivePostNewEventDialog open onOpenChange={() => {}} publications={[{ uri: "at://did:plc:alice/site.standard.publication/pckt", cid: "p", name: "pckt Blog", url: "https://blog.test", host: "pckt", record: {} }]} publicationsLoading={false} pending={false} onCreate={async () => {}} />); });
+  expect((screen.getByRole("radio", { name: "Blog" }) as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByRole("radio", { name: "Both" }) as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByRole("radio", { name: "Bluesky" }) as HTMLInputElement).disabled).toBe(false);
+  expect(screen.getByText("pckt Does Not Support External Editors.")).toBeTruthy();
+});
+test("retains existing pckt event history and end action without an editable draft or publishing form", async () => {
+  const publication = { uri: "at://did:plc:alice/site.standard.publication/pckt", cid: "p", name: "pckt Blog", url: "https://writer.pckt.blog", host: "unknown" as const, record: {} };
+  state.publications = [publication]; state.events = [{ ...event, publicationUri: publication.uri }];
+  await mount(); selectEvent();
+  expect(screen.getByText("pckt Does Not Support External Editors.")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Update" })).toBeNull();
+  expect(screen.getByText("Published Earlier")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "End Live Post" })).toBeTruthy();
+  expect(state.publishUpdate).not.toHaveBeenCalled();
+});
