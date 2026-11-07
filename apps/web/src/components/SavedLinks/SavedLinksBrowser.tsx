@@ -353,7 +353,7 @@ export function SavedLinksBrowser({ mode }: { mode: SavedLinksBrowserMode }) {
 
   return (
     <>
-      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden border-x border-border/70">
+      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden">
         <div data-floating-glass-controls ref={attachFloatingGlassControlsOverlay} className="flex flex-col">
           <SavedLinksTagToolbar
             viewTagCounts={viewTagCounts}
