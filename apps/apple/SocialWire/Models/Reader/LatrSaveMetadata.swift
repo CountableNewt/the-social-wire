@@ -6,7 +6,7 @@ enum LatrSaveListState: String, Sendable {
     case all
 }
 
-struct LatrSaveMetadata: Equatable, Sendable {
+struct LatrSaveMetadata: Codable, Equatable, Sendable {
     var title: String?
     var excerpt: String?
     var image: String?

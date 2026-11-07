@@ -42,11 +42,11 @@ enum NewsTab: String, CaseIterable, Codable, Identifiable, Hashable, Sendable {
     static func available(wire: Bool, circle: Bool, finance: Bool = false, sports: Bool = false, podcasts: Bool = false) -> [NewsTab] {
         allCases.filter { tab in
             switch tab {
-            case .wire: wire
-            case .circle: circle
-            case .finance: finance
+            case .wire: NewsFeatureVisibility.wire && wire
+            case .circle: NewsFeatureVisibility.circle && circle
+            case .finance: NewsFeatureVisibility.topics && finance
             case .podcasts: podcasts
-            case .sports: sports
+            case .sports: NewsFeatureVisibility.topics && sports
             case .library, .saved, .search: true
             }
         }

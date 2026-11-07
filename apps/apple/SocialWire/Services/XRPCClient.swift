@@ -329,7 +329,7 @@ final class XRPCClient {
     }
 
     private func readStateRequest(url: URL, session: AuthSession, body: Data?) async throws -> (Data, HTTPURLResponse) {
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false, preemptsBackground: body != nil) { [self] in
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }
@@ -451,7 +451,7 @@ final class XRPCClient {
     }
 
     private func sendAuthorized(_ request: URLRequest, session: AuthSession) async throws -> (Data, HTTPURLResponse) {
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false, preemptsBackground: request.httpMethod != "GET") { [self] in
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }

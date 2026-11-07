@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct ArticleListLayout<Content: View>: View {
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
     let notice: String?
     private let spacing: CGFloat
     private let content: Content
@@ -9,6 +13,14 @@ struct ArticleListLayout<Content: View>: View {
         self.notice = notice
         self.spacing = spacing
         self.content = content()
+    }
+
+    private var horizontalMargin: CGFloat {
+        #if os(iOS)
+        horizontalSizeClass == .regular ? 40 : 24
+        #else
+        40
+        #endif
     }
 
     var body: some View {
@@ -22,7 +34,8 @@ struct ArticleListLayout<Content: View>: View {
                 }
                 content
             }
-            .padding()
+            .padding(.vertical)
+            .padding(.horizontal, horizontalMargin)
             .frame(maxWidth: ArticleReadingWidth.feed, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }

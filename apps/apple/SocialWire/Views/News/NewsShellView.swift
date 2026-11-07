@@ -5,11 +5,11 @@ struct NewsShellView: View {
     @Environment(SocialWireAppModel.self) private var appModel
     @SceneStorage("the-social-wire.news-window-id.v1") private var windowID = UUID().uuidString
     @State private var sceneModel = NewsSceneModel()
-    @State private var selectedSlot = NewsTabSlot.wire
+    @State private var selectedSlot = NewsTabSlot.subscribed
     @State private var selectedSection = NewsRootSection.feeds
     @State private var sectionSelections: [NewsRootSection: NewsTabSlot] = [
         .readLater: .readLater,
-        .feeds: .wire,
+        .feeds: .subscribed,
         .topics: .finance,
         .lists: .standardList("")
     ]
@@ -52,13 +52,13 @@ struct NewsShellView: View {
     private func isVisibleInSettings(_ feed: NewsPrimaryFeed) -> Bool {
         switch feed {
         case .wire:
-            appModel.feedPreferences.showWire
+            NewsFeatureVisibility.wire && appModel.feedPreferences.showWire
         case .circle:
-            appModel.feedPreferences.showCircle
+            NewsFeatureVisibility.circle && appModel.feedPreferences.showCircle
         case .finance:
-            appModel.feedPreferences.showFinance
+            NewsFeatureVisibility.topics && appModel.feedPreferences.showFinance
         case .sports:
-            appModel.feedPreferences.showSports
+            NewsFeatureVisibility.topics && appModel.feedPreferences.showSports
         case .subscribed:
             appModel.feedPreferences.visibleFeeds.contains(.subscribed)
         case .following:
@@ -285,6 +285,7 @@ struct NewsShellView: View {
     }
 
     private func selectedSectionChanged(_ oldValue: NewsRootSection, _ section: NewsRootSection) {
+        defer { rememberDestination() }
         guard section != .lists else { return }
         reconcileSectionSelection(section)
     }
@@ -311,23 +312,64 @@ struct NewsShellView: View {
         slotFeeds = appModel.primaryTabFeeds
         sceneModel.updateContext(viewerDID: appModel.viewerDID, availableTabs: availableTabs)
 
-        if let viewerDID = appModel.viewerDID,
-           let lastFeed = NewsPrimaryFeedStorage.lastFeed(viewerDID: viewerDID),
-           slotFeeds.contains(lastFeed) {
-            selectPrimaryFeed(lastFeed)
-        } else if let firstFeed = slotFeeds.first {
-            selectedSlot = NewsTabSlot(firstFeed)
-            activatePrimaryFeed(firstFeed)
-        } else {
-            selectedSlot = .readLater
-            sceneModel.prepareForReaderSourceChange(from: appModel.readerListSource, to: .readLater)
-            appModel.selectReaderListSource(.readLater)
-            sceneModel.select(.saved, availableTabs: availableTabs)
-        }
+        applyStartupDestination()
         isTabConfigurationLoaded = true
     }
 
+
+    private func applyStartupDestination() {
+        let viewerDID = appModel.viewerDID ?? ""
+        let legacyFeed = NewsPrimaryFeedStorage.lastFeed(viewerDID: viewerDID)
+        let legacyDestination: NewsStartupDestination = switch legacyFeed {
+        case .following: .following
+        case .podcasts: .podcasts
+        default: .subscribed
+        }
+        let remembered = NewsStartupDestination.remembered(viewerDID: viewerDID) ?? legacyDestination
+        let preference = NewsStartupDestination.preference(viewerDID: viewerDID)
+        let destination = preference.resolved(availableFeeds: appModel.visiblePrimaryTabFeedChoices, remembered: remembered)
+        switch destination {
+        case .subscribed, .following, .lastUsed:
+            let source: ReaderListSource = destination == .following ? .following : .subscribed
+            selectedSection = .feeds
+            // Last Used retains an already-restored publication or folder in this reader source.
+            if preference != .lastUsed || appModel.readerListSource != source {
+                appModel.selectReaderListSource(source)
+            }
+            selectPrimaryFeed(source == .following ? .following : .subscribed)
+            sceneModel.resetPath(for: .library)
+        case .readLater, .archive:
+            let source: ReaderListSource = destination == .archive && showsArchiveTab ? .archive : .readLater
+            selectedSection = .readLater
+            selectedSlot = source == .archive ? .archive : .readLater
+            appModel.selectReaderListSource(source)
+            sceneModel.select(.saved, availableTabs: availableTabs)
+            sceneModel.resetPath(for: .saved)
+        case .podcasts:
+            selectedSection = .topics
+            selectPrimaryFeed(.podcasts)
+            sceneModel.resetPath(for: .podcasts)
+        case .lists:
+            selectedSection = .lists
+            selectedSlot = .standardList("")
+            sceneModel.resetPath(for: .library)
+        }
+    }
+
+    private func rememberDestination() {
+        guard isTabConfigurationLoaded, let viewerDID = appModel.viewerDID else { return }
+        let destination: NewsStartupDestination
+        if selectedSection == .lists { destination = .lists }
+        else if selectedSlot == .archive { destination = .archive }
+        else if selectedSlot.savedListSource != nil { destination = .readLater }
+        else if selectedSlot == .following { destination = .following }
+        else if selectedSlot == .podcasts { destination = .podcasts }
+        else { destination = .subscribed }
+        destination.remember(viewerDID: viewerDID)
+    }
+
     private func selectedSlotChanged(_ oldValue: NewsTabSlot, _ slot: NewsTabSlot) {
+        defer { rememberDestination() }
         if let section = rootSection(for: slot) {
             sectionSelections[section] = slot
             if selectedSection != section {
@@ -393,6 +435,7 @@ struct NewsShellView: View {
         sceneModel.updateContext(viewerDID: viewerDID, availableTabs: availableTabs)
         appModel.loadPrimaryTabPreferences()
         slotFeeds = appModel.primaryTabFeeds
+        applyStartupDestination()
         isTabConfigurationLoaded = true
     }
 
