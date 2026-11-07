@@ -735,6 +735,10 @@ describe("reader lifecycle refreshes", () => {
 
     for (const action of ["markEntryRead", "markEntryUnread", "markEntriesRead", "markEntriesUnread"] as const) {
       it(`${scope} restarts a blocked cold initial load after ReadStateProvider ${action} without cancelling another viewer`, async () => {
+        // Hold confirmation to isolate gesture cancellation from its later refresh.
+        const writes = [spyOn(appviewClient, "writeThroughReadMark"), spyOn(appviewClient, "writeThroughReadMarkDelete")];
+        writes.forEach(write => write.mockImplementation(() => new Promise<void>(() => {})));
+        lifecycleRestores.push(() => writes.forEach(write => write.mockRestore()));
         if (action.endsWith("Unread")) {
           window.localStorage.setItem(READ_STATE_STORAGE_KEY, JSON.stringify({ "action-entry": "2026-01-01T00:00:00.000Z" }));
         }
@@ -807,6 +811,10 @@ describe("reader lifecycle refreshes", () => {
       });
 
       it(`${scope} rejects a blocked lifecycle response after ReadStateProvider ${action}`, async () => {
+        // Hold confirmation to isolate gesture cancellation from its later refresh.
+        const writes = [spyOn(appviewClient, "writeThroughReadMark"), spyOn(appviewClient, "writeThroughReadMarkDelete")];
+        writes.forEach(write => write.mockImplementation(() => new Promise<void>(() => {})));
+        lifecycleRestores.push(() => writes.forEach(write => write.mockRestore()));
         seed(scope);
         // Unread actions undo persisted read intent instead of exercising a no-op.
         if (action.endsWith("Unread")) {

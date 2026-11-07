@@ -1,4 +1,4 @@
-import { coalesceFeedFirstPage, getFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { coalesceFeedFirstPage, getFeedRefreshRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import { awaitWithAbort } from "@/lib/awaitWithAbort";
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 
@@ -39,12 +39,14 @@ export async function refreshPublicationUnreadCount(args: {
   signal?: AbortSignal;
 }): Promise<void> {
   const { queryClient, viewerDid, publicationId, oauthSession } = args;
+  const readRevision = readFeedRefreshRevision(queryClient, oauthSession);
   const signal = args.signal ?? AbortSignal.timeout(30_000);
   try {
     const countSnapshot = await awaitWithAbort(fetchAppViewUnreadCounts(oauthSession, [
       publicationId,
     ], signal), signal);
     signal.throwIfAborted();
+    if (readFeedRefreshRevision(queryClient, oauthSession) !== readRevision) return;
     queryClient.setQueryData<PublicationSidebarProjection>(
       PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(viewerDid),
       (current) =>
@@ -85,7 +87,7 @@ export function refreshPublicationFeedFirstPage(args: FeedRefreshArgs): Promise<
   if (!pending) { pending = new Map(); sessions.set(args.oauthSession, pending); }
   const queryKey = [...ENTRIES_QUERY_KEY(args.viewerDid ?? "", normalizeAtRepoParam(args.publicationKey)), args.articleFilter ?? "all"];
   const revision = getFeedRefreshRevision(args.queryClient, queryKey);
-  const key = JSON.stringify([revision, args.viewerDid, normalizeAtRepoParam(args.publicationKey), args.articleFilter ?? "all", args.allowCacheMiss ?? false]);
+  const key = JSON.stringify([revision, readFeedRefreshRevision(args.queryClient, args.oauthSession), args.viewerDid, normalizeAtRepoParam(args.publicationKey), args.articleFilter ?? "all", args.allowCacheMiss ?? false]);
   const existing = pending.get(key);
   if (existing) return existing;
   const task = performPublicationFeedRefresh({ ...args, publicationKey: normalizeAtRepoParam(args.publicationKey) }).finally(() => {
@@ -139,6 +141,7 @@ async function performPublicationFeedRefresh(args: FeedRefreshArgs): Promise<boo
     return isCurrent();
   }
 
+  const readRevision = readFeedRefreshRevision(queryClient, oauthSession);
   const freshPage = await coalesceFeedFirstPage(queryClient, oauthSession, queryKey, () => awaitWithAbort(fetchEntriesInfinitePage({
     normalizedPublicationKey: publicationKey,
     pageParam: undefined,
@@ -150,8 +153,8 @@ async function performPublicationFeedRefresh(args: FeedRefreshArgs): Promise<boo
     skipEnroll,
   }), signal), signal);
 
-  signal?.throwIfAborted();
-  if (!isCurrent()) return false;
+  signal.throwIfAborted();
+  if (!isCurrent() || readFeedRefreshRevision(queryClient, oauthSession) !== readRevision) return false;
   queryClient.setQueryData<InfiniteData<EntriesPage>>(queryKey, (current) =>
     mergeFeedRefreshForFilter(current, freshPage, articleFilter)
   );
