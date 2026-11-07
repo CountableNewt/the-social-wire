@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
-  CancelledError,
   isCancelledError,
   onlineManager,
   useInfiniteQuery,
@@ -39,10 +38,9 @@ import {
 } from "@/lib/dummyReaderData";
 import { recordClientPerformance } from "@/lib/clientPerformanceTelemetry";
 import { useAuth } from "./useAuth";
-import { coalesceFeedFirstPage, getFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
+import { coalesceFeedFirstPage, getFeedRefreshRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
 import { refreshPublicationUnreadCount } from "@/lib/feedRefresh";
 import { useVisibleFeedRefresh } from "./useVisibleFeedRefresh";
-import { awaitWithAbort } from "@/lib/awaitWithAbort";
 import { useFeedFirstContentTiming } from "./useFeedFirstContentTiming";
 
 export type { EntryListItem, EntryDetail };
@@ -121,6 +119,34 @@ export async function fetchEntriesInfinitePage(args: {
   });
 }
 
+/** Query must reject obsolete data, while public refetch reports a skipped write. */
+class SupersededFeedRefreshError extends Error {
+  constructor() {
+    super("Feed refresh superseded");
+    this.name = "AbortError";
+  }
+}
+
+function captureFeedRequestGuard(
+  client: QueryClient,
+  queryKey: readonly string[],
+  oauth: OAuthSession,
+  getOAuthSession: () => OAuthSession | null,
+  signal: AbortSignal,
+): () => void {
+  const query = client.getQueryCache().find({ queryKey, exact: true });
+  const revision = getFeedRefreshRevision(client, queryKey);
+  const readRevision = readFeedRefreshRevision(client, oauth);
+  return () => {
+    if (signal.aborted || getOAuthSession() !== oauth || oauth.did !== queryKey[1] ||
+      getFeedRefreshRevision(client, queryKey) !== revision ||
+      readFeedRefreshRevision(client, oauth) !== readRevision ||
+      client.getQueryCache().find({ queryKey, exact: true }) !== query) {
+      throw new SupersededFeedRefreshError();
+    }
+  };
+}
+
 const pendingLifecycleRefreshes = new WeakMap<QueryClient, Map<string, { isCurrent: () => boolean }>>();
 
 /** Keep lifecycle refreshes in the query's retry/cancellation state without
@@ -133,79 +159,93 @@ function useGuardedFeedRefresh(args: {
   enabled: boolean;
   hasData: boolean;
   isFetchedAfterMount: boolean;
+  oauthSessionReloadSeq: number;
   getOAuthSession: () => OAuthSession | null;
   fetchInitial: () => Promise<unknown>;
 }) {
-  const { queryKey, feed, articleFilter, enabled, hasData, isFetchedAfterMount, getOAuthSession, fetchInitial } = args;
+  const { queryKey, feed, articleFilter, enabled, hasData, isFetchedAfterMount, oauthSessionReloadSeq, getOAuthSession, fetchInitial } = args;
   const queryClient = useQueryClient();
-  const { oauthSessionReloadSeq } = useAuth();
   const oauthSession = getOAuthSession();
-  const mountedScope = useRef<{ queryKey: readonly string[]; session: OAuthSession; hasData: boolean } | null>(null);
-  const refresh = useCallback(async (callerSignal?: AbortSignal) => {
-    callerSignal?.throwIfAborted();
+  const reloadSeq = useRef(oauthSessionReloadSeq);
+  useLayoutEffect(() => { reloadSeq.current = oauthSessionReloadSeq; }, [oauthSessionReloadSeq]);
+  const currentScope = useRef<{ queryKey: readonly string[]; enabled: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const owner = { queryKey, enabled };
+    currentScope.current = owner;
+    return () => { if (currentScope.current === owner) currentScope.current = null; };
+  }, [enabled, queryKey]);
+  const mountedScope = useRef<{
+    queryKey: readonly string[];
+    oauthSession: OAuthSession;
+    reloadSeq: number;
+  } | null>(null);
+  const refresh = useCallback(async (replaceSession = false, callerSignal?: AbortSignal) => {
     const oauth = getOAuthSession();
-    if (!enabled || !oauth || !feed) return false;
+    if (!enabled || !oauth || !feed || callerSignal?.aborted) return false;
     const cachedQuery = queryClient.getQueryCache().find({ queryKey, exact: true });
-    if (!cachedQuery?.state.data) {
-      await (callerSignal ? awaitWithAbort(fetchInitial(), callerSignal) : fetchInitial());
-      return true;
-    }
     const revision = getFeedRefreshRevision(queryClient, queryKey);
-    const isCurrent = () => getOAuthSession() === oauth &&
+    const readRevision = readFeedRefreshRevision(queryClient, oauth);
+    const isCurrent = () => !callerSignal?.aborted && currentScope.current?.queryKey === queryKey &&
+      currentScope.current.enabled && getOAuthSession() === oauth &&
+      reloadSeq.current === oauthSessionReloadSeq &&
       getFeedRefreshRevision(queryClient, queryKey) === revision &&
+      readFeedRefreshRevision(queryClient, oauth) === readRevision &&
       queryClient.getQueryCache().find({ queryKey, exact: true }) === cachedQuery;
+    if (!cachedQuery?.state.data) {
+      if (replaceSession) {
+        await queryClient.cancelQueries({ queryKey, exact: true });
+        if (!isCurrent()) return false;
+      }
+      await fetchInitial();
+      return isCurrent();
+    }
     const refreshStartedAt = performance.now();
     let pending = pendingLifecycleRefreshes.get(queryClient);
     if (!pending) { pending = new Map(); pendingLifecycleRefreshes.set(queryClient, pending); }
     const scope = JSON.stringify(queryKey);
     const previous = pending.get(scope);
-    if (previous && !previous.isCurrent()) {
-      // A newer query generation must not join the retired query retryer.
-      void queryClient.cancelQueries({ queryKey, exact: true }, { revert: false, silent: true });
-      cachedQuery.setState({ fetchStatus: "idle" });
+    if (previous && !previous.isCurrent() || replaceSession && cachedQuery.state.fetchStatus !== "idle") {
+      // Confirmation can start a fetch without a lifecycle-map owner. Session
+      // replacement must retire that retryer too before starting its successor.
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      if (!isCurrent()) return false;
     }
-    let ownerSignal: AbortSignal | undefined;
-    const fetchMerged = async (querySignal: AbortSignal): Promise<InfiniteData<EntriesPage>> => {
-      // Installed options can serve later invalidation; its new retryer must not
-      // inherit an aborted timer/navigation signal from this invocation.
-      ownerSignal ??= querySignal;
-      const signal = callerSignal && ownerSignal === querySignal
-        ? AbortSignal.any([querySignal, callerSignal]) : querySignal;
-      // fetchQuery leaves these options installed until an observer restores its
-      // own options. Confirmation can refetch first, so each invocation owns a
-      // new session/revision snapshot rather than the original refresh's fence.
+    const owner = { isCurrent };
+    pending.set(scope, owner);
+    // Visible refresh deadlines must retire Query's retryer as well as the
+    // listener's wait, so the next focus can start a fresh request.
+    const onCallerAbort = () => {
+      if (pending.get(scope) === owner) void queryClient.cancelQueries({ queryKey, exact: true });
+    };
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+    if (callerSignal?.aborted) onCallerAbort();
+    let operationSettled = false;
+    const fetchMerged = async (signal: AbortSignal): Promise<InfiniteData<EntriesPage>> => {
+      // Query.fetch(undefined) can reuse this installed function after a read
+      // confirmation. Snapshots belong to this request, not the installing call.
       const requestSession = getOAuthSession();
-      const requestQuery = queryClient.getQueryCache().find({ queryKey, exact: true });
-      if (!requestSession || requestSession.did !== queryKey[1] || !requestQuery) {
-        throw new CancelledError({ silent: true, revert: false });
+      if (!requestSession || requestSession.did !== queryKey[1]) {
+        throw new SupersededFeedRefreshError();
       }
-      const requestRevision = getFeedRefreshRevision(queryClient, queryKey);
-      const owner = { isCurrent: () => getOAuthSession() === requestSession &&
-        getFeedRefreshRevision(queryClient, queryKey) === requestRevision &&
-        queryClient.getQueryCache().find({ queryKey, exact: true }) === requestQuery };
-      pending.set(scope, owner);
-      try {
-        const fresh = await coalesceFeedFirstPage(queryClient, requestSession, queryKey, () =>
-          listAggregateFeedFromAppView({ feed, filter: articleFilter, oauthSession: requestSession, signal }),
-          signal,
-        );
-        if (!owner.isCurrent() || signal.aborted) {
-          // Rejected work is not fresh data and cannot settle a successor fetch.
-          if (pending.get(scope) === owner && queryClient.getQueryCache().find({ queryKey, exact: true }) === requestQuery) {
-            requestQuery.setState({ fetchStatus: "idle" });
-          }
-          throw new CancelledError({ silent: true, revert: false });
-        }
-        return mergeFeedRefreshForFilter(queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey), fresh, articleFilter);
-      } finally {
-        if (pending.get(scope) === owner) pending.delete(scope);
-      }
+      const assertCurrent = captureFeedRequestGuard(queryClient, queryKey, requestSession, getOAuthSession, signal);
+      const requestReloadSeq = reloadSeq.current;
+      const fresh = await coalesceFeedFirstPage(queryClient, requestSession, queryKey, () =>
+        listAggregateFeedFromAppView({ feed, filter: articleFilter, oauthSession: requestSession, signal }),
+        signal,
+      );
+      assertCurrent();
+      // The installed query function can be reused by later confirmations.
+      // Only this invocation belongs to the visible-refresh caller lifetime.
+      if (!operationSettled && !isCurrent()) throw new SupersededFeedRefreshError();
+      if (reloadSeq.current !== requestReloadSeq) throw new SupersededFeedRefreshError();
+      const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
+      return mergeFeedRefreshForFilter(current, fresh, articleFilter);
     };
     try {
       await queryClient.fetchQuery({
         queryKey,
         staleTime: 0,
-        retry: (failureCount, error) => !isCancelledError(error) && shouldRetryAppViewRequest(failureCount, error),
+        retry: shouldRetryAppViewRequest,
         queryFn: ({ signal }) => fetchMerged(signal),
         // An infinite query retains its behavior even through fetchQuery. The
         // query persister wraps the entire fetch, allowing a first-page merge
@@ -213,8 +253,12 @@ function useGuardedFeedRefresh(args: {
         persister: (_fetch, { signal }) => fetchMerged(signal),
       });
     } catch (error) {
-      if (isCancelledError(error)) return false;
+      if (isCancelledError(error) || error instanceof SupersededFeedRefreshError) return false;
       throw error;
+    } finally {
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+      operationSettled = true;
+      if (pending.get(scope) === owner) pending.delete(scope);
     }
     if (!isCurrent()) return false;
     void recordClientPerformance(oauth, {
@@ -225,34 +269,25 @@ function useGuardedFeedRefresh(args: {
       outcome: "success",
     }).catch(() => undefined);
     if (feed.kind === "publication" && feed.id) {
-      await refreshPublicationUnreadCount({ queryClient, viewerDid: oauth.did, publicationId: feed.id, oauthSession: oauth, signal: callerSignal });
+      await refreshPublicationUnreadCount({ queryClient, viewerDid: oauth.did, publicationId: feed.id, oauthSession: oauth });
     }
     return true;
-  }, [articleFilter, enabled, feed, fetchInitial, getOAuthSession, queryClient, queryKey]);
+  }, [articleFilter, enabled, feed, fetchInitial, getOAuthSession, oauthSessionReloadSeq, queryClient, queryKey]);
 
   useEffect(() => {
     if (!enabled || !oauthSession) return;
     const previous = mountedScope.current;
-    const sameScope = previous?.queryKey === queryKey;
-    if (sameScope && previous.session === oauthSession && previous.hasData === hasData) return;
-    const sessionChanged = sameScope && previous.session !== oauthSession;
-    // Record the owner during initial loading too. A valid replacement session
-    // must not inherit a cold request made with the retired credentials.
-    mountedScope.current = { queryKey, session: oauthSession, hasData };
-    if (sessionChanged) {
-      const query = queryClient.getQueryCache().find({ queryKey, exact: true });
-      void queryClient.cancelQueries({ queryKey, exact: true }, { revert: false, silent: true });
-      query?.setState({ fetchStatus: "idle" });
-      void refresh().catch(() => undefined);
-      return;
-    }
-    if (!hasData) return; // the normal infinite query owns initial loading
+    if (previous?.queryKey === queryKey && previous.oauthSession === oauthSession &&
+      previous.reloadSeq === oauthSessionReloadSeq) return;
+    const sessionChanged = previous?.queryKey === queryKey &&
+      (previous.oauthSession !== oauthSession || previous.reloadSeq !== oauthSessionReloadSeq);
+    mountedScope.current = { queryKey, oauthSession, reloadSeq: oauthSessionReloadSeq };
     const state = queryClient.getQueryState(queryKey);
-    if (!isFetchedAfterMount && state &&
+    if (sessionChanged || hasData && !isFetchedAfterMount && state &&
       (state.isInvalidated || Date.now() - state.dataUpdatedAt >= ENTRIES_QUERY_STALE_MS)) {
-      void refresh().catch(() => undefined); // query exposes the error with cached rows
+      void refresh(sessionChanged).catch(() => undefined); // query exposes the error with cached rows
     }
-  }, [enabled, hasData, isFetchedAfterMount, oauthSession, queryClient, queryKey, refresh]);
+  }, [enabled, hasData, isFetchedAfterMount, oauthSession, oauthSessionReloadSeq, queryClient, queryKey, refresh]);
 
   useEffect(() => onlineManager.subscribe((online) => {
     if (!online || !enabled) return;
@@ -262,12 +297,7 @@ function useGuardedFeedRefresh(args: {
     }
   }), [enabled, queryClient, queryKey, refresh]);
 
-  useVisibleFeedRefresh(
-    enabled && hasData && oauthSession && feed?.kind !== "publication" ? JSON.stringify([queryKey, oauthSessionReloadSeq]) : null,
-    refresh,
-  );
-
-  return refresh;
+  return useCallback((signal?: AbortSignal) => refresh(false, signal), [refresh]);
 }
 
 /**
@@ -277,7 +307,7 @@ export function useEntries(
   publicationKey: string | null,
   articleFilter: ArticleListFilter = "all"
 ) {
-  const { session, getOAuthSession } = useAuth();
+  const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const queryClient = useQueryClient();
   const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const normalizedKey = publicationKey ? normalizeAtRepoParam(publicationKey) : null;
@@ -319,7 +349,10 @@ export function useEntries(
         articleFilter,
         queryClient,
       });
-      return pageParam ? fetchPage() : coalesceFeedFirstPage(queryClient, oauth, entriesQueryKey, fetchPage, signal);
+      const assertCurrent = captureFeedRequestGuard(queryClient, entriesQueryKey, oauth, getOAuthSession, signal);
+      const page = await (pageParam ? fetchPage() : coalesceFeedFirstPage(queryClient, oauth, entriesQueryKey, fetchPage, signal));
+      assertCurrent();
+      return page;
     },
     initialPageParam: undefined as string | undefined,
     initialData:
@@ -439,6 +472,7 @@ export function useEntries(
     enabled: !dummyReaderDataEnabled && !!session && !!normalizedKey,
     hasData: !!query.data?.pages.length && !query.isPlaceholderData,
     isFetchedAfterMount: query.isFetchedAfterMount,
+    oauthSessionReloadSeq,
     getOAuthSession,
     fetchInitial: query.refetch,
   });
@@ -513,7 +547,9 @@ export function useAggregateFeedEntries(
         oauthSession: oauth,
         signal,
       });
+      const assertCurrent = captureFeedRequestGuard(queryClient, aggregateQueryKey, oauth, getOAuthSession, signal);
       const page = await (pageParam ? fetchPage() : coalesceFeedFirstPage(queryClient, oauth, aggregateQueryKey, fetchPage, signal));
+      assertCurrent();
       // A successful first page means the server has prepared list publication metadata.
       if (feed.kind === "list" && !pageParam && !signal.aborted && getOAuthSession() === oauth) {
         const resolvedListQuery = {
@@ -630,6 +666,7 @@ export function useAggregateFeedEntries(
     enabled: !dummyReaderDataEnabled && !!session && !!feed,
     hasData: !!query.data?.pages.length && !query.isPlaceholderData,
     isFetchedAfterMount: query.isFetchedAfterMount,
+    oauthSessionReloadSeq,
     getOAuthSession,
     fetchInitial: query.refetch,
   });
@@ -660,6 +697,11 @@ export function useAggregateFeedEntries(
     query.isPlaceholderData,
   ]);
 
+  useVisibleFeedRefresh(
+    !dummyReaderDataEnabled && viewerDid && feedKind && query.data?.pages.length && !query.isPlaceholderData
+      ? JSON.stringify([paintKey, oauthSessionReloadSeq]) : null,
+    refetch,
+  );
   return { ...query, refetch: async (signal?: AbortSignal) => { await refetch(signal); } };
 }
 
