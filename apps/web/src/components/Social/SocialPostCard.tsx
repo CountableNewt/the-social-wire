@@ -110,7 +110,7 @@ export function SocialPostCard({
           reposterIdentity?.filter ||
           reposterIdentity?.noOverride
             ? "by an account"
-            : <>by <SocialProfileLink actor={repost.did} className="hover:underline"><ProfileDisplayName name={repost.displayName || repost.handle} pronouns={repost.pronouns} /></SocialProfileLink></>}
+            : <>by <SocialProfileLink actor={repost.did} className="hover:underline"><ProfileDisplayName name={repost.displayName || repost.handle} pronouns={repost.pronouns} subject={repost} /></SocialProfileLink></>}
           </span></p>
       ) : null}
       {reply ? (
@@ -143,7 +143,7 @@ export function SocialPostCard({
             actor={post.author.did}
             className="block truncate text-sm font-semibold hover:underline"
           >
-            <ProfileDisplayName name={name} pronouns={!identity.blur && !identity.filter && !identity.noOverride ? post.author.pronouns : undefined} />
+            <ProfileDisplayName name={name} subject={!identity.blur && !identity.filter && !identity.noOverride ? post.author : undefined} pronouns={!identity.blur && !identity.filter && !identity.noOverride ? post.author.pronouns : undefined} />
           </SocialProfileLink>
           {!identity.blur && !identity.filter && !identity.noOverride ? (
             <SocialProfileLink actor={post.author.did} className="block truncate text-xs text-muted-foreground hover:underline">
