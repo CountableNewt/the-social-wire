@@ -11082,6 +11082,10 @@
       "target": "packages/go/lexicons",
       "files": [
         {
+          "path": "packages/lexicons/__tests__/articleDraftLexicons.test.ts",
+          "sha256": "07c9ad23757b4510612cdef8624e1cb3e7cfcec9d12b360a1b3277dafbe53619"
+        },
+        {
           "path": "packages/lexicons/__tests__/corpusLexicons.test.ts",
           "sha256": "abb4d0d2b83ee5ce678772f38924d867d4c7a5aae00e41e81cd3febe02ea5992"
         },
@@ -11127,7 +11131,7 @@
         },
         {
           "path": "packages/lexicons/__tests__/xrpcLexicons.test.ts",
-          "sha256": "877adb058250eaca444beb25d54bb5a23be2e0ab6e4710d436d181492bd5022b"
+          "sha256": "8530a9d9ece0974027df5a0ed0622a8162416863d81050af065889c7fcc926b2"
         },
         {
           "path": "packages/lexicons/app/skyreader/feed/subscription.json",
@@ -11200,6 +11204,26 @@
         {
           "path": "packages/lexicons/app/thesocialwire/appview/putReadMark.json",
           "sha256": "da9716162cf6f4b6e4f8358b6e653d6db07a637698a4e71ebbcedae159ab8964"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/articleDraft/defs.json",
+          "sha256": "1cb9f3dd2d4948279f5af405170a146cb8cbebd6b8d55a977c63aef0367d3330"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/articleDraft/delete.json",
+          "sha256": "c161f14f3ca3ad4b048c716326452123f686e40f858b7a9dde4422a277643355"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/articleDraft/get.json",
+          "sha256": "7d20215ae72e21e623fbf13232de02c93cde373e139cbaa2e546502dacb8a8d0"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/articleDraft/list.json",
+          "sha256": "1cd86b8b52b42a37b0c57369090dc1003cec41e6e4d6193215d3e2bf5ef31b49"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/articleDraft/put.json",
+          "sha256": "bf6e15039cd65af5934d96b267b2c0314af2295f2cb8f35ae62e842cd0620e46"
         },
         {
           "path": "packages/lexicons/app/thesocialwire/corpus/getFinanceGeneration.json",
@@ -11732,6 +11756,10 @@
           "sha256": "4dd7f4e59e83e837c63b3dcd664ee0b2280ef784a9a99e9a5dc6da238f3c4607"
         },
         {
+          "path": "packages/spec/__tests__/article-draft-contract.test.ts",
+          "sha256": "cd5839e6f9d317e1748716adf2f0a65a2e64a6691425a82065ba4df7a4c287ed"
+        },
+        {
           "path": "packages/spec/__tests__/ci-bun-installation.test.ts",
           "sha256": "1ab2356f7c443ed4a25f62f46160d6aca8ad2966be9a6eee953b562e33435300"
         },
@@ -11777,7 +11805,7 @@
         },
         {
           "path": "packages/spec/__tests__/endpoint-manifest.test.ts",
-          "sha256": "b4983208ca94f64e389b27f9d43b3cc5521135ebb076fe0c744a17dc954b92b3"
+          "sha256": "4ec266dd6b7996fd1d22a2eaf8e23492f6b89b7864742fed66dd769af0604c8f"
         },
         {
           "path": "packages/spec/__tests__/ingress-go-image-dependencies.test.ts",
@@ -11933,11 +11961,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "4bfa03c3a3a1bbb5577cc776c5c719164f05bd462988ce96e955e04888c7d077"
+          "sha256": "fd5851fcc1d827ec2cfd9869b4fbcc6e5b1f145867710975b62c6fc398b8bd03"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "fa6938f66968b2c1f75ee077dee438307da600d0a8d376c36b04bc2681f19d82"
+          "sha256": "86563ed98ff375fd7127c8125d1e3322054552724cd77ba60be320af70daa3e2"
         },
         {
           "path": "packages/spec/package.json",
