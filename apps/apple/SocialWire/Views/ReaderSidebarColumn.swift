@@ -101,7 +101,7 @@ struct ReaderSidebarColumn: View {
             }
         }
         .task(id: appModel.readerListSource) {
-            await appModel.refreshSavedLinks()
+            await appModel.refreshSavedLinks(force: false)
         }
         .confirmationDialog(
             "Delete saved link?",
