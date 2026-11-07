@@ -1101,7 +1101,7 @@ final class SocialWireAppModel {
     }
 
     private func applyReaderListSource(_ source: ReaderListSource, persist: Bool) {
-        let changesScope = feedSelection != .topLevel(source)
+        let changesScope = feedSelection != .topLevel(source) || selectedPublication != nil
         if changesScope { invalidateReaderRequests() }
         if readerListSource != source {
             cancelWireRequest(epoch: wireRequestEpoch)
@@ -3851,6 +3851,7 @@ final class SocialWireAppModel {
 
     private func resetSavedLinkSessionState() {
         savedLinksRefreshCoordinator.reset()
+        attemptedBookmarkMigration = false
         savedLinksPrewarmTask?.cancel()
         savedLinksPrewarmTask = nil
         savedLinksPrewarmID = UUID()
@@ -4461,8 +4462,11 @@ final class SocialWireAppModel {
 
     func archive(_ save: MergedLatrSave) async {
         let mutationViewerDID = viewerDID
+        let mutationIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         defer {
-            if let mutationViewerDID { persistSavedLinksSnapshot(viewerDID: mutationViewerDID) }
+            if let mutationViewerDID, ownsSavedLinkRequest(mutationIdentity) {
+                persistSavedLinksSnapshot(viewerDID: mutationViewerDID)
+            }
         }
         let snapshotActive = savedLinks
         let snapshotArchived = archivedSavedLinks
@@ -4482,8 +4486,11 @@ final class SocialWireAppModel {
 
     func unarchive(_ save: MergedLatrSave) async {
         let mutationViewerDID = viewerDID
+        let mutationIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         defer {
-            if let mutationViewerDID { persistSavedLinksSnapshot(viewerDID: mutationViewerDID) }
+            if let mutationViewerDID, ownsSavedLinkRequest(mutationIdentity) {
+                persistSavedLinksSnapshot(viewerDID: mutationViewerDID)
+            }
         }
         let snapshotActive = savedLinks
         let snapshotArchived = archivedSavedLinks
@@ -4503,8 +4510,11 @@ final class SocialWireAppModel {
 
     func delete(_ save: MergedLatrSave) async {
         let mutationViewerDID = viewerDID
+        let mutationIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         defer {
-            if let mutationViewerDID { persistSavedLinksSnapshot(viewerDID: mutationViewerDID) }
+            if let mutationViewerDID, ownsSavedLinkRequest(mutationIdentity) {
+                persistSavedLinksSnapshot(viewerDID: mutationViewerDID)
+            }
         }
         let snapshotActive = savedLinks
         let snapshotArchived = archivedSavedLinks
@@ -4524,8 +4534,11 @@ final class SocialWireAppModel {
 
     func replaceTags(on save: MergedLatrSave, with tags: [String]) async {
         let mutationViewerDID = viewerDID
+        let mutationIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
         defer {
-            if let mutationViewerDID { persistSavedLinksSnapshot(viewerDID: mutationViewerDID) }
+            if let mutationViewerDID, ownsSavedLinkRequest(mutationIdentity) {
+                persistSavedLinksSnapshot(viewerDID: mutationViewerDID)
+            }
         }
         let snapshotActive = savedLinks
         let snapshotArchived = archivedSavedLinks

@@ -36,7 +36,10 @@ struct NewsSceneModelTests {
                 authorDid: "did:plc:author", authorHandle: "author.test",
                 title: "Publication", discoveredAt: "2026-11-04T00:00:00Z"
             )
+            model.entries = [EntryListItem(entryId: "stale-publication-entry", title: "Stale Story", summary: nil,
+                                           publishedAt: "2026-11-04T00:00:00Z", thumbnailUrl: nil, thumbnailFallbackUrl: nil)]
             model.selectReaderListSource(source)
+            #expect(model.entries.isEmpty)
             #expect(model.feedSelection == .topLevel(source))
             #expect(model.selectedPublication == nil)
             #expect(model.selectedSidebar == nil)
