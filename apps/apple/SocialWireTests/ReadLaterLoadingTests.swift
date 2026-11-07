@@ -6,6 +6,21 @@ import Testing
 @Suite("Read Later loading")
 @MainActor
 struct ReadLaterLoadingTests {
+    @Test("reset invalidates a queued refresh before its loader starts")
+    func resetBeforeRefreshStarts() async {
+        let coordinator = SavedLinksRefreshCoordinator()
+        var calls = 0
+        let reset = Task { @MainActor in coordinator.reset() }
+        await coordinator.refresh(force: false) {
+            calls += 1
+            return true
+        }
+        await reset.value
+        #expect(calls == 0)
+        await coordinator.refresh(force: false) { calls += 1; return true }
+        #expect(calls == 1)
+    }
+
     @Test("overlapping passive loads share work and recent loads are reused")
     func coalescesPassiveRefreshes() async {
         let coordinator = SavedLinksRefreshCoordinator()
