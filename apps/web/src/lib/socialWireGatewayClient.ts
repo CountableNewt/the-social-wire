@@ -135,7 +135,8 @@ export async function gatewayFetch(
   oauthSession: OAuthSession,
   path: string,
   init?: RequestInit,
-  prepareProofPool?: () => Promise<Readonly<Record<string, string>>>
+  prepareProofPool?: () => Promise<Readonly<Record<string, string>>>,
+  options: { projectionPreflight?: boolean } = {}
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
   const run = async () => {
@@ -201,7 +202,7 @@ export async function gatewayFetch(
   };
   try {
     if (canManuallySignGatewayRequest(oauthSession)) {
-      if (!prepareProofPool && !pdsXrpcMethodForSocialWireGatewayRequest(init?.method ?? "GET", gatewayPath) && isProjectionRead(gatewayPath, init)) {
+      if (options.projectionPreflight !== false && !prepareProofPool && !pdsXrpcMethodForSocialWireGatewayRequest(init?.method ?? "GET", gatewayPath) && isProjectionRead(gatewayPath, init)) {
         return await projectionRead(oauthSession, gatewayPath, init);
       }
       return await waitForAbort(enqueueForGatewayOrigin(gatewayBaseUrl(), run, { signal: init?.signal }), init?.signal);
