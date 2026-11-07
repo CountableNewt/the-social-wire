@@ -30,6 +30,64 @@ struct ATProtoSessionDPoPTests {
         #expect(events == ["owner", "released", "next"])
     }
 
+    @Test("foreground requests cancel background previews before taking the nonce lease")
+    @MainActor
+    func foregroundPreemptsPreview() async throws {
+        let service = DPoPService()
+        let url = try #require(URL(string: "https://pds.example"))
+        let (gate, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        var events: [String] = []
+        let preview = Task {
+            try await service.withNonceSequence(for: url, background: true) {
+                events.append("preview")
+                defer { events.append("preview-finished") }
+                for await _ in gate { break }
+                try Task.checkCancellation()
+            }
+        }
+        while events.isEmpty { await Task.yield() }
+        try await service.withNonceSequence(for: url, exclusive: false) {
+            events.append("foreground")
+        }
+        await #expect(throws: CancellationError.self) { try await preview.value }
+        #expect(events == ["preview", "preview-finished", "foreground"])
+        try await service.withNonceSequence(for: url, background: true) {
+            events.append("retry")
+        }
+        #expect(events.last == "retry")
+    }
+
+    @Test("ordinary reads wait for previews without cancelling their nonce lease")
+    @MainActor
+    func readsPreservePreview() async throws {
+        let service = DPoPService()
+        let url = try #require(URL(string: "https://pds.example"))
+        let (gate, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        var events: [String] = []
+        let preview = Task {
+            try await service.withNonceSequence(for: url, background: true) {
+                events.append("preview")
+                for await _ in gate { break }
+                try Task.checkCancellation()
+                events.append("finished")
+            }
+        }
+        while events.isEmpty { await Task.yield() }
+        let read = Task {
+            try await service.withNonceSequence(for: url, exclusive: false, preemptsBackground: false) {
+                events.append("read")
+            }
+        }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(events == ["preview"])
+        continuation.yield(())
+        try await preview.value
+        try await read.value
+        #expect(events == ["preview", "finished", "read"])
+    }
+
     @Test("Independent PDS origins do not share a nonce-sequence lease")
     @MainActor
     func nonceSequencesAreOriginScoped() async throws {

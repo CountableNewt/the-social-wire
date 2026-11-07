@@ -1004,7 +1004,7 @@ final class SocialWireGatewayClient {
 
         let session = try await auth.validSession()
         if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: includesWireModerationProofs || includesCircleGraphProofs) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: includesWireModerationProofs || includesCircleGraphProofs, preemptsBackground: method != "GET") { [self] in
             let prepared = includesWireModerationProofs || includesCircleGraphProofs
             for ceremony in 0 ..< (prepared ? 2 : 1) {
                 try Task.checkCancellation()

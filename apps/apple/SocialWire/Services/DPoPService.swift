@@ -8,7 +8,10 @@ actor DPoPService {
         let id: UUID
         let continuation: CheckedContinuation<Void, any Error>
         let exclusive: Bool
+        let background: Bool
+        let preemptsBackground: Bool
     }
+    private var backgroundSequenceCancellation: [String: @Sendable () -> Void] = [:]
     private var nonceSequenceOwners: [String: Set<UUID>] = [:]
     private var exclusiveNonceOrigins: Set<String> = []
     private var nonceSequenceWaiters: [String: [SequenceWaiter]] = [:]
@@ -19,9 +22,12 @@ actor DPoPService {
     func withNonceSequence<Value: Sendable>(
         for url: URL,
         exclusive: Bool = true,
-        operation: @MainActor @Sendable () async throws -> Value
+        background: Bool = false,
+        preemptsBackground: Bool = true,
+        operation: @escaping @MainActor @Sendable () async throws -> Value
     ) async throws -> Value {
         let origin = originKey(for: url), id = UUID()
+        if !background && preemptsBackground { backgroundSequenceCancellation[origin]?() }
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 if Task.isCancelled {
@@ -32,7 +38,12 @@ actor DPoPService {
                     if exclusive { exclusiveNonceOrigins.insert(origin) }
                     continuation.resume()
                 } else {
-                    nonceSequenceWaiters[origin, default: []].append(SequenceWaiter(id: id, continuation: continuation, exclusive: exclusive))
+                    let waiter = SequenceWaiter(id: id, continuation: continuation, exclusive: exclusive, background: background, preemptsBackground: preemptsBackground)
+                    if !background, let index = nonceSequenceWaiters[origin]?.firstIndex(where: { $0.background }) {
+                        nonceSequenceWaiters[origin]?.insert(waiter, at: index)
+                    } else {
+                        nonceSequenceWaiters[origin, default: []].append(waiter)
+                    }
                 }
             }
         } onCancel: {
@@ -40,7 +51,27 @@ actor DPoPService {
         }
         defer { releaseNonceSequence(origin: origin, id: id) }
         try Task.checkCancellation()
-        return try await operation()
+        guard background else { return try await operation() }
+
+        // Foreground requests cancel enrichment and wait for its cleanup before
+        // acquiring the lease. Never overlap prepared nonce pools.
+        let task = Task { @MainActor in
+            do { return try await operation() }
+            catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw error
+            }
+        }
+        backgroundSequenceCancellation[origin] = { task.cancel() }
+        defer { backgroundSequenceCancellation.removeValue(forKey: origin) }
+        if nonceSequenceWaiters[origin]?.contains(where: { !$0.background && $0.preemptsBackground }) == true {
+            task.cancel()
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private func cancelSequenceWaiter(origin: String, id: UUID) {
