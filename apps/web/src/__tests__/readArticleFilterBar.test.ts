@@ -20,9 +20,13 @@ let feed = "wire";
 const retryWire = mock(async () => undefined);
 const retryCircle = mock(async () => undefined);
 let refreshPending = false;
+let projectionError: Error | null = null;
+let refreshMessage: string | undefined;
+let refreshError: Error | null = null;
 
 beforeEach(() => {
   retryWire.mockClear(); retryCircle.mockClear(); refreshPending = false;
+  projectionError = null; refreshMessage = undefined; refreshError = null;
   const media = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -40,7 +44,7 @@ beforeEach(() => {
     spyOn(Navigation, "useSearchParams").mockImplementation(() => new URLSearchParams({ feed }) as unknown as ReturnType<typeof Navigation.useSearchParams>),
     spyOn(ReadRoute, "useReadRoute").mockReturnValue({ articleListFilter: "all" } as unknown as ReturnType<typeof ReadRoute.useReadRoute>),
     spyOn(ReadScope, "useReadSidebarScope").mockReturnValue({ activeFeedScope: { publications: [], displayName: "" } } as unknown as ReturnType<typeof ReadScope.useReadSidebarScope>),
-    spyOn(Bootstrap, "useSidebarBootstrap").mockImplementation(() => ({ refresh: { mutate: mock(() => undefined), isPending: refreshPending } }) as unknown as ReturnType<typeof Bootstrap.useSidebarBootstrap>),
+    spyOn(Bootstrap, "useSidebarBootstrap").mockImplementation(() => ({ projectionError, refreshMessage, refresh: { mutate: mock(() => undefined), isPending: refreshPending, isError: !!refreshError, error: refreshError } }) as unknown as ReturnType<typeof Bootstrap.useSidebarBootstrap>),
     spyOn(BulkRead, "useCachedBulkReadActions").mockReturnValue({ bulkDisabled: true, applyMarkAllRead: mock(() => undefined) } as unknown as ReturnType<typeof BulkRead.useCachedBulkReadActions>),
     spyOn(Hydration, "useClientHydrated").mockReturnValue(true),
     spyOn(WireEdition, "useWireEdition").mockReturnValue(wireState as unknown as ReturnType<typeof WireEdition.useWireEdition>),
@@ -53,6 +57,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
 
 describe("read feed header", () => {
+  it("shows a recoverable projection failure when no manual refresh status is available", () => {
+    feed = "subscribed";
+    projectionError = new Error("Publication projection unavailable");
+    render(createElement(SidebarProvider, null, createElement(ReadArticleFilterBar)));
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Couldn’t refresh. Try Refresh.");
+    expect(alert.getAttribute("title")).toBe(projectionError.message);
+    expect(screen.getByRole("button", { name: "Refresh Publications" })).toBeDefined();
+  });
+
+  it.each(["pending", "progress", "failure"])("prioritizes %s manual refresh feedback over an earlier projection failure", state => {
+    feed = "subscribed";
+    projectionError = new Error("Earlier projection failure");
+    refreshPending = state === "pending";
+    refreshMessage = state === "progress" ? "Refreshing Articles…" : undefined;
+    refreshError = state === "failure" ? new Error("Manual refresh failed") : null;
+    render(createElement(SidebarProvider, null, createElement(ReadArticleFilterBar)));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const expected = state === "pending" ? "Refreshing Publications…" : state === "progress" ? "Refreshing Articles…" : "Refresh Incomplete — Try Again";
+    expect(screen.getAllByRole("status").some(status => status.textContent === expected)).toBe(true);
+  });
+
   it("shows visible progress before publication refresh progress arrives", () => {
     feed = "subscribed";
     refreshPending = true;
