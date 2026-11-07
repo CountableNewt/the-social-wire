@@ -1,7 +1,9 @@
-import { expect, it } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { afterEach, expect, it } from "bun:test";
+import { cleanup, render, screen } from "@testing-library/react";
 
 import { EmbedUnavailableMessage } from "@/components/EntryDetail/EmbedUnavailableMessage";
+
+afterEach(cleanup);
 
 it("keeps the embed message and action in one compact row", () => {
   const { rerender } = render(
