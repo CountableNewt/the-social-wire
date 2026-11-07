@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- Private original image blobs retain their format. */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BlockEditorHandle } from "@stygian/markdown-editor";
 import { ArrowLeft, ChevronDown, PanelRight, Plus } from "lucide-react";
@@ -73,7 +73,7 @@ function ArticlesViewer({ did }: { did: string }) {
   const [failure, setFailure] = useState<string>();
   const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [assetState, setAssetState] = useState<{ key?: string; urls: Record<string, string> }>({ urls: {} });
+  const [assetState, setAssetState] = useState<{ scope?: { urls: Record<string, string> }; urls: Record<string, string> }>({ urls: {} });
   const [publishedUrl, setPublishedUrl] = useState<string>();
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
@@ -82,27 +82,29 @@ function ArticlesViewer({ did }: { did: string }) {
   const assets = draft?.assets ?? [];
   const draftId = draft?.id;
   const assetKey = JSON.stringify(assets.map(asset => asset.id));
-  const assetLoadKey = JSON.stringify([did, draftId, assetKey, local.syncing, editorOpen]);
-  const assetUrls = assetState.key === assetLoadKey ? assetState.urls : {};
+  const assetScope = useMemo(() => ({ key: JSON.stringify([did, draftId, assetKey]), urls: {} as Record<string, string> }), [did, draftId, assetKey]);
+  const assetUrls = assetState.scope === assetScope ? assetState.urls : {};
+  const syncing = local.syncing;
   const cover = assets.find(asset => asset.id === draft?.coverAssetId);
   const coverUrl = draft?.coverAssetId ? assetUrls[draft.coverAssetId] : undefined;
+  useEffect(() => () => { Object.values(assetScope.urls).forEach(url => URL.revokeObjectURL(url)); }, [assetScope]);
   useEffect(() => {
     let cancelled = false;
-    const urls: Record<string, string> = {};
+    const urls = assetScope.urls;
     // Sync can restore bytes without changing asset IDs. Retry those reads when
     // sync finishes or the editor reopens, and let each image load independently.
     for (const id of JSON.parse(assetKey) as string[]) {
-      if (!draftId) continue;
+      if (!draftId || urls[id]) continue;
       void getArticleDraftAsset(did, draftId, id).then(blob => {
         if (!blob || cancelled) return;
         urls[id] = URL.createObjectURL(blob);
-        setAssetState({ key: assetLoadKey, urls: { ...urls } });
+        setAssetState({ scope: assetScope, urls: { ...urls } });
       }).catch(error => {
         if (!cancelled) setFailure(error instanceof Error ? error.message : "Draft images could not be loaded.");
       });
     }
-    return () => { cancelled = true; Object.values(urls).forEach(url => URL.revokeObjectURL(url)); };
-  }, [did, draftId, assetKey, assetLoadKey]);
+    return () => { cancelled = true; };
+  }, [did, draftId, assetKey, assetScope, syncing, editorOpen]);
   const resolveImage = (url: string) => url.startsWith("article-asset://") ? assetUrls[url.slice("article-asset://".length)] : /^https:\/\//.test(url) ? url : undefined;
   async function perform(action: () => Promise<unknown>) {
     if (actionLock.current) return;

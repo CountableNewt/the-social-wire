@@ -92,6 +92,13 @@ describe("article publishing workspace", () => {
     expect(within(details).getByRole("img", { name: "A mountain lake" }).getAttribute("src")).toBe("blob:cover");
     expect(within(editor).getByRole("img").compareDocumentPosition(screen.getByLabelText("Article Title")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByLabelText(/^Image Description:/)).toBeNull();
+    const createsBeforeSync = create.mock.calls.length;
+    const revokesBeforeSync = revoke.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Sync Drafts" }));
+    expect(within(editor).getByRole("img", { name: "A mountain lake" }).getAttribute("src")).toBe("blob:cover");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sync Drafts" }).hasAttribute("disabled")).toBe(false));
+    expect(create.mock.calls.length).toBe(createsBeforeSync);
+    expect(revoke.mock.calls.length).toBe(revokesBeforeSync);
     fireEvent.click(screen.getByRole("button", { name: "Remove Cover" }));
     expect(within(editor).queryByRole("img")).toBeNull();
     expect(within(details).queryByRole("img")).toBeNull();
