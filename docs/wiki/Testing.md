@@ -22,7 +22,7 @@ Automated and manual verification for every package in the monorepo.
 | Database migrations | `DATABASE_URL=… bash scripts/apply-database-migrations.sh` | `database-migrator` (empty DB + idempotence) |
 | Lexicons | `cd packages/lexicons && bun test` | `lexicons` |
 | OpenAPI spec | `cd packages/spec && bun test` | `spec` |
-| Repository-local Go | `GOWORK=off go -C packages/go test -race ./...` | `go-packages` plus actual Swift differential checks and PostgreSQL 17 |
+| Repository-local Go | `GOWORK=off go -C packages/go test -race ./...` | Not run in CI (Go) |
 | iOS | Xcode **Cmd+U** | `apple` |
 
 ## Per-surface plans

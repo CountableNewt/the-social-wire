@@ -62,7 +62,7 @@ The domain oracle compiles actual rankers/models, extracts resolver constants an
 
 ## CI and image dependencies
 
-The Repository-local Go Packages job checks generated contracts and source inventory, runs vet/race tests, applies canonical migrations to PostgreSQL 17, executes database integration cases, and runs all three Swift/Go differential drivers. The aggregate **CI — required** includes this job; a failure cannot be treated as an optional migration check.
+GitHub Actions no longer builds, vets or tests Go code; run these commands locally when changing Go sources.
 
 Path detection treats shared Go source, contract sources and verification scripts as Go-check inputs. Changes to `packages/go/go.mod` or `go.sum` also affect service-image jobs because shared manifests participate in repository schema-gate build contexts. Ingress directly resolves the shared module; current Swift image gates need the manifests for reproducible Go module resolution. Dockerfiles copy both manifests before the gate runs. Watch paths include the shared manifests for Gateway, AppView, compatibility workers, Wire worker, Operations, Ingress and the Development podcast worker. Config tests cover those dependencies.
 

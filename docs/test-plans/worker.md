@@ -1,7 +1,7 @@
 # Go indexing worker test plan
 
 **Runtime:** `services/indexing-worker`, `packages/go/appviewworkercore`, `packages/go/wireworkercore`
-**CI:** `indexing-worker`, `go-packages`
+**CI:** Not run in CI (Go services are no longer exercised by GitHub Actions)
 
 ## Commands
 

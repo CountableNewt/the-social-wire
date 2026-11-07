@@ -159,10 +159,6 @@ describe("CI workflow configuration", () => {
       "operations-web",
       "apple",
       "shared-swift",
-      "go-packages",
-      "jetstream-ingest",
-      "wire-ingest",
-      "indexing-worker",
       "wire-corpus-edge",
       "database-migrator",
       "docs",
@@ -176,49 +172,6 @@ describe("CI workflow configuration", () => {
     expect(workflow).toContain("  spec:");
     expect(workflow).toContain("  required:");
     expect(workflow).toContain("name: CI — Required");
-  });
-
-  it("requires Go package parity and PostgreSQL integration checks", () => {
-    const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, { needs?: string[]; steps: { run?: string; env?: Record<string, string> }[] }>;
-    };
-    const job = parsed.jobs["go-packages"];
-    expect(parsed.jobs.required.needs).toContain("go-packages");
-    const commands = job.steps.map((step) => step.run ?? "").join("\n");
-    expect(commands).toContain("go test -race -p 1 ./...");
-    expect(commands).toContain("generate-contracts.py --check");
-    expect(commands).toContain("verify-ranking-parity.sh");
-    expect(commands).toContain("verify-edition-parity.sh");
-    expect(commands).toContain("verify-domain-ranking-parity.sh");
-    const integration = job.steps.find((step) => step.run?.includes("go test -race -p 1 ./..."))!;
-    expect(integration.env?.SOCIALWIRE_GO_CORPUS_TEST_DATABASE_URL).toContain("127.0.0.1:5432/socialwire_go_test");
-    for (const name of ["SOCIALWIRE_GO_TEST_DATABASE_URL", "SOCIALWIRE_GO_WIRE_TEST_DATABASE_URL", "SOCIALWIRE_GO_CORPUS_TEST_DATABASE_URL", "SOCIALWIRE_GO_APPVIEW_TEST_DATABASE_URL", "SOCIALWIRE_GO_READSTATE_TEST_DATABASE_URL", "SOCIALWIRE_GO_TOPICS_TEST_DATABASE_URL", "SOCIALWIRE_GO_OPERATIONS_TEST_DATABASE_URL"]) {
-      expect(job.steps.some((step) => step.env?.[name])).toBe(true);
-    }
-    const gate = parsed.jobs.required.steps.find((step) => step.run)!;
-    expect(gate.run).toContain('check "$GO_PACKAGES_FLAG" "$GO_PACKAGES_RESULT"');
-  });
-
-  it("enables podcast integration only for a complete branch-scoped schema", () => {
-    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: { name?: string; run?: string }[] }> };
-    const step = parsed.jobs["go-packages"].steps.find(item => item.name === "Select branch-scoped podcast integration coverage")!;
-    expect(step.run).toBeDefined();
-    for (const count of [0, 1, 2]) {
-      const root = mkdtempSync(join(tmpdir(), "tsw-ci-podcast-schema-"));
-      try {
-        mkdirSync(join(root, "database/migrations"), { recursive: true });
-        const files = ["20261005010000_podcast_listener.sql", "20261006010000_private_podcast_subscriptions.sql"];
-        for (const file of files.slice(0, count)) writeFileSync(join(root, "database/migrations", file), "");
-        const envFile = join(root, "environment");
-        writeFileSync(envFile, "");
-        const run = spawnSync("bash", ["-c", step.run!], { cwd: root, env: { ...process.env, GITHUB_ENV: envFile }, encoding: "utf8" });
-        expect(run.status).toBe(count === 1 ? 1 : 0);
-        const output = readFileSync(envFile, "utf8");
-        if (count === 2) expect(output).toContain("SOCIALWIRE_GO_PODCAST_TEST_DATABASE_URL=postgresql://");
-        if (count === 0) expect(output).toBe("SOCIALWIRE_GO_PODCAST_TEST_DATABASE_URL=\n");
-        if (count === 1) expect(output).toBe("");
-      } finally { rmSync(root, { recursive: true, force: true }); }
-    }
   });
 
   it("runs bounded benchmark tests with an isolated receipt fixture and requires success", () => {
@@ -291,7 +244,6 @@ describe("CI workflow configuration", () => {
     expect(workflow).toContain("GITHUB_EVENT_PULL_REQUEST_BASE_SHA:");
     expect(workflow).toContain("bun run --cwd apps/web test:coverage");
     expect(workflow).toContain("bun run --cwd apps/operations test:coverage");
-    expect(workflow).toContain("go test -race -coverprofile=");
   });
 
   it("executes workspace coverage scripts and propagates their failures", () => {
@@ -348,8 +300,9 @@ describe("CI workflow configuration", () => {
     expect(workflow).not.toContain("Build runtime image");
     expect(workflow).toContain("Apply migrations from empty and verify idempotence");
     expect(workflow).toContain("Test iOS app with coverage");
-    expect(workflow).toContain("go test -race");
-    expect(workflow).toContain("Test source entrypoint database gate");
+    // Go services are no longer exercised by CI; Web keeps a toolchain only for the AnyPub kit fixture.
+    expect(workflow).not.toMatch(/\bgo (?:test|vet|build)\b/);
+    expect(workflow.match(/uses: actions\/setup-go@v6/g)).toHaveLength(1);
     // PostgreSQL process-restart images are executable integration fixtures.
     expect(workflow).toContain("Verify PostgreSQL clean shutdown");
     expect(workflow).toContain("Build isolated PostgreSQL restart fixture");
@@ -358,19 +311,19 @@ describe("CI workflow configuration", () => {
   it("shares canonical migration preparation while keeping databases isolated", () => {
     const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, string> }> }> };
     const databases: string[] = [];
-    for (const job of ["shared-swift", "go-packages", "jetstream-ingest", "wire-corpus-edge", "database-migrator"]) {
+    for (const job of ["shared-swift", "wire-corpus-edge", "database-migrator"]) {
       const preparation = parsed.jobs[job].steps.filter(step => step.uses === "./.github/actions/prepare-postgres");
       expect(preparation).toHaveLength(1);
       databases.push(preparation[0].with!["database-url"]);
     }
-    expect(new Set(databases).size).toBe(5);
+    expect(new Set(databases).size).toBe(3);
     const migrationStep = parsed.jobs["database-migrator"].steps.find(step => step.uses === "./.github/actions/prepare-postgres");
     expect(migrationStep!.with!["verify-idempotence"]).toBe("true");
     const action = readFileSync(join(repositoryRoot, ".github/actions/prepare-postgres/action.yml"), "utf8");
     expect(action).toContain("bash scripts/ci-prepare-postgres.sh");
     expect(action).toContain("Preload telemetry statement statistics");
     expect(action).toContain("SELECT count(*) FROM pg_stat_statements");
-    for (const job of ["shared-swift", "go-packages"]) {
+    for (const job of ["shared-swift"]) {
       const preparation = parsed.jobs[job].steps.find(step => step.uses === "./.github/actions/prepare-postgres");
       expect(preparation!.with!["postgres-container"]).toBe("${{ job.services.postgres.id }}");
     }
@@ -420,10 +373,11 @@ describe("CI workflow configuration", () => {
         `| ${service} | \`/railway/${configName}.json\` |`,
       );
 
-      const filterName = ["gateway", "appview", "operations"].includes(configName)
-          ? "go_packages"
-          : configName === "wire-jetstream-ingest"
-          ? "wire_ingest"
+      // Go-built services are deployed but intentionally have no CI job.
+      const dockerfile = config.build?.dockerfilePath ? readFileSync(join(repositoryRoot, config.build.dockerfilePath), "utf8") : "";
+      if (dockerfile.includes("FROM golang")) continue;
+      const filterName = ["gateway", "appview"].includes(configName)
+          ? "swift_backend"
           : configName.replaceAll("-", "_");
       const filter = pathFilters
         .split("\n\n")
@@ -433,9 +387,9 @@ describe("CI workflow configuration", () => {
       expect(filter).toBeDefined();
       for (const watchPattern of config.build?.watchPatterns ?? []) {
         const path = watchPattern.slice(1);
-        const candidates = [filter, ...["go_packages", "swift_backend"].map(name => pathFilters.split("\n\n").find(block => block.startsWith(`filter_changed ${name} `)))].join("\n");
+        const candidates = [filter, ...["swift_backend"].map(name => pathFilters.split("\n\n").find(block => block.startsWith(`filter_changed ${name} `)))].join("\n");
         const coveredBySharedSwift = path.startsWith("packages/swift/") && candidates.includes("'packages/swift/**'");
-        const coveredByService = ["gateway", "appview", "operations", "wire-corpus-edge"].some(service => path.startsWith(`services/${service}/`) && candidates.includes(`'services/${service}/**'`));
+        const coveredByService = ["gateway", "appview"].some(service => path === `services/${service}/**` && candidates.includes(`'services/${service}/Sources/**'`));
         const coveredByGlob = [...candidates.matchAll(/'([^']+)'/g)].some(match => new Bun.Glob(match[1]).match(path));
         expect(candidates.includes(`'${path}'`) || coveredBySharedSwift || coveredByService || coveredByGlob).toBe(true);
       }
@@ -516,19 +470,7 @@ describe("CI workflow configuration", () => {
     expect(productionProfile).not.toContain("wire-global-v5-dev-publication-west-20260919");
     expect(productionProfile).not.toContain("wire-global-v4-dev-live-20260830");
     expect(productionProfile).not.toContain("24790001258");
-    expect(pathFilters.match(/'\.railway\/\*\*'/g)).toHaveLength(4);
-  });
-
-  it("tests migrated Go entry points within the existing required gate", () => {
-    expect(workflow).toContain("Test migrated Go service entry points");
-    expect(workflow).toContain("services/wire-corpus-edge/go.sum");
-    expect(workflow).toContain("for service in gateway appview operations wire-corpus-edge; do");
-    expect(workflow).toContain('cd "services/$service"');
-    expect(workflow).toContain("go test -race -p 1 ./...");
-    expect(pathFilters).toContain("'services/*/go.mod'");
-    expect(pathFilters).toContain("'services/*/go.sum'");
-    expect(pathFilters).toContain("'services/*/cmd/**'");
-    expect(pathFilters).toContain("'services/*/internal/**'");
+    expect(pathFilters.match(/'\.railway\/\*\*'/g)).toHaveLength(2);
   });
 
   it("uses the same service names in path detection", () => {
@@ -537,10 +479,6 @@ describe("CI workflow configuration", () => {
       "operations_web",
       "apple",
       "shared_swift",
-            "go_packages",
-      "jetstream_ingest",
-      "wire_ingest",
-      "indexing_worker",
       "wire_corpus_edge",
       "database_migrator",
       "lexicons",
@@ -555,7 +493,7 @@ describe("CI workflow configuration", () => {
 describe("extracted Swift contract checkouts", () => {
   it("bootstraps contracts before all source-reading CI jobs", () => {
     const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: { run?: string; uses?: string }[] }> };
-    for (const name of ["redis", "shared-swift", "go-packages", "spec"]) {
+    for (const name of ["redis", "shared-swift", "spec"]) {
       const steps = parsed.jobs[name].steps;
       const checkoutIndex = steps.findIndex(step => step.run === "python3 scripts/go/check-out-swift-contracts.py");
       expect(checkoutIndex, name).toBe(steps.findIndex(step => step.uses === "actions/checkout@v6") + 1);
