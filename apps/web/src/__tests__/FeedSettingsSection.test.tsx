@@ -60,6 +60,8 @@ test("active feeds expose independent visibility controls without retired produc
   }
   expect(screen.queryByRole("switch", { name: "Show The Wire" })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Show Your Circle" })).toBeNull();
+  expect(screen.queryByText("The Wire")).toBeNull();
+  expect(screen.queryByText("Your Circle")).toBeNull();
   fireEvent.click(screen.getByRole("switch", { name: "Show Read Later" }));
   expect(setFeedVisible).toHaveBeenCalledWith("readLater", false);
   fireEvent.click(screen.getByRole("switch", { name: "Show Archive" }));

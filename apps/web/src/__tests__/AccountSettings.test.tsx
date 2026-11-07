@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import * as Auth from "@/hooks/useAuth";
+import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import * as Profile from "@/hooks/useViewerProfile";
 import * as FeedSettings from "@/components/Account/FeedSettingsSection";
 import * as ImportSettings from "@/components/Account/OpmlImportSection";
@@ -20,6 +21,7 @@ const changeState = mock(async () => {});
 const setRemoveSilences = mock(async () => {});
 
 beforeEach(() => {
+  spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
   window.history.replaceState(null, "", "/me");
   const mediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) });

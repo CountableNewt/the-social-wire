@@ -19,6 +19,8 @@ interface ActorTypeaheadInputProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  wrapperClassName?: string;
+  "aria-label"?: string;
 }
 
 export function ActorTypeaheadInput({
@@ -32,6 +34,8 @@ export function ActorTypeaheadInput({
   required,
   disabled,
   className,
+  wrapperClassName,
+  "aria-label": ariaLabel,
 }: ActorTypeaheadInputProps) {
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,7 +43,7 @@ export function ActorTypeaheadInput({
     useLoginHandleSuggestions(value);
   const [focused, setFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const open = focused && suggestions.length > 0;
+  const open = focused && !disabled && suggestions.length > 0;
 
   const chooseSuggestion = (suggestion: LoginHandleSuggestion) => {
     onValueChange(suggestion.handle);
@@ -50,6 +54,7 @@ export function ActorTypeaheadInput({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (!open) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -59,7 +64,7 @@ export function ActorTypeaheadInput({
       setActiveIndex((current) =>
         current <= 0 ? suggestions.length - 1 : current - 1
       );
-    } else if (event.key === "Enter" && activeIndex >= 0) {
+    } else if (event.key === "Enter" && activeIndex >= 0 && activeIndex < suggestions.length) {
       event.preventDefault();
       chooseSuggestion(suggestions[activeIndex]);
     } else if (event.key === "Escape") {
@@ -69,13 +74,14 @@ export function ActorTypeaheadInput({
   };
 
   return (
-    <div className="relative">
+    <div className={cn("relative min-w-0", wrapperClassName)}>
       <div className="relative">
         <Input
           ref={inputRef}
           id={id}
           type="text"
           role="combobox"
+          aria-label={ariaLabel}
           value={value}
           onChange={(event) => {
             onValueChange(event.target.value);

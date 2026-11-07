@@ -19,8 +19,17 @@ export function verificationLabel(subject: VerificationSubject, preferences: Ver
     if (subject.verification?.trustedVerifierStatus === "valid") return "Trusted Verifier on Bluesky";
     if (subject.verification?.verifiedStatus === "valid") return "Verified on Bluesky";
   }
-  const issuers = records.filter(record => preferences.trustedVerifierDIDs.includes(record.issuer) && record.subject === subject.did && record.handle === subject.handle && record.displayName === (subject.displayName ?? "")).map(record => record.issuer);
+  const issuers = customVerificationIssuers(subject, preferences, records);
   return issuers.length ? "Verified by a Custom Trusted Verifier" : undefined;
+}
+function customVerificationIssuers(subject: VerificationSubject, preferences: VerificationPreferences, records: readonly CustomVerification[]): string[] {
+  return records.filter(record => preferences.trustedVerifierDIDs.includes(record.issuer) && record.subject === subject.did && record.handle === subject.handle && record.displayName === (subject.displayName ?? "")).map(record => record.issuer);
+}
+export function verificationIssuers(subject: VerificationSubject, preferences: VerificationPreferences, records: readonly CustomVerification[]): string[] {
+  const official = preferences.includesBlueskyVerification && subject.verification?.verifiedStatus === "valid"
+    ? subject.verification.verifications.filter(verification => verification.isValid && isVerifierDID(verification.issuer)).map(verification => verification.issuer)
+    : [];
+  return [...new Set([...official, ...customVerificationIssuers(subject, preferences, records)])];
 }
 async function publicJSON(url: string, signal?: AbortSignal) {
   const response = await fetch(url, { signal, credentials: "omit", redirect: "error", headers: { Accept: "application/json" } });
