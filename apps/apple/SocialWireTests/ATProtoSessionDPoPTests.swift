@@ -58,6 +58,35 @@ struct ATProtoSessionDPoPTests {
         #expect(events.last == "retry")
     }
 
+    @Test("already cancelled foreground requests do not preempt previews")
+    @MainActor
+    func cancelledForegroundPreservesPreview() async throws {
+        let service = DPoPService()
+        let url = try #require(URL(string: "https://pds.example"))
+        let (gate, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        var events: [String] = []
+        let preview = Task {
+            try await service.withNonceSequence(for: url, background: true) {
+                events.append("preview")
+                for await _ in gate { break }
+                try Task.checkCancellation()
+                events.append("finished")
+            }
+        }
+        while events.isEmpty { await Task.yield() }
+        let foreground = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await service.withNonceSequence(for: url) {
+                events.append("foreground")
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await foreground.value }
+        continuation.yield(())
+        try await preview.value
+        #expect(events == ["preview", "finished"])
+    }
+
     @Test("ordinary reads wait for previews without cancelling their nonce lease")
     @MainActor
     func readsPreservePreview() async throws {
