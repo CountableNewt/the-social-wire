@@ -102,6 +102,27 @@ async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
   return await loadedField();
 }
+it.each([false, true])("keeps disabled Production tools out of composition while preserving ordinary posting (paid: %s)", async paid => {
+  const previousTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+  process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
+  process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "false";
+  isPro = paid;
+  const publish = spyOn(compose, "createBlueskyPost").mockResolvedValue({ uri: "at://did:plc:viewer/app.bsky.feed.post/released", cid: "cid" }); restores.push(() => publish.mockRestore());
+  try {
+    fireEvent.change(await open(), { target: { value: "Ordinary Production Post" } });
+    expect(screen.queryByRole("combobox", { name: "Post As" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
+    expect(screen.queryByText(/Multi-account support/)).toBeNull();
+    expect(profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Post" }));
+    await waitForDialogClosed();
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
+  } finally {
+    if (previousTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+    else process.env.NEXT_PUBLIC_TOOLS_ENABLED = previousTools;
+  }
+});
 it("keeps immediate posting available without scheduling controls when the flag is off", async () => {
   delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
   fireEvent.change(await open(), { target: { value: "Publish Now" } });

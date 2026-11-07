@@ -11131,7 +11131,7 @@
         },
         {
           "path": "packages/lexicons/__tests__/xrpcLexicons.test.ts",
-          "sha256": "8530a9d9ece0974027df5a0ed0622a8162416863d81050af065889c7fcc926b2"
+          "sha256": "5845b1ea1a675f38168ddebbb97b0048d0b2398259121b96569ddbc04dab2a8b"
         },
         {
           "path": "packages/lexicons/app/skyreader/feed/subscription.json",
@@ -11432,6 +11432,98 @@
         {
           "path": "packages/lexicons/app/thesocialwire/podcast/clip.json",
           "sha256": "1c83acdef2e4a0984d93e6330e815f36bcb59a99ac68e7a31f118dbb6c516af9"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/createClip.json",
+          "sha256": "503730b1b6be6255b342e5fc38a0a542ae05407130ebb0382e15e18f27ec9191"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/deleteClip.json",
+          "sha256": "8e9f8d1c8687750fa1d81240b6011bc354e6fa2306212237a5ee24998d9d7fec"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/deletePrivateSubscription.json",
+          "sha256": "c6a577ade5a323990c065c4cdf3c483057aa0ebcd16d348cacb281103eccd01c"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/findPodcasts.json",
+          "sha256": "bd85571914a39569b871c2cf8da667d42f1bbd140ce3bc5a76f28603c652f47e"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getAnalysis.json",
+          "sha256": "688a6524b867b032d6c38e909351a44d9b7068ce0d3394bcd0bb85eac5623fe7"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getClipAsset.json",
+          "sha256": "7c45243da85fc032a1b05eebcdfe2f45fff7204ae1227ff0d5aee7c179c95610"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getEpisodes.json",
+          "sha256": "4626f4959f637016f4e4d18eaac73a347a1ef160bb5069bd40e161f87b8fffe6"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getImage.json",
+          "sha256": "4788f06ec8afb779c56f92ea8c41d6cf41b4981f1424b723fe6057a379decb55"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getJob.json",
+          "sha256": "439b0b9d78260e3db99775a80e6bccb2ec64d29c508a29809297bd312b03ca11"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getMedia.json",
+          "sha256": "6b3f38ca5ac264f431f6d21766c71e667d66525b52289dbd8134a4089e8470dc"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getPublicClip.json",
+          "sha256": "b96dc807beb53c40510f1ffcdceef711fd2cdd516e2eb62d2dee1103d97d9743"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getPublicClipAsset.json",
+          "sha256": "a20e2ac13c1cb6e1e373bfddbe77ee8f5f4900e45a5b6ad5458a1830a342727f"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getShows.json",
+          "sha256": "8deedd1bf613f399a73a45eeb75982aba9b3e97f6843367bdbca6c58d6055c78"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getState.json",
+          "sha256": "0e527f7ed5f3502e6689eb42ce88631bb77be94e945dfd7354b1f25a63d8c704"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/getTranscript.json",
+          "sha256": "b086e0c68c36b60a3b32b91b02f941641bf30287bad3461ce9448cdc148b4827"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/listClips.json",
+          "sha256": "9b6db156863345dc615214f7893b0bf83c66593e521178054ce4f242be3ec0f6"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/publishClip.json",
+          "sha256": "d293b4c297981e97ed9cdef0b8890a5fe9a8e092d17cb79d421d3ed44b1ae304"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/putState.json",
+          "sha256": "659014d1c3986e0e0dacc20d613b378212611b0e00b15f755491e8ea36148eac"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/refreshPrivateShow.json",
+          "sha256": "cfc8f63a82fccaab3707c129be98a8427ebb09eb5358e49dceb1bea3041322d2"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/requestAnalysis.json",
+          "sha256": "367654718c07882dbd4acf2debe8dc736114b2471e681132269f04e90ea89c83"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/resolvePrivateShow.json",
+          "sha256": "ca8aa1be02a07053e56c21887505da8795a6a25b763101f83e6fe19bdfe0b952"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/resolveShow.json",
+          "sha256": "16e7656415ef747b33ded231d3c7c1cfdb4431acc422bd9231daafe041ee1320"
+        },
+        {
+          "path": "packages/lexicons/app/thesocialwire/podcast/retryJob.json",
+          "sha256": "c755090bea771c8eff7d218b0da1e6c1d605bb3b3430dcb01f0de64feb77fbaf"
         },
         {
           "path": "packages/lexicons/app/thesocialwire/podcast/source.json",
@@ -11765,7 +11857,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-path-detection.test.ts",
-          "sha256": "c5a2c650fd4d53bc8740823e192ae17af0fb1e112d76400361e21de2df3598a2"
+          "sha256": "b3e3943a9edccc46a6ac2ee346ce273b9279d95bc760ce294db635bb6bfe145b"
         },
         {
           "path": "packages/spec/__tests__/ci-postgres-preparation.test.ts",
@@ -11777,7 +11869,7 @@
         },
         {
           "path": "packages/spec/__tests__/ci-workflow-config.test.ts",
-          "sha256": "97cea8954a24271f2058ad4c094614bb58458dbe0ffe51e485c4cd05f0694625"
+          "sha256": "b7b9d54cb17afd49cb5682f0082573a23995d208530fee18e45dbbcae2ca4d36"
         },
         {
           "path": "packages/spec/__tests__/circle-private-state-migration.test.ts",
@@ -11805,7 +11897,7 @@
         },
         {
           "path": "packages/spec/__tests__/endpoint-manifest.test.ts",
-          "sha256": "5317edfab6dc045c31da96d9502bf078c21f6120ab97dc600a0f9ac35a2d917f"
+          "sha256": "4ec266dd6b7996fd1d22a2eaf8e23492f6b89b7864742fed66dd769af0604c8f"
         },
         {
           "path": "packages/spec/__tests__/ingress-go-image-dependencies.test.ts",
@@ -11817,7 +11909,7 @@
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-drain-indexes.test.ts",
-          "sha256": "18ccb26ff10fd0a62dac421caae17e4c57e448764fe8a200d307726c1bb2ec89"
+          "sha256": "6e222a94ed768059048b3037cda0598d3dad9c9651dba1290ff2d3175bbaf27d"
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-durability-migration.test.ts",
@@ -11837,7 +11929,7 @@
         },
         {
           "path": "packages/spec/__tests__/openapi-routes.test.ts",
-          "sha256": "88a03a8d47908fc0519dd1a12d1a4740da28b8472f4db15dc67881c4c64d9fbb"
+          "sha256": "1d5b2ac774dd507fc928fab5585674cc008c6047e3a90840df2a328855677378"
         },
         {
           "path": "packages/spec/__tests__/operations-change-retention-postgres.test.ts",
@@ -11857,11 +11949,11 @@
         },
         {
           "path": "packages/spec/__tests__/podcast-contract.test.ts",
-          "sha256": "c6d0bd83b72894919a8b2684ce76e1f8cb657d881fdc0b4fa13144453a61b898"
+          "sha256": "6ccf6233d00468fcc21c9b7cdded825fdb5586077a7aa981c6f4bd1ee26b6766"
         },
         {
           "path": "packages/spec/__tests__/podcast-deployment.test.ts",
-          "sha256": "151bb2733ea247f137b9c07ebc2eba2cc1f12a68019b83d0ca096c133eda5e91"
+          "sha256": "2b23cedf8740e7544d47caee70f882a4037df5d90d6a38de49e885915632c975"
         },
         {
           "path": "packages/spec/__tests__/postgres-replay-harness.test.ts",
@@ -11961,11 +12053,11 @@
         },
         {
           "path": "packages/spec/endpoint-manifest.json",
-          "sha256": "d877fcc4524035742d53233ea6fc4502c66bc4353e202833d24192582746dbc8"
+          "sha256": "dea7d316dd50b9a488c6a14b6e881330c5b98abf6f10a64312fe4736b0b42b7d"
         },
         {
           "path": "packages/spec/openapi.yaml",
-          "sha256": "ebb93a61223743d214f4f7e5fab564b8037d3ad509a16f0e90171cf4b0876280"
+          "sha256": "c3029a8b904a738b83fdefde5dff8f5b241a12a957f1522f662f2c818135d615"
         },
         {
           "path": "packages/spec/package.json",
