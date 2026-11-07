@@ -2,7 +2,7 @@
 
 import { effectiveEntryReadState } from "@/lib/pendingReadStateOverlay";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EntryRow } from "./EntryRow";
@@ -33,14 +33,18 @@ export function EntryListVirtualPane({
   isFetchNextPageError,
   fetchNextPage,
   scrollStateKey,
+  scrollContainerRef,
   publicationById,
   markEntryRead,
   markEntryUnread,
 }: EntryListVirtualPaneProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
+  const localParentRef = useRef<HTMLDivElement>(null);
+  const parentRef = scrollContainerRef ?? localParentRef;
   const loaderNodeRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const scrollTopRef = useRef(loadEntryListScrollOffset(scrollStateKey));
+  const previousMeasurements = useRef<VirtualItem[]>([]);
+  const previousEntries = useRef<EntryListVirtualPaneProps["visibleEntries"] | undefined>(undefined);
   const fetchNextPageRef = useRef(fetchNextPage);
   fetchNextPageRef.current = fetchNextPage;
   const hasNextPageRef = useRef(hasNextPage);
@@ -75,7 +79,7 @@ export function EntryListVirtualPane({
       observer.observe(loader);
       observerRef.current = observer;
     },
-    [disconnectLoaderObserver, hasNextPage, isFetchingNextPage, isFetchNextPageError]
+    [disconnectLoaderObserver, hasNextPage, isFetchingNextPage, isFetchNextPageError, parentRef]
   );
 
   const loaderRef = useCallback(
@@ -124,13 +128,7 @@ export function EntryListVirtualPane({
       saveEntryListScrollOffset(scrollStateKey, scrollTopRef.current);
       root.removeEventListener("scroll", rememberScrollTop);
     };
-  }, [scrollStateKey]);
-
-  useLayoutEffect(() => {
-    const root = parentRef.current;
-    if (!root) return;
-    root.scrollTop = scrollTopRef.current;
-  }, [scrollStateKey, visibleEntries]);
+  }, [scrollStateKey, parentRef]);
 
   useEffect(() => {
     const root = parentRef.current;
@@ -160,12 +158,19 @@ export function EntryListVirtualPane({
     maybeFetch();
     root.addEventListener("scroll", maybeFetch, { passive: true });
     return () => root.removeEventListener("scroll", maybeFetch);
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, visibleEntries.length]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, visibleEntries.length, parentRef]);
+
+  const getItemKey = useCallback(
+    (index: number) => visibleEntries[index]?.entryId ?? "loader",
+    [visibleEntries]
+  );
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual's internal store is not React-memoizable
   const virtualizer = useVirtualizer({
     count: virtualCount,
+    getItemKey,
     getScrollElement: () => parentRef.current,
+    initialOffset: () => loadEntryListScrollOffset(scrollStateKey),
     estimateSize: () => 130,
     initialRect: { width: 0, height: 800 },
     gap: 8,
@@ -173,6 +178,37 @@ export function EntryListVirtualPane({
   });
 
   const items = virtualizer.getVirtualItems();
+  useLayoutEffect(() => {
+    const root = parentRef.current;
+    if (!root) return;
+    const before = previousMeasurements.current;
+    // Ref measurements can change sizes after render but before this effect.
+    virtualizer.getTotalSize();
+    const after = virtualizer.measurementsCache;
+    const offset = scrollTopRef.current;
+    if (previousEntries.current !== visibleEntries) {
+      // Keep the article crossing the viewport edge at its existing offset.
+      // Following articles provide a fallback when the unread filter removes it.
+      const first = before.findIndex(item => item.end > offset);
+      const positions = new Map(after.map(item => [item.key, item.start]));
+      let nextOffset = offset;
+      if (offset > 0 && first !== -1) {
+        for (let index = first; index < before.length; index++) {
+          const anchor = before[index];
+          const start = positions.get(anchor.key);
+          if (start === undefined || anchor.key === "loader") continue;
+          nextOffset += start - anchor.start;
+          break;
+        }
+      }
+      root.scrollTop = Math.max(0, nextOffset);
+    }
+    // TanStack owns resize-only corrections; its scroll event may arrive later.
+    scrollTopRef.current = root.scrollTop;
+    previousEntries.current = visibleEntries;
+    previousMeasurements.current = after;
+  });
+
   const firstItem = items[0];
   const lastItem = items.at(-1);
   const paddingTop = firstItem?.start ?? 0;
@@ -184,6 +220,7 @@ export function EntryListVirtualPane({
     <div
       ref={parentRef}
       data-entry-list-scroll
+      style={{ overflowAnchor: "none" }}
       className="h-full overflow-y-auto overscroll-y-contain pt-2"
     >
       <div
