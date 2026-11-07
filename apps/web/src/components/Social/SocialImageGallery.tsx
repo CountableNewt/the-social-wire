@@ -113,8 +113,12 @@ export function SocialImageGallery({ images }: { images: readonly AppBskyEmbedIm
           onClick={event => { event.stopPropagation(); setSelected(index); }}>
           {safeImages.map((item, position) => <CachedImage key={`${item.thumb}:${position}`} src={socialHttpsUrl(item.thumb)} alt={item.alt}
             aria-hidden={position !== displayedIndex} width={item.aspectRatio?.width ?? 1200} height={item.aspectRatio?.height ?? 800}
-            loading="eager" draggable={false}
-            onLoad={() => setGallery(current => ({ ...current, loaded: new Set(current.loaded).add(item.thumb) }))}
+            loading="lazy" draggable={false}
+            onLoad={() => setGallery(current => {
+              const failed = new Set(current.failed);
+              failed.delete(item.thumb);
+              return { ...current, loaded: new Set(current.loaded).add(item.thumb), failed };
+            })}
             onError={() => setGallery(current => ({ ...current, failed: new Set(current.failed).add(item.thumb) }))}
             className={`absolute inset-0 block h-full w-full object-contain ${position === displayedIndex && !gallery.failed.has(item.thumb) ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`} />)}
           {gallery.failed.has(image.thumb) ? <span role="status" className="absolute inset-0 flex items-center justify-center p-4 text-sm text-muted-foreground">Image Couldn’t Be Loaded</span> : null}
@@ -129,7 +133,7 @@ export function SocialImageGallery({ images }: { images: readonly AppBskyEmbedIm
         <button type="button" aria-label="Next Photo" disabled={index === safeImages.length - 1} className="rounded-md p-1 hover:bg-muted disabled:opacity-40" onClick={event => { event.stopPropagation(); navigate(index + 1); }}><ChevronRight aria-hidden="true" className="size-5" /></button>
       </div> : null}
     </div>
-    {selectedIndex !== null ? <SocialImageDialog key={`${safeImages[selectedIndex].fullsize}:${selectedIndex}`} image={safeImages[selectedIndex]} index={selectedIndex} total={safeImages.length}
+    {selectedIndex !== null ? <SocialImageDialog image={safeImages[selectedIndex]} index={selectedIndex} total={safeImages.length}
       onClose={() => setSelected(null)} onPrevious={selectedIndex > 0 ? () => select(selectedIndex - 1) : undefined} onNext={selectedIndex < safeImages.length - 1 ? () => select(selectedIndex + 1) : undefined} /> : null}
   </>;
 }

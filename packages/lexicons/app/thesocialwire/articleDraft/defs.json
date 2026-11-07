@@ -1,0 +1,239 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.articleDraft.defs",
+  "defs": {
+    "localAsset": {
+      "type": "object",
+      "required": [
+        "id",
+        "alt",
+        "width",
+        "height",
+        "mimeType",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "alt": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": [
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "description": "Original image metadata. Byte length is bounded to 1000000 by the service, with a ready owner-private photo binding required for every asset."
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "markdown",
+        "excerpt",
+        "path",
+        "tags",
+        "publicationUri",
+        "createdAt",
+        "updatedAt",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "title": {
+          "type": "string"
+        },
+        "markdown": {
+          "type": "string"
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "maxLength": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "publicationUri": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "assets": {
+          "type": "array",
+          "maxLength": 200,
+          "items": {
+            "type": "ref",
+            "ref": "app.thesocialwire.articleDraft.defs#localAsset"
+          }
+        },
+        "coverAssetId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "publishedUri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "scheduleRecordKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "scheduleUri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "publishingRecordKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "Private pending explicit Publish lock. Requires publicationClaimId; never copied into a PDS record."
+        },
+        "publicationClaimId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        }
+      },
+      "description": "Private article content, at most 524288 UTF-8 JSON bytes in total; title/body/excerpt/path/publication identifiers reject NUL. String limits are enforced in UTF-8 bytes by the service. No local cache or sync revisions are included. Publication/scheduling fields only describe explicit user actions, never cause them."
+    },
+    "attachmentRef": {
+      "type": "object",
+      "required": [
+        "localAssetId",
+        "assetId"
+      ],
+      "properties": {
+        "localAssetId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "assetId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        }
+      }
+    },
+    "attachmentBinding": {
+      "type": "object",
+      "required": [
+        "localAssetId",
+        "asset"
+      ],
+      "properties": {
+        "localAssetId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "asset": {
+          "type": "ref",
+          "ref": "app.thesocialwire.socialDraft.defs#asset"
+        }
+      },
+      "description": "Ready owner-private photo only; asset kind must be photo, byteLength at most 1000000, with name and MIME matching the local asset descriptor."
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "draftId",
+        "revision",
+        "deleted",
+        "mutationId",
+        "updatedAt",
+        "attachments"
+      ],
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "mutationId": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "description": "Canonical lowercase UUID. This private identifier is not a PDS record."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "draft": {
+          "type": "ref",
+          "ref": "app.thesocialwire.articleDraft.defs#payload"
+        },
+        "attachments": {
+          "type": "array",
+          "maxLength": 200,
+          "items": {
+            "type": "ref",
+            "ref": "app.thesocialwire.articleDraft.defs#attachmentBinding"
+          }
+        }
+      },
+      "description": "Owner-private snapshot. Live results contain draft with matching id; deletion tombstones omit draft and contain no attachments. Tombstones cannot be overwritten to resurrect a draft."
+    }
+  }
+}

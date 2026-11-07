@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ModerationOpts } from "@atproto/api";
 import * as Images from "@/hooks/useCachedImageUrl";
 import { SocialNotificationGroupHeader } from "@/components/Social/SocialNotificationGroupHeader";
@@ -66,4 +66,48 @@ it("links a single person directly without a disclosure", () => {
   render(<SocialNotificationGroupHeader group={groupSocialNotifications([notification("one", bob)])[0]} moderation={moderation} />);
   expect(screen.getByRole("link", { name: "Bob" }).getAttribute("href")).toBe(socialProfilePageHref(bob.did, "/social/notifications"));
   expect(screen.queryByLabelText(/Show People/)).toBeNull();
+});
+
+
+it("shows a single actor's trimmed pronouns beside their linked name", () => {
+  const author = { ...bob, pronouns: "  he/him  " };
+  render(<SocialNotificationGroupHeader group={groupSocialNotifications([notification("one", author)])[0]} moderation={moderation} />);
+  const link = screen.getByRole("link", { name: "Bob he/him" });
+  expect(within(link).getByText("he/him")).toBeTruthy();
+  expect(link.getAttribute("href")).toBe(socialProfilePageHref(bob.did, "/social/notifications"));
+  expect(screen.queryByLabelText(/Show People/)).toBeNull();
+});
+
+it("shows each person's pronouns in the grouped summary and disclosed list", () => {
+  const authors = [{ ...bob, pronouns: "he/him" }, { ...carol, pronouns: "she/her" }, { ...dan, pronouns: "they/them" }];
+  const group = groupSocialNotifications(authors.map((author, index) => notification(String(index), author)))[0];
+  render(<SocialNotificationGroupHeader group={group} moderation={moderation} />);
+  const summary = screen.getByLabelText("Show People: Bob he/him and Carol she/her + 1");
+  expect(within(summary).getByText("he/him")).toBeTruthy();
+  expect(within(summary).getByText("she/her")).toBeTruthy();
+  expect(within(summary).queryByText("they/them")).toBeNull();
+  fireEvent.click(summary);
+  const people = screen.getByRole("list", { name: "People" });
+  for (const author of authors) {
+    const link = within(people).getByRole("link", { name: `${author.displayName} ${author.pronouns}` });
+    expect(link.getAttribute("href")).toBe(socialProfilePageHref(author.did, "/social/notifications"));
+  }
+});
+
+it.each([undefined, "", "   "])("omits absent or blank notification pronouns: %p", pronouns => {
+  render(<SocialNotificationGroupHeader group={groupSocialNotifications([notification("one", { ...bob, pronouns })])[0]} moderation={moderation} />);
+  expect(screen.getByRole("link", { name: "Bob" }).textContent).toBe("Bob");
+});
+
+it("withholds pronouns with moderated identity in every notification name surface", () => {
+  const hidden = { ...bob, pronouns: "private-pronouns", labels: [{ src: labelerDid, uri: bob.did, val: "!hide", cts: "2026-10-11T00:00:00Z" }] };
+  const view = render(<SocialNotificationGroupHeader group={groupSocialNotifications([notification("one", hidden)])[0]} moderation={moderation} />);
+  expect(screen.queryByText("private-pronouns")).toBeNull();
+  expect(screen.getByRole("link", { name: "bob.test" })).toBeTruthy();
+  view.rerender(<SocialNotificationGroupHeader group={groupSocialNotifications([notification("one", hidden), notification("two", carol)])[0]} moderation={moderation} />);
+  const summary = screen.getByLabelText("Show People: bob.test and Carol");
+  expect(summary.textContent).toBe("bob.test and Carol");
+  fireEvent.click(summary);
+  expect(screen.queryByText("private-pronouns")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "People" })).getByRole("link", { name: "bob.test" })).toBeTruthy();
 });

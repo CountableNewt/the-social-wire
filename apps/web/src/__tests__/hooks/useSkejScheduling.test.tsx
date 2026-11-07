@@ -1,4 +1,6 @@
-import * as Tools from "@/lib/toolsEnabled";
+import * as Publishing from "@/lib/articles/articlePublishingClient";
+import * as Preparation from "@/lib/articles/articleSchedulingPreparation";
+import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import * as Entitlements from "@/lib/proEntitlements";
 import * as Pro from "@/hooks/useProEntitlements";
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
@@ -34,6 +36,34 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); cache.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
 function wrapper({ children }: { children: React.ReactNode }) { return <QueryClientProvider client={cache}>{children}</QueryClientProvider>; }
+
+test("blocks automatic and explicit reads plus captured mutations when scheduling is disabled", async () => {
+  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+  const create = spyOn(Client, "createSkejSchedule").mockResolvedValue({} as Client.SkejScheduleSummary); restores.push(() => create.mockRestore());
+  const { result } = renderHook(() => useSkejScheduling(owner, brand), { wrapper });
+  await act(async () => {});
+  expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
+  expect(Client.listSkejSchedules).not.toHaveBeenCalled();
+  await act(async () => {
+    await expect(result.current.readiness.refetch({ throwOnError: true })).rejects.toThrow("Post Scheduling Is Not Enabled");
+    await expect(result.current.schedules.refetch({ throwOnError: true })).rejects.toThrow("Post Scheduling Is Not Enabled");
+    await expect(result.current.schedule("Hidden", "2099-01-01T12:00:00Z")).rejects.toThrow("Post Scheduling Is Not Enabled");
+  });
+  expect(create).not.toHaveBeenCalled();
+  expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
+  expect(Sessions.restoreBrandAccount).not.toHaveBeenCalled();
+});
+
+test("revokes already captured actor guards when scheduling is switched off", async () => {
+  const create = spyOn(Client, "createSkejSchedule").mockResolvedValue({} as Client.SkejScheduleSummary); restores.push(() => create.mockRestore());
+  const { result } = renderHook(() => useSkejScheduling(owner, owner), { wrapper });
+  await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
+  const actor = (Client.getSkejSchedulingReadiness as typeof Client.getSkejSchedulingReadiness & { mock: { calls: [Parameters<typeof Client.getSkejSchedulingReadiness>[0]][] } }).mock.calls[0][0];
+  process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "false";
+  expect(() => actor.assertCurrentActor()).toThrow("Post Scheduling Is Not Enabled");
+  await act(async () => { await expect(result.current.schedule("Disabled", "2099-01-01T12:00:00Z")).rejects.toThrow("Post Scheduling Is Not Enabled"); });
+  expect(create).not.toHaveBeenCalled();
+});
 
 test("uses the selected brand session, and refuses writes after unlink without personal fallback", async () => {
   const create = spyOn(Client, "createSkejSchedule").mockImplementation(async actor => { actor.assertCurrentActor(); return {} as Client.SkejScheduleSummary; }); restores.push(() => create.mockRestore());
@@ -166,13 +196,37 @@ test("revokes captured scheduling actor guards and writes after downgrade", asyn
   expect(create).not.toHaveBeenCalled();
 });
 
-test("disables scheduling queries and rejects mutations when Tools is unavailable to a Pro viewer", async () => {
-  const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
-  const create = spyOn(Client, "createSkejSchedule"); restores.push(() => create.mockRestore());
+test("prepares an owned article with fresh publication data before submitting to Skej", async () => {
+  const pub = { uri: `at://${owner}/site.standard.publication/blog`, cid: "fresh", name: "Blog", url: "https://blog.test", host: "leaflet" as const, record: {} };
+  const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([pub]); restores.push(() => pubs.mockRestore());
+  const record = { $type: "site.standard.document" as const, title: "Article", site: pub.uri, publishedAt: "2099-01-01T12:00:00.000Z" };
+  const prepare = spyOn(Preparation, "prepareScheduledArticle").mockResolvedValue({ record, publishRkey: "3mabc234567ab", title: "Article", url: "https://blog.test/article" }); restores.push(() => prepare.mockRestore());
+  const create = spyOn(Client, "createSkejArticleSchedule").mockResolvedValue({} as Client.SkejArticleScheduleSummary); restores.push(() => create.mockRestore());
   const { result } = renderHook(() => useSkejScheduling(owner, owner), { wrapper });
-  expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
-  expect(Client.listSkejSchedules).not.toHaveBeenCalled();
-  await act(async () => { await expect(result.current.schedule("Hidden Tool", "2099-01-01T12:00:00Z")).rejects.toThrow(); });
-  expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
+  await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
+  await act(async () => { await result.current.scheduleArticle({ publication: { ...pub, cid: "stale" }, title: "Article", markdown: "Content", path: "/article", tags: [] }, record.publishedAt); });
+  expect(prepare.mock.calls[0]![0].publication.cid).toBe("fresh");
+  expect(create.mock.calls[0]![0].session.did).toBe(owner);
+  expect(create.mock.calls[0]![1]).toEqual(record);
+});
+
+test("does not submit an article after the account changes during preparation", async () => {
+  const pub = { uri: `at://${owner}/site.standard.publication/blog`, cid: "fresh", name: "Blog", url: "https://blog.test", host: "leaflet" as const, record: {} };
+  const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([pub]); restores.push(() => pubs.mockRestore());
+  let finish!: (value: Awaited<ReturnType<typeof Preparation.prepareScheduledArticle>>) => void;
+  const prepare = spyOn(Preparation, "prepareScheduledArticle").mockImplementation(() => new Promise(resolve => { finish = resolve; })); restores.push(() => prepare.mockRestore());
+  const create = spyOn(Client, "createSkejArticleSchedule").mockResolvedValue({} as Client.SkejArticleScheduleSummary); restores.push(() => create.mockRestore());
+  const { result, rerender } = renderHook(({ actor }) => useSkejScheduling(owner, actor), { wrapper, initialProps: { actor: owner } });
+  await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
+  let pending!: Promise<unknown>;
+  await act(async () => { pending = result.current.scheduleArticle({ publication: pub, title: "Article", markdown: "Content", path: "/article", tags: [] }, "2099-01-01T12:00:00Z").catch(error => error); });
+  await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+  rerender({ actor: brand });
+  await act(async () => { finish({ record: { $type: "site.standard.document", title: "Article", site: pub.uri, publishedAt: "2099-01-01T12:00:00Z" }, publishRkey: "3mabc234567ab", title: "Article", url: "https://blog.test/article" }); });
+  expect(await pending).toBeInstanceOf(ArticleSchedulingNotSubmittedError);
   expect(create).not.toHaveBeenCalled();
 });
+
+let previousSchedulingFlag: string | undefined;
+beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });

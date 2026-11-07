@@ -8,7 +8,7 @@ import {
 } from "@/lib/imageBlobCache";
 
 type CachedImageState = {
-  key: { cacheKey: string | null; directUrl: string | undefined } | null;
+  key: { cacheKey: string | null; directUrl: string | undefined; enabled: boolean; reload: number } | null;
   objectUrl: string | undefined;
   failed: boolean;
 };
@@ -18,18 +18,20 @@ type CachedImageState = {
  * Bluesky CDN URLs use the same-origin image proxy + IndexedDB cache. Other
  * cross-origin URLs use direct `<img src>` when browser CORS prevents caching.
  */
-export function useCachedImageUrl(src: string | null | undefined): {
+export function useCachedImageUrl(src: string | null | undefined, options: { enabled?: boolean; reload?: number } = {}): {
   objectUrl: string | undefined;
   failed: boolean;
 } {
   const cacheKey = src?.trim() || null;
+  const enabled = options.enabled ?? true;
+  const reload = options.reload ?? 0;
   const directUrl = useMemo(
     () => (cacheKey ? resolveDirectImageUrl(cacheKey) : undefined),
     [cacheKey]
   );
   // A restored source needs a new resource identity: cleanup already revoked
   // the previous blob even when its remote URL is the same.
-  const requestKey = useMemo(() => ({ cacheKey, directUrl }), [cacheKey, directUrl]);
+  const requestKey = useMemo(() => ({ cacheKey, directUrl, enabled, reload }), [cacheKey, directUrl, enabled, reload]);
   const [state, setState] = useState<CachedImageState>({
     key: null,
     objectUrl: undefined,
@@ -37,12 +39,12 @@ export function useCachedImageUrl(src: string | null | undefined): {
   });
 
   useEffect(() => {
-    if (!cacheKey || directUrl) return;
+    if (!enabled || !cacheKey || directUrl) return;
 
     let cancelled = false;
     let activeObjectUrl: string | undefined;
 
-    void fetchCachedImageObjectUrl(cacheKey)
+    void fetchCachedImageObjectUrl(cacheKey, undefined, { reload: reload > 0 })
       .then((url) => {
         if (cancelled) {
           if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
@@ -69,7 +71,9 @@ export function useCachedImageUrl(src: string | null | undefined): {
       cancelled = true;
       if (activeObjectUrl?.startsWith("blob:")) URL.revokeObjectURL(activeObjectUrl);
     };
-  }, [cacheKey, directUrl, requestKey]);
+  }, [cacheKey, directUrl, requestKey, enabled, reload]);
+
+  if (!enabled) return { objectUrl: undefined, failed: false };
 
   if (directUrl) {
     return { objectUrl: directUrl, failed: false };

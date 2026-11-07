@@ -9,7 +9,7 @@ import { createSocialDraft, deleteSocialDraft, listSocialDrafts, updateSocialDra
 import { archivePublishedComposition, cleanupPublishedComposition } from "@/lib/socialPublicationCleanup";
 import { isMissingOAuthScope, SCOPE_RECOVERY_MESSAGE } from "@/lib/oauthScopeRecovery";
 import { segmentsToSocialDraft, socialDraftDeviceId, socialDraftFingerprint, socialDraftHasContent, socialDraftToSegments, preparePrivateDraftPhotos, privateDraftPhotoRefs, hasPrivateDraftPhotos, restorePrivateDraftPhotos, hasDraftGifs, restorePrivateDraftGifs, preparePrivateDraftGifs, privateDraftGifRefs } from "@/lib/socialDraftConversion";
-
+import { hasPrivateDraftVideos, preparePrivateDraftVideos, privateDraftVideoRefs, restorePrivateDraftVideos } from "@/lib/socialDraftVideo";
 import { getDraftAttachmentManifest, putDraftAttachmentManifest, deleteDraftAttachmentManifest } from "@/lib/socialDraftAttachmentClient";
 
 type Options = {
@@ -271,16 +271,18 @@ export function useSocialComposerDraft(options: Options) {
     await persist(run);
   }
   async function restoreAttachments(run: Composition, draft: AppBskyDraftDefs.Draft, local?: ThreadSegment[]) {
-    if (!hasPrivateDraftPhotos(draft) && !hasDraftGifs(draft)) return socialDraftToSegments(draft, local);
+    if (!hasPrivateDraftPhotos(draft) && !hasDraftGifs(draft) && !hasPrivateDraftVideos(draft)) return socialDraftToSegments(draft, local);
     const manifest = await getDraftAttachmentManifest(actor(run), run.cloud.id!);
     guard(run);
     run.cloud.attachmentManifest = manifest;
     const recovered = hasPrivateDraftPhotos(draft) ? await restorePrivateDraftPhotos(actor(run), draft, manifest, local) : socialDraftToSegments(draft, local);
     guard(run);
-    return restorePrivateDraftGifs(actor(run), draft, manifest, recovered);
+    const withGifs = await restorePrivateDraftGifs(actor(run), draft, manifest, recovered);
+    guard(run);
+    return restorePrivateDraftVideos(actor(run), draft, manifest, withGifs);
   }
   async function commitAttachments(run: Composition, payload: AppBskyDraftDefs.Draft, attachmentSegments: ThreadSegment[]) {
-    const attachments = [...privateDraftPhotoRefs(payload), ...privateDraftGifRefs(attachmentSegments)];
+    const attachments = [...privateDraftPhotoRefs(payload), ...privateDraftGifRefs(attachmentSegments), ...privateDraftVideoRefs(payload)];
     if (!attachments.length && !run.cloud.attachmentManifest && !run.cloud.pendingManifest) return;
     if (!run.cloud.id) throw new Error("Wait For Draft Creation Before Saving Attachments.");
     const equalRefs = (a: typeof attachments, b: typeof attachments) => socialDraftFingerprint(a.map(({ assetId, role, ref }) => ({ assetId, role, ref })).sort((a, b) => `${a.ref}:${a.role}`.localeCompare(`${b.ref}:${b.role}`))) === socialDraftFingerprint(b.map(({ assetId, role, ref }) => ({ assetId, role, ref })).sort((a, b) => `${a.ref}:${a.role}`.localeCompare(`${b.ref}:${b.role}`)));
@@ -335,6 +337,21 @@ export function useSocialComposerDraft(options: Options) {
         if (changed) latest.current.restore(segments.current);
         await persist(run);
       });
+      await preparePrivateDraftVideos(actor(run), segments.current, async prepared => {
+        guard(run);
+        if (run.publishing) throw publicationFence;
+        let changed = false;
+        segments.current = segments.current.map(segment => {
+          const media = segment.media;
+          if (media?.kind !== "video") return segment;
+          const saved = prepared.find(item => item.id === segment.id && item.media?.kind === "video" && item.media.id === media.id && item.media.original === media.original && item.media.blob === media.blob)?.media;
+          if (saved?.kind !== "video" || socialDraftFingerprint(saved.privateAttachment) === socialDraftFingerprint(media.privateAttachment)) return segment;
+          changed = true;
+          return { ...segment, media: { ...media, privateAttachment: saved.privateAttachment } };
+        });
+        if (changed) latest.current.restore(segments.current);
+        await persist(run);
+      });
       await preparePrivateDraftGifs(actor(run), segments.current, async prepared => {
         guard(run);
         if (run.publishing) throw publicationFence;
@@ -355,9 +372,10 @@ export function useSocialComposerDraft(options: Options) {
       if (run.publishing) return;
       if (segments.current.some(segment => segment.media?.kind === "photos" && segment.media.photos.some(photo => photo.privateAttachment?.ownerDid !== run.ownerDid || photo.privateAttachment.original.state !== "ready" || photo.privateAttachment.prepared.state !== "ready"))) continue;
       if (segments.current.some(segment => segment.media?.kind === "gif" && (!segment.media.privateFiles || segment.media.privateFiles.ownerDid !== run.ownerDid || segment.media.unavailable))) continue;
+      if (segments.current.some(segment => segment.media?.kind === "video" && (segment.media.privateAttachment?.ownerDid !== run.ownerDid || segment.media.privateAttachment.video.state !== "ready"))) continue;
       const payloadSegments = segments.current;
       const payload = segmentsToSocialDraft(payloadSegments, run.cloud.deviceId, run.cloud.nativeDraft);
-      if (run.cloud.id && !run.cloud.attachmentManifest && (hasPrivateDraftPhotos(payload) || hasDraftGifs(payload))) {
+      if (run.cloud.id && !run.cloud.attachmentManifest && (hasPrivateDraftPhotos(payload) || hasDraftGifs(payload) || hasPrivateDraftVideos(payload))) {
         run.cloud.attachmentManifest = await getDraftAttachmentManifest(actor(run), run.cloud.id);
         guard(run);
         await persist(run);
@@ -489,7 +507,7 @@ export function useSocialComposerDraft(options: Options) {
         run.cloud.acknowledged = structuredClone(initial.draft);
         restored = socialDraftToSegments(initial.draft);
       }
-      if (!run.cloud.completed && !run.conflict && run.cloud.id && (hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft))) {
+      if (!run.cloud.completed && !run.conflict && run.cloud.id && (hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft) || hasPrivateDraftVideos(run.cloud.nativeDraft))) {
         try { restored = await restoreAttachments(run, segmentsToSocialDraft(restored, run.cloud.deviceId, run.cloud.nativeDraft), restored); }
         catch (error) {
           guard(run);
@@ -621,7 +639,7 @@ export function useSocialComposerDraft(options: Options) {
       run.cloud.nativeDeleted = true;
       await persist(run);
     }
-    if (run.cloud.id && (run.cloud.attachmentManifest || run.cloud.pendingManifest || hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft))) {
+    if (run.cloud.id && (run.cloud.attachmentManifest || run.cloud.pendingManifest || hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft) || hasPrivateDraftVideos(run.cloud.nativeDraft))) {
       // Native deletion is confirmed. Refresh CAS state so a lost manifest
       // response or another cleanup can be reconciled without replaying publish.
       const manifest = await getDraftAttachmentManifest(actor(run), run.cloud.id);
@@ -690,7 +708,7 @@ export function useSocialComposerDraft(options: Options) {
       // into an automatic resend. Reconcile in a new, explicitly requested run.
       await run.inFlight?.catch(() => {});
       guard(run);
-      if (segments.current.some(segment => segment.unavailableDraftMedia) && run.cloud.id && (hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft))) {
+      if (segments.current.some(segment => segment.unavailableDraftMedia) && run.cloud.id && (hasPrivateDraftPhotos(run.cloud.nativeDraft) || hasDraftGifs(run.cloud.nativeDraft) || hasPrivateDraftVideos(run.cloud.nativeDraft))) {
         try {
           const restored = await restoreAttachments(run, segmentsToSocialDraft(segments.current, run.cloud.deviceId, run.cloud.nativeDraft), segments.current);
           guard(run);

@@ -1,6 +1,7 @@
 "use client";
 
 import { CachedImage } from "@/components/shared/CachedImage";
+import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
 
 import type { ReactNode } from "react";
 import {
@@ -109,7 +110,7 @@ export function SocialPostCard({
           reposterIdentity?.filter ||
           reposterIdentity?.noOverride
             ? "by an account"
-            : <>by <SocialProfileLink actor={repost.did} className="hover:underline">{repost.displayName || repost.handle}</SocialProfileLink></>}
+            : <>by <SocialProfileLink actor={repost.did} className="hover:underline"><ProfileDisplayName name={repost.displayName || repost.handle} pronouns={repost.pronouns} /></SocialProfileLink></>}
           </span></p>
       ) : null}
       {reply ? (
@@ -121,7 +122,7 @@ export function SocialPostCard({
           <span>Quoted Post</span>
         </p>
       ) : null}
-      <div className="flex items-center gap-3">
+      <div data-social-feed-section="author" className="flex items-center gap-3">
         <SocialProfileLink actor={post.author.did} aria-label={`Open Profile: ${name}`} className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-ring">{image ? (
           <CachedImage
             src={image}
@@ -142,7 +143,7 @@ export function SocialPostCard({
             actor={post.author.did}
             className="block truncate text-sm font-semibold hover:underline"
           >
-            {name}
+            <ProfileDisplayName name={name} pronouns={!identity.blur && !identity.filter && !identity.noOverride ? post.author.pronouns : undefined} />
           </SocialProfileLink>
           {!identity.blur && !identity.filter && !identity.noOverride ? (
             <SocialProfileLink actor={post.author.did} className="block truncate text-xs text-muted-foreground hover:underline">
@@ -153,20 +154,20 @@ export function SocialPostCard({
         {!detailedTimestamp ? <SocialPostTimestamp timestamp={timestamp} /> : null}
       </div>
       <SocialPostLabels post={post} moderation={moderation} />
-      <SocialRichText record={record.value} />
+      <div data-social-feed-section="body" className="min-w-0"><SocialRichText record={record.value} /></div>
       {!media.blur && !media.filter && !media.noOverride ? <SocialCashtags record={record.value} /> : null}
-      {post.embed ? (
+      {post.embed ? <div data-social-feed-section="embed" className="min-w-0">{
         media.blur || media.filter || media.noOverride ? (
           <p className="text-sm text-muted-foreground">Media withheld.</p>
         ) : (
           <SocialPostEmbed embed={post.embed} moderation={moderation} onOpenPost={onOpenPost} />
         )
-      ) : null}
+      }</div> : null}
       {detailedTimestamp && !Number.isNaN(date.getTime()) ? (
         <time className="text-xs text-muted-foreground" dateTime={date.toISOString()}>{date.toLocaleString()}</time>
       ) : null}
       {href ? <a href={href} aria-label="Open Post" onClick={onOpen ? event => { event.preventDefault(); onOpen(); } : undefined} className="sr-only focus:not-sr-only focus:rounded focus:px-2 focus:text-primary">Open Post</a> : null}
-      {actions}
+      {actions ? <div data-social-feed-section="actions" className="min-w-0">{actions}</div> : null}
     </article>
   );
 }

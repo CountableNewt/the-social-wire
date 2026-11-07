@@ -15,8 +15,10 @@ describe("External GIF embeds", () => {
     expect(html).toContain("video.mp4");
     expect(html).toContain("still.jpg");
     expect(html).toContain('width="280" height="498"');
-    expect(html).toContain("Play GIF");
+    expect(html).toContain("Pause GIF");
+    expect(html).toContain('autoPlay=""');
     expect(html).toContain("Open GIF Viewer");
+    expect(html).not.toContain(">Open GIF Viewer<");
     expect(html).toContain("object-contain");
     expect(html).not.toContain("object-cover");
   });

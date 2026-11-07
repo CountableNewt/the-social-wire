@@ -40,7 +40,7 @@ describe("private article draft repository", () => {
   it("reads legacy drafts without asset descriptors and preserves image metadata on save", async () => {
     await saveArticleDraft(alice, draft());
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("the-social-wire.article-drafts.v1", 1);
+      const request = indexedDB.open("the-social-wire.article-drafts.v1");
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     await new Promise<void>((resolve, reject) => {
@@ -81,4 +81,23 @@ describe("private article draft repository", () => {
     await expect(saveArticleDraft(alice, draft())).rejects.toThrow("require IndexedDB");
     await expect(listArticleDrafts("")).rejects.toThrow("viewer DID");
   });
+});
+
+it("upgrades the legacy v1 database without losing drafts or private image bytes", async () => {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open("the-social-wire.article-drafts.v1", 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("drafts", { keyPath: ["viewerDid", "draftId"] }).createIndex("viewer", "viewerDid");
+      request.result.createObjectStore("assets", { keyPath: ["viewerDid", "draftId", "assetId"] }).createIndex("draft", ["viewerDid", "draftId"]);
+    };
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(["drafts", "assets"], "readwrite");
+    tx.objectStore("drafts").put({ viewerDid: alice, draftId: "legacy", draft: { ...draft("legacy"), revision: 1 } });
+    tx.objectStore("assets").put({ viewerDid: alice, draftId: "legacy", assetId: "cover", blob: new Blob(["legacy private bytes"], { type: "image/png" }) });
+    tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
+  }); db.close();
+  expect((await getArticleDraft(alice, "legacy"))?.title).toBe("Private Draft");
+  expect(await (await getArticleDraftAsset(alice, "legacy", "cover"))?.text()).toBe("legacy private bytes");
 });
