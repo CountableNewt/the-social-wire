@@ -1,7 +1,7 @@
 FROM golang:1.26.6-bookworm AS go-tools
 FROM oven/bun:1.3.14 AS builder
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates python3 \
+  && apt-get install -y --no-install-recommends git ca-certificates python3 procps \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=go-tools /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH NEXT_TELEMETRY_DISABLED=1
