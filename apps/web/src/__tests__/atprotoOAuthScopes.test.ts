@@ -143,8 +143,8 @@ describe("atprotoOAuthScopes", () => {
       "repo:app.bsky.graph.follow?action=create",
     ]);
     expect(ARTICLE_PUBLISHING_SCOPES).toEqual([
-      "repo:site.standard.document?action=create&action=update",
-      "repo:app.offprint.document.article?action=create&action=update",
+      "repo:site.standard.document?action=create&action=update&action=delete",
+      "repo:app.offprint.document.article?action=create&action=update&action=delete",
       "repo:blog.pckt.document?action=create&action=update",
       "blob:text/markdown",
       "blob:application/json",

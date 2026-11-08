@@ -3,13 +3,12 @@ import Testing
 @testable import Gateway
 
 @Test func publishedScopesMatchTheCurrentGatewayContractExactly() throws {
-  let service = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-  let source = try String(contentsOf: service.appendingPathComponent("internal/gateway/scopes.go"), encoding: .utf8)
-  for (name, actual) in [("webScope", GatewayOAuthScopes.web), ("iosScope", GatewayOAuthScopes.native)] {
-    let pattern = try NSRegularExpression(pattern: "const \(name) = \"([^\"]+)\"")
-    let match = try #require(pattern.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)))
-    let range = try #require(Range(match.range(at: 1), in: source))
-    #expect(actual == String(source[range]))
+  let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent().deletingLastPathComponent()
+  for (fixture, actual) in [("client-metadata.json", GatewayOAuthScopes.web), ("ios-client-metadata.json", GatewayOAuthScopes.native)] {
+    let data = try Data(contentsOf: repository.appendingPathComponent("apps/web/public/\(fixture)"))
+    let metadata = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(actual == metadata["scope"] as? String, "\(fixture)")
   }
 }
 
