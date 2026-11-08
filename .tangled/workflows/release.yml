@@ -10,6 +10,7 @@ clone:
 dependencies:
   - nodejs_24
   - git
+  - python3
 
 virtualisation:
   docker: true
