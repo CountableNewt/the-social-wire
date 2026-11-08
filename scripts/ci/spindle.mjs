@@ -226,7 +226,9 @@ async function verify(context, selection = 'all') {
       continue;
     }
     const image = build(context, kind, 'builder');
-    const command = 'bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && (cd apps/web && bun run test:coverage) && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)';
+    // Bun's text coverage reporter cannot reliably write directly to Docker's log pipe.
+    const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; cat /tmp/web-coverage.log; exit "$coverage_status")';
+    const command = `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
     run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', command]);
   }
 }
