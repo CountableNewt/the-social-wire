@@ -120,6 +120,10 @@ filter_changed shared_swift \
   '.github/workflows/ci.yml'
 
 filter_changed swift_backend \
+  'packages/swift/thin-app-view-core/**' \
+  'services/appview/Dockerfile.standalone' \
+  'services/appview/bin/**' \
+  'scripts/migrations/**' \
   'tools/schema-ready/**' \
   'services/gateway/Dockerfile' \
   'services/gateway/Package.swift' \

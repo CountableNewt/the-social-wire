@@ -6,7 +6,7 @@ import NIOCore
 import ThinAppViewCore
 
 struct PodcastService: Sendable {
-  let store: PostgresPodcastStore
+  let store: any PodcastStoring
   let http: HTTPClient
   let repo: ATProtoAuthenticatedRepoClient
   /// When set, unknown subscribed feeds resolve in the background instead of during hydration.

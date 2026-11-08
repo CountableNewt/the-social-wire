@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+umask 077
+# The standalone image has one fixed persistent mount. Do not use the ephemeral root filesystem.
+if [ "${BACKEND_MODE:-}" != standalone ] || [ "${SQLITE_DB_PATH:-}" != /data/social-wire.sqlite ]; then
+  echo 'Standalone backend requires BACKEND_MODE=standalone and SQLITE_DB_PATH=/data/social-wire.sqlite.' >&2
+  exit 1
+fi
+if [ "$(id -u)" = 0 ]; then
+  install -d -m 0700 -o appuser -g appuser /data
+  for suffix in '' -wal -shm; do
+    file="/data/social-wire.sqlite${suffix}"
+    if [ -L "$file" ]; then echo 'Refusing a symlinked database file.' >&2; exit 1; fi
+    if [ -e "$file" ]; then chown appuser:appuser "$file"; chmod 0600 "$file"; fi
+  done
+  exec runuser -u appuser -- "$0" "$@"
+fi
+if [ ! -w /data ]; then echo 'Persistent /data volume must be writable.' >&2; exit 1; fi
+# Each SQLite store migrates before the HTTP listener starts. No Postgres migration gate applies.
+if [ "${1:-}" = /usr/local/bin/migrate-from-postgres ]; then exec "$@"; fi
+case " $* " in
+  *" --initialize-only "*) exec "$@" ;;
+esac
+exec /usr/local/bin/backend-supervisor "$@"

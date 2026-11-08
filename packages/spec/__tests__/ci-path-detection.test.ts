@@ -83,6 +83,10 @@ describe("CI path detection", () => {
   it.each([
     "services/gateway/Sources/Gateway/GatewayCommand.swift",
     "services/appview/Package.swift",
+    "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
+    "services/appview/Dockerfile.standalone",
+    "services/appview/bin/backend-supervisor",
+    "scripts/migrations/postgres_to_sqlite.py",
     "services/indexing-worker/Tests/WorkerTests/RuntimeTests.swift",
     "tools/schema-ready/Sources/SchemaReady/SchemaReadyMain.swift",
     "services/gateway/Dockerfile",

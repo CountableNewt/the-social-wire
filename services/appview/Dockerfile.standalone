@@ -1,0 +1,64 @@
+FROM oven/bun:1.3.14-debian AS media-builder
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates ffmpeg fonts-dejavu-core \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /media
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/operations/package.json apps/operations/package.json
+COPY packages/read-state/package.json packages/read-state/package.json
+COPY packages/lexicons/package.json packages/lexicons/package.json
+COPY packages/spec/package.json packages/spec/package.json
+COPY packages/vendor packages/vendor
+COPY services/podcast-worker services/podcast-worker
+COPY packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift
+RUN bun install --filter @thesocialwire/podcast-worker --frozen-lockfile --ignore-scripts
+
+FROM media-builder AS media-tests
+RUN bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test
+
+FROM swift:6.4.2-jammy AS builder
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev pkg-config python3 sqlite3 \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY packages/swift/thin-app-view-core /src/packages/swift/thin-app-view-core
+COPY services/appview/Package.swift services/appview/Package.resolved /src/services/appview/
+COPY services/appview/Sources /src/services/appview/Sources
+COPY services/appview/Tests /src/services/appview/Tests
+RUN --mount=type=cache,id=tsw-swift-appview,sharing=locked,target=/src/services/appview/.build \
+  --mount=type=cache,id=tsw-swift-downloads,sharing=locked,target=/root/.cache/org.swift.swiftpm \
+  swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4 \
+  && mkdir -p /out/lib /out/bin \
+  && cp services/appview/.build/release/AppView /out/bin/AppView \
+  && cp -a /usr/lib/swift/linux/*.so* /out/lib/ \
+  && find -L services/appview/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
+
+FROM builder AS backend-tests
+COPY scripts/migrations /src/scripts/migrations
+COPY services/appview/bin/sqlite-backup /src/services/appview/bin/sqlite-backup
+RUN --mount=type=cache,id=tsw-swift-appview,sharing=locked,target=/src/services/appview/.build \
+  --mount=type=cache,id=tsw-swift-downloads,sharing=locked,target=/root/.cache/org.swift.swiftpm \
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/migrations -p 'test_*.py' \
+  && swift test --package-path services/appview -c release --force-resolved-versions -j 2 \
+  && swift test --package-path packages/swift/thin-app-view-core --scratch-path /src/services/appview/.build -c release --force-resolved-versions -j 2
+
+FROM ubuntu:22.04
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates libssl3 libcurl4 libsqlite3-0 libicu70 libxml2 sqlite3 util-linux tini curl ffmpeg fonts-dejavu-core python3 postgresql-client \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --no-create-home appuser
+COPY --from=builder /out/lib/ /usr/lib/swift/linux/
+ENV LD_LIBRARY_PATH=/usr/lib/swift/linux BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite ENABLE_THIN_APPVIEW=true BIND_HOST=0.0.0.0
+COPY --from=builder /out/bin/ /usr/local/bin/
+COPY --from=media-builder /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=media-builder /media/node_modules /media/node_modules
+COPY --from=media-builder /media/services/podcast-worker /media/services/podcast-worker
+COPY services/appview/bin/standalone-entrypoint /usr/local/bin/standalone-entrypoint
+COPY services/appview/bin/sqlite-backup /usr/local/bin/sqlite-backup
+COPY services/appview/bin/backend-supervisor /usr/local/bin/backend-supervisor
+COPY services/appview/bin/migrate-from-postgres /usr/local/bin/migrate-from-postgres
+COPY scripts/migrations/postgres_to_sqlite.py /usr/local/share/social-wire/postgres_to_sqlite.py
+EXPOSE 8081
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/standalone-entrypoint"]
+CMD ["/usr/local/bin/AppView"]

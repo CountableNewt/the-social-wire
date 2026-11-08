@@ -17,7 +17,7 @@ enum AppViewRouterBuilder {
     wireModerationService: WireViewerModerationService? = nil,
     financeFeedStore: PostgresFinanceFeedStore? = nil,
     sportsFeedStore: PostgresSportsFeedStore? = nil,
-    podcastStore: PostgresPodcastStore? = nil,
+    podcastStore: (any PodcastStoring)? = nil,
     circleDiscoveryService: CircleDiscoveryService? = nil,
     circlePrivateState: (any CirclePrivateStateStoring)? = nil,
     projectionCache: (any AppViewProjectionCacheStore)?,
@@ -25,8 +25,10 @@ enum AppViewRouterBuilder {
     telemetry: OperationsTelemetryBuffer? = nil,
     telemetryEnvironment: String = "unknown",
     telemetryInstanceId: String = "unknown",
-    socialDraftService: SocialDraftService? = nil,
-    analyticsStore: AnalyticsStore? = nil,
+    socialDraftService: (any SocialDraftStoring)? = nil,
+    standaloneEdge: StandaloneEdgeRuntime? = nil,
+    analyticsStore: (any AnalyticsStoring)? = nil,
+    mediaReadiness: StandaloneMediaReadinessProbe? = nil,
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
@@ -34,11 +36,16 @@ enum AppViewRouterBuilder {
       middleware: RequestTraceMiddleware(
         service: "appview", environment: telemetryEnvironment, instanceId: telemetryInstanceId,
         telemetry: telemetry))
+    if config.standaloneEdge != nil { router.add(middleware: GatewayCORSPolicy.middleware(config: config.core)) }
     router.get("/health") { _, _ in ["status": "ok", "service": "appview"] }
     router.get("/livez") { _, _ in ["status": "live", "service": "appview"] }
     router.get("/readyz") { _, _ async throws -> [String: String] in
       try await thinAppViewStore.ping()
       try await operationsStore?.ping()
+      if let edge = config.standaloneEdge, config.podcastsEnabled {
+        let probe = mediaReadiness ?? StandaloneMediaReadinessProbe(baseURL: edge.mediaWorkerURL, httpClient: httpClient)
+        try await probe.run()
+      }
       return ["status": "ready", "service": "appview"]
     }
     router.get("/freshness") { _, _ async throws -> ServiceFreshnessResponse in
@@ -53,6 +60,7 @@ enum AppViewRouterBuilder {
       httpClient: httpClient,
       plcURL: config.core.atprotoPLCURL,
       gatewayClientPolicy: config.core.oauthGateway,
+      attestationReceipt: config.standaloneEdge?.attestationReceipt,
       supplementalJwksJSON: config.core.oauthAccessTokenSupplementalJwksJSON,
       logger: logger
     )
@@ -62,11 +70,19 @@ enum AppViewRouterBuilder {
         projectionCache: projectionCache, plcURL: config.core.atprotoPLCURL, logger: logger)
     } else { readStateRecovery = nil }
     if let readStateRecovery { backgroundTasks?.register { await readStateRecovery.shutdown() } }
-    let protected = router.group()
+    var authenticated = router.group()
       .add(middleware: XRPCErrorMiddleware())
       .add(middleware: AppViewFeedErrorMiddleware())
-      .add(middleware: internalTrustMiddleware)
-      .add(middleware: authMiddleware)
+    if config.standaloneEdge == nil {
+      authenticated = authenticated.add(middleware: internalTrustMiddleware)
+    }
+    authenticated = authenticated.add(middleware: authMiddleware)
+    if let standaloneEdge {
+      authenticated = authenticated.add(middleware: StandaloneAdmissionMiddleware(runtime: standaloneEdge))
+      standaloneEdge.register(on: authenticated, router: router, config: config, httpClient: httpClient,
+        telemetry: telemetry, telemetryEnvironment: telemetryEnvironment, logger: logger)
+    }
+    let protected = authenticated
       .add(middleware: PDSReadStateReadinessMiddleware(store: thinAppViewStore as? any PDSReadStateLifecycleStoring, recovery: readStateRecovery))
       .add(middleware: LegacyReadStateMutationMiddleware())
 

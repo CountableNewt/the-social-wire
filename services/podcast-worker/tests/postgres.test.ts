@@ -73,6 +73,22 @@ describe.skipIf(!url)("durable podcast jobs on disposable PostgreSQL",()=>{
     expect(row.episode_json.chapters).toEqual([{startSeconds:0,title:"Intro"}]);
     expect(row.episode_json.audioUrl).toBe("https://example.com/new.mp3");
   });
+  it("does not fail a completed clip when an old worker loses ownership",async()=>{
+    const showId="stale-show-"+randomUUID();const episodeId="stale-episode-"+randomUUID();const clipId=randomUUID();const jobId=randomUUID();
+    await database`INSERT INTO podcast_shows(id,source_kind,show_json) VALUES(${showId},'rss','{}'::jsonb)`;
+    await database`INSERT INTO podcast_episodes(id,show_id,episode_json) VALUES(${episodeId},${showId},'{}'::jsonb)`;
+    await database`INSERT INTO podcast_clips(id,viewer_did,episode_id,clip_json) VALUES(${clipId}::uuid,'did:plc:test',${episodeId},${{status:"queued"}}::jsonb)`;
+    await database`INSERT INTO podcast_jobs(id,kind,dedupe_key,payload_json,attempts) VALUES(${jobId}::uuid,'clip',${jobId},${{clipId}}::jsonb,2)`;
+    class StaleWorker extends PodcastWorker {
+      override async process():Promise<Record<string,unknown>> {
+        await second`UPDATE podcast_jobs SET worker_id='replacement',status='complete' WHERE id=${jobId}::uuid`;
+        await second`UPDATE podcast_clips SET clip_json=${{status:"complete",audioKey:"replacement"}}::jsonb WHERE id=${clipId}::uuid`;
+        throw new Error("Old worker failed");
+      }
+    }
+    await new StaleWorker(database,new S3Client()).tick();
+    expect((await database`SELECT clip_json FROM podcast_clips WHERE id=${clipId}::uuid`)[0].clip_json).toEqual({status:"complete",audioKey:"replacement"});
+  });
   it("bounds repeated worker crashes but permits explicit queued retries",async()=>{
     await database`UPDATE podcast_jobs SET status='complete' WHERE status='queued'`;
     const id=randomUUID();

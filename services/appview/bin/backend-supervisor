@@ -1,0 +1,50 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+if [[ ${PODCASTS_ENABLED:-false} != true ]]; then exec "$@"; fi
+# Initialize shared SQLite schemas before the media process opens the file.
+"$@" --initialize-only
+export PODCAST_BIND_HOST=127.0.0.1
+export PODCAST_MEDIA_WORKER_URL="http://127.0.0.1:${PODCAST_MEDIA_PORT:-9080}"
+children=()
+stop_children() {
+  trap - TERM INT
+  if ((${#children[@]})); then
+    kill -TERM "${children[@]}" 2>/dev/null || true
+    for ((attempt=0; attempt<30; attempt++)); do
+      alive=false
+      for child in "${children[@]}"; do
+        if kill -0 "$child" 2>/dev/null; then alive=true; fi
+      done
+      if [[ $alive == false ]]; then break; fi
+      sleep 0.5
+    done
+    kill -KILL "${children[@]}" 2>/dev/null || true
+    wait "${children[@]}" 2>/dev/null || true
+  fi
+}
+trap 'stop_children; exit 143' TERM
+trap 'stop_children; exit 130' INT
+PORT="${PODCAST_MEDIA_PORT:-9080}" /usr/local/bin/bun /media/services/podcast-worker/src/index.ts &
+children+=("$!")
+ready=false
+for ((attempt=0; attempt<60; attempt++)); do
+  if ! kill -0 "${children[0]}" 2>/dev/null; then break; fi
+  if curl --silent --fail --max-time 1 "$PODCAST_MEDIA_WORKER_URL/startupz" >/dev/null; then ready=true; break; fi
+  sleep 1
+done
+if [[ $ready != true ]]; then
+  echo 'Podcast processor failed startup; stopping the backend.' >&2
+  stop_children
+  exit 1
+fi
+"$@" &
+children+=("$!")
+# A processor or API crash terminates the whole container for one Railway restart.
+set +e
+wait -n "${children[@]}"
+status=$?
+set -e
+stop_children
+if ((status == 0)); then status=1; fi
+exit "$status"

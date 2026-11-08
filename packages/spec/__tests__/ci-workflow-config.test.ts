@@ -157,7 +157,6 @@ describe("CI workflow configuration", () => {
     for (const job of [
       "web",
       "operations-web",
-      "apple",
       "shared-swift",
       "wire-corpus-edge",
       "database-migrator",
@@ -299,7 +298,12 @@ describe("CI workflow configuration", () => {
     expect(workflow).not.toMatch(/docker build --file services\//);
     expect(workflow).not.toContain("Build runtime image");
     expect(workflow).toContain("Apply migrations from empty and verify idempotence");
-    expect(workflow).toContain("Test iOS app with coverage");
+    // Native builds are handled separately from repository CI/CD.
+    expect(workflow).not.toContain("Test iOS app with coverage");
+    expect(workflow).not.toContain("runs-on: macos-");
+    const nativeCI = Bun.YAML.parse(workflow) as { jobs: Record<string, { needs?: string[] }> };
+    expect(nativeCI.jobs.apple).toBeUndefined();
+    expect(nativeCI.jobs.required.needs).not.toContain("apple");
     // Go services are no longer exercised by CI; Web keeps a toolchain only for the AnyPub kit fixture.
     expect(workflow).not.toMatch(/\bgo (?:test|vet|build)\b/);
     expect(workflow.match(/uses: actions\/setup-go@v6/g)).toHaveLength(1);
@@ -477,7 +481,6 @@ describe("CI workflow configuration", () => {
     for (const filter of [
       "web",
       "operations_web",
-      "apple",
       "shared_swift",
       "wire_corpus_edge",
       "database_migrator",

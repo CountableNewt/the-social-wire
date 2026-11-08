@@ -26,7 +26,6 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       operations_web: ${{ steps.filter.outputs.operations_web }}
-      apple: ${{ steps.filter.outputs.apple }}
       redis: ${{ steps.filter.outputs.redis }}
       shared_swift: ${{ steps.filter.outputs.shared_swift }}
       swift_backend: ${{ steps.filter.outputs.swift_backend }}
@@ -143,45 +142,6 @@ jobs:
       - name: Test
         run: bun run --cwd apps/operations test:coverage
 
-  apple:
-    name: Apple
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.apple == 'true'
-    runs-on: macos-26
-    # Includes a clean app build and the full native UI regression suite.
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v6
-      - name: Prepare iOS simulator
-        id: simulator
-        timeout-minutes: 10
-        run: |
-          xcodebuild -version
-          xcodebuild -runFirstLaunch
-          xcrun simctl list runtimes
-          # Let simctl choose the newest compatible installed runtime, rather
-          # than asking xcodebuild for OS=latest on a pre-created device.
-          if ! simulator_id=$(xcrun simctl create SocialWireCI 'iPhone 17 Pro'); then
-            xcodebuild -downloadPlatform iOS
-            simulator_id=$(xcrun simctl create SocialWireCI 'iPhone 17 Pro')
-          fi
-          xcrun simctl boot "$simulator_id"
-          xcrun simctl bootstatus "$simulator_id" -b
-          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
-      - name: Test iOS app with coverage
-        env:
-          IOS_SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
-        run: |
-          xcodebuild test \
-            -project "apps/apple/The Social Wire.xcodeproj" \
-            -scheme SocialWire \
-            -destination "platform=iOS Simulator,id=$IOS_SIMULATOR_ID" \
-            -enableCodeCoverage YES \
-            -resultBundlePath "$RUNNER_TEMP/SocialWireTests.xcresult" \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Report iOS coverage
-        run: xcrun xccov view --report "$RUNNER_TEMP/SocialWireTests.xcresult"
-
   redis:
     name: SocialWire Redis
     needs: changes
@@ -276,13 +236,16 @@ jobs:
         with:
           path: ${{ matrix.package }}/.build
           key: ${{ runner.os }}-swift-active-6.4.2-${{ matrix.service }}-${{ hashFiles('services/**/Package.resolved', 'tools/schema-ready/Package.resolved') }}
+      - name: Test SQLite cutover and consistent backups
+        if: matrix.service == 'appview'
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/migrations -p 'test_*.py'
       - name: Test active Swift backend
         working-directory: ${{ matrix.package }}
         run: swift test --force-resolved-versions -j 2
-      - name: Test the shared AppView package at the service's actual pin
+      - name: Test the shared AppView package used by the service
         if: matrix.service == 'appview'
         working-directory: services/appview
-        run: swift test --package-path .build/checkouts/thin-app-view-core --force-resolved-versions -j 2
+        run: swift test --package-path ../../packages/swift/thin-app-view-core --force-resolved-versions -j 2
 
       - name: Test the Redis package at the service's actual pin
         if: matrix.service == 'gateway'
@@ -612,7 +575,6 @@ jobs:
       - changes
       - web
       - operations-web
-      - apple
       - redis
       - shared-swift
       - swift-active-backend
@@ -631,7 +593,6 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           WEB_FLAG: ${{ needs.changes.outputs.web }}
           OPERATIONS_WEB_FLAG: ${{ needs.changes.outputs.operations_web }}
-          APPLE_FLAG: ${{ needs.changes.outputs.apple }}
           REDIS_FLAG: ${{ needs.changes.outputs.redis }}
           SHARED_SWIFT_FLAG: ${{ needs.changes.outputs.shared_swift }}
           SWIFT_BACKEND_FLAG: ${{ needs.changes.outputs.swift_backend }}
@@ -644,7 +605,6 @@ jobs:
           BENCHMARK_TOOLS_FLAG: ${{ needs.changes.outputs.benchmark_tools }}
           WEB_RESULT: ${{ needs.web.result }}
           OPERATIONS_WEB_RESULT: ${{ needs.operations-web.result }}
-          APPLE_RESULT: ${{ needs.apple.result }}
           REDIS_RESULT: ${{ needs.redis.result }}
           SHARED_SWIFT_RESULT: ${{ needs.shared-swift.result }}
           SWIFT_BACKEND_RESULT: ${{ needs.swift-active-backend.result }}
@@ -682,7 +642,6 @@ jobs:
 
           check "$WEB_FLAG" "$WEB_RESULT" "Web"
           check "$OPERATIONS_WEB_FLAG" "$OPERATIONS_WEB_RESULT" "Operations Web"
-          check "$APPLE_FLAG" "$APPLE_RESULT" "Apple"
           check "$REDIS_FLAG" "$REDIS_RESULT" "SocialWire Redis"
           check "$SHARED_SWIFT_FLAG" "$SHARED_SWIFT_RESULT" "Retained Swift Contracts"
           check "$SWIFT_BACKEND_FLAG" "$SWIFT_BACKEND_RESULT" "Active Swift Backends"

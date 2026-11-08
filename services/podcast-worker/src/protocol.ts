@@ -1,5 +1,5 @@
 import { chapters, safeUrl } from "./metadata";
-import type { SQL } from "bun";
+import { SQLitePodcastDatabase, type PodcastDatabase } from "./sqlite";
 import { fetchPublic } from "./publicFetch";
 import type { PodcastEpisode, PodcastShow, TranscriptReference } from "./types";
 
@@ -38,7 +38,7 @@ export function protocolEpisode(uri:string,record:Record<string,unknown>,show:Po
   return {id:uri,sourceUri:uri,showId:show.id,title:text(record.title)!,description:text(record.description??record.summary),publishedAt:text(record.publishedAt??record.createdAt)??new Date(0).toISOString(),audioUrl:audio,audioMimeType:mime,durationSeconds:Number.isFinite(duration)&&duration>0?duration:undefined,artworkUrl:text(record.imageUrl)??show.artworkUrl,guid:text(record.feedItemGuid??record.guid??record.importedGuid),transcripts,chapters:chapters(record.chapters,Number.isFinite(duration)?duration:undefined),chapterSourceUrl:safeUrl(record.chaptersUrl??object(record.chapters).url),showArtworkUrl:show.artworkUrl};
 }
 
-export async function pollProtocol(database:SQL,show:PodcastShow):Promise<void> {
+export async function pollProtocol(database:PodcastDatabase,show:PodcastShow):Promise<void> {
   const parent=show.sourceUri?.match(/^at:\/\/([^/]+)\/([^/]+)\/(.+)$/);if(!parent||!collections[parent[2]!])return;
   const pds=await resolvePds(parent[1]!);let cursor:string|undefined;const visited=new Set<string>();
   do {
@@ -46,6 +46,7 @@ export async function pollProtocol(database:SQL,show:PodcastShow):Promise<void> 
     const page=await (await fetchPublic(`${pds}/xrpc/com.atproto.repo.listRecords?${query}`)).json() as {records:Array<{uri:string;value:Record<string,unknown>}>;cursor?:string};
     for(const row of page.records) {
       const episode=protocolEpisode(row.uri,row.value,show,pds);if(!episode)continue;
+      if(database instanceof SQLitePodcastDatabase){database.upsertProtocolEpisode(episode,row.uri);continue;}
       const matching=episode.guid?await database`SELECT id FROM podcast_episodes WHERE show_id=${show.id} AND guid=${episode.guid}`:[];
       if(matching.length)episode.id=matching[0].id;
       await database`INSERT INTO podcast_episodes(id,show_id,guid,episode_json,published_at) VALUES(${episode.id},${show.id},${episode.guid??null},${episode}::jsonb,${episode.publishedAt}::timestamptz) ON CONFLICT(id) DO UPDATE SET episode_json=EXCLUDED.episode_json || jsonb_build_object('chapters',CASE WHEN jsonb_array_length(COALESCE(EXCLUDED.episode_json->'chapters','[]'::jsonb))=0 AND EXCLUDED.episode_json->>'chapterSourceUrl' IS NOT DISTINCT FROM podcast_episodes.episode_json->>'chapterSourceUrl' THEN COALESCE(podcast_episodes.episode_json->'chapters','[]'::jsonb) ELSE EXCLUDED.episode_json->'chapters' END),updated_at=now()`;
