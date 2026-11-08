@@ -85,13 +85,14 @@ it("seeks current episode notes without reloading and starts other episode notes
   restores.push(() => useAuth.mockRestore(), () => player.mockRestore(), () => local.mockRestore(), () => request.mockRestore());
   render(<SidebarProvider><PodcastLibrary /></SidebarProvider>);
   fireEvent.click(await screen.findByRole("button", { name: "Show Notes: Current Episode" }));
-  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Seek to 0:30" }));
+  fireEvent.click(within(await screen.findByRole("dialog", {}, { timeout: 5000 })).getByRole("button", { name: "Seek to 0:30" }));
   expect(sought).toEqual([30]);
   expect(played).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  // The dialog animates closed; coverage instrumentation can slow it past the 1s default.
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
   fireEvent.click(screen.getByRole("button", { name: "Show Notes: Other Episode" }));
-  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Seek to 1:00" }));
+  fireEvent.click(within(await screen.findByRole("dialog", {}, { timeout: 5000 })).getByRole("button", { name: "Seek to 1:00" }));
   expect(played).toEqual([["other", 60]]);
   expect(sought).toEqual([30]);
 });
