@@ -113,20 +113,31 @@ struct SocialDraftStorageTests {
         let started = ContinuousClock.now
         do {
           let response = try await http.execute(request, timeout: .seconds(3))
+          // Cancellation can produce its error response before the scheduled
+          // transport close reaches the socket. A rejected exchange is valid;
+          // completing the upload or waiting for the client's timeout is not.
+          #expect(response.status == .serviceUnavailable)
+          #expect(response.headers.first(name: "Cache-Control") == "private, no-store")
           _ = try await response.body.collect(upTo: 4096)
-          Issue.record("Stalled upload unexpectedly succeeded")
         } catch {
           #expect(error as? HTTPClientError != .deadlineExceeded)
-          #expect(started.duration(to: .now) < .seconds(2))
         }
+        #expect(started.duration(to: .now) < .seconds(2))
         continuation.finish()
         try await http.shutdown()
         var released = false
         for _ in 0..<30 {
-          do { _ = try await service.reserve(owner: owner, input: input); released = true; break }
-          catch { try await Task.sleep(for: .milliseconds(10)) }
+          do {
+            let reservation = try await service.reserve(owner: owner, input: input)
+            #expect(reservation.state == "reserved")
+            released = true
+            break
+          } catch { try await Task.sleep(for: .milliseconds(10)) }
         }
         #expect(released)
+        await #expect(throws: SocialDraftStorageError.uploadPending) {
+          try await service.download(owner: owner, id: input.assetId)
+        }
       }
     }
   }
