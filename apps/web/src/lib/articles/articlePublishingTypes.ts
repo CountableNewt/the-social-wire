@@ -16,5 +16,7 @@ export type ArticlePublishInput = {
   existing?: PublishedArticle;
   /** Stable TID from articleDraftRecordKey: retries address the same PDS record. */
   recordKey?: string;
+  /** Update an existing article's details while keeping its native body unchanged. */
+  preserveBody?: boolean;
 };
 export type ArticlePublishResult = { uri: string; cid: string; wrapperUri?: string; wrapperCid?: string; url: string };

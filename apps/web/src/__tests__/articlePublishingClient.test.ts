@@ -4,7 +4,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { cidForLex } from "@atproto/lex-cbor";
 import { lexParse } from "@atproto/lex-json";
 import * as Atproto from "@/lib/atprotoClient";
-import { articleDraftRecordKey, articlePublicationHost, listArticlePublications, listPublishedArticles, publishArticle, uploadArticleImage, wasArticlePublicationNotSubmitted } from "@/lib/articles/articlePublishingClient";
+import { articleDraftRecordKey, articlePublicationHost, deletePublishedArticle, findOffprintArticleWrapper, listArticlePublications, listPublishedArticles, publishArticle, uploadArticleImage, wasArticlePublicationNotSubmitted } from "@/lib/articles/articlePublishingClient";
 import { articleRichText, buildArticleNativeContent } from "@/lib/articles/articleNativeContent";
 import type { ArticleHost, ArticleImageAsset, ArticlePublication, ArticlePublishInput, ArticleRecord } from "@/lib/articles/articlePublishingTypes";
 import { socialErrorMessage } from "@/lib/blueskySocialClient";
@@ -297,5 +297,44 @@ describe("direct PDS article publishing", () => {
     await expect(publishArticle(session, { ...input(), description: "x".repeat(3001) })).rejects.toThrow("description exceeds");
     await expect(publishArticle(session, { ...input(), tags: ["x".repeat(129)] })).rejects.toThrow("tag exceeds");
     expect(calls.latest).not.toHaveBeenCalled();
+  });
+  it("keeps the native body, text, and cover when only article details change", async () => {
+    const pub = publication("leaflet"), calls = agent(pub), uri = `at://${did}/site.standard.document/3m4abcdefghij`;
+    const prior = { $type: "site.standard.document", site: pub.uri, publishedAt: "2025-01-01T00:00:00Z", title: "Old", path: "/old", content: { $type: "pub.leaflet.content", pages: [{ blocks: [] }] }, textContent: "Body", coverImage: blob };
+    calls.get.mockImplementation(async params => params.collection === "site.standard.publication" ? { data: { uri: pub.uri, cid: pub.cid, value: pub.record } } : { data: { uri, cid: "old-cid", value: prior } });
+    await publishArticle(session, { publication: pub, title: "New Title", description: "New excerpt", path: "/new", tags: ["fresh"], markdown: "", preserveBody: true, existing: { uri, cid: "old-cid", record: prior } });
+    const write = calls.apply.mock.calls[0][0].writes[0];
+    expect(write).toMatchObject({ $type: "com.atproto.repo.applyWrites#update", rkey: "3m4abcdefghij" });
+    expect(write.value).toMatchObject({ title: "New Title", description: "New excerpt", path: "/new", tags: ["fresh"], content: prior.content, textContent: "Body", coverImage: blob, publishedAt: prior.publishedAt });
+  });
+  it("refuses to keep a body for an article that is not yet published", async () => {
+    const calls = agent();
+    await expect(publishArticle(session, { ...input(), markdown: "", preserveBody: true })).rejects.toThrow("Only a published article");
+    expect(calls.apply).not.toHaveBeenCalled();
+  });
+  it("finds the Offprint wrapper that references a document", async () => {
+    const calls = agent(), uri = `at://${did}/site.standard.document/3m4abcdefghij`;
+    calls.list.mockImplementation(async () => ({ data: { records: [
+      { uri: `at://${did}/app.offprint.document.article/other`, cid: "w0", value: { $type: "app.offprint.document.article", document: { uri: `at://${did}/site.standard.document/other` } } },
+      { uri: `at://${did}/app.offprint.document.article/3m4abcdefghij`, cid: "w1", value: { $type: "app.offprint.document.article", document: { uri } } },
+    ], cursor: undefined } }));
+    expect(await findOffprintArticleWrapper(session, uri)).toEqual({ uri: `at://${did}/app.offprint.document.article/3m4abcdefghij`, cid: "w1" });
+  });
+  it("deletes the expected document revision and its Offprint wrapper atomically", async () => {
+    const calls = agent(), uri = `at://${did}/site.standard.document/3m4abcdefghij`;
+    calls.get.mockImplementation(async () => ({ data: { uri, cid: "doc-cid", value: {} } }));
+    calls.list.mockImplementation(async () => ({ data: { records: [{ uri: `at://${did}/app.offprint.document.article/wrap`, cid: "w1", value: { $type: "app.offprint.document.article", document: { uri } } }], cursor: undefined } }));
+    calls.apply.mockImplementation(async () => ({ data: { results: [] } }));
+    await deletePublishedArticle(session, { uri, cid: "doc-cid", record: {} });
+    expect(calls.apply.mock.calls[0][0]).toMatchObject({ swapCommit: "snapshot-cid", writes: [
+      { $type: "com.atproto.repo.applyWrites#delete", collection: "site.standard.document", rkey: "3m4abcdefghij" },
+      { $type: "com.atproto.repo.applyWrites#delete", collection: "app.offprint.document.article", rkey: "wrap" },
+    ] });
+  });
+  it("does not delete an article that changed elsewhere", async () => {
+    const calls = agent(), uri = `at://${did}/site.standard.document/3m4abcdefghij`;
+    calls.get.mockImplementation(async () => ({ data: { uri, cid: "newer-cid", value: {} } }));
+    await expect(deletePublishedArticle(session, { uri, cid: "doc-cid", record: {} })).rejects.toThrow("changed elsewhere");
+    expect(calls.apply).not.toHaveBeenCalled();
   });
 });

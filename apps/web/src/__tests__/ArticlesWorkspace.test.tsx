@@ -87,15 +87,17 @@ describe("article publishing workspace", () => {
     await show();
     const option = screen.getByRole("option", { name: /My pckt Blog.*Does Not Support External Editors/ }) as HTMLOptionElement;
     expect(option.disabled).toBe(true);
-    expect(screen.getByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeTruthy();
+    // The notice belongs to pckt content only, not to every account that owns a pckt blog.
+    expect(screen.queryByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "New Article" }));
     await waitFor(() => expect(createDraft).toHaveBeenCalledWith(publications[0]!.uri));
   });
   it("does not create drafts when only pckt blogs exist", async () => {
     const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }]); restores.push(() => pubs.mockRestore());
     await show(false);
-    await screen.findByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/);
     const button = screen.getByRole("button", { name: "New Article" });
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(true));
+    expect(screen.queryByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeNull();
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.click(button);
     expect(createDraft).not.toHaveBeenCalled();
@@ -104,6 +106,7 @@ describe("article publishing workspace", () => {
     const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }, publications[1]!]); restores.push(() => pubs.mockRestore());
     const publish = publishingSpy();
     await show();
+    expect(screen.getByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeTruthy();
     for (const name of ["Save Draft", "Publish Article", "Schedule Article", "Choose Cover Image"]) expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
     expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
@@ -622,7 +625,7 @@ describe("article publishing workspace", () => {
     await show();
     for (const label of ["Article Title", "Article Publication", "Article Path", "Article Excerpt", "Article Tags"]) expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Publish Article" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Published article editing will be available/)).toBeTruthy();
+    expect(screen.getByText(/Edit It From Published Articles/)).toBeTruthy();
     expect(publish).not.toHaveBeenCalled();
   });
 });
@@ -630,3 +633,81 @@ describe("article publishing workspace", () => {
 let previousSchedulingFlag: string | undefined;
 beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
 afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
+
+describe("library draft management", () => {
+  it("deletes a draft from its library row after confirmation", async () => {
+    const remove = mock(async (_id: string) => { void _id; });
+    const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => ({ draft: seed, drafts: [seed], loading: false, status: "Saved in This Browser", error: undefined, update: () => {}, persist, syncing: false, refresh: async () => {}, select: async () => {}, create: createDraft, remove } as unknown as ReturnType<typeof Drafts.useArticleDrafts>)); restores.push(() => local.mockRestore());
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${seed.title}` }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(new RegExp(`deletes “${seed.title}”`))).toBeTruthy();
+    expect(remove).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Delete Draft" })); });
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(seed.id));
+  });
+});
+
+describe("published article management", () => {
+  const published: PublishedArticle = { uri: `at://${did}/site.standard.document/3m4abcdefghij`, cid: "doc-cid", record: { $type: "site.standard.document", site: publications[1]!.uri, title: "Offprint Story", description: "Old excerpt", tags: ["news"], textContent: "Native body", content: { $type: "app.offprint.content", items: [] } } };
+  async function openPublished() {
+    const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([published]); restores.push(() => history.mockRestore());
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Offprint Story/ }));
+    await screen.findByRole("region", { name: "Published Article" });
+  }
+  it("edits native article details while keeping the body and Offprint wrapper in sync", async () => {
+    const wrapper = spyOn(Publishing, "findOffprintArticleWrapper").mockResolvedValue({ uri: `at://${did}/app.offprint.document.article/3m4abcdefghij`, cid: "wrap-cid" }); restores.push(() => wrapper.mockRestore());
+    const publish = spyOn(Publishing, "publishArticle").mockResolvedValue({ uri: published.uri, cid: "new-cid", url: "https://second.test/a/3m4abcdefghij-story" }); restores.push(() => publish.mockRestore());
+    await openPublished();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Article" }));
+    expect(screen.getByText(/Stores Articles in Its Own Format/)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Article View" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Article Title"), { target: { value: "Renamed Story" } });
+    fireEvent.change(screen.getByLabelText("Article Tags"), { target: { value: "news, updates" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save Changes" })); });
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    const call = publish.mock.calls[0]![1];
+    expect(call).toMatchObject({ title: "Renamed Story", description: "Old excerpt", tags: ["news", "updates"], preserveBody: true, publication: { uri: publications[1]!.uri }, existing: { uri: published.uri, cid: "doc-cid", wrapperUri: `at://${did}/app.offprint.document.article/3m4abcdefghij`, wrapperCid: "wrap-cid" } });
+    await screen.findByRole("region", { name: "Published Article" });
+  });
+  it("edits and deletes published articles directly from the library", async () => {
+    const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([published]); restores.push(() => history.mockRestore());
+    const remove = spyOn(Publishing, "deletePublishedArticle").mockResolvedValue(undefined); restores.push(() => remove.mockRestore());
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Offprint Story" }));
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Delete Article" })); });
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(expect.objectContaining({ did }), published));
+    expect(screen.getByRole("region", { name: "Article Library" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Offprint Story" }));
+    expect(await screen.findByRole("region", { name: "Edit Published Article" })).toBeTruthy();
+  });
+  it("shows the pckt notice only while a pckt article is open", async () => {
+    const pckt = { ...publications[1]!, host: "pckt" as const, url: "https://mine.pckt.blog" };
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([publications[0]!, pckt]); restores.push(() => pubs.mockRestore());
+    const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([published]); restores.push(() => history.mockRestore());
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    const row = await screen.findByRole("button", { name: /^Offprint Story/ });
+    expect(screen.queryByText(/pckt Does Not Support External Editors/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit Offprint Story" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Offprint Story" })).toBeNull();
+    fireEvent.click(row);
+    expect(await screen.findByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeTruthy();
+  });
+  it("deletes a published article only after confirmation", async () => {
+    const remove = spyOn(Publishing, "deletePublishedArticle").mockResolvedValue(undefined); restores.push(() => remove.mockRestore());
+    await openPublished();
+    fireEvent.click(screen.getByRole("button", { name: "Delete Article" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/permanently deletes “Offprint Story”/)).toBeTruthy();
+    expect(remove).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Delete Article" })); });
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(expect.objectContaining({ did }), published));
+    await screen.findByRole("region", { name: "Article Library" });
+  });
+});

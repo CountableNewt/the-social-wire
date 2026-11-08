@@ -10,6 +10,7 @@ export type { ArticleImageAsset, ArticlePublication, ArticlePublishInput, Articl
 import { articlePublicationDisabledReason, assertArticlePublicationEditable } from "./articlePublicationCapabilities";
 const DOCUMENT = "site.standard.document";
 const PUBLICATION = "site.standard.publication";
+const OFFPRINT_ARTICLE = "app.offprint.document.article";
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 function key(uri: string, did: string, collection: string): string {
   const prefix = `at://${did}/${collection}/`;
@@ -133,11 +134,13 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
   signal?.throwIfAborted();
   assertArticlePublicationEditable(input.publication);
   const publicationKey = key(input.publication.uri, session.did, PUBLICATION);
-  if (!input.title.trim() || !input.markdown.trim()) throw new Error("An article needs a title and content.");
+  const preserveBody = !!input.preserveBody;
+  if (preserveBody && !input.existing) throw new Error("Only a published article can keep its existing content.");
+  if (!input.title.trim() || (!preserveBody && !input.markdown.trim())) throw new Error("An article needs a title and content.");
   validateText(input.title, 5000, 500, "Article title");
   validateText(input.description ?? "", 30000, 3000, "Article description");
   for (const tag of input.tags) validateText(tag, 1280, 128, "Article tag");
-  if (bytes(input.markdown) > 1_000_000) throw new Error("Article Markdown exceeds 1 MB.");
+  if (!preserveBody && bytes(input.markdown) > 1_000_000) throw new Error("Article Markdown exceeds 1 MB.");
   const agent = createOAuthAgent(session);
   const commit = await agent.com.atproto.sync.getLatestCommit({ did: session.did }, { signal });
   const publication = await agent.com.atproto.repo.getRecord({ repo: session.did, collection: PUBLICATION, rkey: publicationKey }, { signal });
@@ -168,8 +171,9 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
     previous = current.data.value as ArticleRecord;
     if (previous.site !== input.publication.uri) throw new Error("An existing article cannot move to another publication.");
   }
-  const native = buildArticleNativeContent(host, input.markdown, input.bodyAssets ?? [], input.description), content = native.content;
-  if (host === "markpub" || host === "unknown") {
+  const native = preserveBody ? { content: previous.content as ArticleRecord, textContent: previous.textContent } : buildArticleNativeContent(host, input.markdown, input.bodyAssets ?? [], input.description), content = native.content;
+  if (preserveBody) { /* The native body is already within its host's limits. */ }
+  else if (host === "markpub" || host === "unknown") {
     const text = content.text as ArticleRecord;
     if (bytes(String(text.markdown)) > 100 * 1024) { text.textBlob = (await uploadBlob(session, new Blob([String(text.markdown)], { type: "text/markdown" }), signal)).blob; text.markdown = String(text.markdown).slice(0, 1000); }
   } else if (host === "leaflet" && bytes(JSON.stringify(content.pages)) > 100 * 1024) {
@@ -180,12 +184,13 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
   delete record.description; delete record.coverImage; delete record.tags;
   if (input.description?.trim()) record.description = input.description.trim();
   if (input.cover) record.coverImage = input.cover.blob;
+  else if (previous.coverImage) record.coverImage = previous.coverImage;
   if (input.tags.length) record.tags = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))];
   const cid = (await cidForLex(lexParse(JSON.stringify(record), { strict: true }))).toString();
   const writes: { $type: "com.atproto.repo.applyWrites#create" | "com.atproto.repo.applyWrites#update"; collection: string; rkey: string; value: ArticleRecord }[] = [{ $type: `com.atproto.repo.applyWrites#${input.existing ? "update" : "create"}`, collection: DOCUMENT, rkey, value: record }];
   let wrapperUri: string | undefined;
   if (host === "offprint") {
-    const collection = "app.offprint.document.article";
+    const collection = OFFPRINT_ARTICLE;
     if (input.existing && !input.existing.wrapperUri) throw new Error("Load the native article wrapper before updating this article.");
     const wrapperKey = input.existing?.wrapperUri ? key(input.existing.wrapperUri, session.did, collection) : rkey;
     wrapperUri = `at://${session.did}/${collection}/${wrapperKey}`;
@@ -224,4 +229,22 @@ async function publishArticleAttempt(session: OAuthSession, input: ArticlePublis
       throw new Error(`Publishing could not be confirmed at ${uri}. Check Published Articles before retrying.`, { cause: error });
     }
   }
+}
+/** Offprint lists an article through a strongRef wrapper that must change with its document. */
+export async function findOffprintArticleWrapper(session: OAuthSession, documentUri: string, signal?: AbortSignal): Promise<{ uri: string; cid: string } | undefined> {
+  const wrapper = (await listOwned(session, OFFPRINT_ARTICLE, signal)).find(item => (item.record.document as { uri?: unknown } | undefined)?.uri === documentUri);
+  return wrapper ? { uri: wrapper.uri, cid: wrapper.cid } : undefined;
+}
+/** Deletes the expected document revision and any Offprint wrapper in one atomic commit. */
+export async function deletePublishedArticle(session: OAuthSession, article: PublishedArticle, signal?: AbortSignal): Promise<void> {
+  const rkey = key(article.uri, session.did, DOCUMENT);
+  const agent = createOAuthAgent(session);
+  const commit = await agent.com.atproto.sync.getLatestCommit({ did: session.did }, { signal });
+  const current = await agent.com.atproto.repo.getRecord({ repo: session.did, collection: DOCUMENT, rkey }, { signal });
+  if (current.data.uri !== article.uri || current.data.cid !== article.cid) throw new Error("This article changed elsewhere. Reload before deleting.");
+  const wrapper = await findOffprintArticleWrapper(session, article.uri, signal);
+  const writes: { $type: "com.atproto.repo.applyWrites#delete"; collection: string; rkey: string }[] = [{ $type: "com.atproto.repo.applyWrites#delete", collection: DOCUMENT, rkey }];
+  if (wrapper) writes.push({ $type: "com.atproto.repo.applyWrites#delete", collection: OFFPRINT_ARTICLE, rkey: key(wrapper.uri, session.did, OFFPRINT_ARTICLE) });
+  signal?.throwIfAborted();
+  await agent.com.atproto.repo.applyWrites({ repo: session.did, writes, swapCommit: commit.data.cid }, { signal });
 }
