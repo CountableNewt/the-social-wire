@@ -310,7 +310,7 @@ export function SavedLinksBrowser({ mode }: { mode: SavedLinksBrowserMode }) {
                     {row.excerpt}
                   </p>
                 ) : null}
-                <div className="mt-1 flex shrink-0 items-center justify-end">
+                <div className="-mb-1.5 mt-1 flex shrink-0 items-center justify-end">
                   <SavedLinkCardActions
                     row={row}
                     isArchivedView={isArchivedView}
