@@ -1,20 +1,13 @@
 import { afterAll, afterEach, beforeAll, expect, it, mock } from "bun:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SavedCategoryFilterSection } from "@/components/AppSidebar/SavedCategoryFilterSection";
-import { SavedQuickStatsSection } from "@/components/AppSidebar/SavedQuickStatsSection";
+import { SavedFeedSourcesSection } from "@/components/AppSidebar/SavedFeedSourcesSection";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
 const originalMatchMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
 beforeAll(() => { Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) }); });
 afterAll(() => { if (originalMatchMedia) Object.defineProperty(window, "matchMedia", originalMatchMedia); else Reflect.deleteProperty(window, "matchMedia"); });
 afterEach(() => { cleanup(); });
-
-it("shows Read Later unread and archive counts", () => {
-  render(<SidebarProvider><SavedQuickStatsSection unreadCount={12} archiveCount={30} /></SidebarProvider>);
-  const stats = screen.getByLabelText("Read Later Quick Stats");
-  expect(stats.textContent).toContain("Unread12");
-  expect(stats.textContent).toContain("Archive30");
-});
 
 it("lists every type with its count and selects a filter", () => {
   const onSelectCategory = mock(() => {});
@@ -36,4 +29,23 @@ it("lists every type with its count and selects a filter", () => {
   expect(onSelectCategory).toHaveBeenCalledWith("social");
   fireEvent.click(screen.getByRole("button", { name: "All Items 14" }));
   expect(onSelectCategory).toHaveBeenCalledWith(null);
+});
+
+it("lists publications under one heading with an All Publications row", () => {
+  const onSelectSource = mock(() => {});
+  render(
+    <SidebarProvider>
+      <SavedFeedSourcesSection
+        sources={[{ key: "site:theverge.com", name: "The Verge", count: 3 }]}
+        selectedSource={null}
+        onSelectSource={onSelectSource}
+      />
+    </SidebarProvider>,
+  );
+  expect(screen.getAllByText("Publications")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "All Publications" }).hasAttribute("data-active")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: /The Verge/ }));
+  expect(onSelectSource).toHaveBeenCalledWith("site:theverge.com");
+  fireEvent.click(screen.getByRole("button", { name: "All Publications" }));
+  expect(onSelectSource).toHaveBeenCalledWith(null);
 });

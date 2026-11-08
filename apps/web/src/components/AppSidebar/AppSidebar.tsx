@@ -66,7 +66,6 @@ import {
 } from "@/lib/savedLinkCategory";
 import { SavedFeedSourcesSection } from "./SavedFeedSourcesSection";
 import { SavedCategoryFilterSection } from "./SavedCategoryFilterSection";
-import { SavedQuickStatsSection } from "./SavedQuickStatsSection";
 import { activeReadFeedScope } from "@/lib/activeReadFeedScope";
 import { useDesktopPublicationRail } from "@/hooks/useDesktopPublicationRail";
 import { useClientHydrated } from "@/hooks/useClientHydrated";
@@ -489,31 +488,30 @@ export function AppSidebar({
     }
   }, [currentFeed, setPublicationTab]);
 
+  const savedRail =
+    !selectedListUri &&
+    (pathname.startsWith("/saved") || pathname.startsWith("/archive"));
   const publicationsRail = showPublicationsRail && (selectedListUri || (
         currentFeed !== "wire" &&
         currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos")) ? (
         <FloatingChromeSurface className={`${floatingSidebarLayoutClassName} mx-2 flex flex-col self-stretch lg:self-start gap-0 group-data-[collapsible=icon]:overflow-hidden lg:fixed lg:mx-0 lg:bottom-4 lg:right-4 lg:top-[calc(var(--environment-banner-height,0px)+1rem)] lg:z-30 lg:w-60 lg:h-auto lg:max-h-[calc(100svh-var(--environment-banner-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain`}>
           {!selectedListUri && pathname.startsWith("/saved") ? (
-            <>
-              <SavedQuickStatsSection
-                unreadCount={readLaterUnread}
-                archiveCount={archivedLinks.length}
-              />
-              <SavedCategoryFilterSection
-                totalCount={savedLinks.length}
-                categoryCounts={savedCategoryCounts}
-                selectedCategory={selectedSavedCategory}
-                onSelectCategory={selectSavedCategory}
-              />
-            </>
+            <SavedCategoryFilterSection
+              totalCount={savedLinks.length}
+              categoryCounts={savedCategoryCounts}
+              selectedCategory={selectedSavedCategory}
+              onSelectCategory={selectSavedCategory}
+            />
           ) : null}
-          <div className="hidden shrink-0 items-center px-2 pb-2 lg:flex">
-            <p className="text-base font-bold text-sidebar-foreground">
-              Publications
-            </p>
-          </div>
+          {savedRail ? null : (
+            <div className="hidden shrink-0 items-center px-2 pb-2 lg:flex">
+              <p className="text-base font-bold text-sidebar-foreground">
+                Publications
+              </p>
+            </div>
+          )}
           <SidebarGroup className="p-0">
-            {!selectedListUri && currentFeed && currentFeed !== "wire" && currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos" ? (
+            {!selectedListUri && !savedRail && currentFeed && currentFeed !== "wire" && currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos" ? (
               <AllFeedSidebarButton
                 feed={currentFeed}
                 isActive={allFeedSelected}
@@ -530,16 +528,18 @@ export function AppSidebar({
                   onSelectPub={(publicationId) => { setOpenMobile(false); onSelectPub(publicationId); }}
                   onRetry={() => { void selectedList.refetch(); }}
                 />
-              ) : pathname.startsWith("/saved") ||
-              pathname.startsWith("/archive") ? (
+              ) : savedRail ? (
                 <SavedFeedSourcesSection
                   sources={savedSources}
                   selectedSource={selectedSavedSource}
-                  onSelectSource={(sourceKey) =>
-                    router.push(
-                      `${pathname.startsWith("/archive") ? "/archive" : "/saved"}?source=${encodeURIComponent(sourceKey)}`,
-                    )
-                  }
+                  onSelectSource={(sourceKey) => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    if (sourceKey) params.set("source", sourceKey);
+                    else params.delete("source");
+                    const basePath = pathname.startsWith("/archive") ? "/archive" : "/saved";
+                    const query = params.toString();
+                    router.push(query ? `${basePath}?${query}` : basePath);
+                  }}
                 />
               ) : currentFeed === "subscribed" ? (
                 <>
