@@ -15,7 +15,9 @@ import { ArticleScheduledList } from "./ArticleScheduledList";
 import { useAuth } from "@/hooks/useAuth";
 import { useArticleDrafts } from "@/hooks/articles/useArticleDrafts";
 import { getArticleDraft, getArticleDraftAsset, saveArticleDraftAsset } from "@/lib/articles/articleDraftStorage";
-import { articleDraftRecordKey, listArticlePublications, listPublishedArticles, publishArticle, uploadArticleImage, wasArticlePublicationNotSubmitted } from "@/lib/articles/articlePublishingClient";
+import { articleDraftRecordKey, deletePublishedArticle, findOffprintArticleWrapper, listArticlePublications, listPublishedArticles, publishArticle, uploadArticleImage, wasArticlePublicationNotSubmitted } from "@/lib/articles/articlePublishingClient";
+import { articleEditCapability, canDeletePublishedArticle } from "@/lib/articles/articleEditCapability";
+import { articlePublicationDisabledReason, assertArticlePublicationEditable, PCKT_EXTERNAL_EDITORS_MESSAGE } from "@/lib/articles/articlePublicationCapabilities";
 import { sameArticleDraftContent } from "@/lib/articles/articleDraftPublicationGuard";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
 import type { ArticleImageAsset, PublishedArticle } from "@/lib/articles/articlePublishingTypes";
@@ -30,6 +32,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { ArticleImageInput, articleImageDimensions } from "./ArticleImageInput";
 import { ResearchWorkspace } from "@/components/Research/ResearchWorkspace";
 import { PublishedArticleView } from "./PublishedArticleView";
+import { PublishedArticleEditor, type PublishedArticleEdit } from "./PublishedArticleEditor";
 import { ArticleLibrary, type ArticleLibraryTab } from "./ArticleLibrary";
 import { ArticleDraftSaveStatus } from "./ArticleDraftSaveStatus";
 import { ArticlePanelResizeHandle } from "./ArticlePanelResizeHandle";
@@ -65,6 +68,8 @@ function ArticlesViewer({ did }: { did: string }) {
   const cache = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
   const [publishedArticle, setPublishedArticle] = useState<PublishedArticle>();
+  const [editingPublished, setEditingPublished] = useState(false);
+  const [publishedDeletion, setPublishedDeletion] = useState<PublishedArticle>();
   const [metadataVisible, setMetadataVisible] = useState(true);
   const [metadataWidth, setMetadataWidth] = useState(320);
   const [tab, setTab] = useState<ArticleLibraryTab>("research");
@@ -72,13 +77,21 @@ function ArticlesViewer({ did }: { did: string }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [publishing, setPublishing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [draftDeletion, setDraftDeletion] = useState<ArticleDraft>();
   const [assetState, setAssetState] = useState<{ draftId?: string; urls: Record<string, string> }>({ urls: {} });
   const [publishedUrl, setPublishedUrl] = useState<string>();
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
   const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published", retry: false });
   const publication = publications.data?.find(value => value.uri === draft?.publicationUri);
+  const publishedPublication = publications.data?.find(value => value.uri === publishedArticle?.record.site);
+  const publishedEditCapability = publishedArticle ? articleEditCapability(publishedArticle, publishedPublication) : "none";
+  const deletionPublication = publications.data?.find(value => value.uri === publishedDeletion?.record.site);
+  const publishedDeletable = !!publishedArticle && !publications.isPending && !publications.error && canDeletePublishedArticle(publishedPublication);
+  const publicationDisabledReason = publication ? articlePublicationDisabledReason(publication) : undefined;
+  const firstEditablePublication = publications.data?.find(value => !articlePublicationDisabledReason(value));
+  const canCreateDraft = !publications.isPending && !publications.error && (!publications.data?.length || !!firstEditablePublication);
+  const editingDisabled = busy || !!publicationDisabledReason || !!draft?.publishedUri || !!draft?.scheduleRecordKey || !!draft?.publishingRecordKey;
   const assets = draft?.assets ?? [];
   const draftId = draft?.id;
   const assetUrls = assetState.draftId === draftId ? assetState.urls : {};
@@ -169,6 +182,7 @@ function ArticlesViewer({ did }: { did: string }) {
     await perform(async () => {
       const active = draftRef.current;
       if (!active || !publication || active.publishedUri || active.scheduleRecordKey || active.publishingRecordKey) return;
+      assertArticlePublicationEditable(publication);
       await local.persist({ requireRemote: true });
       const stored = await getArticleDraft(did, active.id);
       if (!stored || stored.scheduleRecordKey || stored.publishedUri || stored.publishingRecordKey || stored.updatedAt !== active.updatedAt || !sameArticleDraftContent(stored, active)) throw new Error("This Draft Changed on Another Device. Review It Before Publishing.");
@@ -203,6 +217,7 @@ function ArticlesViewer({ did }: { did: string }) {
     try {
       const active = draftRef.current;
       if (!active || !publication || active.publishedUri || active.scheduleRecordKey || active.publishingRecordKey) throw new Error("This Draft Cannot Be Scheduled Again. Review Its Schedule First.");
+      assertArticlePublicationEditable(publication);
       if (!isPro || !scheduler.readiness.data?.connected) throw new Error("Connect Skej With Social Wire Pro Before Scheduling.");
       if (active.coverAssetId || (active.assets ?? []).some(asset => active.markdown.includes(`article-asset://${asset.id}`)) || /!\[.*?\]\(/.test(active.markdown) || ["offprint", "pckt"].includes(publication.host)) throw new Error("Scheduling Supports Text Articles in Leaflet, Markpub, and Generic Publications. Remove Images Before Scheduling.");
       const snapshot = structuredClone(active);
@@ -230,6 +245,40 @@ function ArticlesViewer({ did }: { did: string }) {
       if (mounted.current) { setTab("scheduled"); setEditorOpen(false); }
     } finally { actionLock.current = false; if (mounted.current) setBusy(false); }
   }
+  async function savePublished(edit: PublishedArticleEdit) {
+    await perform(async () => {
+      const article = publishedArticle;
+      if (!article || !publishedPublication || publishedEditCapability === "none") return;
+      const active = session();
+      const wrapper = publishedPublication.host === "offprint" ? await findOffprintArticleWrapper(active, article.uri) : undefined;
+      const result = await publishArticle(active, { publication: publishedPublication, title: edit.title, description: edit.description, path: edit.path, tags: edit.tags, markdown: edit.markdown ?? "", preserveBody: edit.markdown === undefined, existing: { ...article, wrapperUri: wrapper?.uri, wrapperCid: wrapper?.cid } });
+      const refreshed = await history.refetch();
+      if (!mounted.current) return;
+      setPublishedArticle(refreshed.data?.find(item => item.uri === result.uri) ?? article);
+      setEditingPublished(false);
+    });
+  }
+  async function deletePublished() {
+    await perform(async () => {
+      const article = publishedDeletion;
+      if (!article) return;
+      await deletePublishedArticle(session(), article);
+      if (!mounted.current) return;
+      setPublishedDeletion(undefined);
+      if (publishedArticle?.uri === article.uri) { setEditingPublished(false); setPublishedArticle(undefined); }
+      await cache.invalidateQueries({ queryKey: ["articles", did, "published"] });
+    });
+  }
+  async function deleteDraft() {
+    await perform(async () => {
+      const target = draftDeletion;
+      if (!target || target.scheduleRecordKey || target.publishingRecordKey) return;
+      await local.remove(target.id);
+      if (!mounted.current) return;
+      setDraftDeletion(undefined);
+      if (draftRef.current?.id === target.id || draft?.id === target.id) setEditorOpen(false);
+    });
+  }
   const matchingSchedules = scheduler.schedules.data?.filter(item => isSkejArticleSchedule(item) && item.record.publishRkey === draft?.scheduleRecordKey);
   const confirmedCanceled = !!draft?.scheduleUri && !scheduler.schedules.isError
     && matchingSchedules?.some(item => item.scheduleUri === draft.scheduleUri && item.status === "canceled" && item.record.status === "canceled")
@@ -237,53 +286,58 @@ function ArticlesViewer({ did }: { did: string }) {
   const error = failure ?? local.error ?? (publications.error ? socialErrorMessage(publications.error) : undefined);
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <FeedHeader title="Articles" subtitle={editorOpen ? "Write and Publish" : "Your Articles"} desktopSidebarToggle>
-      {editorOpen || publishedArticle ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void perform(async () => { await local.persist(); setEditorOpen(false); setPublishedArticle(undefined); }); }}><ArrowLeft className="size-4" />Back to Articles</Button> : null}
-      {editorOpen || publishedArticle ? <Button variant="ghost" size="sm" aria-label={metadataVisible ? "Hide Metadata" : "Show Metadata"} aria-expanded={metadataVisible} aria-controls="article-metadata" onClick={() => setMetadataVisible(value => !value)}><PanelRight className="size-4" />Metadata</Button> : null}
+      {editorOpen || publishedArticle ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void perform(async () => { await local.persist(); setEditorOpen(false); setPublishedArticle(undefined); setEditingPublished(false); }); }}><ArrowLeft className="size-4" />Back to Articles</Button> : null}
+      {editorOpen || (publishedArticle && !editingPublished) ? <Button variant="ghost" size="sm" aria-label={metadataVisible ? "Hide Metadata" : "Show Metadata"} aria-expanded={metadataVisible} aria-controls="article-metadata" onClick={() => setMetadataVisible(value => !value)}><PanelRight className="size-4" />Metadata</Button> : null}
       <Button variant="ghost" size="sm" disabled={busy || local.syncing} onClick={() => { void local.refresh(); }}>Sync Drafts</Button>
-      <Button size="sm" disabled={busy || local.loading} onClick={() => { void perform(async () => { await local.create(publications.data?.[0]?.uri); setEditorOpen(true); setMetadataVisible(true); setPublishedArticle(undefined); setTab("drafts"); setPublishedUrl(undefined); }); }}><Plus className="size-4" />New Article</Button>
+      <Button size="sm" disabled={busy || local.loading || !canCreateDraft} onClick={() => { if (!canCreateDraft) return; void perform(async () => { await local.create(firstEditablePublication?.uri); setEditorOpen(true); setMetadataVisible(true); setPublishedArticle(undefined); setTab("drafts"); setPublishedUrl(undefined); }); }}><Plus className="size-4" />New Article</Button>
     </FeedHeader>
+    {(editorOpen && publication && publicationDisabledReason) || (publishedArticle && publishedPublication && articlePublicationDisabledReason(publishedPublication)) ? <p className="border-b px-4 py-3 text-sm text-muted-foreground">{PCKT_EXTERNAL_EDITORS_MESSAGE} Its Blogs Are Disabled.</p> : null}
     {error ? <div role="alert" className="border-b p-3 text-sm text-destructive">{error}{error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : <Button variant="outline" size="sm" className="ml-2" onClick={() => { void perform(async () => { await local.persist(); await publications.refetch(); }); }}>Retry</Button>}</div> : null}
-    {!editorOpen && !publishedArticle ? <ArticleLibrary did={did} publications={publications.data ?? []} tab={tab} onTabChange={setTab} drafts={local.drafts} loading={local.loading} busy={busy}
+    {!editorOpen && !publishedArticle ? <ArticleLibrary did={did} publications={publications.data ?? []} publicationsReady={!publications.isPending && !publications.error} tab={tab} onTabChange={setTab} drafts={local.drafts} loading={local.loading} busy={busy}
+      onDeleteDraft={target => { setFailure(undefined); setDraftDeletion(target); }}
       onOpenDraft={id => { void perform(async () => { await local.select(id); setPublishedUrl(undefined); setPublishedArticle(undefined); setMetadataVisible(true); setEditorOpen(true); }); }}
-      published={history.data ?? []} publishedPending={history.isPending} publishedError={history.error} onOpenPublished={article => { setPublishedArticle(article); setMetadataVisible(true); }}
+      published={history.data ?? []} publishedPending={history.isPending} publishedError={history.error} onOpenPublished={article => { setPublishedArticle(article); setEditingPublished(false); setMetadataVisible(true); }}
+      onEditPublished={article => { setFailure(undefined); setPublishedArticle(article); setEditingPublished(true); }}
+      onDeletePublished={article => { setFailure(undefined); setPublishedDeletion(article); }}
       research={<ResearchWorkspace did={did} />} scheduled={<ArticleScheduledList did={did} publications={publications.data ?? []} scheduler={scheduler} isPro={isPro} onCanceled={async item => {
         if (isSkejArticleSchedule(item) && draftRef.current?.scheduleRecordKey === item.record.publishRkey && draftRef.current?.scheduleUri === item.scheduleUri) { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined, publicationClaimId: undefined }); await local.persist(); }
-      }} />} /> : publishedArticle ? <PublishedArticleView article={publishedArticle} publications={publications.data ?? []} metadataVisible={metadataVisible} metadataWidth={metadataWidth} onMetadataWidthChange={setMetadataWidth} /> : <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+      }} />} /> : publishedArticle && editingPublished && publishedEditCapability !== "none" ? <PublishedArticleEditor key={publishedArticle.cid} article={publishedArticle} capability={publishedEditCapability} busy={busy} onCancel={() => setEditingPublished(false)} onSave={edit => { void savePublished(edit); }} />
+      : publishedArticle ? <PublishedArticleView article={publishedArticle} publications={publications.data ?? []} metadataVisible={metadataVisible} metadataWidth={metadataWidth} onMetadataWidthChange={setMetadataWidth} busy={busy} onEdit={publishedEditCapability === "none" ? undefined : () => { setFailure(undefined); setEditingPublished(true); }} onDelete={publishedDeletable ? () => { setFailure(undefined); setPublishedDeletion(publishedArticle); } : undefined} /> : <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
       {!draft ? <div className="flex min-h-60 flex-1 items-center justify-center p-6 text-muted-foreground">Select a Draft or Create an Article.</div> : <div className="flex min-w-0 shrink-0 flex-col md:min-h-0 md:flex-1 lg:flex-row">
         <section aria-label="Article Editor" aria-busy={busy} className="min-w-0 shrink-0 p-4 sm:p-6 md:min-h-0 md:flex-1 md:overflow-y-auto">
-          <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button>{isPostSchedulingEnabled() ? <Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button> : null}</div>
+          <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={editingDisabled} onClick={() => { if (!publicationDisabledReason) void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button>{isPostSchedulingEnabled() ? <Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button> : null}</div>
           {isPostSchedulingEnabled() && !isPro ? <p className="mb-3 text-xs text-muted-foreground">Article Scheduling Requires Social Wire Pro.</p> : isPostSchedulingEnabled() && !scheduler.readiness.data?.connected ? <p className="mb-3 text-xs text-muted-foreground">Open Scheduled to Connect Skej.</p> : null}
           {draft.publishingRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">Publication May Have Completed. Check Published Articles Before Taking Further Action.</p> : null}
           {draft.publishingRecordKey ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("publish")); }}>Check Publication</Button> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && !draft.scheduleUri ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("schedule")); }}>Check Schedule</Button> : null}
           {draft.scheduleRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">{isPostSchedulingEnabled() ? "Scheduling Was Requested. This Draft Is Locked to Prevent Duplicate Publication. Review or Cancel Its Schedule in Scheduled. If the Request Failed, Refresh Schedules Before Taking Further Action." : "Scheduling Was Requested. This Draft Remains Locked While Post Scheduling Is Disabled."}</p> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && confirmedCanceled ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(async () => { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined, publicationClaimId: undefined }); await local.persist(); }); }}>Unlock Canceled Draft</Button> : null}
-          {draft.publishedUri ? <p className="mb-4 rounded-lg bg-muted p-3 text-sm">Published to Your PDS. {publishedUrl ? <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open Article</a> : null} Published article editing will be available in a later phase.</p> : null}
-          {mode === "viewer" ? <header className="mb-5 space-y-2"><h1 className="break-words text-3xl font-semibold leading-tight">{draft.title || "Untitled Article"}</h1>{draft.excerpt ? <p className="whitespace-pre-wrap text-muted-foreground">{draft.excerpt}</p> : null}</header> : <label className="mb-5 block"><span className="mb-2 block text-sm font-medium">Title</span><Input aria-label="Article Title" placeholder="Untitled Article" value={draft.title} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ title: event.target.value })} className="h-auto py-2 text-xl font-semibold" /></label>}
+          {draft.publishedUri ? <p className="mb-4 rounded-lg bg-muted p-3 text-sm">Published to Your PDS. {publishedUrl ? <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open Article</a> : null} Edit It From Published Articles.</p> : null}
+          {mode === "viewer" ? <header className="mb-5 space-y-2"><h1 className="break-words text-3xl font-semibold leading-tight">{draft.title || "Untitled Article"}</h1>{draft.excerpt ? <p className="whitespace-pre-wrap text-muted-foreground">{draft.excerpt}</p> : null}</header> : <label className="mb-5 block"><span className="mb-2 block text-sm font-medium">Title</span><Input aria-label="Article Title" placeholder="Untitled Article" value={draft.title} disabled={editingDisabled} onChange={event => local.update({ title: event.target.value })} className="h-auto py-2 text-xl font-semibold" /></label>}
           {draft.coverAssetId && assetUrls[draft.coverAssetId] ? <img src={assetUrls[draft.coverAssetId]} alt={assets.find(asset => asset.id === draft.coverAssetId)?.alt ?? ""} className="mb-5 max-h-72 w-full rounded-xl object-cover" /> : null}
-          <ArticleBodyViews draftId={draft.id} markdown={draft.markdown} mode={mode} onModeChange={setMode} onChange={markdown => local.update({ markdown })} editorRef={editor} resolveImageURL={resolveImage} onImageFiles={(files, index) => addImages(files, index)} readOnly={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} busy={busy} controls={<ArticleImageInput label="Add Images" multiple disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onFiles={files => addImages(files)} />} />
+          <ArticleBodyViews draftId={draft.id} markdown={draft.markdown} mode={mode} onModeChange={setMode} onChange={markdown => local.update({ markdown })} editorRef={editor} resolveImageURL={resolveImage} onImageFiles={(files, index) => addImages(files, index)} readOnly={editingDisabled} busy={busy} controls={<ArticleImageInput label="Add Images" multiple disabled={editingDisabled} onFiles={files => addImages(files)} />} />
         </section>
         <aside id="article-metadata" aria-label="Article Details" hidden={!metadataVisible} style={{ "--article-metadata-width": `${metadataWidth}px` } as React.CSSProperties} className={`${floatingGlassClasses} relative m-4 min-h-0 shrink-0 p-4 lg:w-[var(--article-metadata-width)] lg:max-w-[40%] ${metadataVisible ? "" : "hidden"}`}>
           <ArticlePanelResizeHandle width={metadataWidth} onWidthChange={setMetadataWidth} />
           <div className="h-full min-h-0 space-y-4 overflow-y-auto">
           <h2 className="text-sm font-semibold">Article Details</h2>
-          <label className="block space-y-1 text-sm"><span>Publication</span><div className="relative"><select aria-label="Article Publication" value={draft.publicationUri} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ publicationUri: event.target.value })} className="w-full appearance-none rounded-md border bg-background py-2 pl-3 pr-9"><option value="">Select a Publication</option>{publications.data?.map(pub => <option key={pub.uri} value={pub.uri}>{pub.name}</option>)}</select><ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" aria-hidden="true" /></div></label>
+          <label className="block space-y-1 text-sm"><span>Publication</span><div className="relative"><select aria-label="Article Publication" value={draft.publicationUri} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => { const selected = publications.data?.find(value => value.uri === event.target.value); if (!event.target.value || (selected && !articlePublicationDisabledReason(selected))) local.update({ publicationUri: event.target.value }); }} className="w-full appearance-none rounded-md border bg-background py-2 pl-3 pr-9"><option value="">Select a Publication</option>{publications.data?.map(pub => <option key={pub.uri} value={pub.uri} disabled={!!articlePublicationDisabledReason(pub)}>{pub.name}{articlePublicationDisabledReason(pub) ? ` — ${PCKT_EXTERNAL_EDITORS_MESSAGE}` : ""}</option>)}</select><ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" aria-hidden="true" /></div></label>
           {publications.isPending ? <p role="status" className="text-xs">Loading Publications…</p> : !publications.error && !publications.data?.length ? <p className="text-xs text-muted-foreground">Create a publication in your publishing app, then refresh here.</p> : null}
           <Button size="sm" variant="outline" disabled={busy || publications.isFetching} onClick={() => { void publications.refetch(); }}>Refresh Publications</Button>
-          {publication?.host === "unknown" || publication?.host === "pckt" ? <p className="text-xs text-muted-foreground">{publication.host === "pckt" ? "Published records will be stored on your PDS; pckt does not currently display externally published articles." : "This publication uses a generic format. Its website may not support all formatting."}</p> : null}
-          <label className="block space-y-1 text-sm"><span>Excerpt</span><textarea aria-label="Article Excerpt" value={draft.excerpt} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ excerpt: event.target.value })} rows={3} className="w-full rounded-md border bg-background p-2 text-sm" /></label>
-          <label className="block space-y-1 text-sm"><span>Path</span><Input aria-label="Article Path" placeholder="/my-article" value={draft.path} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ path: event.target.value })} /></label>
-          <label className="block space-y-1 text-sm"><span>Tags</span><Input aria-label="Article Tags" placeholder="Comma-Separated Tags" value={draft.tags.join(", ")} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ tags: event.target.value.split(",").map(tag => tag.trimStart()) })} /></label>
-          <ArticleImageInput label="Choose Cover Image" disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onFiles={files => addImages(files, undefined, true)} />
-          {draft.coverAssetId ? <Button variant="ghost" size="sm" disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => local.update({ coverAssetId: undefined })}>Remove Cover</Button> : null}
-          {assets.map(asset => <label key={asset.id} className="block space-y-1 text-xs"><span className="block truncate">{asset.name} · Image Description</span><Input aria-label={`Image Description: ${asset.name}`} value={asset.alt} disabled={busy || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onChange={event => local.update({ assets: assets.map(value => value.id === asset.id ? { ...value, alt: event.target.value } : value) })} /></label>)}
-          <Button variant="destructive" size="sm" disabled={busy || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setDeleting(true)}>Delete Private Draft</Button>
+          {publication?.host === "unknown" && !publicationDisabledReason ? <p className="text-xs text-muted-foreground">This publication uses a generic format. Its website may not support all formatting.</p> : null}
+          <label className="block space-y-1 text-sm"><span>Excerpt</span><textarea aria-label="Article Excerpt" value={draft.excerpt} disabled={editingDisabled} onChange={event => local.update({ excerpt: event.target.value })} rows={3} className="w-full rounded-md border bg-background p-2 text-sm" /></label>
+          <label className="block space-y-1 text-sm"><span>Path</span><Input aria-label="Article Path" placeholder="/my-article" value={draft.path} disabled={editingDisabled} onChange={event => local.update({ path: event.target.value })} /></label>
+          <label className="block space-y-1 text-sm"><span>Tags</span><Input aria-label="Article Tags" placeholder="Comma-Separated Tags" value={draft.tags.join(", ")} disabled={editingDisabled} onChange={event => local.update({ tags: event.target.value.split(",").map(tag => tag.trimStart()) })} /></label>
+          <ArticleImageInput label="Choose Cover Image" disabled={editingDisabled} onFiles={files => addImages(files, undefined, true)} />
+          {draft.coverAssetId ? <Button variant="ghost" size="sm" disabled={editingDisabled} onClick={() => local.update({ coverAssetId: undefined })}>Remove Cover</Button> : null}
+          <Button variant="destructive" size="sm" disabled={busy || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => { setFailure(undefined); setDraftDeletion(draft); }}>Delete Private Draft</Button>
           </div>
         </aside>
       </div>}
     </div>}
     {isPostSchedulingEnabled() && scheduling && draft ? <ArticleScheduleDialog title={draft.title} save={schedule} close={() => setScheduling(false)} /> : null}
     <Dialog open={publishing} onOpenChange={open => { if (!busy) setPublishing(open); }}><DialogContent><DialogTitle>Publish Article?</DialogTitle><DialogDescription>This publishes “{draft?.title}” to {publication?.name} on your public PDS.</DialogDescription>{failure ? <p role="alert" className="text-sm text-destructive">{failure}</p> : null}<div className="flex gap-2"><Button disabled={busy} onClick={() => { void publish(); }}>{busy ? "Publishing…" : "Publish Now"}</Button><DialogClose render={<Button variant="outline" disabled={busy} />}>Cancel</DialogClose></div></DialogContent></Dialog>
-    <Dialog open={deleting} onOpenChange={open => { if (!busy) setDeleting(open); }}><DialogContent><DialogTitle>Delete Private Draft?</DialogTitle><DialogDescription>This deletes the private draft and its synced images across your devices. Published articles remain available.</DialogDescription><div className="flex gap-2"><Button variant="destructive" disabled={busy} onClick={() => { if (draft) void perform(async () => { await local.remove(draft.id); setDeleting(false); setEditorOpen(false); }); }}>Delete Draft</Button><DialogClose render={<Button variant="outline" disabled={busy} />}>Cancel</DialogClose></div></DialogContent></Dialog>
+    <Dialog open={!!publishedDeletion} onOpenChange={open => { if (!busy && !open) setPublishedDeletion(undefined); }}><DialogContent><DialogTitle>Delete Published Article?</DialogTitle><DialogDescription>This permanently deletes “{String(publishedDeletion?.record.title ?? "Untitled Article")}” from your PDS{deletionPublication ? ` and removes it from ${deletionPublication.name}` : ""}. This can’t be undone.</DialogDescription>{failure ? <p role="alert" className="text-sm text-destructive">{failure}</p> : null}<div className="flex gap-2"><Button variant="destructive" disabled={busy} onClick={() => { void deletePublished(); }}>{busy ? "Deleting…" : "Delete Article"}</Button><DialogClose render={<Button variant="outline" disabled={busy} />}>Cancel</DialogClose></div></DialogContent></Dialog>
+    <Dialog open={!!draftDeletion} onOpenChange={open => { if (!busy && !open) setDraftDeletion(undefined); }}><DialogContent><DialogTitle>Delete Private Draft?</DialogTitle><DialogDescription>This deletes “{draftDeletion?.title || "Untitled Article"}” and its synced images across your devices. Published articles remain available.</DialogDescription>{failure ? <p role="alert" className="text-sm text-destructive">{failure}</p> : null}<div className="flex gap-2"><Button variant="destructive" disabled={busy} onClick={() => { void deleteDraft(); }}>{busy ? "Deleting…" : "Delete Draft"}</Button><DialogClose render={<Button variant="outline" disabled={busy} />}>Cancel</DialogClose></div></DialogContent></Dialog>
   </div>;
 }
