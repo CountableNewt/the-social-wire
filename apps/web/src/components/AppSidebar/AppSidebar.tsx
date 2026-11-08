@@ -59,7 +59,14 @@ import {
 } from "@/lib/feedPreferences";
 import { sidebarPublicationRows } from "@/lib/publicationProjectionClient";
 import { savedFeedSources } from "@/lib/savedFeedSources";
+import {
+  countSavedLinkCategories,
+  parseSavedLinkCategory,
+  type SavedLinkCategory,
+} from "@/lib/savedLinkCategory";
 import { SavedFeedSourcesSection } from "./SavedFeedSourcesSection";
+import { SavedCategoryFilterSection } from "./SavedCategoryFilterSection";
+import { SavedQuickStatsSection } from "./SavedQuickStatsSection";
 import { activeReadFeedScope } from "@/lib/activeReadFeedScope";
 import { useDesktopPublicationRail } from "@/hooks/useDesktopPublicationRail";
 import { useClientHydrated } from "@/hooks/useClientHydrated";
@@ -204,6 +211,18 @@ export function AppSidebar({
     [archivedLinks, pathname, savedLinks, savedSidebarRows, usingSemble],
   );
   const selectedSavedSource = searchParams.get("source");
+  const selectedSavedCategory = parseSavedLinkCategory(searchParams.get("type"));
+  const savedCategoryCounts = useMemo(
+    () => countSavedLinkCategories(savedLinks),
+    [savedLinks],
+  );
+  const selectSavedCategory = (category: SavedLinkCategory | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (category) params.set("type", category);
+    else params.delete("type");
+    const query = params.toString();
+    router.replace(query ? `/saved?${query}` : "/saved");
+  };
   const selectedFolderRkey = searchParams.get("folder");
   const selectedFeed = selectedListUri ? null : currentAppSidebarFeed({
     pathname,
@@ -474,6 +493,20 @@ export function AppSidebar({
         currentFeed !== "wire" &&
         currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos")) ? (
         <FloatingChromeSurface className={`${floatingSidebarLayoutClassName} mx-2 flex flex-col self-stretch lg:self-start gap-0 group-data-[collapsible=icon]:overflow-hidden lg:fixed lg:mx-0 lg:bottom-4 lg:right-4 lg:top-[calc(var(--environment-banner-height,0px)+1rem)] lg:z-30 lg:w-60 lg:h-auto lg:max-h-[calc(100svh-var(--environment-banner-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain`}>
+          {!selectedListUri && pathname.startsWith("/saved") ? (
+            <>
+              <SavedQuickStatsSection
+                unreadCount={readLaterUnread}
+                archiveCount={archivedLinks.length}
+              />
+              <SavedCategoryFilterSection
+                totalCount={savedLinks.length}
+                categoryCounts={savedCategoryCounts}
+                selectedCategory={selectedSavedCategory}
+                onSelectCategory={selectSavedCategory}
+              />
+            </>
+          ) : null}
           <div className="hidden shrink-0 items-center px-2 pb-2 lg:flex">
             <p className="text-base font-bold text-sidebar-foreground">
               Publications
