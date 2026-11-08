@@ -45,6 +45,7 @@ import { OUTBOUND_WINDOW_FEATURES } from "@/lib/outboundLinks";
 import type { LatrSaveListState, MergedLatrSave } from "@/lib/pdsClient";
 import { sidebarPublicationRows } from "@/lib/publicationProjectionClient";
 import { savedFeedSourceKey } from "@/lib/savedFeedSources";
+import { filterSavedLinksByCategory, parseSavedLinkCategory } from "@/lib/savedLinkCategory";
 import { savedLinkOpenTarget } from "@/lib/savedLinkOpenTarget";
 import { resolveEntryOpenUrlFromPds } from "@/lib/resolveEntryOpenUrl";
 import { countLatrTags, filterLatrSavesByExactTag, parseLatrTagInput } from "@/lib/latrTags";
@@ -83,6 +84,8 @@ export function SavedLinksBrowser({ mode }: { mode: SavedLinksBrowserMode }) {
   const pathname = usePathname();
   const sourceFilter = searchParams.get("source");
   const tagFilter = searchParams.get("tag");
+  const categoryFilter =
+    mode === "archived" ? null : parseSavedLinkCategory(searchParams.get("type"));
   const { publicationSidebarProjection } = useSidebarProjection();
   const listState: LatrSaveListState =
     mode === "archived" ? "archived" : "active";
@@ -101,8 +104,11 @@ export function SavedLinksBrowser({ mode }: { mode: SavedLinksBrowserMode }) {
             (row) => savedFeedSourceKey(row, sidebarRows) === sourceFilter,
           )
         : data;
-    return filterLatrSavesByExactTag(sourceRows, tagFilter);
-  }, [data, sidebarRows, sourceFilter, tagFilter]);
+    return filterLatrSavesByExactTag(
+      filterSavedLinksByCategory(sourceRows, categoryFilter),
+      tagFilter,
+    );
+  }, [categoryFilter, data, sidebarRows, sourceFilter, tagFilter]);
   const viewTagCounts = useMemo(() => countLatrTags(data), [data]);
   const archiveMutation = useArchiveLatrSaveMutation();
   const unarchiveMutation = useUnarchiveLatrSaveMutation();
