@@ -9,6 +9,7 @@ import * as Semble from "@/hooks/useSembleReadLater";
 import * as Entitlements from "@/hooks/useProEntitlements";
 import * as Auth from "@/hooks/useAuth";
 import * as Drafts from "@/hooks/articles/useArticleDrafts";
+import * as Images from "@/components/Articles/ArticleImageInput";
 import * as Storage from "@/lib/articles/articleDraftStorage";
 import * as Publishing from "@/lib/articles/articlePublishingClient";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
@@ -51,13 +52,15 @@ beforeEach(() => {
   const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storedDraft = seed;
+  createDraft.mockClear();
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(() => { storedDraft = seed; return seed; });
-    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing: false, refresh: async () => {}, select: async () => {}, create: async () => draft, remove: async () => {} };
+    const [syncing, setSyncing] = useState(false);
+    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: async () => {}, create: createDraft, remove: async () => {} };
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
   const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => storedDraft); restores.push(() => stored.mockRestore());
@@ -70,7 +73,7 @@ async function show(openDraft = true) {
   if (openDraft) {
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
     fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
-    await waitFor(() => expect(screen.getByRole("option", { name: "First Publication" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("option", { name: /^First Publication/ })).toBeTruthy());
   }
 }
 function publishingSpy() {
@@ -78,6 +81,120 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("keeps pckt visible but disabled and creates drafts for the first supported blog", async () => {
+    const pckt = { ...publications[0]!, uri: `at://${did}/site.standard.publication/pckt`, name: "My pckt Blog", host: "pckt" as const, url: "https://mine.pckt.blog" };
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([pckt, ...publications]); restores.push(() => pubs.mockRestore());
+    await show();
+    const option = screen.getByRole("option", { name: /My pckt Blog.*Does Not Support External Editors/ }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    // The notice belongs to pckt content only, not to every account that owns a pckt blog.
+    expect(screen.queryByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New Article" }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalledWith(publications[0]!.uri));
+  });
+  it("does not create drafts when only pckt blogs exist", async () => {
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }]); restores.push(() => pubs.mockRestore());
+    await show(false);
+    const button = screen.getByRole("button", { name: "New Article" });
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(true));
+    expect(screen.queryByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeNull();
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+  it("keeps existing pckt drafts read-only until reassigned to a supported blog", async () => {
+    const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([{ ...publications[0]!, host: "pckt" }, publications[1]!]); restores.push(() => pubs.mockRestore());
+    const publish = publishingSpy();
+    await show();
+    expect(screen.getByText(/pckt Does Not Support External Editors.*Its Blogs Are Disabled/)).toBeTruthy();
+    for (const name of ["Save Draft", "Publish Article", "Schedule Article", "Choose Cover Image"]) expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    expect(publish).not.toHaveBeenCalled();
+    expect(scheduleArticle).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Article Publication"), { target: { value: publications[1]!.uri } });
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Publish Article" }).hasAttribute("disabled")).toBe(false);
+    expect(storedDraft.title).toBe(seed.title);
+  });
+  it("shows the selected cover above the title and in details without a stray description field", async () => {
+    seed.assets = [{ id: "cover", name: "Cover.png", mimeType: "image/png", width: 1200, height: 600, alt: "A mountain lake" }];
+    seed.coverAssetId = "cover";
+    const blob = spyOn(Storage, "getArticleDraftAsset").mockResolvedValue(new Blob(["cover"], { type: "image/png" })); restores.push(() => blob.mockRestore());
+    const create = spyOn(URL, "createObjectURL").mockReturnValue("blob:cover"); restores.push(() => create.mockRestore());
+    const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {}); restores.push(() => revoke.mockRestore());
+    await show();
+    const editor = screen.getByRole("region", { name: "Article Editor" });
+    const details = screen.getByRole("complementary", { name: "Article Details" });
+    await waitFor(() => expect(within(editor).getByRole("img", { name: "A mountain lake" }).getAttribute("src")).toBe("blob:cover"));
+    expect(within(details).getByRole("img", { name: "A mountain lake" }).getAttribute("src")).toBe("blob:cover");
+    expect(within(editor).getByRole("img").compareDocumentPosition(screen.getByLabelText("Article Title")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByLabelText(/^Image Description:/)).toBeNull();
+    const createsBeforeSync = create.mock.calls.length;
+    const revokesBeforeSync = revoke.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Sync Drafts" }));
+    expect(within(editor).getByRole("img", { name: "A mountain lake" }).getAttribute("src")).toBe("blob:cover");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sync Drafts" }).hasAttribute("disabled")).toBe(false));
+    expect(create.mock.calls.length).toBe(createsBeforeSync);
+    expect(revoke.mock.calls.length).toBe(revokesBeforeSync);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Cover" }));
+    expect(within(editor).queryByRole("img")).toBeNull();
+    expect(within(details).queryByRole("img")).toBeNull();
+    expect(storedDraft.coverAssetId).toBeUndefined();
+    expect(storedDraft.assets).toHaveLength(1);
+    cleanup();
+    expect(revoke).toHaveBeenCalledWith("blob:cover");
+  });
+  it("shows a newly chosen cover and replaces it in both locations", async () => {
+    const blobs = new Map<string, Blob>();
+    const get = spyOn(Storage, "getArticleDraftAsset").mockImplementation(async (_did, _draft, id) => blobs.get(id)); restores.push(() => get.mockRestore());
+    const save = spyOn(Storage, "saveArticleDraftAsset").mockImplementation(async (_did, _draft, id, blob) => { blobs.set(id, blob); }); restores.push(() => save.mockRestore());
+    const dimensions = spyOn(Images, "articleImageDimensions").mockResolvedValue({ width: 1200, height: 600 }); restores.push(() => dimensions.mockRestore());
+    let sequence = 0;
+    const create = spyOn(URL, "createObjectURL").mockImplementation(() => `blob:selected-${++sequence}`); restores.push(() => create.mockRestore());
+    const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {}); restores.push(() => revoke.mockRestore());
+    await show();
+    fireEvent.change(screen.getByLabelText("Choose Cover Image"), { target: { files: [new File(["first"], "First.png", { type: "image/png" })] } });
+    await waitFor(() => expect(screen.getAllByRole("img", { name: "Article Cover" })).toHaveLength(2));
+    const previous = screen.getAllByRole("img", { name: "Article Cover" })[0]!.getAttribute("src");
+    const firstId = storedDraft.coverAssetId;
+    await waitFor(() => expect(screen.getByRole("button", { name: "Choose Cover Image" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Choose Cover Image"), { target: { files: [new File(["second"], "Second.png", { type: "image/png" })] } });
+    await waitFor(() => expect(storedDraft.coverAssetId).not.toBe(firstId));
+    await waitFor(() => {
+      const images = screen.getAllByRole("img", { name: "Article Cover" });
+      expect(images).toHaveLength(2);
+      expect(images[0]!.getAttribute("src")).not.toBe(previous);
+      expect(images[1]!.getAttribute("src")).toBe(images[0]!.getAttribute("src"));
+    });
+    expect(revoke).toHaveBeenCalledWith(previous);
+    expect(storedDraft.markdown).toBe(seed.markdown);
+  });
+  it("keeps the cover visible when a different private image read fails", async () => {
+    seed.assets = ["cover", "broken"].map(id => ({ id, name: `${id}.png`, mimeType: "image/png", width: 10, height: 10, alt: "" }));
+    seed.coverAssetId = "cover";
+    const blob = spyOn(Storage, "getArticleDraftAsset").mockImplementation(async (_did, _draft, id) => { if (id === "broken") throw new Error("Could Not Load Inline Image"); return new Blob(["cover"], { type: "image/png" }); }); restores.push(() => blob.mockRestore());
+    let sequence = 0;
+    const create = spyOn(URL, "createObjectURL").mockImplementation(() => `blob:healthy-cover-${++sequence}`); restores.push(() => create.mockRestore());
+    const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {}); restores.push(() => revoke.mockRestore());
+    await show();
+    await waitFor(() => expect(screen.getAllByRole("img", { name: "Article Cover" })).toHaveLength(2));
+    expect(screen.getByRole("alert").textContent).toContain("Could Not Load Inline Image");
+    expect(revoke).not.toHaveBeenCalledWith(screen.getAllByRole("img", { name: "Article Cover" })[0]!.getAttribute("src"));
+  });
+  it("reloads restored image bytes with unchanged IDs after draft sync", async () => {
+    seed.assets = [{ id: "cover", name: "Cover.png", mimeType: "image/png", width: 10, height: 10, alt: "" }];
+    seed.coverAssetId = "cover";
+    let restored = false;
+    const blob = spyOn(Storage, "getArticleDraftAsset").mockImplementation(async () => restored ? new Blob(["restored"], { type: "image/png" }) : undefined); restores.push(() => blob.mockRestore());
+    const create = spyOn(URL, "createObjectURL").mockReturnValue("blob:restored-cover"); restores.push(() => create.mockRestore());
+    const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {}); restores.push(() => revoke.mockRestore());
+    await show();
+    expect(screen.queryByRole("img", { name: "Article Cover" })).toBeNull();
+    restored = true;
+    fireEvent.click(screen.getByRole("button", { name: "Sync Drafts" }));
+    await waitFor(() => expect(screen.getAllByRole("img", { name: "Article Cover" })).toHaveLength(2));
+  });
   it("keeps Articles and publishing available with scheduling disabled", async () => {
     delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
     await show(false);
