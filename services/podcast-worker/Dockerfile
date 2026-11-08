@@ -1,12 +1,13 @@
-FROM golang:1.26-bookworm AS schema-ready-builder
-WORKDIR /src/services/jetstream-ingest
-# The schema gate needs local module metadata even in Swift runtime images.
-COPY packages/go/go.mod packages/go/go.sum /src/packages/go/
-COPY services/jetstream-ingest/go.mod services/jetstream-ingest/go.sum ./
-RUN go mod download
-COPY services/jetstream-ingest/cmd/schema-ready ./cmd/schema-ready
-COPY services/jetstream-ingest/internal/schemaready ./internal/schemaready
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/schema-ready ./cmd/schema-ready
+FROM swift:6.4.2-jammy AS schema-ready-builder
+WORKDIR /src
+# Copy canonical package inputs only; local SwiftPM mirrors must not enter images.
+COPY tools/schema-ready/Package.swift tools/schema-ready/Package.resolved /src/tools/schema-ready/
+COPY tools/schema-ready/Sources /src/tools/schema-ready/Sources
+COPY tools/schema-ready/Tests /src/tools/schema-ready/Tests
+# The Bun runtime image has no Swift libraries, so link the Swift runtime statically.
+RUN swift build --package-path tools/schema-ready -c release --product schema-ready --static-swift-stdlib --force-resolved-versions -j 4 \
+  && mkdir -p /out \
+  && cp tools/schema-ready/.build/release/schema-ready /out/schema-ready
 COPY database/migrations /src/database/migrations
 RUN /out/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
 

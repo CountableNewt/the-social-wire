@@ -100,9 +100,10 @@ describe("CI path detection", () => {
     expect(detect(repositoryWithChange(path), "pull_request").get("swift_backend")).toBe("false");
   });
 
-  it("checks the podcast worker when the local Go module changes", () => {
-    const result = detect(repositoryWithChange("packages/go/go.mod"), "pull_request");
+  it("checks every image embedding the Swift schema gate when it changes", () => {
+    const result = detect(repositoryWithChange("tools/schema-ready/Sources/SchemaReadyCore/SchemaReadiness.swift"), "pull_request");
     expect(result.get("podcast_worker")).toBe("true");
+    expect(result.get("swift_backend")).toBe("true");
   });
 
   it("tests portable read-state changes in native and server consumers", () => {
@@ -138,19 +139,9 @@ describe("CI path detection", () => {
       "pull_request",
     );
     expect(result.get("shared_swift")).toBe("true");
-    expect(result.get("wire_corpus_edge")).toBe("true");
     expect(result.get("database_migrator")).toBe("true");
     expect(result.get("podcast_worker")).toBe("true");
     expect(result.get("spec")).toBe("true");
-  });
-
-  it("checks all consumers embedding the shared startup gate", () => {
-    const result = detect(
-      repositoryWithChange("services/jetstream-ingest/internal/schemaready/gate.go"),
-      "pull_request",
-    );
-    expect(result.get("podcast_worker")).toBe("true");
-    expect(result.get("wire_corpus_edge")).toBe("false");
   });
 
   it("checks retained Redis and Swift contracts when their shared package changes", () => {
@@ -178,14 +169,6 @@ describe("CI path detection", () => {
     );
     expect(result.get("web")).toBe("true");
     expect(result.get("operations_web")).toBe("true");
-  });
-
-  it("runs scope-policy drift checks for Jetstream admission changes", () => {
-    const result = detect(
-      repositoryWithChange("services/jetstream-ingest/internal/store/postgres.go"),
-      "pull_request",
-    );
-    expect(result.get("spec")).toBe("true");
   });
 
   it("runs the retired-generation policy spec when its runbook changes", () => {
@@ -216,7 +199,7 @@ describe("CI path detection", () => {
     ".github/workflows/validated-merge.yml", ".github/actions/prepare-postgres/action.yml"]) {
     it(`runs the full matrix when shared PostgreSQL preparation changes: ${path}`, () => {
       const output = detect(repositoryWithChange(path), "pull_request");
-      expect(output.size).toBe(13);
+      expect(output.size).toBe(12);
       expect([...output.values()].every(value => value === "true")).toBe(true);
     });
   }
@@ -249,8 +232,8 @@ describe("CI path detection", () => {
 
 describe("extracted Swift contract path detection", () => {
   it.each([
-    "packages/go/migration/extracted-swift-packages.json",
-    "scripts/go/check-out-swift-contracts.py",
+    "packages/swift/extracted-swift-packages.json",
+    "scripts/ci/check-out-swift-contracts.py",
   ])("checks every extracted-contract consumer when %s changes", (path) => {
     const result = detect(repositoryWithChange(path), "pull_request");
     for (const job of ["redis", "shared_swift", "spec"]) {

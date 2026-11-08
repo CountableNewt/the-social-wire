@@ -101,7 +101,6 @@ DATABASE_URL='postgresql://…' bash scripts/apply-database-migrations.sh
 (cd services/indexing-worker && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative swift run IndexingWorker)
 
 # Coordinator uses the same package with INDEXING_WORKER_ROLE=coordinator.
-# Ingress Controller configuration/protocol details: services/jetstream-ingest/README.md
 ```
 
 ### Running tests
@@ -118,7 +117,6 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 (cd packages/swift/ThinAppViewCore && swift test)
 (cd services/indexing-worker && swift test --force-resolved-versions)
 (cd packages/swift/OperationsCore && swift test)
-(cd services/jetstream-ingest && swift test --force-resolved-versions)
 
 # iOS — Cmd+U in Xcode (see docs/test-plans/apple.md)
 ```

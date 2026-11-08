@@ -23,10 +23,6 @@ const railwayServices = [
   { service: "Operations Web", config: "operations-web", restartPolicy: "ALWAYS" },
   { service: "Gateway", config: "gateway", restartPolicy: "ALWAYS" },
   { service: "App View", config: "appview", restartPolicy: "ALWAYS" },
-  { service: "Jetstream V2 Ingest", config: "jetstream-ingest", restartPolicy: "ALWAYS" },
-  { service: "The Wire Global Ingest", config: "wire-jetstream-ingest", restartPolicy: "ALWAYS" },
-  { service: "The Wire Corpus Edge", config: "wire-corpus-edge", restartPolicy: "ALWAYS" },
-  { service: "Ops", config: "operations", restartPolicy: "ALWAYS" },
   { service: "Database Migrator", config: "database-migrator", restartPolicy: "NEVER" },
 ] as const;
 
@@ -91,10 +87,10 @@ describe("CI workflow configuration", () => {
       expect(workflow).toContain(`packages/swift/${core}`);
     }
     expect(workflow).toContain("--skip-build --no-parallel --filter");
-    expect(workflow).toContain("Verify presentation-only read contract");
+    expect(workflow).toContain("Verify The Wire presentation-only read contract");
     expect(workflow).toContain("wire-corpus-serving-verifier-postgres.test.ts");
   });
-  it("packages active Swift services while preserving excluded corpus images", () => {
+  it("packages active Swift services", () => {
     for (const image of ["gateway", "indexing-worker", "appview"]) {
       const dockerfile = readFileSync(join(repositoryRoot, `services/${image}/Dockerfile`), "utf8");
       expect(dockerfile).toMatch(/^FROM swift:6\.4\.2-jammy/m);
@@ -107,8 +103,6 @@ describe("CI workflow configuration", () => {
       expect(dockerfile).toContain("-name '*.resources'");
       expect(dockerfile).toContain("-name '*.bundle'");
     }
-    const excluded = readFileSync(join(repositoryRoot, "services/wire-corpus-edge/Dockerfile"), "utf8");
-    expect(excluded).toMatch(/^FROM golang:/m);
     for (const configName of ["gateway", "appview"]) {
       const config = JSON.parse(readFileSync(join(repositoryRoot, `railway/${configName}.json`), "utf8"));
       expect(config.build.watchPatterns).not.toContain("/packages/go/**");
@@ -126,31 +120,6 @@ describe("CI workflow configuration", () => {
     expect(railwayInfrastructure).not.toMatch(/(?:WIRE|FINANCE|SPORTS)_FEED_MODE: "(?:visible|shadow|api)"/);
   });
 
-  it("keeps Finance and Sports selection ingestion in Development's explicit collection override", () => {
-    const developmentProfile = railwayInfrastructure.slice(
-      railwayInfrastructure.indexOf("const developmentProfile"),
-      railwayInfrastructure.indexOf("const productionWireLiveGenerations"),
-    );
-    const collections = developmentProfile.match(/JETSTREAM_APPVIEW_COLLECTIONS:\s*"([^"]+)"/)?.[1].split(",");
-    expect(collections).toContain("app.thesocialwire.finance.selection");
-    expect(collections).toContain("app.thesocialwire.sports.selection");
-    expect(developmentProfile).toContain('appViewGeneration: "jetstream-v2-us-west-finance-sports-v1-20261003"');
-    expect(developmentProfile).toContain('JETSTREAM_APPVIEW_SOURCE_GENERATION: "jetstream-v2-us-west-finance-sports-v1-20261003"');
-    expect(developmentProfile).toContain('JETSTREAM_APPVIEW_HOST: "jetstream.us-west.bsky.network"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_ENABLED: "false"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_LANES: "publicationwest"');
-    expect(developmentProfile).toContain('WIRE_INBOX_SOURCE_GENERATIONS: "wire-global-v6-dev-publication-finance-live-20261001"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_INCIDENT_BYTES: "4294967296"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_DAILY_BYTES: "4294967296"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_DATABASE_MAX_BYTES: "17179869184"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_INBOX_MAX_ROWS: "50000"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_SNAPSHOT_ONLY: "false"');
-    const appViewCursor = developmentProfile.match(/JETSTREAM_APPVIEW_BOOTSTRAP_AFTER_SEQ: "(\d+)"/)?.[1];
-    const publicationCursor = developmentProfile.match(/JETSTREAM_WIRE_PUBLICATIONWEST_BOOTSTRAP_AFTER_SEQ: "(\d+)"/)?.[1];
-    expect(appViewCursor).toBe("26608279414");
-    expect(publicationCursor).toBe("26512357203");
-  });
-
   it("matches the independently deployed Railway services", () => {
     expect(workflow).toContain("branches: [main, dev]");
 
@@ -159,7 +128,6 @@ describe("CI workflow configuration", () => {
       "operations-web",
       "apple",
       "shared-swift",
-      "wire-corpus-edge",
       "database-migrator",
       "docs",
     ]) {
@@ -300,7 +268,7 @@ describe("CI workflow configuration", () => {
     expect(workflow).not.toContain("Build runtime image");
     expect(workflow).toContain("Apply migrations from empty and verify idempotence");
     expect(workflow).toContain("Test iOS app with coverage");
-    // Go services are no longer exercised by CI; Web keeps a toolchain only for the AnyPub kit fixture.
+    // The repository has no Go services; Web keeps a toolchain only for the external AnyPub kit fixture.
     expect(workflow).not.toMatch(/\bgo (?:test|vet|build)\b/);
     expect(workflow.match(/uses: actions\/setup-go@v6/g)).toHaveLength(1);
     // PostgreSQL process-restart images are executable integration fixtures.
@@ -311,12 +279,12 @@ describe("CI workflow configuration", () => {
   it("shares canonical migration preparation while keeping databases isolated", () => {
     const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, string> }> }> };
     const databases: string[] = [];
-    for (const job of ["shared-swift", "wire-corpus-edge", "database-migrator"]) {
+    for (const job of ["shared-swift", "database-migrator"]) {
       const preparation = parsed.jobs[job].steps.filter(step => step.uses === "./.github/actions/prepare-postgres");
       expect(preparation).toHaveLength(1);
       databases.push(preparation[0].with!["database-url"]);
     }
-    expect(new Set(databases).size).toBe(3);
+    expect(new Set(databases).size).toBe(2);
     const migrationStep = parsed.jobs["database-migrator"].steps.find(step => step.uses === "./.github/actions/prepare-postgres");
     expect(migrationStep!.with!["verify-idempotence"]).toBe("true");
     const action = readFileSync(join(repositoryRoot, ".github/actions/prepare-postgres/action.yml"), "utf8");
@@ -366,16 +334,12 @@ describe("CI workflow configuration", () => {
         expect(config.build.dockerfilePath).toMatch(/^\/services\//);
       }
       expect(config.deploy?.restartPolicyType).toBe(restartPolicy);
-      if (["jetstream-ingest", "wire-jetstream-ingest"].includes(configName)) {
-        expect(config.deploy?.healthcheckPath).toBe("/startupz");
-      }
       expect(deploymentReadme).toContain(
         `| ${service} | \`/railway/${configName}.json\` |`,
       );
 
-      // Go-built services are deployed but intentionally have no CI job.
       const dockerfile = config.build?.dockerfilePath ? readFileSync(join(repositoryRoot, config.build.dockerfilePath), "utf8") : "";
-      if (dockerfile.includes("FROM golang")) continue;
+      expect(dockerfile).not.toMatch(/^FROM golang/m);
       const filterName = ["gateway", "appview"].includes(configName)
           ? "swift_backend"
           : configName.replaceAll("-", "_");
@@ -410,37 +374,21 @@ describe("CI workflow configuration", () => {
     expect(railwayInfrastructure).toContain("throw new Error(");
 
     for (const serviceName of [
-      "Ingress Controller",
       "Projection Pool",
       "Coordinator",
     ]) {
       expect(railwayInfrastructure).toContain(`service("${serviceName}"`);
     }
-
-    expect(railwayInfrastructure).toContain(
-      'dockerfilePath: "/services/jetstream-ingest/Dockerfile"',
-    );
+    expect(railwayInfrastructure).not.toContain('service("Ingress Controller"');
+    expect(railwayInfrastructure).not.toContain("/services/jetstream-ingest/");
     expect(railwayInfrastructure).toContain(
       'dockerfilePath: "/services/indexing-worker/Dockerfile"',
     );
     expect(railwayInfrastructure).toContain('healthcheckPath: "/startupz"');
     expect(railwayInfrastructure).toContain('restartPolicyType: "ALWAYS"');
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_ADMISSION_RATE_PER_SECOND: "3"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_ADMISSION_BURST_EVENTS: "1"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_LANES: "external,publication"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_CANARY_EXPIRES_AT: "2026-09-23T00:00:00Z"',
-    );
     expect(railwayInfrastructure).toContain('"wire-global-v9-prod-publication-west-20260919"');
     expect(railwayInfrastructure).toContain('WIRE_INBOX_SOURCE_GENERATIONS: productionWireCoordinatorGenerations');
     expect(railwayInfrastructure).toContain('"wire-global-v8-prod-external-8d-snapshot-b-v1"');
-    expect(railwayInfrastructure).toContain('JETSTREAM_WIRE_LANES: "publicationwest"');
     expect(railwayInfrastructure).toContain('WIRE_INBOX_CONCURRENCY: "52"');
     expect(railwayInfrastructure).toContain('workerRegion: "sfo"');
     expect(railwayInfrastructure).toContain('branch: "main"');
@@ -458,15 +406,6 @@ describe("CI workflow configuration", () => {
     expect(productionWireSourceGenerations).toContain(
       '"wire-global-v8-prod-publication-live-tail-v1"',
     );
-    expect(productionProfile).toContain(
-      '"wire-global-v8-prod-external-live-v1"',
-    );
-    expect(productionProfile).toContain(
-      '"wire-global-v8-prod-publication-live-tail-v1"',
-    );
-    expect(productionProfile).toContain(
-      '"wire-global-v9-prod-publication-west-20260919"',
-    );
     expect(productionProfile).not.toContain("wire-global-v5-dev-publication-west-20260919");
     expect(productionProfile).not.toContain("wire-global-v4-dev-live-20260830");
     expect(productionProfile).not.toContain("24790001258");
@@ -479,7 +418,6 @@ describe("CI workflow configuration", () => {
       "operations_web",
       "apple",
       "shared_swift",
-      "wire_corpus_edge",
       "database_migrator",
       "lexicons",
       "spec",
@@ -495,7 +433,7 @@ describe("extracted Swift contract checkouts", () => {
     const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: { run?: string; uses?: string }[] }> };
     for (const name of ["redis", "shared-swift", "spec"]) {
       const steps = parsed.jobs[name].steps;
-      const checkoutIndex = steps.findIndex(step => step.run === "python3 scripts/go/check-out-swift-contracts.py");
+      const checkoutIndex = steps.findIndex(step => step.run === "python3 scripts/ci/check-out-swift-contracts.py");
       expect(checkoutIndex, name).toBe(steps.findIndex(step => step.uses === "actions/checkout@v6") + 1);
     }
   });
@@ -511,7 +449,7 @@ describe("extracted Swift contract checkouts", () => {
     const destination = join(root, "packages/swift/FixtureCore");
     const manifest = join(root, "manifest.json");
     const run = (...args: string[]) => spawnSync("python3", [
-      join(repositoryRoot, "scripts/go/check-out-swift-contracts.py"),
+      join(repositoryRoot, "scripts/ci/check-out-swift-contracts.py"),
       "--root", root, "--manifest", manifest, ...args,
     ], { encoding: "utf8" });
     try {

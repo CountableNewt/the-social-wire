@@ -19,10 +19,6 @@ new podcast resources do not use a legacy service config path.
 | Operations Web | `/railway/operations-web.json` |
 | Gateway | `/railway/gateway.json` |
 | App View | `/railway/appview.json` |
-| Jetstream V2 Ingest | `/railway/jetstream-ingest.json` |
-| The Wire Global Ingest | `/railway/wire-jetstream-ingest.json` |
-| The Wire Corpus Edge | `/railway/wire-corpus-edge.json` |
-| Ops | `/railway/operations.json` |
 | Database Migrator | `/railway/database-migrator.json` |
 
 The repository-owned Tap image and `/railway/tap.json` were retired on

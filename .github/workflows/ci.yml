@@ -31,7 +31,6 @@ jobs:
       shared_swift: ${{ steps.filter.outputs.shared_swift }}
       swift_backend: ${{ steps.filter.outputs.swift_backend }}
       podcast_worker: ${{ steps.filter.outputs.podcast_worker }}
-      wire_corpus_edge: ${{ steps.filter.outputs.wire_corpus_edge }}
       database_migrator: ${{ steps.filter.outputs.database_migrator }}
       lexicons: ${{ steps.filter.outputs.lexicons }}
       spec: ${{ steps.filter.outputs.spec }}
@@ -82,6 +81,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      # The external @stygian/anypub-kit preparation server fixture is written in Go.
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26.6"
@@ -201,7 +201,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check out pinned Swift reference contracts
-        run: python3 scripts/go/check-out-swift-contracts.py
+        run: python3 scripts/ci/check-out-swift-contracts.py
       - uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.2.4"
@@ -312,7 +312,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check out pinned Swift reference contracts
-        run: python3 scripts/go/check-out-swift-contracts.py
+        run: python3 scripts/ci/check-out-swift-contracts.py
       - name: Apply database migrations for AppView integration tests
         uses: ./.github/actions/prepare-postgres
         with:
@@ -330,7 +330,7 @@ jobs:
             packages/swift/WireCore/.build
             packages/swift/FinanceCore/.build
             packages/swift/SportsCore/.build
-          key: ${{ runner.os }}-swift-shared-6.2.4-${{ hashFiles('packages/swift/**/Package.resolved', 'packages/go/migration/extracted-swift-packages.json') }}
+          key: ${{ runner.os }}-swift-shared-6.2.4-${{ hashFiles('packages/swift/**/Package.resolved', 'packages/swift/extracted-swift-packages.json') }}
       - uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.2.4"
@@ -373,48 +373,6 @@ jobs:
 
   # Real PostgreSQL transactions and actual Swift oracles verify the local Go
   # foundation; this job participates in the required aggregate branch gate.
-  wire-corpus-edge:
-    name: The Wire Corpus Edge
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.wire_corpus_edge == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: socialwire_wire_corpus_test
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_wire_corpus_test"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - name: Apply database migrations
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_wire_corpus_test
-      - name: Verify presentation-only read contract
-        run: |
-          psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_wire_corpus_test \
-            -X -v ON_ERROR_STOP=1 -f scripts/verify-wire-corpus-serving.sql
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Verify Corpus serving boundary rejects unreviewed payloads and scores
-        env:
-          CORPUS_SERVING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_release_corpus_boundary
-          PSQL_BIN: psql
-        run: |
-          "$PSQL_BIN" postgresql://postgres:postgres@127.0.0.1:5432/socialwire_wire_corpus_test \
-            -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tsw_release_corpus_boundary TEMPLATE socialwire_wire_corpus_test'
-          bun test packages/spec/__tests__/wire-corpus-serving-verifier-postgres.test.ts
-
   database-migrator:
     name: Database Migrator
     needs: changes
@@ -467,6 +425,18 @@ jobs:
         run: |
           psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
             -X -v ON_ERROR_STOP=1 -f scripts/verify-wire-inbox-claim-index.sql
+      - name: Verify The Wire presentation-only read contract
+        run: |
+          psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
+            -X -v ON_ERROR_STOP=1 -f scripts/verify-wire-corpus-serving.sql
+      - name: Verify Corpus serving boundary rejects unreviewed payloads and scores
+        env:
+          CORPUS_SERVING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_release_corpus_boundary
+          PSQL_BIN: psql
+        run: |
+          "$PSQL_BIN" postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
+            -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tsw_release_corpus_boundary TEMPLATE socialwire_migrations'
+          bun test packages/spec/__tests__/wire-corpus-serving-verifier-postgres.test.ts
 
   lexicons:
     name: Lexicons
@@ -502,7 +472,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check out pinned Swift reference contracts
-        run: python3 scripts/go/check-out-swift-contracts.py
+        run: python3 scripts/ci/check-out-swift-contracts.py
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -617,7 +587,6 @@ jobs:
       - shared-swift
       - swift-active-backend
       - podcast-worker
-      - wire-corpus-edge
       - database-migrator
       - lexicons
       - spec
@@ -636,7 +605,6 @@ jobs:
           SHARED_SWIFT_FLAG: ${{ needs.changes.outputs.shared_swift }}
           SWIFT_BACKEND_FLAG: ${{ needs.changes.outputs.swift_backend }}
           PODCAST_WORKER_FLAG: ${{ needs.changes.outputs.podcast_worker }}
-          WIRE_CORPUS_EDGE_FLAG: ${{ needs.changes.outputs.wire_corpus_edge }}
           DATABASE_MIGRATOR_FLAG: ${{ needs.changes.outputs.database_migrator }}
           LEXICONS_FLAG: ${{ needs.changes.outputs.lexicons }}
           SPEC_FLAG: ${{ needs.changes.outputs.spec }}
@@ -649,7 +617,6 @@ jobs:
           SHARED_SWIFT_RESULT: ${{ needs.shared-swift.result }}
           SWIFT_BACKEND_RESULT: ${{ needs.swift-active-backend.result }}
           PODCAST_WORKER_RESULT: ${{ needs.podcast-worker.result }}
-          WIRE_CORPUS_EDGE_RESULT: ${{ needs.wire-corpus-edge.result }}
           DATABASE_MIGRATOR_RESULT: ${{ needs.database-migrator.result }}
           LEXICONS_RESULT: ${{ needs.lexicons.result }}
           SPEC_RESULT: ${{ needs.spec.result }}
@@ -687,7 +654,6 @@ jobs:
           check "$SHARED_SWIFT_FLAG" "$SHARED_SWIFT_RESULT" "Retained Swift Contracts"
           check "$SWIFT_BACKEND_FLAG" "$SWIFT_BACKEND_RESULT" "Active Swift Backends"
           check "$PODCAST_WORKER_FLAG" "$PODCAST_WORKER_RESULT" "Podcast Media Worker"
-          check "$WIRE_CORPUS_EDGE_FLAG" "$WIRE_CORPUS_EDGE_RESULT" "The Wire Corpus Edge"
           check "$DATABASE_MIGRATOR_FLAG" "$DATABASE_MIGRATOR_RESULT" "Database Migrator"
           check "$LEXICONS_FLAG" "$LEXICONS_RESULT" "Lexicons"
           check "$SPEC_FLAG" "$SPEC_RESULT" "OpenAPI Spec"

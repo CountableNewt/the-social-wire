@@ -100,14 +100,14 @@ filter_changed apple \
 # Retained Swift package contracts remain independent from retired service runtimes.
 
 filter_changed redis \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
+  'scripts/ci/check-out-swift-contracts.py' \
+  'packages/swift/extracted-swift-packages.json' \
   'packages/swift/SocialWireRedis/**' \
   '.github/workflows/ci.yml'
 
 filter_changed shared_swift \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
+  'scripts/ci/check-out-swift-contracts.py' \
+  'packages/swift/extracted-swift-packages.json' \
   'database/migrations/**' \
   'packages/swift/GatewayCore/**' \
   'packages/swift/OperationsCore/**' \
@@ -139,17 +139,7 @@ filter_changed swift_backend \
   'database/migrations/**' \
   'railway/gateway.json' \
   'railway/appview.json' \
-  'railway/jetstream-ingest.json' \
   '.railway/railway.ts' \
-  '.github/workflows/ci.yml'
-
-
-filter_changed wire_corpus_edge \
-  'services/wire-corpus-edge/**' \
-  'packages/go/**' \
-  'database/migrations/**' \
-  'scripts/verify-wire-corpus-serving.sql' \
-  'railway/wire-corpus-edge.json' \
   '.github/workflows/ci.yml'
 
 filter_changed database_migrator \
@@ -159,8 +149,9 @@ filter_changed database_migrator \
   'scripts/verify-jetstream-v2-drain-indexes.sql' \
   'scripts/verify-wire-inbox-claim-index.sql' \
   'scripts/operations/wire-inbox-readiness.sql' \
-  'packages/spec/__tests__/wire-inbox-readiness-postgres.test.ts' \
   'scripts/verify-wire-corpus-serving.sql' \
+  'packages/spec/__tests__/wire-corpus-serving-verifier-postgres.test.ts' \
+  'packages/spec/__tests__/wire-inbox-readiness-postgres.test.ts' \
   'services/database-migrator/**' \
   'services/postgres/**' \
   'railway/postgres.json' \
@@ -175,11 +166,9 @@ filter_changed lexicons \
   '.github/workflows/ci.yml'
 
 filter_changed spec \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
+  'scripts/ci/check-out-swift-contracts.py' \
+  'packages/swift/extracted-swift-packages.json' \
   'scripts/ci/**' \
-  'services/jetstream-ingest/cmd/schema-ready/**' \
-  'services/jetstream-ingest/internal/schemaready/**' \
   'services/*/Dockerfile' \
   'packages/read-state/**' \
   'packages/spec/**' \
@@ -197,9 +186,6 @@ filter_changed spec \
   'services/**/bruno/**' \
   'services/gateway/Sources/Gateway/**' \
   'services/appview/Sources/AppView/**' \
-  'services/operations/Sources/Operations/**' \
-  'services/jetstream-ingest/internal/config/config.go' \
-  'services/jetstream-ingest/internal/store/postgres.go' \
   'packages/swift/GatewayCore/**' \
   'packages/swift/ThinAppViewCore/**' \
   'packages/swift/ReadStateCore/**' \
@@ -207,10 +193,8 @@ filter_changed spec \
   'packages/swift/WireCore/**' \
   'packages/swift/FinanceCore/**' \
   'packages/swift/SportsCore/**' \
-  'services/wire-corpus-edge/**' \
   'scripts/apply-database-migrations.sh' \
   'scripts/verify-jetstream-v2-drain-indexes.sql' \
-  'scripts/verify-wire-corpus-serving.sql' \
   'scripts/operations/**' \
   'package.json' \
   'bun.lock' \
@@ -226,13 +210,8 @@ filter_changed benchmark_tools \
   '.github/workflows/ci.yml'
 
 filter_changed podcast_worker \
-  'packages/go/go.mod' \
-  'packages/go/go.sum' \
   'services/podcast-worker/**' \
-  'services/jetstream-ingest/cmd/schema-ready/**' \
-  'services/jetstream-ingest/internal/schemaready/**' \
-  'services/jetstream-ingest/go.mod' \
-  'services/jetstream-ingest/go.sum' \
+  'tools/schema-ready/**' \
   'database/migrations/**' \
   '.railway/**' \
   'package.json' \
