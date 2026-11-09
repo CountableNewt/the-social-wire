@@ -51,6 +51,13 @@ class PostgresExportTests(unittest.TestCase):
                 self.assertEqual(env["PGPORT"], "5432")
                 self.assertEqual(env["PGCONNECT_TIMEOUT"], "10")
 
+    def test_queryless_source_does_not_parse_an_empty_query_on_older_python(self):
+        # Python 3.10 rejects parse_qsl('', strict_parsing=True).
+        with patch.dict(os.environ, {"SOURCE_DATABASE_URL": "postgresql://user:secret@database.internal/reader"}), patch("postgres_to_sqlite.parse_qsl", side_effect=ValueError("bad query field: ''")) as parse, patch("postgres_to_sqlite.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run:
+            export_snapshot(io.BytesIO())
+            parse.assert_not_called()
+            self.assertEqual(run.call_args.kwargs["env"]["PGDATABASE"], "reader")
+
     def test_rejects_ambiguous_or_unsupported_settings_before_psql(self):
         for source in [
             "", "https://user:secret@database.internal/reader", "postgresql:///reader",

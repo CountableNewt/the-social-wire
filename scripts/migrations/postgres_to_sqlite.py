@@ -65,7 +65,8 @@ def source_connection_environment(source):
             "target_session_attrs": ("PGTARGETSESSIONATTRS", {"any", "read-write", "read-only", "primary", "standby", "prefer-standby"}),
         }
         seen = set()
-        for name, value in parse_qsl(url.query, keep_blank_values=True, strict_parsing=True):
+        options = parse_qsl(url.query, keep_blank_values=True, strict_parsing=True) if url.query else []
+        for name, value in options:
             if name in seen:
                 raise ValueError()
             seen.add(name)
