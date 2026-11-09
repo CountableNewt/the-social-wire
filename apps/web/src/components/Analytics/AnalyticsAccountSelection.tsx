@@ -1,15 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { useBrandAccounts } from "@/hooks/useBrandAccounts";
 import { FeedHeader } from "@/components/FeedHeader/FeedHeader";
-import { aggregateAnalytics } from "@/lib/analytics/aggregateAnalytics";
-import { metricLabel, type AnalyticsSummary } from "@/lib/analytics/creatorAnalyticsClient";
 import { AnalyticsAccountDetails } from "./AnalyticsWorkspace";
 import { AnalyticsAccountIdentity } from "./AnalyticsAccountIdentity";
-import { AnalyticsTrend } from "./AnalyticsTrend";
 
 export function AnalyticsAccountSelection({ ownerDid }: { ownerDid: string }) {
   const brands = useBrandAccounts(ownerDid);
@@ -29,15 +26,8 @@ export function AnalyticsAccountSelection({ ownerDid }: { ownerDid: string }) {
 }
 
 function SelectedAnalytics({ accounts, ownerDid, days }: { accounts: string[]; ownerDid: string; days: number }) {
-  const [summaries, setSummaries] = useState<Record<string, AnalyticsSummary>>({});
-  const onSummary = useCallback((did: string, summary: AnalyticsSummary | undefined) => setSummaries(previous => {
-    const next = { ...previous }; if (summary) next[did] = summary; else delete next[did]; return next;
-  }), []);
-  const loaded = accounts.flatMap(did => summaries[did] ? [summaries[did]] : []);
-  const combined = aggregateAnalytics(loaded);
   if (!accounts.length) return <p className="py-12 text-center text-muted-foreground">Select Accounts to View Analytics.</p>;
   return <>
-    <section aria-label="Combined Account Totals" className="space-y-4 rounded-2xl border p-4"><h2 className="font-semibold">Combined Totals</h2><p className="text-xs text-muted-foreground">{loaded.length} of {accounts.length} selected accounts loaded · Engagement: Current Counts · Social Wire Activity: Last {days} Days · Available Data Only</p><dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Likes", combined.totals.engagement.likes], ["Replies", combined.totals.engagement.replies], ["Reposts", combined.totals.engagement.reposts], ["Quotes", combined.totals.engagement.quotes], ["Impressions", combined.totals.tracking.impressions], ["Views", combined.totals.tracking.views], ["Outbound Clicks", combined.totals.tracking.outboundClicks], ["Click-Through Rate", combined.totals.tracking.ctr]].map(([label, value]) => <div key={String(label)}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{metricLabel(value as number | null, label === "Click-Through Rate")}</dd></div>)}</dl><AnalyticsTrend points={combined.series} metric="views" title="Combined Social Wire Views" description="Available recorded views across the selected accounts. Missing observations remain unavailable." /></section>
-    {accounts.map(did => <section key={did} aria-label={`Analytics for ${did}`} className="space-y-3 rounded-2xl border p-4"><h2 className="break-all text-lg font-semibold"><AnalyticsAccountIdentity did={did} personal={did === ownerDid} /></h2><AnalyticsAccountDetails accountDid={did} days={days} onSummary={onSummary} /></section>)}
+    {accounts.map(did => <section key={did} aria-label={`Analytics for ${did}`} className="space-y-3 rounded-2xl border p-4"><h2 className="break-all text-lg font-semibold"><AnalyticsAccountIdentity did={did} personal={did === ownerDid} /></h2><AnalyticsAccountDetails accountDid={did} days={days} /></section>)}
   </>;
 }

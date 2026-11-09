@@ -1,10 +1,10 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStoredOAuthDid } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
-import { getCreatorAnalytics, uniqueAnalyticsItems } from "@/lib/analytics/creatorAnalyticsClient";
+import { getCreatorAnalytics } from "@/lib/analytics/creatorAnalyticsClient";
 import { getBlueskyAnalytics } from "@/lib/analytics/blueskyAnalyticsClient";
 import { listBrandAccounts, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
 
@@ -28,17 +28,6 @@ export function useCreatorAnalytics(days: number, accountDid?: string) {
     if (oauth.did !== expectedActor) throw new Error("Your account changed. Please reload Analytics.");
     return oauth;
   }
-  const key = accountDid && accountDid !== owner ? ["creatorAnalytics", owner ?? "", oauthSessionReloadSeq, days, actor] as const : ["creatorAnalytics", owner ?? "", oauthSessionReloadSeq, days] as const;
-  const query = useInfiniteQuery({
-    queryKey: key, enabled: !!owner && !!actor, initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam, signal }) => {
-      const result = await getCreatorAnalytics(await requireSession(owner, actor), { days, cursor: pageParam, signal });
-      assertIdentity(owner, actor);
-      return result;
-    },
-    getNextPageParam: (page, _pages, _param, params) => page.cursor && !params.includes(page.cursor) ? page.cursor : undefined,
-    retry: false, staleTime: 60_000,
-  });
   const blueskyQuery = useQuery({
     queryKey: ["blueskyAnalytics", owner ?? "", oauthSessionReloadSeq, days, actor],
     enabled: !!owner && !!actor,
@@ -55,12 +44,11 @@ export function useCreatorAnalytics(days: number, accountDid?: string) {
       await getCreatorAnalytics(await requireSession(did, actingDid), { days: period, refresh: true });
       assertIdentity(did, actingDid);
     },
-    onSuccess: (_result, args) => {
+    onSettled: (_result, _error, args) => {
       if (identity.current.owner === args.did && identity.current.actor === args.actingDid) {
-        void client.invalidateQueries({ queryKey: ["creatorAnalytics", args.did] });
         void client.invalidateQueries({ queryKey: ["blueskyAnalytics", args.did] });
       }
     },
   });
-  return { query, blueskyQuery, summary: query.data?.pages[0], items: uniqueAnalyticsItems(query.data?.pages ?? []), refresh, collect: () => refresh.mutateAsync({ did: owner!, actingDid: actor!, period: days }) };
+  return { blueskyQuery, refresh, collect: () => refresh.mutateAsync({ did: owner!, actingDid: actor!, period: days }) };
 }
