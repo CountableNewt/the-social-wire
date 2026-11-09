@@ -28,13 +28,18 @@ Web image public build arguments must match the destination environment; see its
 Dockerfile and `.tangled/README.md`. Server-only Web credentials stay in Railway,
 never in image build arguments.
 
+Select `/railway/web-standalone.json` on the existing Web service to run the same
+final Node image verified by CI. Preserve its public build arguments and runtime-only
+L@tr credentials; the legacy Web config remains available for rollback.
+
 Select `/railway/appview-standalone.json` on the existing Gateway service and
 rename that service to AppView after the cutover. Reusing its service identity
 preserves its public domains,
 including Development clients using the Railway-generated Gateway hostname.
 Add one persistent US-West volume mounted at `/data`, with one replica. Set
 `BACKEND_MODE=standalone`, `SQLITE_DB_PATH=/data/social-wire.sqlite`, canonical
-`APP_ENV=dev|prod`, and `PORT=8081` (align the existing domain target port).
+`APP_ENV=dev|prod`, and keep `PORT` aligned with the current domain target port
+(`8080` for the reused Gateway services).
 The standalone config selects `Dockerfile.standalone`, requires the `/data`
 mount, fixes one replica in `sfo`, disables sleep and deployment overlap, and
 clears the old start/pre-deploy commands. The image also refuses startup or

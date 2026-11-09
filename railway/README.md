@@ -134,3 +134,7 @@ producer and every unscoped drain and wait more than the 120-second inbox lease
 period. Do not run an unscoped or historical drain alongside it.
 
 The standalone Charybdis and Wire worker configs are retired. Projection Pool and Coordinator use the Go `services/indexing-worker` image and the `.railway/railway.ts` definition. Historical Swift rollback revisions remain in Git.
+
+The standalone Frontend selects `/railway/web-standalone.json`, builds
+`apps/web/Dockerfile`, and uses its default Node server command. Do not retain the
+legacy Bun start override when switching to this image.

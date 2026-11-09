@@ -23,6 +23,8 @@ describe("standalone Railway AppView contract", () => {
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/standalone-entrypoint"]');
     expect(dockerfile).toContain('CMD ["/usr/local/bin/AppView"]');
     expect(dockerfile).toContain("util-linux");
+    // Railway rejects generic cache IDs; one portable image serves both environments.
+    expect(dockerfile).not.toContain("--mount=type=cache");
   });
 
   it("redeploys when any standalone Docker COPY input changes", () => {
@@ -42,5 +44,25 @@ describe("standalone Railway AppView contract", () => {
     expect(watched("/docs/unrelated.md")).toBe(false);
     expect(patterns).not.toContain("/database/migrations/**");
     expect(patterns).not.toContain("/tools/schema-ready/**");
+  });
+});
+
+
+describe("standalone Railway Frontend contract", () => {
+  it("runs the same final Node image verified by CI", () => {
+    const web = JSON.parse(readFileSync(join(root, "railway/web-standalone.json"), "utf8"));
+    const image = readFileSync(join(root, "apps/web/Dockerfile"), "utf8");
+    expect(web.build.builder).toBe("DOCKERFILE");
+    expect(web.build.dockerfilePath).toBe("/apps/web/Dockerfile");
+    expect(web.deploy.startCommand).toBeNull();
+    expect(web.deploy.preDeployCommand).toBeNull();
+    expect(web.deploy.numReplicas).toBe(1);
+    expect(web.deploy.multiRegionConfig).toEqual({ sfo: { numReplicas: 1 } });
+    expect(web.deploy.healthcheckPath).toBe("/");
+    expect(image).toContain('CMD ["node", "apps/web/server.js"]');
+    expect(image).toContain("USER node");
+    for (const input of ["/package.json", "/bun.lock", "/turbo.json", "/.dockerignore", "/railway/web-standalone.json"]) {
+      expect(web.build.watchPatterns).toContain(input);
+    }
   });
 });
