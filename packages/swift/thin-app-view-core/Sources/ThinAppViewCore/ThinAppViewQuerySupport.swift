@@ -1,8 +1,17 @@
 import Foundation
+import ReadStateCore
 
 public enum ThinAppViewCursor {
+  /// Keep the database's microsecond boundary through both scanned batches and client pages.
+  static func timestamp(_ date: Date) -> String {
+    let microseconds = Int64((date.timeIntervalSince1970 * 1_000_000).rounded())
+    let seconds = Int64(floor(Double(microseconds) / 1_000_000))
+    let base = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: Double(seconds)))
+    return String(base.dropLast()) + String(format: ".%06lldZ", microseconds - seconds * 1_000_000)
+  }
+
   public static func encode(createdAt: Date, uri: String) -> String {
-    let iso = ISO8601DateFormatter().string(from: createdAt)
+    let iso = timestamp(createdAt)
     return "\(iso)|\(uri)"
   }
 
@@ -11,8 +20,7 @@ public enum ThinAppViewCursor {
     let iso = String(cursor[..<pipe])
     let uri = String(cursor[cursor.index(after: pipe)...])
     guard !uri.isEmpty else { return nil }
-    let formatter = ISO8601DateFormatter()
-    guard let date = formatter.date(from: iso) else { return nil }
+    guard let date = try? ReadStateValidation.date(iso) else { return nil }
     return (date, uri)
   }
 }
@@ -311,4 +319,5 @@ extension ContentRenderFields {
 
 public enum ThinAppViewStoreError: Error {
   case encodingFailed
+  case ambiguousReadState
 }
