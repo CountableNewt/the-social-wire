@@ -113,6 +113,13 @@ describe("standalone CI path detection", () => {
   it("uses push before SHA and skips unrelated documentation-only changes", () => {
     expect(Object.fromEntries(detect(repositoryWithChange("docs/wiki/Testing.md"), "push"))).toEqual({ web: "false", appview: "false" });
   });
+  it.each([
+    ["services/appview/Sources/AppView/AppViewCommand.swift", { web: "true", appview: "true" }],
+    ["apps/web/src/app/page.tsx", { web: "true", appview: "false" }],
+    [".github/workflows/ci.yml", { web: "true", appview: "true" }],
+  ])("selects runtime checks from the pushed commit range for %s", (path, expected) => {
+    expect(Object.fromEntries(detect(repositoryWithChange(path as string), "push"))).toEqual(expected);
+  });
   it("runs both targets for an initial push without a base commit", () => {
     expect([...detect(repositoryWithChange("README.md"), "push", "0".repeat(40)).values()]).toEqual(["true", "true"]);
   });

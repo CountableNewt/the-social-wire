@@ -3,6 +3,8 @@ name: CI
 # GitHub remains the protected source gate during the Railway standalone cutover.
 # Verify the packaged Web and SQLite backend processes before Railway source builds.
 on:
+  push:
+    branches: [main, dev]
   pull_request:
     branches: [main, dev]
   merge_group:
@@ -42,10 +44,10 @@ jobs:
       - name: Test Development-first promotion guard
         run: node --test scripts/ci/development-parity.test.mjs
       - name: Require Production changes in Development first
-        if: (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
+        if: (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
-          PRODUCTION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          PRODUCTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          PRODUCTION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          PRODUCTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           git fetch --no-tags origin dev
           git show refs/remotes/origin/dev:scripts/ci/development-parity.mjs > "${RUNNER_TEMP}/development-parity.mjs"

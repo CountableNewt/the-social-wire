@@ -34,13 +34,17 @@ describe("standalone reader CI", () => {
     expect(parsed.on).toHaveProperty("pull_request");
     expect(parsed.on).toHaveProperty("merge_group");
     expect(parsed.on).toHaveProperty("workflow_dispatch");
-    expect(parsed.on).not.toHaveProperty("push");
+    // Railway's wait-for-checks gate needs a suite on the merged branch SHA.
+    expect(parsed.on.push).toEqual({ branches: ["main", "dev"] });
     const steps = parsed.jobs.changes.steps;
     expect(steps.some((step: any) => step.run === "node scripts/ci/validated-merge.mjs --receipt")).toBe(true);
     expect(steps.some((step: any) => step.run === "node --test scripts/ci/validated-merge.test.mjs")).toBe(true);
     const parity = steps.find((step: any) => step.name === "Require Production changes in Development first");
     expect(parity.if).toContain("pull_request.base.ref == 'main'");
     expect(parity.if).toContain("merge_group.base_ref == 'refs/heads/main'");
+    expect(parity.if).toContain("github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(parity.env.PRODUCTION_BASE_SHA).toBe("${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}");
+    expect(parity.env.PRODUCTION_HEAD_SHA).toBe("${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}");
     expect(parity.run).toContain("git show refs/remotes/origin/dev:scripts/ci/development-parity.mjs");
     expect(parity.run).toContain('--development refs/remotes/origin/dev');
     const detector = steps.find((step: any) => step.id === "filter");
