@@ -14,6 +14,7 @@ struct AppViewServiceConfig: Sendable {
   var toolsEnabled: Bool = false
   var globalIngestionEnabled: Bool = false
   var publicContentDiscoveryMode: PublicContentDiscoveryMode = .off
+  var standaloneEdge: StandaloneEdgeConfiguration? = nil
   let semble: SembleProjectionConfig
 
   enum StoreBackend: Sendable {
@@ -45,21 +46,29 @@ struct AppViewServiceConfig: Sendable {
     }
     let core = GatewayConfig.fromEnvironment(env)
     let thin = ThinAppViewConfig.fromEnvironment(env)
+    let standaloneEdge = try StandaloneEdgeConfiguration.load(env, appEnvironment: core.appEnv)
     let backend: StoreBackend
-    switch core.appEnv {
-    case .local:
-      backend = .sqlite(path: env["SQLITE_DB_PATH"] ?? "./social-wire-appview.sqlite")
-    case .dev, .prod:
-      guard let dbURL = env["DATABASE_URL"], !dbURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        throw AppViewServiceConfigError.missingDatabaseURL
+    if let standaloneEdge {
+      backend = .sqlite(path: standaloneEdge.sqlitePath)
+    } else {
+      switch core.appEnv {
+      case .local:
+        backend = .sqlite(path: env["SQLITE_DB_PATH"] ?? "./social-wire-appview.sqlite")
+      case .dev, .prod:
+        guard let dbURL = env["DATABASE_URL"], !dbURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw AppViewServiceConfigError.missingDatabaseURL
+        }
+        backend = .postgres(url: dbURL)
       }
-      backend = .postgres(url: dbURL)
     }
     let finance = try FinanceDiscoveryConfig.fromEnvironment(env)
     let sports = try SportsDiscoveryConfig.fromEnvironment(env)
     let wire = try WireDiscoveryConfig.fromEnvironment(env)
     let circle = try CircleDiscoveryConfig.fromEnvironment(env)
     let semble = SembleProjectionConfig.fromEnvironment(env)
+    if standaloneEdge != nil, wire.mode.servesAPI || circle.mode.servesAPI || finance.mode.canServeAPI || sports.mode.canServeAPI || env["GLOBAL_INGESTION_ENABLED"]?.lowercased() == "true" {
+      throw StandaloneEdgeConfiguration.Failure.retiredIngestionEnabled
+    }
     if core.appEnv == .dev, (wire.mode.servesAPI || circle.mode.servesAPI || finance.mode.canServeAPI || sports.mode.canServeAPI), wire.corpusEdge == nil {
       throw WireDiscoveryConfigError.missingCorpusEdgeForDevelopment
     }
@@ -81,6 +90,7 @@ struct AppViewServiceConfig: Sendable {
       } ?? (core.appEnv != .prod),
       globalIngestionEnabled: env["GLOBAL_INGESTION_ENABLED"]?.lowercased() == "true",
       publicContentDiscoveryMode: try PublicContentDiscoveryMode.load(env),
+      standaloneEdge: standaloneEdge,
       semble: semble
     )
   }

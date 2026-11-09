@@ -25,14 +25,22 @@ struct Serve: AsyncParsableCommand {
 
   @Option(name: .long) var port: Int?
   @Option(name: .long) var hostname: String?
+  @Flag(name: .long, help: "Initialize standalone SQLite schemas and exit without starting HTTP or background work")
+  var initializeOnly = false
 
   mutating func run() async throws {
-    var logger = Logger(label: "com.thesocialwire.appview")
-    logger.logLevel = .info
+    let logger: Logger = {
+      var logger = Logger(label: "com.thesocialwire.appview")
+      logger.logLevel = .info
+      return logger
+    }()
 
     let environment = AppEnvironmentLoader.mergeProcessWithDotenv()
     let operationsEnvironment = try OperationsConfiguration.requireEnvironment(environment)
     let config = try AppViewServiceConfig.fromEnvironment(environment)
+    if initializeOnly, config.standaloneEdge == nil {
+      throw ValidationError("--initialize-only requires BACKEND_MODE=standalone")
+    }
     let socialDraftConfiguration = try SocialDraftConfiguration.load(environment)
     let operationsConfig = OperationsConfiguration.fromEnvironment(environment)
     let listenPort = port ?? Int(environment["PORT"] ?? "8081") ?? 8081
@@ -66,7 +74,17 @@ struct Serve: AsyncParsableCommand {
     do {
       switch config.storeBackend {
       case .sqlite(let path):
-        guard socialDraftConfiguration == nil else { throw SocialDraftStorageError.unavailable }
+        if config.standaloneEdge != nil {
+          try FileManager.default.createDirectory(atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path,
+            withIntermediateDirectories: true)
+        }
+        let socialDraftService: (any SocialDraftStoring)?
+        if let socialDraftConfiguration {
+          let objects = SocialDraftS3Store(configuration: socialDraftConfiguration, http: httpClient)
+          managedDraftObjects = objects
+          socialDraftService = try SQLiteSocialDraftService(path: path, storageKey: socialDraftConfiguration.storageKey,
+            objects: objects, logger: logger)
+        } else { socialDraftService = nil }
         guard !config.circle.mode.servesAPI else {
           throw AppViewStartupError.circleRequiresPostgres
         }
@@ -78,10 +96,11 @@ struct Serve: AsyncParsableCommand {
           logger: logger
         )
         let telemetry = OperationsTelemetryBuffer(store: operationsStore, logger: logger)
-        let cacheBackend = try AppViewProjectionCacheBackend.fromEnvironment(
-          environment,
-          default: .sqlite
-        )
+        let cacheBackend: AppViewProjectionCacheBackend = if config.standaloneEdge != nil {
+          .sqlite
+        } else {
+          try AppViewProjectionCacheBackend.fromEnvironment(environment, default: .sqlite)
+        }
         let redisRuntime = cacheBackend == .redis
           ? RedisProjectionCacheRuntime.make(
             environment: environment,
@@ -99,6 +118,22 @@ struct Serve: AsyncParsableCommand {
           try SQLiteAppViewProjectionCacheStore(path: path, logger: logger)
         }
         await redisRuntime?.installResolutionCache()
+        let standaloneEdge: StandaloneEdgeRuntime?
+        if let edgeConfiguration = config.standaloneEdge {
+          standaloneEdge = StandaloneEdgeRuntime(configuration: edgeConfiguration,
+            cache: try SQLiteCache(path: path, logger: logger), environment: config.core.appEnv.rawValue)
+        } else { standaloneEdge = nil }
+        let analyticsStore: (any AnalyticsStoring)? = config.toolsEnabled
+          ? try SQLiteAnalyticsStore(path: path, secret: config.core.gatewayAppViewInternalSecret ?? "") : nil
+        let podcastStore: (any PodcastStoring)? = config.podcastsEnabled
+          ? try SQLitePodcastStore(path: path, logger: logger) : nil
+        if initializeOnly {
+          try await managedDraftObjects?.shutdown()
+          managedDraftObjects = nil
+          try await httpClient.shutdown()
+          logger.info("Standalone SQLite schemas initialized")
+          return
+        }
         let heartbeat = OperationsHeartbeatJob(
           store: operationsStore,
           service: "appview",
@@ -115,11 +150,15 @@ struct Serve: AsyncParsableCommand {
           thinAppViewStore: store,
           wireFeedStore: nil,
           wireModerationService: nil,
+          podcastStore: podcastStore,
           projectionCache: projectionCache,
           operationsStore: operationsStore,
           telemetry: operationsConfig.enabled ? telemetry : nil,
           telemetryEnvironment: operationsConfig.environment,
           telemetryInstanceId: operationsConfig.instanceId,
+          socialDraftService: socialDraftService,
+          standaloneEdge: standaloneEdge,
+          analyticsStore: analyticsStore,
           logger: logger
         )
         let app = Application(
@@ -128,6 +167,15 @@ struct Serve: AsyncParsableCommand {
         )
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { try await app.run() }
+          if config.standaloneEdge != nil {
+            group.addTask {
+              try await ThinAppViewWorkerRuntime.run(store: store, config: config.thinAppView,
+                role: .coordinator, serviceName: "appview-maintenance", logger: logger,
+                httpClient: httpClient, projectionCache: projectionCache,
+                operationsStore: operationsStore, operationsConfig: operationsConfig, mode: .maintenance)
+            }
+          }
+          if let socialDraftService { group.addTask { await socialDraftService.runCleanup() } }
           if operationsConfig.enabled { group.addTask { await telemetry.runForever() } }
           if operationsConfig.enabled { group.addTask { await heartbeat.runForever() } }
           if let redisRuntime { group.addTask { await redisRuntime.runInfoSampling() } }

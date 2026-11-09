@@ -7,16 +7,13 @@ const source = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
 const ci = Bun.YAML.parse(source) as any;
 
 describe("Bounded CI dependency installation", () => {
-  it("uses one frozen-install recovery helper for every Bun installation", () => {
-    const installJobs = Object.entries(ci.jobs).filter(([, job]: any) => job.steps?.some((step: any) => step.name === "Install dependencies"));
-    const expected = ["lexicons", "operations-web", "spec", "web"];
-    if (ci.jobs["podcast-worker"]) expected.push("podcast-worker");
-    expect(installJobs.map(([name]) => name).sort()).toEqual(expected.sort());
-    for (const [, job] of installJobs as any) {
-      expect(job.steps.filter((step: any) => step.name === "Install dependencies").map((step: any) => step.run)).toEqual(["bash scripts/ci/install-bun.sh"]);
-      expect(job.steps.find((step: any) => step.name === "Cache Bun downloads").with.key).toContain("-bun-1.3.14-v2-");
+  it("uses frozen installs inside verified images instead of unbounded runner installs", () => {
+    expect(Object.values(ci.jobs).some((job: any) => job.steps?.some((step: any) => step.run?.match(/bun install/)))).toBe(false);
+    for (const path of ["apps/web/Dockerfile", "services/appview/Dockerfile.standalone"]) {
+      expect(readFileSync(join(root, path), "utf8")).toContain("--frozen-lockfile");
     }
-    expect(source).not.toContain("run: bun install");
+    expect(ci.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
+    expect(ci.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
   });
   it("runs hermetic retry tests in the always-required changes job", () => {
     expect(ci.jobs.changes.steps.some((step: any) => step.run === "node --test scripts/ci/install-bun.test.mjs")).toBe(true);

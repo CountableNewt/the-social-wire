@@ -75,3 +75,22 @@ test('leaves refs, index and dirty working files untouched', t => {
   assert.equal(r.verify(head).method, 'equivalent-patch');
   assert.equal(r.git('status', '--porcelain'), status); assert.equal(r.git('show-ref'), refs); assert.equal(r.git('write-tree'), index);
 });
+
+for (const path of [
+  'packages/lexicons/lexicons/site.standard.document.json',
+  'packages/spec/openapi.yaml',
+  'packages/spec/endpoint-manifest.json',
+  'packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Store.swift',
+]) test(`retains strict Development parity for canonical ${path}`, t => {
+  const r = repository(t);
+  r.write(path, 'canonical source change\n');
+  const head = r.commit();
+  assert.throws(() => r.verify(head), /missing from Development/);
+  r.git('checkout', '-q', 'development');
+  r.write('dev-only.txt', 'unrelated Development work');
+  r.commit();
+  r.git('cherry-pick', head);
+  assert.equal(r.verify(head).method, 'equivalent-patch');
+  r.git('revert', '--no-edit', head);
+  assert.throws(() => r.verify(head), /missing from Development/);
+});

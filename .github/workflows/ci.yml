@@ -1,8 +1,10 @@
 name: CI
 
-# Railway deploys protected branch merges from its GitHub integration. GitHub Actions
-# verifies the pull request merge commit before it can reach dev or main.
+# GitHub remains the protected source gate during the Railway standalone cutover.
+# Verify the packaged Web and SQLite backend processes before Railway source builds.
 on:
+  push:
+    branches: [main, dev]
   pull_request:
     branches: [main, dev]
   merge_group:
@@ -25,17 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
-      operations_web: ${{ steps.filter.outputs.operations_web }}
-      apple: ${{ steps.filter.outputs.apple }}
-      redis: ${{ steps.filter.outputs.redis }}
-      shared_swift: ${{ steps.filter.outputs.shared_swift }}
-      swift_backend: ${{ steps.filter.outputs.swift_backend }}
-      podcast_worker: ${{ steps.filter.outputs.podcast_worker }}
-      database_migrator: ${{ steps.filter.outputs.database_migrator }}
-      lexicons: ${{ steps.filter.outputs.lexicons }}
-      spec: ${{ steps.filter.outputs.spec }}
-      docs: ${{ steps.filter.outputs.docs }}
-      benchmark_tools: ${{ steps.filter.outputs.benchmark_tools }}
+      appview: ${{ steps.filter.outputs.appview }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -52,10 +44,10 @@ jobs:
       - name: Test Development-first promotion guard
         run: node --test scripts/ci/development-parity.test.mjs
       - name: Require Production changes in Development first
-        if: (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
+        if: (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
-          PRODUCTION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          PRODUCTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          PRODUCTION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          PRODUCTION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           git fetch --no-tags origin dev
           git show refs/remotes/origin/dev:scripts/ci/development-parity.mjs > "${RUNNER_TEMP}/development-parity.mjs"
@@ -72,526 +64,54 @@ jobs:
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      # The external @stygian/anypub-kit preparation server fixture is written in Go.
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.6"
-          cache: false
-      - name: Cache Bun downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-v2-${{ hashFiles('bun.lock') }}
-      - name: Install dependencies
-        run: bash scripts/ci/install-bun.sh
-      - name: Typecheck
-        run: bunx turbo typecheck --filter=web
-      - name: Lint
-        run: bunx turbo lint --filter=web
-      - name: Test shared PDS read-state protocol
-        run: bun --cwd packages/read-state test
-      - name: Typecheck shared PDS read-state protocol
-        run: bun --cwd packages/read-state typecheck
-      - name: Test
-        # Let Bun finish both coverage reporters before writing to the runner's log pipe.
-        run: |
-          coverage_log="$(mktemp "${RUNNER_TEMP}/web-coverage.XXXXXX")"
-          trap 'rm -f "$coverage_log"' EXIT
-          set +e
-          bun run --cwd apps/web test:coverage > "$coverage_log" 2>&1
-          coverage_status=$?
-          set -e
-          cat "$coverage_log"
-          exit "$coverage_status"
-        env:
-          NEXT_PUBLIC_APP_ENV: test
-
-  operations-web:
-    name: Operations Web
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.operations_web == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Cache Bun downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-v2-${{ hashFiles('bun.lock') }}
-      - name: Install dependencies
-        run: bash scripts/ci/install-bun.sh
-      - name: Typecheck
-        run: bunx turbo typecheck --filter=operations
-      - name: Lint
-        run: bunx turbo lint --filter=operations
-      - name: Test
-        run: bun run --cwd apps/operations test:coverage
-
-  apple:
-    name: Apple
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.apple == 'true'
-    runs-on: macos-26
-    # Includes a clean app build and the full native UI regression suite.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare iOS simulator
-        id: simulator
-        timeout-minutes: 10
-        run: |
-          xcodebuild -version
-          xcodebuild -runFirstLaunch
-          xcrun simctl list runtimes
-          # Let simctl choose the newest compatible installed runtime, rather
-          # than asking xcodebuild for OS=latest on a pre-created device.
-          if ! simulator_id=$(xcrun simctl create SocialWireCI 'iPhone 17 Pro'); then
-            xcodebuild -downloadPlatform iOS
-            simulator_id=$(xcrun simctl create SocialWireCI 'iPhone 17 Pro')
-          fi
-          xcrun simctl boot "$simulator_id"
-          xcrun simctl bootstatus "$simulator_id" -b
-          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
-      - name: Test iOS app with coverage
-        env:
-          IOS_SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
-        run: |
-          xcodebuild test \
-            -project "apps/apple/The Social Wire.xcodeproj" \
-            -scheme SocialWire \
-            -destination "platform=iOS Simulator,id=$IOS_SIMULATOR_ID" \
-            -enableCodeCoverage YES \
-            -resultBundlePath "$RUNNER_TEMP/SocialWireTests.xcresult" \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Report iOS coverage
-        run: xcrun xccov view --report "$RUNNER_TEMP/SocialWireTests.xcresult"
-
-  redis:
-    name: SocialWire Redis
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.redis == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      redis:
-        image: redis:8.2.8-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 20
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check out pinned Swift reference contracts
-        run: python3 scripts/ci/check-out-swift-contracts.py
-      - uses: swift-actions/setup-swift@v3
+      - uses: actions/setup-node@v6
         with:
-          swift-version: "6.2.4"
-          skip-verify-signature: true
-      - name: Test Redis package and integration
-        working-directory: packages/swift/SocialWireRedis
-        run: swift test
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-
+      - name: Verify Web image, coverage, and shared contracts
+        run: bash scripts/ci/verify-runtime-images.sh web
         env:
-          REDIS_INTEGRATION_URL: redis://127.0.0.1:6379
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
-  swift-active-backend:
-    name: Swift Backend (${{ matrix.service }})
+  appview:
+    name: SQLite AppView
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.swift_backend == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.appview == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: gateway
-            package: services/gateway
-          - service: appview
-            package: services/appview
-          - service: indexing-worker
-            package: services/indexing-worker
-          - service: schema-ready
-            package: tools/schema-ready
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: tsw_backend_test
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports: [5432:5432]
-        options: >-
-          --health-cmd "pg_isready -U postgres -d tsw_backend_test"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-      redis:
-        image: redis:8.2.8-alpine
-        ports: [6379:6379]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 20
-    env:
-      TEST_GATEWAY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      TEST_SOCIAL_DRAFT_REDIS_URL: redis://127.0.0.1:6379
-      REDIS_INTEGRATION_URL: redis://127.0.0.1:6379
-      ANALYTICS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      SOCIAL_DRAFT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-      SCHEMA_READY_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test?sslmode=disable
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Linux Swift build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libxml2-dev libssl-dev pkg-config
-      - uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: "6.4.2"
-      - name: Apply canonical migrations for backend tests
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/tsw_backend_test
-          postgres-container: ${{ job.services.postgres.id }}
-      - uses: actions/cache@v5
-        with:
-          path: ${{ matrix.package }}/.build
-          key: ${{ runner.os }}-swift-active-6.4.2-${{ matrix.service }}-${{ hashFiles('services/**/Package.resolved', 'tools/schema-ready/Package.resolved') }}
-      - name: Test active Swift backend
-        working-directory: ${{ matrix.package }}
-        run: swift test --force-resolved-versions -j 2
-      - name: Test the shared AppView package at the service's actual pin
-        if: matrix.service == 'appview'
-        working-directory: services/appview
-        run: swift test --package-path .build/checkouts/thin-app-view-core --force-resolved-versions -j 2
-
-      - name: Test the Redis package at the service's actual pin
-        if: matrix.service == 'gateway'
-        working-directory: services/gateway
-        run: swift test --package-path .build/checkouts/social-wire-redis --force-resolved-versions -j 2
-
-  shared-swift:
-    name: Retained Swift Contracts
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.shared_swift == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: socialwire_shared_test
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_shared_test"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check out pinned Swift reference contracts
-        run: python3 scripts/ci/check-out-swift-contracts.py
-      - name: Apply database migrations for AppView integration tests
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test
-          postgres-container: ${{ job.services.postgres.id }}
-      - name: Cache retained Swift packages
-        uses: actions/cache@v5
-        with:
-          path: |
-            packages/swift/GatewayCore/.build
-            packages/swift/ThinAppViewCore/.build
-            packages/swift/ReadStateCore/.build
-            packages/swift/OperationsCore/.build
-            packages/swift/SocialWireRedis/.build
-            packages/swift/WireCore/.build
-            packages/swift/FinanceCore/.build
-            packages/swift/SportsCore/.build
-          key: ${{ runner.os }}-swift-shared-6.2.4-${{ hashFiles('packages/swift/**/Package.resolved', 'packages/swift/extracted-swift-packages.json') }}
-      - uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: "6.2.4"
-          skip-verify-signature: true
-      - name: Test portable read-state protocol
-        working-directory: packages/swift/ReadStateCore
-        run: swift test
-      - name: Test retained AppView shared contracts
-        working-directory: packages/swift/ThinAppViewCore
-        env:
-          THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-          PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-        run: swift test --skip PostgresFeedQueryDeadlineTests
-      - name: Test AppView PostgreSQL deadlines without unrelated test load
-        working-directory: packages/swift/ThinAppViewCore
-        env:
-          THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-          PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-        # Keep the real query deadline assertion independent of unrelated test scheduling.
-        run: swift test --skip-build --no-parallel --filter PostgresFeedQueryDeadlineTests
-      - name: Test retained Wire and topic domains
-        run: |
-          (cd packages/swift/WireCore && swift test)
-          (cd packages/swift/FinanceCore && swift test)
-          (cd packages/swift/SportsCore && swift test)
-      - name: Test retained Gateway authentication contracts
-        working-directory: packages/swift/GatewayCore
-        run: swift test
-      - name: Test OperationsCore
-        working-directory: packages/swift/OperationsCore
-        env:
-          OPERATIONS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-        run: swift test --skip 'PostgresRoleLeaseAuthorityTests|PostgresRoleLeaseDiagnosticIntegrationTests|PostgresRoleLeaseDiagnosticTransportTests|PostgresIngestionCensusBudgetTests'
-      - name: Test lease deadlines without unrelated test load
-        working-directory: packages/swift/OperationsCore
-        env:
-          OPERATIONS_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable
-        # Integration tests still exercise their own concurrent transactions.
-        run: swift test --skip-build --no-parallel --filter 'PostgresRoleLeaseAuthorityTests|PostgresRoleLeaseDiagnosticIntegrationTests|PostgresRoleLeaseDiagnosticTransportTests|PostgresIngestionCensusBudgetTests'
-
-  # Real PostgreSQL transactions and actual Swift oracles verify the local Go
-  # foundation; this job participates in the required aggregate branch gate.
-  database-migrator:
-    name: Database Migrator
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.database_migrator == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: socialwire_migrations
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d socialwire_migrations"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - name: Verify PostgreSQL clean shutdown
-        run: services/postgres/tests/shutdown.sh
-      - name: Check migration runner syntax
-        run: |
-          bash -n scripts/apply-database-migrations.sh
-          bash -n scripts/verify-postgres-restore.sh
-      - name: Apply migrations from empty and verify idempotence
-        uses: ./.github/actions/prepare-postgres
-        with:
-          database-url: postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations
-          verify-idempotence: "true"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Verify telemetry and retention migration guards, interrupted retry, and bounded inbox diagnostics
-        env:
-          POSTGRES_MIGRATION_TEST_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw92_telemetry_test
-          PSQL_BIN: psql
-        run: |
-          "$PSQL_BIN" postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
-            -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tsw92_telemetry_test'
-          bun test --timeout 30000 packages/spec/__tests__/telemetry-index-migration-postgres.test.ts packages/spec/__tests__/operations-retention-migration-postgres.test.ts packages/spec/__tests__/operations-change-retention-postgres.test.ts packages/spec/__tests__/wire-inbox-readiness-postgres.test.ts packages/spec/__tests__/wire-ordered-signal-migration-postgres.test.ts packages/spec/__tests__/wire-working-set-indexes-postgres.test.ts
-      - name: Verify Jetstream V2 drain indexes and query plans
-        run: |
-          psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
-            -X -v ON_ERROR_STOP=1 -f scripts/verify-jetstream-v2-drain-indexes.sql
-      - name: Verify The Wire inbox claim index and query plan
-        run: |
-          psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
-            -X -v ON_ERROR_STOP=1 -f scripts/verify-wire-inbox-claim-index.sql
-      - name: Verify The Wire presentation-only read contract
-        run: |
-          psql postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
-            -X -v ON_ERROR_STOP=1 -f scripts/verify-wire-corpus-serving.sql
-      - name: Verify Corpus serving boundary rejects unreviewed payloads and scores
-        env:
-          CORPUS_SERVING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tsw_release_corpus_boundary
-          PSQL_BIN: psql
-        run: |
-          "$PSQL_BIN" postgresql://postgres:postgres@127.0.0.1:5432/socialwire_migrations \
-            -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tsw_release_corpus_boundary TEMPLATE socialwire_migrations'
-          bun test packages/spec/__tests__/wire-corpus-serving-verifier-postgres.test.ts
-
-  lexicons:
-    name: Lexicons
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.lexicons == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Cache Bun downloads
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
         uses: actions/cache@v5
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-v2-${{ hashFiles('bun.lock') }}
-      - name: Install dependencies
-        run: bash scripts/ci/install-bun.sh
-      - name: Test
-        working-directory: packages/lexicons
-        run: bun test
-
-  spec:
-    name: OpenAPI Spec
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.spec == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check out pinned Swift reference contracts
-        run: python3 scripts/ci/check-out-swift-contracts.py
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Cache Bun downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-v2-${{ hashFiles('bun.lock') }}
-      - name: Install dependencies
-        run: bash scripts/ci/install-bun.sh
-      - name: Test
-        working-directory: packages/spec
-        run: bun test
-
-  benchmark-tools:
-    name: Benchmark Tools
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.benchmark_tools == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    services:
-      postgres:
-        image: postgres:18-alpine
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-
+      - name: Verify SQLite backend, bundled media processor, migrations, and runtime
+        run: bash scripts/ci/verify-runtime-images.sh appview
         env:
-          POSTGRES_DB: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - name: Install PostgreSQL client for isolated SQL tests
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-      - name: Build isolated PostgreSQL restart fixture
-        run: docker build --file scripts/benchmarks/fixtures/postgres-restart/Dockerfile --tag tsw114-postgres-process-restart:test .
-      - name: Test benchmark safety and evidence tools
-        env:
-          TSW_RECEIPT_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
-          RANKING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
-          TSW_RESTART_TEST_IMAGE: tsw114-postgres-process-restart:test
-        run: python3 -W error::ResourceWarning -m unittest discover -s scripts/benchmarks/tests
-
-  docs:
-    name: Documentation
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check wiki links and navigation
-        run: bash scripts/check-wiki-links.sh
-
-  podcast-worker:
-    name: Podcast Media Worker
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.podcast_worker == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: podcast-validation-only
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      PODCAST_TEST_DATABASE_URL: postgres://postgres:podcast-validation-only@127.0.0.1:5432/postgres
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Install media tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
-      - name: Cache Bun downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-v2-${{ hashFiles('bun.lock') }}
-      - name: Install dependencies
-        run: bash scripts/ci/install-bun.sh
-      - name: Typecheck
-        run: bun --cwd services/podcast-worker typecheck
-      - name: Test media processing and bridge identities
-        run: bun --cwd services/podcast-worker test
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
   required:
     name: CI — Required
-    needs:
-      - changes
-      - web
-      - operations-web
-      - apple
-      - redis
-      - shared-swift
-      - swift-active-backend
-      - podcast-worker
-      - database-migrator
-      - lexicons
-      - spec
-      - docs
-      - benchmark-tools
+    needs: [changes, web, appview]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -599,46 +119,20 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           WEB_FLAG: ${{ needs.changes.outputs.web }}
-          OPERATIONS_WEB_FLAG: ${{ needs.changes.outputs.operations_web }}
-          APPLE_FLAG: ${{ needs.changes.outputs.apple }}
-          REDIS_FLAG: ${{ needs.changes.outputs.redis }}
-          SHARED_SWIFT_FLAG: ${{ needs.changes.outputs.shared_swift }}
-          SWIFT_BACKEND_FLAG: ${{ needs.changes.outputs.swift_backend }}
-          PODCAST_WORKER_FLAG: ${{ needs.changes.outputs.podcast_worker }}
-          DATABASE_MIGRATOR_FLAG: ${{ needs.changes.outputs.database_migrator }}
-          LEXICONS_FLAG: ${{ needs.changes.outputs.lexicons }}
-          SPEC_FLAG: ${{ needs.changes.outputs.spec }}
-          DOCS_FLAG: ${{ needs.changes.outputs.docs }}
-          BENCHMARK_TOOLS_FLAG: ${{ needs.changes.outputs.benchmark_tools }}
+          APPVIEW_FLAG: ${{ needs.changes.outputs.appview }}
           WEB_RESULT: ${{ needs.web.result }}
-          OPERATIONS_WEB_RESULT: ${{ needs.operations-web.result }}
-          APPLE_RESULT: ${{ needs.apple.result }}
-          REDIS_RESULT: ${{ needs.redis.result }}
-          SHARED_SWIFT_RESULT: ${{ needs.shared-swift.result }}
-          SWIFT_BACKEND_RESULT: ${{ needs.swift-active-backend.result }}
-          PODCAST_WORKER_RESULT: ${{ needs.podcast-worker.result }}
-          DATABASE_MIGRATOR_RESULT: ${{ needs.database-migrator.result }}
-          LEXICONS_RESULT: ${{ needs.lexicons.result }}
-          SPEC_RESULT: ${{ needs.spec.result }}
-          DOCS_RESULT: ${{ needs.docs.result }}
-          BENCHMARK_TOOLS_RESULT: ${{ needs.benchmark-tools.result }}
+          APPVIEW_RESULT: ${{ needs.appview.result }}
         run: |
           set -euo pipefail
-
           fail() {
             echo "::error::$1"
             exit 1
           }
-
           if [[ "$CHANGES_RESULT" != "success" ]]; then
             fail "Path detection failed ($CHANGES_RESULT)"
           fi
-
           check() {
-            local flag="$1"
-            local result="$2"
-            local name="$3"
-
+            local flag="$1" result="$2" name="$3"
             if [[ "$flag" == "true" && "$result" != "success" ]]; then
               fail "$name must pass when its paths change (got $result)"
             fi
@@ -646,16 +140,5 @@ jobs:
               fail "$name ended with $result"
             fi
           }
-
           check "$WEB_FLAG" "$WEB_RESULT" "Web"
-          check "$OPERATIONS_WEB_FLAG" "$OPERATIONS_WEB_RESULT" "Operations Web"
-          check "$APPLE_FLAG" "$APPLE_RESULT" "Apple"
-          check "$REDIS_FLAG" "$REDIS_RESULT" "SocialWire Redis"
-          check "$SHARED_SWIFT_FLAG" "$SHARED_SWIFT_RESULT" "Retained Swift Contracts"
-          check "$SWIFT_BACKEND_FLAG" "$SWIFT_BACKEND_RESULT" "Active Swift Backends"
-          check "$PODCAST_WORKER_FLAG" "$PODCAST_WORKER_RESULT" "Podcast Media Worker"
-          check "$DATABASE_MIGRATOR_FLAG" "$DATABASE_MIGRATOR_RESULT" "Database Migrator"
-          check "$LEXICONS_FLAG" "$LEXICONS_RESULT" "Lexicons"
-          check "$SPEC_FLAG" "$SPEC_RESULT" "OpenAPI Spec"
-          check "$DOCS_FLAG" "$DOCS_RESULT" "Documentation"
-          check "$BENCHMARK_TOOLS_FLAG" "$BENCHMARK_TOOLS_RESULT" "Benchmark Tools"
+          check "$APPVIEW_FLAG" "$APPVIEW_RESULT" "SQLite AppView"
