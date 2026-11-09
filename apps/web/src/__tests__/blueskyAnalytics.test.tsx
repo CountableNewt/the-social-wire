@@ -49,11 +49,13 @@ describe("Bluesky analytics report", () => {
     data.coverage.feedAvailable = false;
     render(<BlueskyAnalytics data={data} isPending={false} error={null} retry={() => {}} />);
     expect(screen.getAllByText("0")).toHaveLength(2);
-    expect(screen.getAllByText("—")).toHaveLength(2);
-    expect(screen.getByText(/Publishing Activity Unavailable/)).toBeTruthy();
+    expect(screen.queryByText("—")).toBeNull();
+    expect(screen.queryByText("Following")).toBeNull();
+    expect(screen.queryByText("Posts in Period")).toBeNull();
+    expect(screen.queryByText(/Posts per Day/)).toBeNull();
     expect(screen.getByText("Bluesky Posts Are Temporarily Unavailable.")).toBeTruthy();
-    expect(screen.getByText(/Counts Can Include Engagement Outside This Period/)).toBeTruthy();
-    expect(screen.getByText(/Follower Growth Requires Saved History/)).toBeTruthy();
+    expect(screen.getByText(/Current Engagement Counts Can Include Activity Outside This Period/)).toBeTruthy();
+    expect(screen.queryByText(/Follower Growth/)).toBeNull();
   });
 
   it("labels partial feed coverage and distinguishes unpublished inventory from no discovered shares", () => {
@@ -110,6 +112,24 @@ describe("Bluesky analytics report", () => {
     render(<BlueskyPostTable posts={[{ uri: "javascript:alert(1)", title: "Invalid Post", url: "https://example.com/invalid", publishedAt: "not-a-date", engagement: null }]} />);
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("Date Unavailable")).toBeTruthy();
-    expect(screen.getAllByText("—")).toHaveLength(4);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(1);
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
+  it("keeps known zero counters and hides columns with no observations", () => {
+    const post = { uri: "at://did:plc:alice/app.bsky.feed.post/one", title: "Observed Post", url: "", publishedAt: "2026-11-09T12:00:00Z", engagement: { likes: 0, replies: null, reposts: null, quotes: null } };
+    render(<BlueskyPostTable posts={[post, { ...post, uri: "at://did:plc:alice/app.bsky.feed.post/two", title: "Unknown Post", engagement: null }]} />);
+    expect(screen.getAllByRole("columnheader").map(header => header.textContent)).toEqual(["Post", "Likes"]);
+    expect(screen.getByText("0")).toBeTruthy();
+    expect(screen.getByText("—")).toBeTruthy();
+  });
+
+  it("omits metric cards when every count is unavailable", () => {
+    const data = blueskyAnalyticsFixture();
+    data.profile = { followers: null, following: null, posts: null }; data.activity = null;
+    render(<BlueskyAnalytics data={data} isPending={false} error={null} retry={() => {}} />);
+    expect(screen.queryByRole("definition")).toBeNull();
+    expect(screen.queryByText("Followers")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
   });
 });

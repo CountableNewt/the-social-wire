@@ -7,16 +7,17 @@ import { BlueskyPostTable } from "./BlueskyPostTable";
 
 export function BlueskyAnalytics({ data, isPending, error, retry }: { data?: BlueskyAnalyticsSummary; isPending: boolean; error: unknown; retry: () => void }) {
   const message = error instanceof Error ? error.message : error ? "Bluesky analytics could not be loaded. Please try again." : undefined;
+  const metrics = data ? ([
+    ["Followers", data.profile.followers], ["Following", data.profile.following], ["Total Posts", data.profile.posts], ["Posts in Period", data.activity?.posts],
+  ] as const).filter(([, value]) => value != null && Number.isFinite(value)) : [];
   return <section aria-label="Bluesky Analytics" className="space-y-5">
     <div><h2 className="font-semibold">Bluesky Overview</h2><p className="mt-1 text-xs text-muted-foreground">Public Bluesky Activity · {data ? `Updated ${new Date(data.sampledAt).toLocaleString()}` : "Current Counts"}</p></div>
     {isPending ? <p role="status" className="text-sm text-muted-foreground">Loading Bluesky Analytics…</p> : null}
     {message ? <div role="alert" className="rounded-xl border border-destructive/40 p-4 text-sm"><p>{message}</p>{/log in again/i.test(message) ? <SocialPermissionRecovery /> : <Button size="sm" variant="outline" className="mt-2" onClick={retry}>Retry Bluesky Analytics</Button>}</div> : null}
     {data ? <>
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">{([
-        ["Followers", data.profile.followers], ["Following", data.profile.following], ["Total Posts", data.profile.posts], ["Posts in Period", data.activity?.posts],
-      ] as const).map(([label, value]) => <div key={label} className="rounded-2xl border bg-card p-4"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metricLabel(value)}</dd></div>)}</dl>
-      <p className="text-xs text-muted-foreground">Last {data.days} Days · {data.activity ? `${metricLabel(data.activity.replies)} Replies · ${data.activity.postsPerDay.toLocaleString(undefined, { maximumFractionDigits: 1 })} Posts per Day · Reposts Excluded` : "Publishing Activity Unavailable"}{data.coverage.feedAvailable && !data.coverage.feedComplete ? " · Latest Posts Only; Period May Be Incomplete" : ""}. Follower Growth Requires Saved History.</p>
-      <section aria-label="Top Bluesky Posts" className="space-y-3"><h3 className="font-semibold">Top Posts</h3><p className="text-xs text-muted-foreground">Posts Published in the Last {data.days} Days · Ranked by Current Likes + Replies + Reposts + Quotes · Counts Can Include Engagement Outside This Period</p>
+      {metrics.length ? <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-2xl border bg-card p-4"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metricLabel(value)}</dd></div>)}</dl> : null}
+      {data.activity ? <p className="text-xs text-muted-foreground">Last {data.days} Days · {metricLabel(data.activity.replies)} Replies · {data.activity.postsPerDay.toLocaleString(undefined, { maximumFractionDigits: 1 })} Posts per Day · Reposts Excluded{!data.coverage.feedComplete ? " · Latest Posts Only; Period May Be Incomplete" : ""}</p> : null}
+      <section aria-label="Top Bluesky Posts" className="space-y-3"><h3 className="font-semibold">Top Posts</h3><p className="text-xs text-muted-foreground">Posts Published in the Last {data.days} Days · Current Engagement Counts Can Include Activity Outside This Period</p>
         {data.topPosts.length ? <BlueskyPostTable posts={data.topPosts} /> : <p className="text-sm text-muted-foreground">{data.coverage.feedAvailable ? "No Posts Found in This Period." : "Bluesky Posts Are Temporarily Unavailable."}</p>}
       </section>
       <section aria-label="Discovered Article Shares" className="space-y-3"><h3 className="font-semibold">Discovered Article Shares</h3><p className="text-xs text-muted-foreground">Bluesky Posts Sharing Your Article URLs in the Last {data.days} Days · Current Engagement Counts · Search May Miss Shares</p>
