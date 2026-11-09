@@ -97,6 +97,24 @@ function createWrapper() {
 
 describe("EntryListVirtualPane scroll stability", () => {
   for (const [name, update, expected] of [
+    ["appends a page", (entries: EntryListItem[]) => [...entries, makeEntry(100)], 900],
+    ["updates metadata", (entries: EntryListItem[]) => entries.map(entry => ({ ...entry, title: `${entry.title} refreshed` })), 900],
+    ["prepends an article", (entries: EntryListItem[]) => [makeEntry(100), ...entries], 1038],
+  ] as const) {
+    it(`uses the live viewport before a pending scroll event when a refresh ${name}`, () => {
+      const entries = Array.from({ length: 30 }, (_, index) => makeEntry(index));
+      const { container, rerender } = render(renderPane(entries), { wrapper: createWrapper() });
+      const root = container.querySelector("[data-entry-list-scroll]") as HTMLDivElement;
+      root.scrollTop = 320;
+      fireEvent.scroll(root);
+      // Browsers update scrollTop before delivering their next scroll event.
+      root.scrollTop = 900;
+      rerender(renderPane(update(entries)));
+      expect(root.scrollTop).toBe(expected);
+    });
+  }
+
+  for (const [name, update, expected] of [
     ["removes an earlier article", (entries: EntryListItem[]) => entries.slice(1), 182],
     ["removes the visible article", (entries: EntryListItem[]) => entries.filter((_, index) => index !== 2), 182],
     ["reorders earlier articles", (entries: EntryListItem[]) => [...entries.slice(2), ...entries.slice(0, 2)], 44],
@@ -130,6 +148,16 @@ describe("EntryListVirtualPane scroll stability", () => {
     fireEvent.scroll(root);
     rerender(renderPane([makeEntry(100), ...entries]));
     expect(root.scrollTop).toBe(588);
+  });
+
+  it("applies a newly measured prepend once while a scroll event is pending", () => {
+    const entries = Array.from({ length: 20 }, (_, index) => makeEntry(index));
+    const { container, rerender } = render(renderPane(entries), { wrapper: createWrapper() });
+    const root = container.querySelector("[data-entry-list-scroll]") as HTMLDivElement;
+    root.scrollTop = 450;
+    rowHeights.set(makeEntry(100).entryId, 260);
+    rerender(renderPane([makeEntry(100), ...entries]));
+    expect(root.scrollTop).toBe(718);
   });
 
   it("preserves the visible article offset when a refresh prepends entries", () => {

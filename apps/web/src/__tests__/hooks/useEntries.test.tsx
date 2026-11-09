@@ -869,8 +869,9 @@ describe("reader lifecycle refreshes", () => {
           await Promise.all([refreshing, confirming]);
         });
         expect(feed).toHaveBeenCalledTimes(2);
-        await waitFor(() => expect(ids(result.current.data)).toEqual(filter === "all"
-          ? ["confirmed-fresh", "cached-head", "cached-tail"] : ["confirmed-fresh"]));
+        // Confirmation is an authoritative range refetch, not a lifecycle head
+        // merge; this response explicitly ends the feed after its first page.
+        await waitFor(() => expect(ids(result.current.data)).toEqual(["confirmed-fresh"]));
         expect(client.getQueryState(keyFor(scope, filter))?.isInvalidated).toBe(false);
         expect(result.current.fetchStatus).toBe("idle");
         await act(async () => { finishOld({ entries: [row("retired-before-confirmation")] }); });

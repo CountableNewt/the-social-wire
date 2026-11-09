@@ -6,6 +6,7 @@ import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EntryRow } from "./EntryRow";
+import { EntryListScrollSnapshot } from "./EntryListScrollSnapshot";
 import type { EntryListVirtualPaneProps } from "./EntryListVirtualPane.types";
 import {
   shouldFillViewportFetch,
@@ -165,6 +166,11 @@ export function EntryListVirtualPane({
     [visibleEntries]
   );
 
+  const captureScrollTop = useCallback(() => {
+    const root = parentRef.current;
+    if (root) scrollTopRef.current = root.scrollTop;
+  }, [parentRef]);
+
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual's internal store is not React-memoizable
   const virtualizer = useVirtualizer({
     count: virtualCount,
@@ -227,6 +233,7 @@ export function EntryListVirtualPane({
         style={{ paddingTop, paddingBottom }}
         className="flex w-full flex-col gap-2"
       >
+        <EntryListScrollSnapshot captureScrollTop={captureScrollTop}>
         {items.map((virtualItem) => {
           const isLoaderRow = virtualItem.index === visibleEntries.length;
 
@@ -284,6 +291,7 @@ export function EntryListVirtualPane({
             </div>
           );
         })}
+        </EntryListScrollSnapshot>
       </div>
     </div>
   );
