@@ -70,8 +70,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-
       - name: Verify Web image, coverage, and shared contracts
         run: bash scripts/ci/verify-runtime-images.sh web
+        env:
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
   appview:
     name: SQLite AppView
@@ -84,8 +95,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-
       - name: Verify SQLite backend, bundled media processor, migrations, and runtime
         run: bash scripts/ci/verify-runtime-images.sh appview
+        env:
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
   required:
     name: CI — Required
