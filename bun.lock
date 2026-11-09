@@ -5,7 +5,7 @@
     "": {
       "name": "the-social-wire",
       "dependencies": {
-        "latr-packages": "github:Stygian-Tech/latr-packages#e959a47750a50de0f50a8b40820a027328ebf37d",
+        "latr-packages": "github:CountableNewt/latr-packages#e959a47750a50de0f50a8b40820a027328ebf37d",
       },
       "devDependencies": {
         "railway": "^3.11.0",
@@ -57,7 +57,7 @@
         "@atproto/oauth-types": "^0.6.3",
         "@atproto/repo": "0.10.11",
         "@base-ui/react": "^1.4.1",
-        "@stygian/anypub-kit": "github:Stygian-Tech/anypub-kit#a53942cd966b147c2c300a8341df350d6d1f0720",
+        "@stygian/anypub-kit": "github:CountableNewt/anypub-kit#a53942cd966b147c2c300a8341df350d6d1f0720",
         "@stygian/markdown-editor": "file:../../packages/vendor/markdown-editor-0.1.1-socialwire.3.tgz",
         "@tanstack/query-sync-storage-persister": "^5.100.10",
         "@tanstack/react-query": "^5.100.10",
@@ -515,7 +515,7 @@
 
     "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
 
-    "@stygian/anypub-kit": ["@stygian/anypub-kit@github:Stygian-Tech/anypub-kit#a53942c", {}, "Stygian-Tech-anypub-kit-a53942c", "sha512-oXhBT1dWZWVnpLoGz7SWx5NcVSOZhdHPVUSgovfYkCLD4csbGscLZAqfyC7pu8Kn3W7i1yUc9VZduuf5wenbCg=="],
+    "@stygian/anypub-kit": ["@stygian/anypub-kit@github:CountableNewt/anypub-kit#a53942c", {}, "CountableNewt-anypub-kit-a53942c", "sha512-jZ7FqIpJ7hvcb128lDdBplg2dWqSxGeS+dzoA9ScjcrM2NjDTzZOciwoE6Vujb5VXfl7rZHjPrNlBK5MHc+sBA=="],
 
     "@stygian/markdown-editor": ["@stygian/markdown-editor@../../packages/vendor/markdown-editor-0.1.1-socialwire.3.tgz", { "dependencies": { "clsx": "2.1.1", "lucide-react": "1.24.0", "prism-react-renderer": "2.4.1", "tailwind-merge": "3.6.0" }, "peerDependencies": { "react": ">=19.0.0", "react-dom": ">=19.0.0", "tailwindcss": ">=4.0.0" } }],
 
@@ -1293,7 +1293,7 @@
 
     "language-tags": ["language-tags@1.0.9", "", { "dependencies": { "language-subtag-registry": "^0.3.20" } }, "sha512-MbjN408fEndfiQXbFQ1vnd+1NoLDsnQW41410oQBXiyXDMYH5z505juWa4KUE1LqxRC7DgOgZDbKLxHIwm27hA=="],
 
-    "latr-packages": ["latr-packages@github:Stygian-Tech/latr-packages#e959a47", {}, "Stygian-Tech-latr-packages-e959a47"],
+    "latr-packages": ["latr-packages@github:CountableNewt/latr-packages#e959a47", {}, "CountableNewt-latr-packages-e959a47", "sha512-fuiVtI4HTl3uORPX/xjwuNT+Rfu1A4GhFKbiOhJIGVeX9EpIFAxUtHtuvFtDmBcA42D5VmmIzMAEAtJkcXQCqA=="],
 
     "levn": ["levn@0.4.1", "", { "dependencies": { "prelude-ls": "^1.2.1", "type-check": "~0.4.0" } }, "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ=="],
 
