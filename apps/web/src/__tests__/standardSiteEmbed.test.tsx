@@ -33,6 +33,18 @@ describe("Standard.site Social article card", () => {
     for (const button of root.querySelectorAll("button")) expect(button.closest("a")).toBeNull();
     for (const link of links) expect(link.rel).toBe("noopener noreferrer");
   });
+  it("displays canonical publisher labels without hiding previews or changing article actions", () => {
+    const labelled = parseStandardSiteEmbed({ ...metadata, contentLabels: ["sexual", "ai-generated", "unknown", "sexual"] });
+    expect(labelled?.contentLabels).toEqual(["ai-generated", "sexual"]);
+    const root = document.createElement("div");
+    root.innerHTML = renderToStaticMarkup(<StandardSiteArticleCard metadata={labelled!} thumb="https://example.com/cover.jpg" />);
+    expect(root.textContent).toContain("AI"); expect(root.textContent).toContain("NSFW");
+    expect(root.textContent).toContain(metadata.title); expect(root.textContent).toContain(metadata.description!);
+    expect(root.querySelector("img")?.getAttribute("src")).toBe("https://example.com/cover.jpg");
+    expect(root.querySelector("a")?.getAttribute("href")).toBe(metadata.articleUrl);
+    expect(root.querySelectorAll("button,[tabindex],[role]")).toHaveLength(0);
+    expect(parseStandardSiteEmbed({ ...metadata, contentLabels: ["nsfw"] })).not.toHaveProperty("contentLabels");
+  });
   it("omits unsafe thumbnail URLs and escapes publisher text", () => {
     const html = renderToStaticMarkup(<StandardSiteArticleCard metadata={{ ...metadata, title: "<script>bad()</script>" }} thumb="javascript:alert(1)" />);
     expect(html).not.toContain("<script>");

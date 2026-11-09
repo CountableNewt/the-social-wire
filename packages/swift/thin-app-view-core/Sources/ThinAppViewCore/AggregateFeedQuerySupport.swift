@@ -10,6 +10,7 @@ struct AggregateFeedDatabaseRow: Sendable {
   let summary: String?
   let thumbnailUrl: String?
   let articleUrl: String?
+  let contentLabels: [String]?
 }
 
 enum AggregateFeedQuerySupport {
@@ -45,6 +46,7 @@ enum AggregateFeedQuerySupport {
       summary: row.summary.map(HtmlTextDecoder.decodePlainText),
       publishedAt: publishedAt,
       thumbnailUrl: row.thumbnailUrl,
+      contentLabels: row.contentLabels,
       originalUrl: RssFeedIdentity.originalArticleURL(
         forEntryId: row.uri,
         render: render,

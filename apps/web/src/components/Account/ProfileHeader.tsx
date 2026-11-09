@@ -8,6 +8,7 @@ import type { ViewerProfileSlice } from "@/hooks/useViewerProfile";
 import { socialHttpsUrl } from "@/components/Social/socialUrls";
 import type { ReactNode } from "react";
 import { ProfileLinks } from "./ProfileLinks";
+import { ProfileBio } from "./ProfileBio";
 
 export function ProfileHeader({ viewer, loading = false, onRetry, actions, showLinks = true }: { viewer?: ViewerProfileSlice | null; loading?: boolean; onRetry: () => void; actions?: ReactNode; showLinks?: boolean }) {
   const name = viewer?.displayName?.trim() || viewer?.handle || "Your Profile";
@@ -34,7 +35,7 @@ export function ProfileHeader({ viewer, loading = false, onRetry, actions, showL
           {viewer.handle ? <p className="break-all text-sm text-muted-foreground">{viewer.handle.startsWith("did:") ? viewer.handle : `@${viewer.handle}`}</p> : null}
         </div>
         {actions ? <div className="flex w-full max-w-xl flex-col items-center justify-center gap-2 px-4 sm:flex-row sm:flex-wrap">{actions}</div> : null}
-        {viewer.description ? <p className="max-w-xl whitespace-pre-line break-words px-4 text-sm leading-6">{viewer.description}</p> : null}
+        {viewer.description ? <ProfileBio did={viewer.did} text={viewer.description} /> : null}
         {showLinks ? <ProfileLinks did={viewer.did} /> : null}
         <dl className="flex flex-wrap justify-center gap-x-6 gap-y-2 px-4 text-sm">
           {counts.filter(count => count.value !== undefined).map(count => <div key={count.label} className="flex gap-1.5">

@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -110,4 +110,18 @@ describe("EntryRow", () => {
     expect(getByText("Directly Shared")).toBeDefined();
     expect(queryByText("Mark As Unread")).toBeNull();
   });
+});
+
+it.each([{ contentLabels: undefined }, { contentLabels: ["ai-generated", "sexual"] }])("publisher badges keep reader cards selectable: %p", async ({ contentLabels }) => {
+  const { EntryRow } = await import("@/components/EntryList/EntryRow");
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const entry: EntryListItem = { entryId: "at://did:plc:publisher/site.standard.document/labelled", title: "Visible Card", summary: "Visible Summary", publishedAt: "2026-11-09", contentLabels: contentLabels ? [...contentLabels] : undefined };
+  const selected: string[] = [];
+  const { getByText, queryByText } = render(<QueryClientProvider client={queryClient}><AuthProvider><EntryRow entry={entry} isSelected={false} onSelect={id => selected.push(id)} isRead={false} readIndicatorsEnabled onMarkEntryRead={() => {}} onMarkEntryUnread={() => {}} /></AuthProvider></QueryClientProvider>);
+  expect(getByText("Visible Summary")).toBeTruthy();
+  expect(queryByText("AI") === null).toBe(!contentLabels);
+  expect(queryByText("NSFW") === null).toBe(!contentLabels);
+  fireEvent.click(getByText("Visible Card"));
+  expect(selected).toEqual([entry.entryId]);
+  queryClient.clear();
 });

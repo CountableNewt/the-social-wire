@@ -27,6 +27,12 @@ actor ArticleEmbedTestReader: ArticleEmbedReading {
     return (status, body)
   }
   func record(uri: String) async throws -> AnalyticsPublicRecord? { records[uri] }
+  func setLabels(_ values: [String]) {
+    guard let existing = records[Self.article] else { return }
+    var record = existing.value.values
+    record["labels"] = ["$type": "com.atproto.label.defs#selfLabels", "values": values.map { ["val": $0] }]
+    records[Self.article] = .init(uri: existing.uri, value: .init(values: record))
+  }
   func stallPage() { stalls = true }
   func mismatchIdentity(_ uri: String) {
     guard let existing = records[uri] else { return }

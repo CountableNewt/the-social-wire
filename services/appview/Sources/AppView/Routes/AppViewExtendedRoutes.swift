@@ -143,6 +143,7 @@ public struct AppViewEntryDetailResponse: Codable, Sendable, ResponseEncodable {
   public let isRead: Bool
   public let contentHtml: String?
   public let originalUrl: String?
+  public let contentLabels: [String]?
 
   public init(
     entryId: String,
@@ -152,7 +153,8 @@ public struct AppViewEntryDetailResponse: Codable, Sendable, ResponseEncodable {
     thumbnailUrl: String? = nil,
     isRead: Bool,
     contentHtml: String? = nil,
-    originalUrl: String? = nil
+    originalUrl: String? = nil,
+    contentLabels: [String]? = nil
   ) {
     self.entryId = entryId
     self.title = title
@@ -162,6 +164,7 @@ public struct AppViewEntryDetailResponse: Codable, Sendable, ResponseEncodable {
     self.isRead = isRead
     self.contentHtml = contentHtml
     self.originalUrl = originalUrl
+    self.contentLabels = contentLabels
   }
 }
 

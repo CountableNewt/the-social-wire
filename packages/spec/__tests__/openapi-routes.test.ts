@@ -33,6 +33,24 @@ function extractOpenAPIPaths(yaml: string): string[] {
 }
 
 describe("OpenAPI route drift", () => {
+  it("keeps publisher content labels optional and aligned across reader and preview contracts", () => {
+    const document = Bun.YAML.parse(readFileSync(OPENAPI_PATH, "utf8")) as any;
+    const labels = document.components.schemas.ArticleContentLabels;
+    expect(labels).toEqual(expect.objectContaining({ type: "array", maxItems: 2, uniqueItems: true }));
+    expect(labels.items).toEqual({ type: "string", enum: ["ai-generated", "sexual"] });
+    const schemas = [document.components.schemas.EntryListItem, document.components.schemas.EntryDetail,
+      document.paths["/v1/publications/article-embed"].get.responses["200"].content["application/json"].schema];
+    for (const schema of schemas) {
+      expect(schema.properties.contentLabels).toEqual({ $ref: "#/components/schemas/ArticleContentLabels" });
+      expect(schema.required).not.toContain("contentLabels");
+    }
+    const lexicon = JSON.parse(readFileSync(join(import.meta.dir, "../../lexicons/app/thesocialwire/publication/getArticleEmbed.json"), "utf8"));
+    const output = lexicon.defs.main.output.schema;
+    expect(output.required).not.toContain("contentLabels");
+    expect(output.properties.contentLabels).toEqual(expect.objectContaining({ type: "array", maxLength: 2 }));
+    expect(output.properties.contentLabels.items.knownValues).toEqual(labels.items.enum);
+  });
+
   it("documents reconciled RSS source failures without treating enrollment as successful", () => {
     const document = Bun.YAML.parse(readFileSync(OPENAPI_PATH, "utf8")) as {
       paths: Record<string, { post: { responses: Record<string, { content?: Record<string, { schema: { $ref: string } }> }> } }>;

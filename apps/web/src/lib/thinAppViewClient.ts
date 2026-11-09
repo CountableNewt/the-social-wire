@@ -2,6 +2,7 @@ import { queueReadStateMutation } from "./readStateMutationQueue";
 import { loadPDSReadStateSync, usesPDSReadState } from "@/lib/pdsReadStateRuntime";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
+import { articleContentLabelFields } from "@/lib/articleContentLabels";
 import { normalizeAppViewPublishedAt } from "@/lib/appViewPublishedAt";
 import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
@@ -146,6 +147,7 @@ export async function listEntriesFromAppView(args: {
   const json = (await res.json()) as {
     entries?: Array<{
       entryId: string;
+      contentLabels?: unknown;
       title: string;
       summary?: string;
       publishedAt: unknown;
@@ -165,6 +167,7 @@ export async function listEntriesFromAppView(args: {
         : undefined;
       return {
         entryId: row.entryId,
+        ...articleContentLabelFields(row.contentLabels),
         title: row.title,
         summary: row.summary,
         publishedAt: normalizeAppViewPublishedAt(row.publishedAt),
@@ -212,6 +215,7 @@ export async function listAggregateFeedFromAppView(args: {
   const json = (await res.json()) as {
     entries?: Array<{
       entryId: string;
+      contentLabels?: unknown;
       title: string;
       summary?: string;
       publishedAt: unknown;
@@ -230,6 +234,7 @@ export async function listAggregateFeedFromAppView(args: {
         : undefined;
       return {
         entryId: row.entryId,
+        ...articleContentLabelFields(row.contentLabels),
         title: row.title,
         summary: row.summary,
         publishedAt: normalizeAppViewPublishedAt(row.publishedAt),
@@ -263,6 +268,7 @@ export async function getEntryFromAppView(
   }
   const json = (await res.json()) as {
     entryId: string;
+    contentLabels?: unknown;
     title: string;
     summary?: string;
     publishedAt: unknown;
@@ -277,6 +283,7 @@ export async function getEntryFromAppView(
     : undefined;
   return {
     entryId: json.entryId,
+    ...articleContentLabelFields(json.contentLabels),
     title: json.title,
     summary: json.summary,
     publishedAt: normalizeAppViewPublishedAt(json.publishedAt),

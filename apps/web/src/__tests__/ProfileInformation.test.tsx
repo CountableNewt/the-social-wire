@@ -38,6 +38,12 @@ describe("Profile information", () => {
     expect(website.getAttribute("rel")).toBe("noopener noreferrer");
     expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
   });
+  it("renders native tags and links in the signed-in viewer biography", () => {
+    state.data!.description = "Own bio #SocialWire https://example.com";
+    render(<ProfileInformation />);
+    expect(screen.getByRole("link", { name: "#SocialWire" }).getAttribute("href")).toBe("https://bsky.app/search?q=%23SocialWire");
+    expect(screen.getByRole("link", { name: "https://example.com" }).getAttribute("href")).toBe("https://example.com/");
+  });
   it("shows trimmed pronouns beside the display name", () => {
     state.data!.pronouns = "  they/them  ";
     render(<ProfileInformation />);

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSoup
+import ThinAppViewCore
 
 /// Successes alone are cached. A page's declared PDS record must map back to its exact URL.
 actor ArticleEmbedResolver {
@@ -38,7 +39,8 @@ actor ArticleEmbedResolver {
     let description = record.value.values["description"] as? String
     let value = ArticleEmbed(documentUri: uri, publicationUri: publicationURI, publicationName: name,
       publicationUrl: base, articleUrl: key, title: title,
-      description: description?.isEmpty == false ? description : nil, authorDid: document.did)
+      description: description?.isEmpty == false ? description : nil, authorDid: document.did,
+      contentLabels: ContentLabels.fromRecord(record.value.values))
     try Task.checkCancellation()
     if cached.count >= 256 { cached.removeAll(keepingCapacity: true) }
     cached[key] = (value, Date().addingTimeInterval(300))
