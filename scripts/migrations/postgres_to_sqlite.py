@@ -10,6 +10,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -110,13 +111,31 @@ def export_snapshot(destination):
         raise ValueError("Postgres export failed; check connectivity/schema with psql (source unchanged)")
 
 
+POSTGRES_TIMESTAMP = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}(?::?\d{2})?)?$"
+)
+
+
 def timestamp(value):
-    try:
-        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        raise ValueError("Invalid source timestamp") from None
-    if parsed.tzinfo is None:
+    match = POSTGRES_TIMESTAMP.fullmatch(value) if isinstance(value, str) else None
+    if not match:
+        raise ValueError("Invalid source timestamp")
+    day, clock, fraction, offset = match.groups()
+    if offset is None:
         raise ValueError("Source timestamp lacks timezone")
+    if offset == "Z":
+        offset = "+00:00"
+    elif len(offset) == 3:
+        offset += ":00"
+    elif len(offset) == 5:
+        offset = offset[:3] + ":" + offset[3:]
+    # PostgreSQL JSON trims trailing fractional zeros. Python 3.10 only accepts
+    # three or six digits and requires offset minutes, so normalize losslessly.
+    normalized = day + "T" + clock + ("." + fraction.ljust(6, "0") if fraction else "") + offset
+    try:
+        parsed = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
+        raise ValueError("Invalid source timestamp") from None
     return parsed.astimezone(datetime.timezone.utc)
 
 
@@ -176,7 +195,14 @@ def import_snapshot(destination, snapshot):
                     raise ValueError("Snapshot row precedes its table header")
                 row = record["row"]
                 columns = [name for name in schema[table] if name in row]
-                values = [convert(name, schema[table][name], row[name]) for name in columns]
+                values = []
+                for name in columns:
+                    try:
+                        values.append(convert(name, schema[table][name], row[name]))
+                    except ValueError:
+                        # Trusted schema names identify the failed conversion;
+                        # source values can contain private draft data.
+                        raise ValueError(f"Invalid source value for {table}.{name}") from None
                 if table == "appview_pds_read_state_authority":
                     # Rebuild from verified PDS content on first request. Legacy rows must
                     # never become a fallback for an already migrated viewer.

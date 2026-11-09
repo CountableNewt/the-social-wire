@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
-from postgres_to_sqlite import TABLES, convert, export_snapshot, import_snapshot
+from postgres_to_sqlite import TABLES, convert, export_snapshot, import_snapshot, timestamp
 
 
 class PostgresExportTests(unittest.TestCase):
@@ -156,6 +156,35 @@ class SQLiteCutoverTests(unittest.TestCase):
             convert("created_at", "REAL", "2026-11-07T10:00:00")
         with self.assertRaisesRegex(ValueError, "Invalid source timestamp"):
             convert("created_at", "REAL", "private invalid input")
+
+    def test_postgres_timestamps_normalize_partial_fractions_and_short_offsets(self):
+        for fraction in ("", ".1", ".12", ".123", ".1234", ".12345", ".123456"):
+            for offset in ("Z", "+00", "+0000", "+00:00"):
+                for separator in ("T", " "):
+                    with self.subTest(fraction=fraction, offset=offset, separator=separator):
+                        value = f"2026-11-07{separator}10:00:00{fraction}{offset}"
+                        expected = "2026-11-07T10:00:00." + fraction.removeprefix(".").ljust(6, "0") + "Z"
+                        self.assertEqual(convert("created_at", "TEXT", value), expected)
+        for offset in ("-06", "-0600", "-06:00"):
+            self.assertEqual(convert("created_at", "TEXT", f"2026-11-07T04:00:00.12345{offset}"), "2026-11-07T10:00:00.123450Z")
+        self.assertEqual(convert("created_at", "TEXT", "2026-11-07T15:30:00.12+05:30"), "2026-11-07T10:00:00.120000Z")
+        for value in ("2026-11-07T10:00:00.1", "2026-11-07T10:00:00"):
+            with self.assertRaisesRegex(ValueError, "timezone"):
+                timestamp(value)
+        for value in ("2026-11-07T10:00:00.1234567Z", "2026-11-07T10:00:00+24", "2026-13-07T10:00:00Z"):
+            with self.assertRaisesRegex(ValueError, "Invalid source timestamp"):
+                timestamp(value)
+
+    def test_conversion_failure_identifies_only_table_and_column_and_rolls_back(self):
+        rows = {
+            "private_social_draft_accounts": [{"owner": "owner"}],
+            "private_social_draft_assets": [{"owner": "owner", "asset_id": "asset", "metadata": "\\x0001", "created_at": "private invalid timestamp"}],
+        }
+        with self.assertRaisesRegex(ValueError, r"^Invalid source value for private_social_draft_assets.created_at$"):
+            import_snapshot(self.path, self.snapshot(rows))
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM private_social_draft_accounts").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT active FROM appview_pds_projection_write").fetchone()[0], 0)
 
 
 if __name__ == "__main__":
