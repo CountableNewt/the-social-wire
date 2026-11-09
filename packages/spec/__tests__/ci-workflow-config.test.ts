@@ -93,20 +93,52 @@ describe("standalone reader CI", () => {
     expect(verifier.indexOf("run('python3', ['scripts/ci/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
   });
 
+  function runRequiredGate(overrides: Record<string, string | undefined> = {}) {
+    const gate = parsed.jobs.required.steps.find((step: any) => step.name === "Verify path-filtered checks");
+    const baseline = {
+      CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped",
+      REUSE_WEB: "false", REUSE_APPVIEW: "false", GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/123/merge",
+    };
+    return spawnSync("bash", ["-c", gate.run], { cwd: repositoryRoot, env: { ...process.env, ...baseline, ...overrides }, encoding: "utf8" });
+  }
+
   it("fails the aggregate gate for every selected check that does not succeed", () => {
-    const gate = parsed.jobs.required.steps.find((step: any) => step.run);
-    const baseline = { CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped" };
     for (const flag of ["WEB", "APPVIEW"]) {
       for (const result of ["failure", "cancelled", "skipped", "success"]) {
-        const run = spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }, encoding: "utf8" });
-        expect(run.status).toBe(result === "success" ? 0 : 1);
+        expect(runRequiredGate({ [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }).status).toBe(result === "success" ? 0 : 1);
       }
     }
     for (const result of ["failure", "cancelled", "skipped"]) {
-      expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, CHANGES_RESULT: result } }).status).toBe(1);
+      expect(runRequiredGate({ CHANGES_RESULT: result }).status).toBe(1);
     }
-    expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline } }).status).toBe(0);
+    expect(runRequiredGate().status).toBe(0);
   });
+
+  it("accepts proven target skips only on dev and main pushes", () => {
+    for (const target of ["WEB", "APPVIEW"]) {
+      const proof = { [`${target}_FLAG`]: "true", [`${target}_RESULT`]: "skipped", [`REUSE_${target}`]: "true" };
+      for (const branch of ["dev", "main"]) {
+        expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${branch}` }).status).toBe(0);
+        for (const result of ["failure", "cancelled", "success"]) {
+          expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${branch}`, [`${target}_RESULT`]: result }).status).toBe(1);
+        }
+      }
+      for (const event of ["pull_request", "merge_group", "workflow_dispatch"]) {
+        expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: event, GITHUB_REF: "refs/heads/dev" }).status).toBe(1);
+      }
+      expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature/unproven" }).status).toBe(1);
+    }
+  });
+
+  it("fails closed when path or proof outputs are missing or malformed", () => {
+    for (const target of ["WEB", "APPVIEW"]) {
+      for (const output of [`${target}_FLAG`, `REUSE_${target}`]) {
+        for (const value of [undefined, "", "TRUE"]) expect(runRequiredGate({ [output]: value }).status).toBe(1);
+      }
+      expect(runRequiredGate({ [`REUSE_${target}`]: "true", GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/dev" }).status).toBe(1);
+    }
+  });
+
 });
 
 describe("extracted Swift reference fixtures", () => {

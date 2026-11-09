@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 export class VerificationError extends Error {
   constructor(message, retryable = false) { super(message); this.retryable = retryable; }
@@ -10,19 +11,20 @@ const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 
 // Every request is GET. Missing propagation evidence may be retried; rejected
 // evidence is terminal and must never fall back to an older successful check.
-export async function verifyOnce(api, repository, mergeSHA) {
+export async function verifyOnce(api, repository, mergeSHA, { baseRef = 'main' } = {}) {
+  if (!['main', 'dev'].includes(baseRef)) fail('Invalid merge base branch');
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || !sha(mergeSHA)) fail('Invalid repository or pushed commit');
   const sameRepo = value => typeof value === 'string' && value.toLowerCase() === repository.toLowerCase();
   const prefix = `/repos/${repository}`;
   const associated = await api(`${prefix}/commits/${mergeSHA}/pulls?per_page=100`);
   if (!Array.isArray(associated) || associated.length >= 100) fail('Unbounded or invalid associated pull requests');
-  const candidates = associated.filter(pr => pr.base?.ref === 'main' && sameRepo(pr.base?.repo?.full_name) && pr.merge_commit_sha === mergeSHA && pr.merged_at);
-  if (!candidates.length) pending('Merged main pull request not visible yet');
-  if (candidates.length !== 1) fail('Ambiguous merged main pull request');
+  const candidates = associated.filter(pr => pr.base?.ref === baseRef && sameRepo(pr.base?.repo?.full_name) && pr.merge_commit_sha === mergeSHA && pr.merged_at);
+  if (!candidates.length) pending(`Merged ${baseRef} pull request not visible yet`);
+  if (candidates.length !== 1) fail(`Ambiguous merged ${baseRef} pull request`);
   const number = candidates[0].number;
   if (!Number.isSafeInteger(number) || number < 1) fail('Invalid pull request number');
   const pr = await api(`${prefix}/pulls/${number}`);
-  if (pr.number !== number || pr.merged !== true || pr.state !== 'closed' || !pr.merged_at || pr.base?.ref !== 'main' || !sameRepo(pr.base?.repo?.full_name) || !sameRepo(pr.head?.repo?.full_name) || pr.merge_commit_sha !== mergeSHA || !sha(pr.head?.sha)) fail('Pull request does not prove this exact main merge');
+  if (pr.number !== number || pr.merged !== true || pr.state !== 'closed' || !pr.merged_at || pr.base?.ref !== baseRef || !sameRepo(pr.base?.repo?.full_name) || !sameRepo(pr.head?.repo?.full_name) || pr.merge_commit_sha !== mergeSHA || !sha(pr.head?.sha) || !sha(pr.base?.sha)) fail(`Pull request does not prove this exact ${baseRef} merge`);
   const headSHA = pr.head.sha;
   const checks = await api(`${prefix}/commits/${headSHA}/check-runs?filter=latest&per_page=100`);
   if (!Array.isArray(checks.check_runs) || !Number.isSafeInteger(checks.total_count) || checks.total_count < 0 || checks.total_count >= 100) fail('Unbounded or invalid check evidence');
@@ -56,7 +58,8 @@ export async function verifyOnce(api, repository, mergeSHA) {
   const receipt = parseReceipt(logs);
   const receiptAttempt = receipt.runAttempt;
   if (!Number.isSafeInteger(receiptAttempt) || receiptAttempt < 1 || receiptAttempt > run.run_attempt) fail('Invalid CI receipt attempt');
-  const expected = { runID, runAttempt: receiptAttempt, prNumber: number, baseRef: 'main', headSHA, repository };
+  if (!sha(receipt.checkoutSHA) || !sha(receipt.checkoutTreeSHA)) fail('Missing exact tested checkout receipt');
+  const expected = { runID, runAttempt: receiptAttempt, prNumber: number, baseRef, baseSHA: pr.base.sha, headSHA, repository, checkoutSHA: receipt.checkoutSHA, checkoutTreeSHA: receipt.checkoutTreeSHA };
   if (Object.keys(receipt).length !== Object.keys(expected).length || Object.entries(expected).some(([key, value]) => receipt[key] !== value)) fail('Exact CI pull request receipt mismatch');
   if (receiptAttempt < run.run_attempt) {
     // Failed-job retries reissue successful job IDs/attempts but inherit their
@@ -74,9 +77,15 @@ export async function verifyOnce(api, repository, mergeSHA) {
     if (originalLogs !== logs) fail('Inherited receipt logs differ from original successful job');
   }
   const mergedCommit = await api(`${prefix}/git/commits/${mergeSHA}`);
-  const headCommit = await api(`${prefix}/git/commits/${headSHA}`);
-  if (mergedCommit.sha !== mergeSHA || headCommit.sha !== headSHA || !sha(mergedCommit.tree?.sha) || mergedCommit.tree.sha !== headCommit.tree?.sha) fail('Merged source tree differs from the validated pull request head');
-  return { prNumber: number, mergeSHA, headSHA, treeSHA: mergedCommit.tree.sha, runID };
+  const checkoutCommit = await api(`${prefix}/git/commits/${receipt.checkoutSHA}`);
+  if (mergedCommit.sha !== mergeSHA || checkoutCommit.sha !== receipt.checkoutSHA || !sha(mergedCommit.tree?.sha) || checkoutCommit.tree?.sha !== receipt.checkoutTreeSHA || mergedCommit.tree.sha !== receipt.checkoutTreeSHA) fail('Merged source tree differs from the validated checkout tree');
+  const verifiedTarget = name => {
+    const matches = jobs.jobs.filter(job => job.name === name);
+    if (matches.length > 1) fail('Ambiguous target verification jobs');
+    const job = matches[0];
+    return !!job && job.run_id === runID && job.run_attempt === run.run_attempt && job.head_sha === headSHA && Number.isSafeInteger(job.id) && job.id > 0 && job.status === 'completed' && job.conclusion === 'success';
+  };
+  return { prNumber: number, mergeSHA, headSHA, baseRef, baseSHA: pr.base.sha, checkoutSHA: receipt.checkoutSHA, treeSHA: mergedCommit.tree.sha, runID, targets: { web: verifiedTarget('Web'), appview: verifiedTarget('SQLite AppView') } };
 }
 
 function receiptExecution(job) {
@@ -92,10 +101,10 @@ function receiptExecution(job) {
   return { name: job.name, started_at: job.started_at, completed_at: job.completed_at, steps };
 }
 
-export async function verifyMergedCommit(api, repository, mergeSHA, { attempts = 8, delayMS = 5000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+export async function verifyMergedCommit(api, repository, mergeSHA, { baseRef = 'main', attempts = 8, delayMS = 5000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!Number.isInteger(attempts) || attempts < 1 || attempts > 8 || !Number.isInteger(delayMS) || delayMS < 0 || delayMS > 5000) fail('Invalid retry bounds');
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    try { return await verifyOnce(api, repository, mergeSHA); }
+    try { return await verifyOnce(api, repository, mergeSHA, { baseRef }); }
     catch (error) {
       if (!(error instanceof VerificationError) || !error.retryable || attempt === attempts) throw error;
       await sleep(delayMS);
@@ -103,10 +112,10 @@ export async function verifyMergedCommit(api, repository, mergeSHA, { attempts =
   }
 }
 
-export function receiptFromEvent(event, env) {
+export function receiptFromEvent(event, env, { checkoutSHA, checkoutTreeSHA } = {}) {
   const pr = event.pull_request;
-  const receipt = { runID: Number(env.GITHUB_RUN_ID), runAttempt: Number(env.GITHUB_RUN_ATTEMPT), prNumber: pr?.number, baseRef: pr?.base?.ref, headSHA: pr?.head?.sha, repository: env.GITHUB_REPOSITORY };
-  if (!Number.isSafeInteger(receipt.runID) || receipt.runID < 1 || !Number.isSafeInteger(receipt.runAttempt) || receipt.runAttempt < 1 || !Number.isSafeInteger(receipt.prNumber) || receipt.prNumber < 1 || !sha(receipt.headSHA) || !['main', 'dev'].includes(receipt.baseRef) || pr.base?.repo?.full_name !== receipt.repository) fail('Invalid trusted PR receipt context');
+  const receipt = { runID: Number(env.GITHUB_RUN_ID), runAttempt: Number(env.GITHUB_RUN_ATTEMPT), prNumber: pr?.number, baseRef: pr?.base?.ref, headSHA: pr?.head?.sha, repository: env.GITHUB_REPOSITORY, baseSHA: pr?.base?.sha, checkoutSHA, checkoutTreeSHA };
+  if (!Number.isSafeInteger(receipt.runID) || receipt.runID < 1 || !Number.isSafeInteger(receipt.runAttempt) || receipt.runAttempt < 1 || !Number.isSafeInteger(receipt.prNumber) || receipt.prNumber < 1 || !sha(receipt.headSHA) || !sha(receipt.baseSHA) || !sha(checkoutSHA) || checkoutSHA !== env.GITHUB_SHA || !sha(checkoutTreeSHA) || !['main', 'dev'].includes(receipt.baseRef) || pr.base?.repo?.full_name !== receipt.repository) fail('Invalid trusted PR receipt context');
   return receipt;
 }
 
@@ -170,7 +179,7 @@ export function githubReadAPI(token, { fetcher = fetch, deadlineMS = Date.now() 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.argv[2] === '--receipt') {
-      if (process.env.GITHUB_EVENT_NAME === 'pull_request') console.log('CI_PR_RECEIPT ' + JSON.stringify(receiptFromEvent(JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')), process.env)));
+      if (process.env.GITHUB_EVENT_NAME === 'pull_request') console.log('CI_PR_RECEIPT ' + JSON.stringify(receiptFromEvent(JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')), process.env, { checkoutSHA: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), checkoutTreeSHA: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim() })));
     } else {
       if (process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') fail('Only main push events may validate a deployment');
       const evidence = await verifyMergedCommit(githubReadAPI(process.env.GITHUB_TOKEN), process.env.GITHUB_REPOSITORY, process.env.GITHUB_SHA);

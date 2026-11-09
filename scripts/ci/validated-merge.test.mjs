@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyOnce, verifyMergedCommit, githubReadAPI, VerificationError, parseReceipt, receiptFromEvent } from './validated-merge.mjs';
-const repository = 'owner/repo', merge = 'a'.repeat(40), head = 'b'.repeat(40), tree = 'c'.repeat(40);
+const repository = 'owner/repo', merge = 'a'.repeat(40), head = 'b'.repeat(40), tree = 'c'.repeat(40), checkout = 'd'.repeat(40), baseSHA = 'e'.repeat(40);
 function fixture() {
-  const base = { ref: 'main', repo: { full_name: repository } };
+  const base = { ref: 'main', sha: baseSHA, repo: { full_name: repository } };
   const pr = { number: 7, merged: true, state: 'closed', merged_at: '2026-10-07T00:00:00Z', merge_commit_sha: merge, base, head: { sha: head, repo: { full_name: repository } } };
   const check = { check_suite: { id: 100 }, id: 19, name: 'CI — Required', app: { slug: 'github-actions' }, head_sha: head, status: 'completed', conclusion: 'success', details_url: 'https://github.com/owner/repo/actions/runs/31/job/19' };
   const run = { check_suite_id: 100, run_attempt: 1, id: 31, path: '.github/workflows/ci.yml', event: 'pull_request', head_sha: head, status: 'completed', conclusion: 'success', repository: { full_name: repository }, pull_requests: [{ number: 7 }] };
-  const data = { [`/repos/${repository}/commits/${merge}/pulls?per_page=100`]: [pr], [`/repos/${repository}/pulls/7`]: pr, [`/repos/${repository}/commits/${head}/check-runs?filter=latest&per_page=100`]: { total_count: 1, check_runs: [check] }, [`/repos/${repository}/actions/runs/31`]: run, [`/repos/${repository}/git/commits/${merge}`]: { sha: merge, tree: { sha: tree } }, [`/repos/${repository}/git/commits/${head}`]: { sha: head, tree: { sha: tree } } };
-  const receipt = { runID: 31, runAttempt: 1, prNumber: 7, baseRef: 'main', headSHA: head, repository };
+  const data = { [`/repos/${repository}/commits/${merge}/pulls?per_page=100`]: [pr], [`/repos/${repository}/pulls/7`]: pr, [`/repos/${repository}/commits/${head}/check-runs?filter=latest&per_page=100`]: { total_count: 1, check_runs: [check] }, [`/repos/${repository}/actions/runs/31`]: run, [`/repos/${repository}/git/commits/${merge}`]: { sha: merge, tree: { sha: tree } }, [`/repos/${repository}/git/commits/${checkout}`]: { sha: checkout, tree: { sha: tree } } };
+  const receipt = { runID: 31, runAttempt: 1, prNumber: 7, baseRef: 'main', headSHA: head, repository, baseSHA, checkoutSHA: checkout, checkoutTreeSHA: tree };
   const job = { run_id: 31, run_attempt: 1, head_sha: head, status: 'completed', conclusion: 'success' };
   data[`/repos/${repository}/actions/runs/31/attempts/1/jobs?per_page=100`] = { total_count: 2, jobs: [{ ...job, id: 80, name: 'Detect Changed Paths' }, { ...job, id: 81, name: 'CI — Required', check_run_url: `https://api.github.com/repos/${repository}/check-runs/19` }] };
   data[`/repos/${repository}/actions/jobs/80/logs`] = '2026-10-07T00:00:00.000Z CI_PR_RECEIPT ' + JSON.stringify(receipt);
@@ -48,7 +48,7 @@ test('rejects duplicated receipt lines', () => { const line = 'CI_PR_RECEIPT {}'
 test('rejects oversized job logs', () => { assert.throws(() => parseReceipt('x'.repeat(262145)), /oversized/); });
 test('rejects receipt job from another run attempt', async () => { const f = fixture(); f.data[`/repos/${repository}/actions/runs/31/attempts/1/jobs?per_page=100`].jobs[0].run_attempt = 2; await assert.rejects(verifyOnce(f.api, repository, merge), /attempt provenance/); });
 test('rejects another check suite despite a plausible details URL', async () => { const f = fixture(); f.run.check_suite_id++; await assert.rejects(verifyOnce(f.api, repository, merge), /provenance/); });
-test('receipt construction uses only validated GitHub metadata', () => { const f = fixture(); assert.equal(receiptFromEvent({ pull_request: f.pr, privateBody: 'do not emit' }, { GITHUB_RUN_ID: '31', GITHUB_RUN_ATTEMPT: '1', GITHUB_REPOSITORY: repository }).prNumber, 7); });
+test('receipt construction uses only validated GitHub metadata', () => { const f = fixture(); assert.equal(receiptFromEvent({ pull_request: f.pr, privateBody: 'do not emit' }, { GITHUB_RUN_ID: '31', GITHUB_RUN_ATTEMPT: '1', GITHUB_REPOSITORY: repository, GITHUB_SHA: checkout }, { checkoutSHA: checkout, checkoutTreeSHA: tree }).prNumber, 7); });
 test('signed log redirect never receives the GitHub token', async () => { const requests = []; const api = githubReadAPI('test-token', { fetcher: async (url, options) => { requests.push({ url, options }); return requests.length === 1 ? { status: 302, headers: new Headers({ location: 'https://productionresultssa5.blob.core.windows.net/log.txt?sig=private' }) } : { ok: true, status: 200, text: async () => 'CI_PR_RECEIPT {}' }; } }); await api('/repos/owner/repo/actions/jobs/80/logs', { text: true }); assert.equal(requests[0].options.headers.Authorization, 'Bearer test-token'); assert.equal(requests[1].options.headers, undefined); assert.equal(requests[1].options.redirect, 'error'); });
 test('rejects unexpected log redirect hosts before requesting them', async () => { let calls = 0; const api = githubReadAPI('test-token', { fetcher: async () => { calls++; return { status: 302, headers: new Headers({ location: 'https://attacker.example/logs' }) }; } }); await assert.rejects(api('/repos/owner/repo/actions/jobs/80/logs', { text: true }), /Untrusted/); assert.equal(calls, 1); });
 test('streamed logs exceeding the byte cap are cancelled', async () => { let cancelled = false; const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(262145)); }, cancel() { cancelled = true; } }); const api = githubReadAPI('test-token', { fetcher: async () => new Response(body) }); await assert.rejects(api('/repos/owner/repo/actions/jobs/80/logs', { text: true }), /byte limit/); assert.equal(cancelled, true); });
@@ -132,3 +132,95 @@ for (const [name, alter] of [
   ['wrong inherited attempt', f => f.inherited.run_attempt = 1],
   ['missing original log response', f => f.api = async path => path.endsWith('/jobs/80/logs') ? Promise.reject(new VerificationError('Missing original logs')) : structuredClone(f.data[path])],
 ]) test(`inherited receipt rejects ${name}`, async () => { const f = inheritedFixture(); alter(f); await assert.rejects(verifyOnce(f.api, repository, merge), VerificationError); });
+
+function rewriteReceipt(f, change) {
+  const path = `/repos/${repository}/actions/jobs/80/logs`;
+  const receipt = parseReceipt(f.data[path]);
+  change(receipt);
+  f.data[path] = 'CI_PR_RECEIPT ' + JSON.stringify(receipt);
+}
+
+test('dev merges require matching explicit branch and receipt', async () => {
+  const f = fixture(); f.pr.base.ref = 'dev';
+  rewriteReceipt(f, receipt => receipt.baseRef = 'dev');
+  const evidence = await verifyMergedCommit(f.api, repository, merge, { baseRef: 'dev' });
+  assert.equal(evidence.baseRef, 'dev');
+  assert.equal(evidence.baseSHA, baseSHA);
+  assert.equal(evidence.checkoutSHA, checkout);
+});
+
+test('compares the pushed tree to the tested synthetic merge rather than the PR head', async () => {
+  const f = fixture();
+  f.data[`/repos/${repository}/git/commits/${head}`] = { sha: head, tree: { sha: head } };
+  const evidence = await verifyOnce(f.api, repository, merge);
+  assert.equal(evidence.treeSHA, tree);
+});
+
+for (const [name, change] of [
+  ['legacy receipt', receipt => { delete receipt.checkoutSHA; delete receipt.checkoutTreeSHA; delete receipt.baseSHA; }],
+  ['missing base', receipt => delete receipt.baseSHA],
+  ['wrong base', receipt => receipt.baseSHA = head],
+  ['wrong tested tree', receipt => receipt.checkoutTreeSHA = head],
+  ['invalid checkout commit', receipt => receipt.checkoutSHA = 'invalid'],
+]) test(`tested tree proof rejects ${name}`, async () => {
+  const f = fixture(); rewriteReceipt(f, change);
+  await assert.rejects(verifyOnce(f.api, repository, merge), VerificationError);
+});
+
+test('rejects a commit API response that does not identify the tested checkout', async () => {
+  const f = fixture(); f.data[`/repos/${repository}/git/commits/${checkout}`].sha = head;
+  await assert.rejects(verifyOnce(f.api, repository, merge), /validated checkout tree/);
+});
+
+test('rejects unsupported target branches', async () => {
+  const f = fixture();
+  await assert.rejects(verifyMergedCommit(f.api, repository, merge, { baseRef: 'release' }), /base branch/);
+});
+
+function targetJob(name, extra = {}) {
+  return { id: 82, name, run_id: 31, run_attempt: 1, head_sha: head, status: 'completed', conclusion: 'success', ...extra };
+}
+function addTarget(f, job) {
+  const page = f.data[`/repos/${repository}/actions/runs/31/attempts/1/jobs?per_page=100`];
+  page.jobs.push(job); page.total_count++;
+}
+
+test('returns only successfully verified exact target jobs', async () => {
+  const f = fixture(); addTarget(f, targetJob('Web')); addTarget(f, targetJob('SQLite AppView', { id: 83 }));
+  assert.deepEqual((await verifyOnce(f.api, repository, merge)).targets, { web: true, appview: true });
+});
+
+test('missing target jobs do not authorize any skipped build', async () => {
+  const f = fixture(); assert.deepEqual((await verifyOnce(f.api, repository, merge)).targets, { web: false, appview: false });
+});
+
+for (const [name, extra] of [
+  ['skipped', { conclusion: 'skipped' }], ['failed', { conclusion: 'failure' }],
+  ['pending', { status: 'in_progress' }], ['wrong attempt', { run_attempt: 2 }],
+  ['wrong run', { run_id: 32 }], ['wrong head', { head_sha: merge }], ['invalid ID', { id: 0 }],
+]) test(`target proof refuses ${name} job`, async () => {
+  const f = fixture(); addTarget(f, targetJob('Web', extra));
+  assert.equal((await verifyOnce(f.api, repository, merge)).targets.web, false);
+});
+
+test('duplicate target job names cannot authorize reuse', async () => {
+  const f = fixture(); addTarget(f, targetJob('Web')); addTarget(f, targetJob('Web', { id: 83 }));
+  await assert.rejects(verifyOnce(f.api, repository, merge), /Ambiguous target/);
+});
+
+test('receipt construction rejects a checkout that is not the triggering PR merge', () => {
+  const f = fixture();
+  assert.throws(() => receiptFromEvent({ pull_request: f.pr }, { GITHUB_RUN_ID: '31', GITHUB_RUN_ATTEMPT: '1', GITHUB_REPOSITORY: repository, GITHUB_SHA: head }, { checkoutSHA: checkout, checkoutTreeSHA: tree }), /receipt context/);
+});
+
+test('latest successful retry can reuse targets reported in that exact attempt', async () => {
+  const f = inheritedFixture();
+  const page = f.data[`/repos/${repository}/actions/runs/31/attempts/2/jobs?per_page=100`];
+  page.jobs.push(targetJob('Web', { run_attempt: 2 })); page.total_count++;
+  assert.deepEqual((await verifyOnce(f.api, repository, merge)).targets, { web: true, appview: false });
+});
+
+test('an older successful target alone does not authorize reuse after a retry', async () => {
+  const f = inheritedFixture(); addTarget(f, targetJob('Web'));
+  assert.equal((await verifyOnce(f.api, repository, merge)).targets.web, false);
+});
