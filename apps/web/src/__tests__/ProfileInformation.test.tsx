@@ -1,5 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as renderUI, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
+import * as ProfileLinkClient from "@/lib/profileLinks";
 import * as Profiles from "@/hooks/useViewerProfile";
 import { ProfileInformation } from "@/components/Account/ProfileInformation";
 
@@ -8,15 +11,19 @@ beforeAll(() => Object.defineProperty(window, "matchMedia", { configurable: true
 afterAll(() => { if (originalMedia) Object.defineProperty(window, "matchMedia", originalMedia); else Reflect.deleteProperty(window, "matchMedia"); });
 let state: { data: Profiles.ViewerProfileSlice | null; isLoading: boolean; refetch: ReturnType<typeof mock> };
 let restore: () => void;
+let cache: QueryClient;
+function render(ui: ReactElement) { return renderUI(ui, { wrapper: ({ children }) => <QueryClientProvider client={cache}>{children}</QueryClientProvider> }); }
 beforeEach(() => {
+  cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const links = spyOn(ProfileLinkClient, "loadProfileLinks").mockResolvedValue([{ uri: "at://did:plc:viewer/app.bsky.actor.link/site", url: "https://viewer.example/", title: "My Website", domain: "viewer.example" }]);
   state = { data: { did: "did:plc:viewer", displayName: "Local Viewer", handle: "viewer.local.test", description: "First line\nSecond line", followersCount: 12, followsCount: 0, postsCount: 48 }, isLoading: false, refetch: mock(async () => undefined) };
   const profile = spyOn(Profiles, "useViewerProfile").mockImplementation(() => state as unknown as ReturnType<typeof Profiles.useViewerProfile>);
-  restore = () => profile.mockRestore();
+  restore = () => { profile.mockRestore(); links.mockRestore(); };
 });
-afterEach(() => { cleanup(); restore(); });
+afterEach(() => { cleanup(); cache.clear(); restore(); });
 
 describe("Profile information", () => {
-  it("displays the viewer identity, biography, and available social counts", () => {
+  it("displays the viewer identity, biography, available social counts, and profile link cards", async () => {
     render(<ProfileInformation />);
     expect(screen.getByRole("heading", { name: "Local Viewer" })).toBeTruthy();
     expect(screen.getByText("@viewer.local.test")).toBeTruthy();
@@ -25,10 +32,11 @@ describe("Profile information", () => {
     expect(screen.getByText("Following").nextElementSibling?.textContent).toBe("0");
     expect(screen.getByText("Posts").nextElementSibling?.textContent).toBe("48");
     expect(screen.getByRole("heading", { name: "Local Viewer" }).closest("section")?.id).toBe("profile");
-    const bluesky = screen.getByRole("link", { name: "Open on Bluesky" });
-    expect(bluesky.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
-    expect(bluesky.getAttribute("target")).toBe("_blank");
-    expect(bluesky.getAttribute("rel")).toBe("noopener noreferrer");
+    const website = await screen.findByRole("link", { name: /My Website/ });
+    expect(website.getAttribute("href")).toBe("https://viewer.example/");
+    expect(website.getAttribute("target")).toBe("_blank");
+    expect(website.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
   });
   it("shows trimmed pronouns beside the display name", () => {
     state.data!.pronouns = "  they/them  ";
@@ -56,14 +64,13 @@ describe("Profile information", () => {
     expect(screen.queryByText("Followers")).toBeNull();
     expect(screen.queryByText("Following")).toBeNull();
   });
-  it("keeps the Bluesky action concise and DID-based for long profile identities", () => {
-    state.data!.displayName = "A Very Long Display Name ".repeat(8);
-    state.data!.handle = `${"long".repeat(30)}.test`;
+  it("omits link cards for a profile with no configured links", async () => {
+    const links = spyOn(ProfileLinkClient, "loadProfileLinks").mockResolvedValue([]);
     render(<ProfileInformation />);
-    const link = screen.getByRole("link", { name: "Open on Bluesky" });
-    expect(link.textContent?.trim()).toBe("Open on Bluesky");
-    expect(link.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
-    expect(screen.getByRole("heading", { name: state.data!.displayName.trim() })).toBeTruthy();
+    await waitFor(() => expect(cache.getQueryState(["actorProfileLinks", "did:plc:viewer"])?.status).toBe("success"));
+    expect(links).toHaveBeenCalledWith("did:plc:viewer", expect.any(AbortSignal));
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /My Website/ })).toBeNull();
   });
   it("shows loading and provides retry when profile retrieval fails", () => {
     state.data = null; state.isLoading = true;
