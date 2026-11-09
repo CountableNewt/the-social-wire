@@ -2,10 +2,11 @@
 
 import { Avatar } from "@/components/shared/Avatar";
 import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ViewerProfileSlice } from "@/hooks/useViewerProfile";
-import { socialHttpsUrl } from "@/components/Social/socialUrls";
+import { socialHttpsUrl, socialProfileUrl } from "@/components/Social/socialUrls";
 import type { ReactNode } from "react";
 
 export function ProfileHeader({ viewer, loading = false, onRetry, actions }: { viewer?: ViewerProfileSlice | null; loading?: boolean; onRetry: () => void; actions?: ReactNode }) {
@@ -32,7 +33,12 @@ export function ProfileHeader({ viewer, loading = false, onRetry, actions }: { v
           <h2 id="profile-heading" className="break-words text-2xl font-bold"><ProfileDisplayName name={name} pronouns={viewer.pronouns} subject={viewer.handle ? viewer : undefined} wrap /></h2>
           {viewer.handle ? <p className="break-all text-sm text-muted-foreground">{viewer.handle.startsWith("did:") ? viewer.handle : `@${viewer.handle}`}</p> : null}
         </div>
-        {actions ? <div className="flex max-w-xl flex-col items-center gap-2 px-4">{actions}</div> : null}
+        <div className="flex w-full max-w-xl flex-col items-center justify-center gap-2 px-4 sm:flex-row sm:flex-wrap">
+          {actions}
+          {viewer.did ? <a href={socialProfileUrl(viewer.did)} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Open on Bluesky <ExternalLink aria-hidden="true" className="size-3.5" />
+          </a> : null}
+        </div>
         {viewer.description ? <p className="max-w-xl whitespace-pre-line break-words px-4 text-sm leading-6">{viewer.description}</p> : null}
         <dl className="flex flex-wrap justify-center gap-x-6 gap-y-2 px-4 text-sm">
           {counts.filter(count => count.value !== undefined).map(count => <div key={count.label} className="flex gap-1.5">
