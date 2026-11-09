@@ -28,13 +28,20 @@ Web image public build arguments must match the destination environment; see its
 Dockerfile and `.tangled/README.md`. Server-only Web credentials stay in Railway,
 never in image build arguments.
 
-Reuse the existing Gateway service as Backend to preserve its public domains,
+Select `/railway/appview-standalone.json` on the existing Gateway service and
+rename that service to AppView after the cutover. Reusing its service identity
+preserves its public domains,
 including Development clients using the Railway-generated Gateway hostname.
 Add one persistent US-West volume mounted at `/data`, with one replica. Set
 `BACKEND_MODE=standalone`, `SQLITE_DB_PATH=/data/social-wire.sqlite`, canonical
 `APP_ENV=dev|prod`, and `PORT=8081` (align the existing domain target port).
-Use the standalone image's entrypoint; remove the old Postgres schema-ready
-start/pre-deploy command and migrator-reference variable on this service.
+The standalone config selects `Dockerfile.standalone`, requires the `/data`
+mount, fixes one replica in `sfo`, disables sleep and deployment overlap, and
+clears the old start/pre-deploy commands. The image also refuses startup or
+import when `/data` is only an ephemeral directory. Use the image's supervisor
+entrypoint and remove the old migrator-reference variable on this service.
+Keep `/railway/appview.json`, the distributed Dockerfile and `.railway/` graph
+as rollback references; do not apply them to the consolidated AppView.
 
 Combine the current Gateway, App View and enabled Podcast Media Worker settings.
 Preserve the exact existing values of:

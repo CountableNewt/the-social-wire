@@ -2,6 +2,27 @@
 
 Railway is the canonical deployment platform for both Development and Production. GitHub Actions validates source changes; Railway deploys successful linked revisions through its GitHub integration.
 
+The standalone reader cutover uses Web plus one AppView with SQLite. Select
+`/railway/appview-standalone.json` on the existing Gateway service to preserve
+its API domains, then rename it AppView. This config selects the standalone
+image, requires the persistent `/data` volume, keeps one replica in `sfo`,
+disables sleep and deployment overlap, and clears legacy start/pre-deploy
+commands so the image supervisor controls startup. SQLite migrations run in
+the process before listening. The separate Postgres migration gate below
+applies only to the retained distributed deployment.
+
+Follow [the Development-first data cutover](../docs/architecture/standalone-reader.md)
+before switching each environment. Keep old data, services and configuration
+available through acceptance and rollback; do not apply the legacy `.railway/`
+partial to the two-service target.
+
+| Standalone Railway Service | Config File |
+| --- | --- |
+| Web | `/railway/web.json` |
+| AppView (Reused Gateway Service) | `/railway/appview-standalone.json` |
+
+The remaining configuration documents the distributed rollback topology.
+
 The files in this directory are grandfathered per-service Config as Code for
 compatibility services. Railway no longer allows new services to select these
 files. The consolidated Ingress Controller, Projection Pool, and Coordinator
