@@ -82,6 +82,11 @@ export function EntryList({
     if (!readIndicatorsEnabled) return "all";
     return articleFilter;
   }, [readIndicatorsEnabled, articleFilter]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const canBackgroundRefresh = useCallback(
+    () => (scrollContainerRef.current?.scrollTop ?? 0) <= 0,
+    [],
+  );
 
   // AppView performs the bounded unread scan. The local read-state overlay still
   // suppresses rows immediately while read-mark write-through catches up.
@@ -92,15 +97,17 @@ export function EntryList({
     isError,
     error,
     refetch,
+    refreshInBackground,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
     scopePending,
-  } = useEntries(pubId ?? null, effectiveFilter);
+  } = useEntries(pubId ?? null, effectiveFilter, canBackgroundRefresh);
   const aggregateQuery = useAggregateFeedEntries(
     aggregateFeed ?? null,
     effectiveFilter,
+    canBackgroundRefresh,
   );
   const wireQuery = useWireFeedEntries({
     enabled: wireFeed,
@@ -180,7 +187,7 @@ export function EntryList({
       !isLoading &&
       !scopePending &&
       (data?.pages.length ?? 0) > 0,
-    refetch,
+    refreshInBackground,
   );
 
   const aggregateAccumulator = useMemo(() => {
@@ -380,6 +387,7 @@ export function EntryList({
       isFetchNextPageError={activeIsFetchNextPageError}
       fetchNextPage={fetchNextPageOnce}
       scrollStateKey={virtualPaneKey}
+      scrollContainerRef={scrollContainerRef}
       publicationById={publicationById}
       markEntryRead={markEntryRead}
       markEntryUnread={markEntryUnread}

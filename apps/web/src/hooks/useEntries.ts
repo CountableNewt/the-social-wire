@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
   isCancelledError,
+  CancelledError,
   onlineManager,
   useInfiniteQuery,
   useQuery,
@@ -162,9 +163,12 @@ function useGuardedFeedRefresh(args: {
   oauthSessionReloadSeq: number;
   getOAuthSession: () => OAuthSession | null;
   fetchInitial: () => Promise<unknown>;
+  canBackgroundRefresh?: () => boolean;
 }) {
   const { queryKey, feed, articleFilter, enabled, hasData, isFetchedAfterMount, oauthSessionReloadSeq, getOAuthSession, fetchInitial } = args;
   const queryClient = useQueryClient();
+  const backgroundAllowed = useRef(args.canBackgroundRefresh);
+  useLayoutEffect(() => { backgroundAllowed.current = args.canBackgroundRefresh; });
   const oauthSession = getOAuthSession();
   const reloadSeq = useRef(oauthSessionReloadSeq);
   useLayoutEffect(() => { reloadSeq.current = oauthSessionReloadSeq; }, [oauthSessionReloadSeq]);
@@ -179,7 +183,8 @@ function useGuardedFeedRefresh(args: {
     oauthSession: OAuthSession;
     reloadSeq: number;
   } | null>(null);
-  const refresh = useCallback(async (replaceSession = false, callerSignal?: AbortSignal) => {
+  const refresh = useCallback(async (replaceSession = false, callerSignal?: AbortSignal, background = false) => {
+    if (background && backgroundAllowed.current?.() === false) return false;
     const oauth = getOAuthSession();
     if (!enabled || !oauth || !feed || callerSignal?.aborted) return false;
     const cachedQuery = queryClient.getQueryCache().find({ queryKey, exact: true });
@@ -221,8 +226,8 @@ function useGuardedFeedRefresh(args: {
     if (callerSignal?.aborted) onCallerAbort();
     let operationSettled = false;
     const fetchMerged = async (signal: AbortSignal): Promise<InfiniteData<EntriesPage>> => {
-      // Query.fetch(undefined) can reuse this installed function after a read
-      // confirmation. Snapshots belong to this request, not the installing call.
+      // Capture request evidence before fetching so newer read gestures or
+      // session changes can retire this lifecycle response.
       const requestSession = getOAuthSession();
       if (!requestSession || requestSession.did !== queryKey[1]) {
         throw new SupersededFeedRefreshError();
@@ -234,23 +239,35 @@ function useGuardedFeedRefresh(args: {
         signal,
       );
       assertCurrent();
-      // The installed query function can be reused by later confirmations.
-      // Only this invocation belongs to the visible-refresh caller lifetime.
+      // This response still belongs to the visible-refresh caller lifetime.
       if (!operationSettled && !isCurrent()) throw new SupersededFeedRefreshError();
       if (reloadSeq.current !== requestReloadSeq) throw new SupersededFeedRefreshError();
       const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
+      if (!operationSettled && background && backgroundAllowed.current?.() === false) {
+        await queryClient.cancelQueries({ queryKey, exact: true });
+        throw new CancelledError({ revert: true });
+      }
       return mergeFeedRefreshForFilter(current, fresh, articleFilter);
     };
     try {
       await queryClient.fetchQuery({
+        ...cachedQuery.options,
         queryKey,
         staleTime: 0,
         retry: shouldRetryAppViewRequest,
-        queryFn: ({ signal }) => fetchMerged(signal),
+        queryFn: cachedQuery.options.queryFn,
         // An infinite query retains its behavior even through fetchQuery. The
         // query persister wraps the entire fetch, allowing a first-page merge
         // while Query still owns cancellation, retries, and the error state.
-        persister: (_fetch, { signal }) => fetchMerged(signal),
+        persister: (fetch, context) => {
+          // Query can reuse these options for a later invalidation before its
+          // observer renders again. Only this lifecycle request is a head merge;
+          // confirmation and pagination must retain normal infinite-query reads.
+          if (operationSettled || !isCurrent() || cachedQuery.state.fetchMeta?.fetchMore) {
+            return fetch(context);
+          }
+          return fetchMerged(context.signal);
+        },
       });
     } catch (error) {
       if (isCancelledError(error) || error instanceof SupersededFeedRefreshError) return false;
@@ -285,7 +302,7 @@ function useGuardedFeedRefresh(args: {
     const state = queryClient.getQueryState(queryKey);
     if (sessionChanged || hasData && !isFetchedAfterMount && state &&
       (state.isInvalidated || Date.now() - state.dataUpdatedAt >= ENTRIES_QUERY_STALE_MS)) {
-      void refresh(sessionChanged).catch(() => undefined); // query exposes the error with cached rows
+      void refresh(sessionChanged, undefined, !sessionChanged).catch(() => undefined); // query exposes the error with cached rows
     }
   }, [enabled, hasData, isFetchedAfterMount, oauthSession, oauthSessionReloadSeq, queryClient, queryKey, refresh]);
 
@@ -293,11 +310,13 @@ function useGuardedFeedRefresh(args: {
     if (!online || !enabled) return;
     const state = queryClient.getQueryState(queryKey);
     if (state?.data && (state.isInvalidated || Date.now() - state.dataUpdatedAt >= ENTRIES_QUERY_STALE_MS)) {
-      void refresh().catch(() => undefined);
+      void refresh(false, undefined, true).catch(() => undefined);
     }
   }), [enabled, queryClient, queryKey, refresh]);
 
-  return useCallback((signal?: AbortSignal) => refresh(false, signal), [refresh]);
+  const refetch = useCallback((signal?: AbortSignal) => refresh(false, signal), [refresh]);
+  const refreshInBackground = useCallback((signal?: AbortSignal) => refresh(false, signal, true), [refresh]);
+  return { refetch, refreshInBackground };
 }
 
 /**
@@ -305,7 +324,8 @@ function useGuardedFeedRefresh(args: {
  */
 export function useEntries(
   publicationKey: string | null,
-  articleFilter: ArticleListFilter = "all"
+  articleFilter: ArticleListFilter = "all",
+  canBackgroundRefresh?: () => boolean,
 ) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const queryClient = useQueryClient();
@@ -465,7 +485,8 @@ export function useEntries(
     () => normalizedKey ? { kind: "publication", id: normalizedKey } : null,
     [normalizedKey],
   );
-  const refetch = useGuardedFeedRefresh({
+  const { refetch, refreshInBackground } = useGuardedFeedRefresh({
+    canBackgroundRefresh,
     queryKey: entriesQueryKey,
     feed: publicationFeed,
     articleFilter,
@@ -503,12 +524,13 @@ export function useEntries(
     query.isPlaceholderData,
   ]);
 
-  return { ...query, refetch, scopePending: false };
+  return { ...query, refetch, refreshInBackground, scopePending: false };
 }
 
 export function useAggregateFeedEntries(
   feed: AggregateAppViewFeed | null,
   articleFilter: ArticleListFilter = "all",
+  canBackgroundRefresh?: () => boolean,
 ) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const dummyReaderDataEnabled = isDummyReaderDataEnabled();
@@ -659,7 +681,8 @@ export function useAggregateFeedEntries(
     () => feedKind ? { kind: feedKind as AggregateAppViewFeed["kind"], ...(feedId ? { id: feedId } : {}) } : null,
     [feedId, feedKind],
   );
-  const refetch = useGuardedFeedRefresh({
+  const { refetch, refreshInBackground } = useGuardedFeedRefresh({
+    canBackgroundRefresh,
     queryKey: aggregateQueryKey,
     feed: refreshFeed,
     articleFilter,
@@ -700,7 +723,7 @@ export function useAggregateFeedEntries(
   useVisibleFeedRefresh(
     !dummyReaderDataEnabled && viewerDid && feedKind && query.data?.pages.length && !query.isPlaceholderData
       ? JSON.stringify([paintKey, oauthSessionReloadSeq]) : null,
-    refetch,
+    refreshInBackground,
   );
   return { ...query, refetch: async (signal?: AbortSignal) => { await refetch(signal); } };
 }
