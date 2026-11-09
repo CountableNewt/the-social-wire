@@ -25,6 +25,14 @@ import {
 import { STANDARD_READER_LIST_SAVE_SCOPE, STANDARD_READER_LIST_WRITE_SCOPE } from "@/lib/standardReaderList";
 
 describe("atprotoOAuthScopes", () => {
+  it("permits profile creation and editing without profile deletion", () => {
+    const scopes = AT_PROTO_OAUTH_SCOPES.split(" ");
+    expect(scopes.filter(scope => scope.startsWith("repo:app.bsky.actor.profile?"))).toEqual(["repo:app.bsky.actor.profile?action=create&action=update"]);
+    const permissions = new ScopePermissions(scopes.filter(isAtprotoOauthScope));
+    expect(permissions.allowsRepo({ collection: "app.bsky.actor.profile", action: "create" })).toBe(true);
+    expect(permissions.allowsRepo({ collection: "app.bsky.actor.profile", action: "update" })).toBe(true);
+    expect(permissions.allowsRepo({ collection: "app.bsky.actor.profile", action: "delete" })).toBe(false);
+  });
   it("grants exactly four private draft RPCs at the AppView audience", () => {
     const expected = ["createDraft", "getDrafts", "updateDraft", "deleteDraft"].map(method => `rpc:app.bsky.draft.${method}?aud=did:web:api.bsky.app%23bsky_appview`);
     expect([...BLUESKY_DRAFT_RPC_SCOPES] as string[]).toEqual(expected);
@@ -134,6 +142,7 @@ describe("atprotoOAuthScopes", () => {
       "app.thesocialwire.wireFeedback"
     );
     expect(BLUESKY_SOCIAL_REPO_SCOPES).toEqual([
+      "repo:app.bsky.actor.profile?action=create&action=update",
       "repo:app.bsky.feed.post?action=create",
       "repo:app.bsky.graph.list?action=create&action=update&action=delete",
       "repo:app.bsky.graph.listitem?action=create&action=delete",

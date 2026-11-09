@@ -1,20 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSocialVerification } from "@/contexts/SocialVerificationContext";
 import { resolveVerifierProfile } from "@/lib/socialVerification";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { TrustedVerifierRow } from "./TrustedVerifierRow";
 
 export function TrustedVerifiersSettingsSection() {
   const { preferences, update, available, loading, error: requestError, retry } = useSocialVerification();
+  const queryClient = useQueryClient();
   const [actor, setActor] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [removing, setRemoving] = useState<string>();
-  const [names, setNames] = useState<Record<string, string>>({});
   const lock = useRef(false);
   const change = (action: () => void) => {
     try { action(); setError(undefined); } catch (failure) { setError(failure instanceof Error ? failure.message : "Could Not Save Trusted Verifiers."); }
@@ -25,7 +27,7 @@ export function TrustedVerifiersSettingsSection() {
     try {
       const profile = await resolveVerifierProfile(actor);
       update(previous => ({ ...previous, trustedVerifierDIDs: [...new Set([...previous.trustedVerifierDIDs, profile.did])] }));
-      setNames(previous => ({ ...previous, [profile.did]: `@${profile.handle}` })); setActor("");
+      queryClient.setQueryData(["verificationIssuerProfile", profile.did], profile); setActor("");
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could Not Resolve That Verifier."); }
     finally { lock.current = false; setPending(false); }
   }
@@ -39,7 +41,7 @@ export function TrustedVerifiersSettingsSection() {
         <Button type="submit" variant="outline" disabled={!available || pending || !actor.trim()}>{pending ? "Adding…" : "Add Verifier"}</Button>
       </form>
       <p className="text-xs text-muted-foreground">Trusting an account displays badges only for its valid verification records. It does not verify that account or change what others see.</p>
-      {preferences.trustedVerifierDIDs.length ? <ul className="space-y-2">{preferences.trustedVerifierDIDs.map(did => <li key={did} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border p-3"><span className="min-w-0 break-all text-sm">{names[did] ?? did}</span><Button variant="ghost" size="sm" disabled={pending} aria-label={`Remove Verifier: ${names[did] ?? did}`} onClick={() => setRemoving(did)}>Remove</Button></li>)}</ul> : <p className="text-sm text-muted-foreground">No Custom Verifiers.</p>}
+      {preferences.trustedVerifierDIDs.length ? <ul className="space-y-2">{preferences.trustedVerifierDIDs.map(did => <TrustedVerifierRow key={did} did={did} disabled={pending} onRemove={() => setRemoving(did)} />)}</ul> : <p className="text-sm text-muted-foreground">No Custom Verifiers.</p>}
       {loading ? <p role="status" className="text-xs text-muted-foreground">Loading Custom Verifications…</p> : null}
       {error || requestError ? <div role="alert" className="text-sm text-destructive">{error ?? requestError}{requestError ? <Button variant="outline" size="sm" className="ml-2" onClick={retry}>Retry Verifications</Button> : null}</div> : null}
     </div>

@@ -30,6 +30,6 @@ export function AnalyticsAccountSelection({ ownerDid }: { ownerDid: string }) {
 function SelectedAnalytics({ accounts, ownerDid, days }: { accounts: string[]; ownerDid: string; days: number }) {
   if (!accounts.length) return <p className="py-12 text-center text-muted-foreground">Select Accounts to View Analytics.</p>;
   return <>
-    {accounts.map(did => <section key={did} aria-label={`Analytics for ${did}`} className="space-y-3 rounded-2xl border p-4"><h2 className="break-all text-lg font-semibold"><AnalyticsAccountIdentity did={did} personal={did === ownerDid} /></h2><AnalyticsAccountDetails accountDid={did} days={days} /></section>)}
+    {accounts.map(did => <section key={did} aria-label={`Analytics for ${did}`} className="rounded-2xl border p-4"><AnalyticsAccountDetails accountDid={did} days={days} personal={did === ownerDid} /></section>)}
   </>;
 }
