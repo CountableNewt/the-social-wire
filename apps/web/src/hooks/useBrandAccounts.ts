@@ -1,6 +1,6 @@
 "use client";
 
-import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useProEntitlements } from "@/hooks/useProEntitlements";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
@@ -8,17 +8,19 @@ import { listBrandAccounts, onBrandAccountsChanged, restoreBrandAccount } from "
 import { getStoredOAuthDid } from "@/lib/auth";
 
 export function useBrandAccounts(ownerDid: string) {
-  const { isPro: proAccess } = useProEntitlements();
-  const isPro = toolsEnabled() && proAccess;
-  const [accounts, setAccounts] = useState(() => ({ ownerDid, dids: toolsEnabled() ? listBrandAccounts(ownerDid) : [] }));
-  useEffect(() => { if (!toolsEnabled()) return; const update = () => setAccounts({ ownerDid, dids: toolsEnabled() ? listBrandAccounts(ownerDid) : [] }); update(); return onBrandAccountsChanged(update); }, [ownerDid]);
+  const enabled = brandAccountsEnabled();
+  const { isPro: proAccess } = useProEntitlements(enabled);
+  const isPro = enabled && proAccess;
+  const [accounts, setAccounts] = useState(() => ({ ownerDid, dids: enabled ? listBrandAccounts(ownerDid) : [] }));
+  useEffect(() => { if (!enabled) return; const update = () => setAccounts({ ownerDid, dids: brandAccountsEnabled() ? listBrandAccounts(ownerDid) : [] }); update(); return onBrandAccountsChanged(update); }, [ownerDid, enabled]);
   return isPro && accounts.ownerDid === ownerDid ? accounts.dids : [];
 }
 
 /** OAuth objects remain in memory, outside the persisted React Query cache. */
 export function useBrandAccountSession(ownerDid: string, brandDid: string) {
-  const { isPro: proAccess } = useProEntitlements();
-  const isPro = toolsEnabled() && proAccess;
+  const enabled = brandAccountsEnabled();
+  const { isPro: proAccess } = useProEntitlements(enabled);
+  const isPro = enabled && proAccess;
   const access = useRef(isPro);
   useLayoutEffect(() => { access.current = isPro; }, [isPro]);
   const epoch = useRef({ value: 0 });
@@ -38,12 +40,12 @@ export function useBrandAccountSession(ownerDid: string, brandDid: string) {
     }).catch(error => { if (epoch.current.value === generation) setConnection({ scope, error: error instanceof Error ? error.message : "This Brand Account Could Not Be Restored." }); });
     return () => { state.value++; };
   }, [ownerDid, brandDid, scope, isPro]);
-  useEffect(() => { if (toolsEnabled()) return onBrandAccountsChanged(() => setRetry(value => value + 1)); }, []);
+  useEffect(() => { if (enabled) return onBrandAccountsChanged(() => setRetry(value => value + 1)); }, [enabled]);
   const session = isPro && connection.scope === scope ? connection.session : undefined;
   function assertCurrentActor() {
-    if (!access.current || !session || getStoredOAuthDid() !== ownerDid || current.current.ownerDid !== ownerDid || current.current.brandDid !== brandDid || !listBrandAccounts(ownerDid).includes(brandDid)) throw new Error("The Acting Account Changed. Reopen Brand Accounts.");
+    if (!brandAccountsEnabled() || !access.current || !session || getStoredOAuthDid() !== ownerDid || current.current.ownerDid !== ownerDid || current.current.brandDid !== brandDid || !listBrandAccounts(ownerDid).includes(brandDid)) throw new Error("The Acting Account Changed. Reopen Brand Accounts.");
     if (session.did !== brandDid || connection.scope !== scope) throw new Error("The Acting Account Changed. Reopen Brand Accounts.");
   }
   const generation = epoch.current.value;
-  return { session, error: connection.scope === scope ? connection.error : undefined, retry: () => setRetry(value => value + 1), assertCurrentActor: () => { if (generation !== epoch.current.value) throw new Error("The Acting Account Changed. Reopen Brand Accounts."); assertCurrentActor(); }, generation: retry };
+  return { session, error: isPro && connection.scope === scope ? connection.error : undefined, retry: () => setRetry(value => value + 1), assertCurrentActor: () => { if (generation !== epoch.current.value) throw new Error("The Acting Account Changed. Reopen Brand Accounts."); assertCurrentActor(); }, generation: retry };
 }

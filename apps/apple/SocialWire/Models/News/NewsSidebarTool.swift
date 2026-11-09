@@ -12,7 +12,15 @@ enum NewsSidebarTool: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static var availableTools: [Self] {
-        SocialWireAPIEnvironment.proFeaturesReleased ? allCases : []
+        availableTools(
+            proFeaturesReleased: SocialWireAPIEnvironment.proFeaturesReleased,
+            brandAccountsEnabled: SocialWireAPIEnvironment.brandAccountsEnabled
+        )
+    }
+
+    static func availableTools(proFeaturesReleased: Bool, brandAccountsEnabled: Bool) -> [Self] {
+        guard proFeaturesReleased else { return [] }
+        return allCases.filter { $0 != .brandAccounts || brandAccountsEnabled }
     }
 
     var title: String {

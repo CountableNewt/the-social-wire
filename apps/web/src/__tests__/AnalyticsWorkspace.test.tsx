@@ -103,3 +103,19 @@ test("selects brand account reports and removes deselected reports without combi
   fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
   expect(screen.getByText("Select Accounts to View Analytics.")).toBeTruthy();
 });
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("hides brand integrations and keeps personal Analytics when the flag is off", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  brands = ["did:plc:brand"];
+  const spy = await mount();
+  expect(screen.queryByRole("link", { name: "Manage Brand Accounts" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Accounts" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Analytics for did:plc:alice" })).toBeTruthy();
+  expect(spy.mock.calls.every(([, did]) => did === "did:plc:alice")).toBe(true);
+});

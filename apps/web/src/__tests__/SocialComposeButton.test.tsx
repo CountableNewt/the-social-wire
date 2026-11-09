@@ -710,3 +710,24 @@ it("publishes when draft sync is down using the durable local publication journa
 let previousSchedulingFlag: string | undefined;
 beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
 afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+it("keeps posting personal and hides brand controls when the flag is disabled", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const linked = spyOn(brands, "useBrandAccounts").mockReturnValue(["did:plc:brand"]); restores.push(() => linked.mockRestore());
+  const connection = spyOn(brands, "useBrandAccountSession"); restores.push(() => connection.mockRestore());
+  const publish = spyOn(compose, "createBlueskyPost").mockResolvedValue({ uri: "at://did:plc:viewer/app.bsky.feed.post/new", cid: "cid" }); restores.push(() => publish.mockRestore());
+  fireEvent.change(await open(), { target: { value: "Personal Post" } });
+  expect(screen.queryByRole("combobox", { name: "Post As" })).toBeNull();
+  expect(screen.queryByText(/Multi-account support/)).toBeNull();
+  expect(connection).not.toHaveBeenCalled();
+  expect(profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Post" }));
+  await waitForDialogClosed();
+  expect(publish).toHaveBeenCalledTimes(1);
+  expect(publish.mock.calls[0][0].session.did).toBe(oauth.did);
+});

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { toolsEnabled } from "@/lib/toolsEnabled";
 import { isPostSchedulingEnabled } from "@/lib/postScheduling";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 
 /** Cover direct requests, nested routes, and client navigation to Tools. */
 export function proxy(request: NextRequest) {
@@ -8,7 +9,7 @@ export function proxy(request: NextRequest) {
   // Articles has its own authenticated layout and entitlement checks.
   if (section === "articles") return NextResponse.next();
   const scheduling = section === "content-calendar" || section === "scheduling";
-  if (!toolsEnabled() || (scheduling && !isPostSchedulingEnabled())) {
+  if (!toolsEnabled() || (section === "brand-accounts" && !brandAccountsEnabled()) || (scheduling && !isPostSchedulingEnabled())) {
     return new NextResponse("Not Found", {
       status: 404,
       headers: { "Cache-Control": "private, no-store" },

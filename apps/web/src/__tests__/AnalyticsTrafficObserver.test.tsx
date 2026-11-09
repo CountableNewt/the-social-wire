@@ -41,12 +41,25 @@ it("sends only the canonical event fields without destination URLs or message co
   expect(init?.signal).toBeInstanceOf(AbortSignal);
 });
 it("excludes a viewer's linked brand content from traffic measurements", async () => {
+  const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });
   const brands = spyOn(BrandStorage, "listBrandAccounts").mockReturnValue(["did:plc:brand"]); restores.push(() => brands.mockRestore());
   const { fetch } = setup(); render(<AnalyticsTrafficObserver />);
   act(() => emit({ ...event, subjectUri: "at://did:plc:brand/app.bsky.feed.post/abc" }));
   await act(async () => {}); expect(fetch).not.toHaveBeenCalled();
   act(() => emit(event)); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   expect(brands).toHaveBeenCalledWith("did:plc:alice");
+});
+it("does not consult linked-brand storage while Brand Accounts is disabled", async () => {
+  const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });
+  const brands = spyOn(BrandStorage, "listBrandAccounts"); restores.push(() => brands.mockRestore());
+  const { fetch } = setup(); render(<AnalyticsTrafficObserver />);
+  act(() => emit(event));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  expect(brands).not.toHaveBeenCalled();
 });
 it("aborts in-flight events and discards queued old-account events on account switch", async () => {
   const { fetch } = setup(); let finish!: (response: Response) => void;

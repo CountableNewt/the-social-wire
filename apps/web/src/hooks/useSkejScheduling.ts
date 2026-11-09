@@ -10,6 +10,7 @@ import { requirePro } from "@/lib/proEntitlements";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useBrandAccounts } from "@/hooks/useBrandAccounts";
 import { getStoredOAuthDid } from "@/lib/auth";
 import { listBrandAccounts, onBrandAccountsChanged, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
@@ -23,11 +24,12 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
   const access = useRef(isPro);
   useLayoutEffect(() => { access.current = isPro; }, [isPro]);
   const accounts = useBrandAccounts(ownerDid);
+  const brandsAvailable = brandAccountsEnabled();
   const client = useQueryClient();
   const linkage = useRef(0);
   const [revision, setRevision] = useState(0);
-  useLayoutEffect(() => onBrandAccountsChanged(() => { linkage.current++; setRevision(linkage.current); }), []);
-  const generation = useMemo(() => ({ ownerDid, actorDid, oauthSessionReloadSeq, revision }), [ownerDid, actorDid, oauthSessionReloadSeq, revision]);
+  useLayoutEffect(() => brandsAvailable ? onBrandAccountsChanged(() => { linkage.current++; setRevision(linkage.current); }) : undefined, [brandsAvailable]);
+  const generation = useMemo(() => ({ ownerDid, actorDid, oauthSessionReloadSeq, revision, brandsAvailable }), [ownerDid, actorDid, oauthSessionReloadSeq, revision, brandsAvailable]);
   const current = useRef({ ownerDid, actorDid, mounted: true, generation });
   const writing = useRef(false);
   useLayoutEffect(() => {
@@ -39,6 +41,7 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
     if (!access.current) throw new Error("This Feature Requires Social Wire Pro.");
     const identity = current.current;
     if (linkage.current !== revision || identity.generation !== generation || !identity.mounted || identity.ownerDid !== ownerDid || identity.actorDid !== actorDid || session?.did !== ownerDid || getOAuthSession()?.did !== ownerDid || getStoredOAuthDid() !== ownerDid) throw new Error("Your Account Changed. Reopen the Content Calendar.");
+    if (actorDid !== ownerDid && !brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available.");
     if (actorDid !== ownerDid && !listBrandAccounts(ownerDid).includes(actorDid)) throw new Error("This Brand Account Is No Longer Linked.");
   }
   async function requireActor() {
@@ -50,8 +53,8 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
     if (oauth.did !== actorDid) throw new Error("The Scheduling Account Does Not Match.");
     return { session: oauth, assertCurrentActor };
   }
-  const key = ["skejScheduling", ownerDid, actorDid, oauthSessionReloadSeq, revision] as const;
-  const enabled = isPostSchedulingEnabled() && isPro && options.enabled !== false && !!ownerDid && !!actorDid && session?.did === ownerDid && (actorDid === ownerDid || accounts.includes(actorDid));
+  const key = ["skejScheduling", ownerDid, actorDid, oauthSessionReloadSeq, revision, brandsAvailable] as const;
+  const enabled = isPostSchedulingEnabled() && isPro && options.enabled !== false && !!ownerDid && !!actorDid && session?.did === ownerDid && (actorDid === ownerDid || brandsAvailable && accounts.includes(actorDid));
   const readiness = useQuery({ queryKey: [...key, "readiness"], enabled, retry: false, staleTime: 30_000,
     queryFn: async ({ signal }) => getSkejSchedulingReadiness(await requireActor(), signal) });
   const schedules = useQuery({ queryKey: [...key, "schedules"], enabled: enabled && options.includeSchedules !== false && readiness.data?.connected === true, retry: false, staleTime: 15_000,

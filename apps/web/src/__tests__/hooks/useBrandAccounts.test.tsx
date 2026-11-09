@@ -11,6 +11,7 @@ const restores: (() => void)[] = [];
 let owner: string; let linked: string[];
 let isPro = true;
 beforeEach(() => {
+  const flag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; restores.push(() => { if (flag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = flag; });
   isPro = true;
   const entitlement = spyOn(Pro, "useProEntitlements").mockImplementation(() => ({ isPro }) as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
   owner = "did:plc:owner"; linked = ["did:plc:brand", "did:plc:other"];
@@ -76,4 +77,24 @@ it("does not expose or restore persisted brand identities when Tools is unavaila
   expect(Sessions.listBrandAccounts).not.toHaveBeenCalled();
   expect(restore).not.toHaveBeenCalled();
   expect(() => result.current.actor.assertCurrentActor()).toThrow();
+});
+
+it("default-off flag hides stored brands and performs no session restoration", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const restore = spyOn(Sessions, "restoreBrandAccount"); restores.push(() => restore.mockRestore());
+  const { result } = renderHook(() => ({ accounts: useBrandAccounts(owner), actor: useBrandAccountSession(owner, "did:plc:brand") }));
+  await act(async () => {});
+  expect(result.current.accounts).toEqual([]); expect(result.current.actor.session).toBeUndefined();
+  expect(Sessions.listBrandAccounts).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
+  expect(() => result.current.actor.assertCurrentActor()).toThrow();
+});
+
+it("turning off the brand flag invalidates captured acting-account guards", async () => {
+  const restore = spyOn(Sessions, "restoreBrandAccount").mockResolvedValue({ did: "did:plc:brand" } as unknown as OAuthSession); restores.push(() => restore.mockRestore());
+  const { result, rerender } = renderHook(() => useBrandAccountSession(owner, "did:plc:brand"));
+  await waitFor(() => expect(result.current.session?.did).toBe("did:plc:brand"));
+  const previousGuard = result.current.assertCurrentActor;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
+  expect(() => previousGuard()).toThrow();
+  rerender(); expect(result.current.session).toBeUndefined(); expect(() => result.current.assertCurrentActor()).toThrow();
 });

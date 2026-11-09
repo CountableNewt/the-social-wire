@@ -1,5 +1,6 @@
 "use client";
 
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
 import { useRef, useState } from "react";
@@ -14,7 +15,13 @@ import { publishBrandPost } from "@/lib/brandAccounts/brandAccountSocialClient";
 import { BrandPostComposer } from "@/components/BrandAccounts/BrandPostComposer";
 import { Button } from "@/components/ui/button";
 
-export function SocialBrandComposeContent({ ownerDid, actorDid, onPendingChange, onPublished, close }: { ownerDid: string; actorDid: string; onPendingChange: (pending: boolean) => void; onPublished: (scheduled: boolean) => void; close: () => void }) {
+type BrandComposeProps = { ownerDid: string; actorDid: string; onPendingChange: (pending: boolean) => void; onPublished: (scheduled: boolean) => void; close: () => void };
+
+export function SocialBrandComposeContent(props: BrandComposeProps) {
+  return brandAccountsEnabled() ? <EnabledBrandComposeContent {...props} /> : null;
+}
+
+function EnabledBrandComposeContent({ ownerDid, actorDid, onPendingChange, onPublished, close }: BrandComposeProps) {
   const connection = useBrandAccountSession(ownerDid, actorDid);
   const cache = useQueryClient();
   const scheduler = useSkejScheduling(ownerDid, actorDid, { includeSchedules: false });
