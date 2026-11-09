@@ -48,4 +48,3 @@ The current worker topology is documented in
 - [[Deployment-and-environments]] — Railway services and environment boundaries
 - [[Operations]] — operator console, control plane, ingestion recovery, and runbooks
 - [[Testing]] — package commands and CI ownership
-

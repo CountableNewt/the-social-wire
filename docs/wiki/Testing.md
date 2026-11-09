@@ -53,4 +53,3 @@ baselines; percentages are non-regression floors, not whole-application claims.
 
 - [[Contributing]]
 - [CONTRIBUTING.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/CONTRIBUTING.md)
-
