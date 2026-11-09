@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cleanEnvironment, releaseContext, webBuildArguments, imageReference, sourceRevision, railway, waitForDeployment, runtimeSmoke, runtimeVolumeGuardSmoke, webVerificationCommand, webRuntimeSmoke } from './spindle.mjs';
+import { cleanEnvironment, releaseContext, webBuildArguments, imageReference, sourceRevision, railway, waitForDeployment, runtimeSmoke, runtimeVolumeGuardSmoke, webVerificationCommand, webRuntimeSmoke, run } from './spindle.mjs';
 
 const sha = 'a'.repeat(40);
 const digest = 'b'.repeat(64);
@@ -179,7 +179,11 @@ function fakeVolumeGuard(exit = '1', logs = 'Standalone backend requires a persi
     assert.equal(options.timeout, 30000);
     calls.push(args);
     if (args[0] === 'wait') return exit;
-    if (args[0] === 'logs') return logs;
+    if (args[0] === 'logs') {
+      assert.equal(options.combineOutput, true);
+      return logs;
+    }
+    assert.equal(options.combineOutput, undefined);
     return '';
   } };
 }
@@ -301,4 +305,10 @@ test('Web smoke bounds unhealthy startup and rejects exited processes with clean
     assert.ok(fake.calls.some(args => args[0] === 'logs'));
     assert.ok(fake.calls.some(args => args[0] === 'rm'));
   }
+});
+
+test('process captures keep stdout unchanged unless combined stderr is explicitly requested', () => {
+  const args = ['-e', "process.stdout.write('standard-output\\n'); process.stderr.write('diagnostic-output\\n');"];
+  assert.equal(run(process.execPath, args, { capture: true }), 'standard-output');
+  assert.equal(run(process.execPath, args, { capture: true, combineOutput: true }), 'standard-output\ndiagnostic-output');
 });

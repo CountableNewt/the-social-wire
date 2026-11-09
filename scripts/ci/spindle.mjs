@@ -73,11 +73,11 @@ export function sourceRevision(reference, namespace, kind, appEnvironment) {
   return suffix.slice(0, 40);
 }
 
-function run(command, args, { environment = process.env, capture = false, input, timeout = 60 * 60 * 1000 } = {}) {
+export function run(command, args, { environment = process.env, capture = false, combineOutput = false, input, timeout = 60 * 60 * 1000 } = {}) {
   const result = spawnSync(command, args, { env: cleanEnvironment(environment), encoding: 'utf8', input,
     stdio: capture || input !== undefined ? ['pipe', 'pipe', 'pipe'] : 'inherit', timeout, maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`${command} failed${result.status === null ? '' : ` (exit ${result.status})`}.`);
-  return capture ? result.stdout.trim() : '';
+  return capture ? (combineOutput ? `${result.stdout}${result.stderr}` : result.stdout).trim() : '';
 }
 
 function git(args) { return execFileSync('git', args, { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 }).trim(); }
@@ -155,7 +155,7 @@ export async function runtimeVolumeGuardSmoke(image, { execute = run } = {}) {
     docker(['run', '--detach', '--name', name, '--network', 'none', image]);
     const status = docker(['wait', name]);
     if (!/^[1-9][0-9]*$/.test(status)) throw new Error('Standalone image must reject startup without a persistent /data mount.');
-    const logs = docker(['logs', name]);
+    const logs = docker(['logs', name], { combineOutput: true });
     if (!logs.includes('Standalone backend requires a persistent volume mounted at /data.')) throw new Error('Standalone startup did not report its required volume.');
     console.log('Packaged runtime rejected startup without a persistent /data mount.');
   } finally {
