@@ -13,6 +13,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import tempfile
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 # Parents precede children. Derived caches, counters, ingestion history and algorithms
 # stay in Postgres for rollback; the new backend rebuilds its disposable projections.
@@ -38,19 +39,70 @@ def predicate(table):
     return ""
 
 
+def source_connection_environment(source):
+    """Use libpq's individual environment defaults, not a URI as PGDATABASE."""
+    try:
+        url = urlsplit(source)
+        if (url.scheme not in ("postgres", "postgresql") or not url.hostname
+                or not url.username or url.password is None or url.fragment
+                or not url.path.startswith("/") or not url.path[1:]):
+            raise ValueError()
+        port = url.port if url.port is not None else 5432
+        if not 1 <= port <= 65535:
+            raise ValueError()
+        values = {
+            "PGHOST": url.hostname,
+            "PGPORT": str(port),
+            "PGUSER": unquote(url.username, errors="strict"),
+            "PGPASSWORD": unquote(url.password, errors="strict"),
+            "PGDATABASE": unquote(url.path[1:], errors="strict"),
+        }
+        if any("\0" in value for value in values.values()):
+            raise ValueError()
+        allowed = {
+            "sslmode": ("PGSSLMODE", {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}),
+            "channel_binding": ("PGCHANNELBINDING", {"disable", "prefer", "require"}),
+            "target_session_attrs": ("PGTARGETSESSIONATTRS", {"any", "read-write", "read-only", "primary", "standby", "prefer-standby"}),
+        }
+        seen = set()
+        for name, value in parse_qsl(url.query, keep_blank_values=True, strict_parsing=True):
+            if name in seen:
+                raise ValueError()
+            seen.add(name)
+            if name == "connect_timeout":
+                if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 600:
+                    raise ValueError()
+                values["PGCONNECT_TIMEOUT"] = str(int(value))
+            elif name in allowed and value in allowed[name][1]:
+                values[allowed[name][0]] = value
+            else:
+                raise ValueError()
+    except (ValueError, UnicodeError):
+        # URL parser errors can contain connection details. Never forward them.
+        raise ValueError("Invalid or unsupported SOURCE_DATABASE_URL connection settings") from None
+    # Inherited libpq settings (especially PGHOSTADDR/PGSERVICE/PGOPTIONS) must
+    # not redirect this read-only export away from the explicitly chosen source.
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith("PG") and key != "SOURCE_DATABASE_URL"}
+    env.update(values)
+    env.setdefault("PGCONNECT_TIMEOUT", "10")
+    env["PGAPPNAME"] = "social-wire-sqlite-export"
+    return env
+
+
 def export_snapshot(destination):
     source = os.environ.get("SOURCE_DATABASE_URL")
     if not source:
         raise ValueError("Set SOURCE_DATABASE_URL; database credentials are never accepted in arguments")
+    env = source_connection_environment(source)
     statements = ["BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;", "SET LOCAL statement_timeout='10min';"]
     for table in TABLES:
         where = predicate(table)
         statements.append(f"SELECT json_build_object('table','{table}','count',count(*)) FROM public.{table} t{where};")
         statements.append(f"SELECT json_build_object('table','{table}','row',row_to_json(t)) FROM public.{table} t{where};")
     statements.append("COMMIT;")
-    env = dict(os.environ, PGDATABASE=source, PGAPPNAME="social-wire-sqlite-export")
     # Connection strings never appear in argv or diagnostic output.
-    result = subprocess.run(["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1"],
+    result = subprocess.run(["psql", "-X", "-w", "-qAt", "-v", "ON_ERROR_STOP=1"],
                             input="\n".join(statements).encode(), stdout=destination,
                             stderr=subprocess.PIPE, env=env, check=False)
     if result.returncode:

@@ -1,10 +1,82 @@
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 import tempfile
 import unittest
-from postgres_to_sqlite import TABLES, convert, import_snapshot
+from unittest.mock import patch
+from postgres_to_sqlite import TABLES, convert, export_snapshot, import_snapshot
+
+
+class PostgresExportTests(unittest.TestCase):
+    def test_connects_to_explicit_source_without_credentials_in_arguments(self):
+        source = "postgresql://viewer%40example:p%3Ass%2Fword%25@database.internal:6543/reader%20state?sslmode=require&connect_timeout=20&channel_binding=prefer&target_session_attrs=read-only"
+        with patch.dict(os.environ, {
+            "SOURCE_DATABASE_URL": source, "PGHOST": "wrong.internal",
+            "PGHOSTADDR": "127.0.0.1", "PGSERVICE": "wrong-service",
+            "PGOPTIONS": "-c default_transaction_read_only=off", "PGPASSWORD": "wrong-password",
+        }), patch("postgres_to_sqlite.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run:
+            output = io.BytesIO()
+            export_snapshot(output)
+        args, options = run.call_args
+        self.assertEqual(args[0], ["psql", "-X", "-w", "-qAt", "-v", "ON_ERROR_STOP=1"])
+        env = options["env"]
+        self.assertEqual({key: env[key] for key in ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE")}, {
+            "PGHOST": "database.internal", "PGPORT": "6543", "PGUSER": "viewer@example",
+            "PGPASSWORD": "p:ss/word%", "PGDATABASE": "reader state",
+        })
+        self.assertEqual(env["PGSSLMODE"], "require")
+        self.assertEqual(env["PGCONNECT_TIMEOUT"], "20")
+        self.assertEqual(env["PGCHANNELBINDING"], "prefer")
+        self.assertEqual(env["PGTARGETSESSIONATTRS"], "read-only")
+        for key in ("SOURCE_DATABASE_URL", "PGHOSTADDR", "PGSERVICE", "PGOPTIONS"):
+            self.assertNotIn(key, env)
+        self.assertIs(options["stdout"], output)
+        sql = options["input"].decode()
+        self.assertTrue(sql.startswith("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;"))
+        self.assertTrue(sql.endswith("COMMIT;"))
+        for table in TABLES:
+            self.assertIn(f"FROM public.{table} t", sql)
+        self.assertIn("WHERE EXISTS (SELECT 1 FROM public.appview_publication_scopes", sql)
+
+    def test_supports_ipv6_and_default_port_without_using_local_socket(self):
+        for source, host in [("postgres://user:secret@[2001:db8::1]/reader", "2001:db8::1"),
+                             ("postgresql://user:secret@database.internal/reader", "database.internal")]:
+            with self.subTest(source=host), patch.dict(os.environ, {"SOURCE_DATABASE_URL": source}), patch("postgres_to_sqlite.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run:
+                export_snapshot(io.BytesIO())
+                env = run.call_args.kwargs["env"]
+                self.assertEqual(env["PGHOST"], host)
+                self.assertEqual(env["PGPORT"], "5432")
+                self.assertEqual(env["PGCONNECT_TIMEOUT"], "10")
+
+    def test_rejects_ambiguous_or_unsupported_settings_before_psql(self):
+        for source in [
+            "", "https://user:secret@database.internal/reader", "postgresql:///reader",
+            "postgresql://user:secret@database.internal", "postgresql://user@database.internal/reader",
+            "postgresql://user:secret@database.internal:0/reader",
+            "postgresql://user:secret@database.internal/reader#fragment",
+            "postgresql://user:secret@database.internal/reader?host=other.internal",
+            "postgresql://user:secret@database.internal/reader?sslmode=invalid",
+            "postgresql://user:secret@database.internal/reader?sslmode=require&sslmode=disable",
+            "postgresql://user:secret@database.internal/reader?connect_timeout=0",
+            "postgresql://user:secret@database.internal/reader?connect_timeout=601",
+            "postgresql://user:secret@database.internal/reader?options=-c%20default_transaction_read_only%3Doff",
+        ]:
+            with self.subTest(source=source), patch.dict(os.environ, {"SOURCE_DATABASE_URL": source}), patch("postgres_to_sqlite.subprocess.run") as run:
+                with self.assertRaises(ValueError) as error:
+                    export_snapshot(io.BytesIO())
+                self.assertNotIn("secret", str(error.exception))
+                run.assert_not_called()
+
+    def test_sanitizes_export_errors_without_echoing_source_or_driver_stderr(self):
+        source = "postgresql://user:private-password@database.internal/reader"
+        with patch.dict(os.environ, {"SOURCE_DATABASE_URL": source}), patch("postgres_to_sqlite.subprocess.run", return_value=SimpleNamespace(returncode=2, stderr=source.encode())):
+            with self.assertRaisesRegex(ValueError, "Postgres export failed") as error:
+                export_snapshot(io.BytesIO())
+        self.assertNotIn("private-password", str(error.exception))
+        self.assertNotIn(source, str(error.exception))
 
 
 class SQLiteCutoverTests(unittest.TestCase):
