@@ -5,7 +5,7 @@ import HTTPTypes
 import NIOFoundationCompat
 
 struct AnalyticsRoutes: Sendable {
-  let store: AnalyticsStore
+  let store: any AnalyticsStoring
   let provider: any AnalyticsContentProviding
   let limits = AnalyticsLimits()
   var now: @Sendable () -> Date = { Date() }

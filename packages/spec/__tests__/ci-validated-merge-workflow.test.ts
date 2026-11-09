@@ -25,6 +25,6 @@ describe("Production merged commit verification", () => {
     expect(ci.jobs.required.needs).toContain("changes");
     expect(ci.jobs.required.name).toBe("CI — Required");
     expect(ci.on).toHaveProperty("pull_request");
-    expect(ci.on).not.toHaveProperty("push");
+    expect(ci.on.push).toEqual({ branches: ["main", "dev"] });
   });
 });

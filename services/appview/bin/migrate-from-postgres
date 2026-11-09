@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+umask 077
+if [ -z "${SOURCE_DATABASE_URL:-}" ]; then
+  echo 'SOURCE_DATABASE_URL is required for the read-only source snapshot.' >&2
+  exit 1
+fi
+# Run as a one-shot job while the old writers and destination API are stopped.
+# Initialization creates enabled feature schemas without starting listeners or jobs.
+/usr/local/bin/AppView --initialize-only
+exec python3 /usr/local/share/social-wire/postgres_to_sqlite.py --destination "$SQLITE_DB_PATH"

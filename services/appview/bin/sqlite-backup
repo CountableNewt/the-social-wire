@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+umask 077
+if [ "$#" -ne 1 ]; then echo 'Usage: sqlite-backup /absolute/path/to/new-backup.sqlite' >&2; exit 2; fi
+source_path=${SQLITE_DB_PATH:-/data/social-wire.sqlite}
+backup_path=$1
+case "$backup_path" in /*) ;; *) echo 'Backup destination must be absolute.' >&2; exit 2 ;; esac
+if [ ! -f "$source_path" ]; then echo 'Source database does not exist.' >&2; exit 1; fi
+if [ -e "$backup_path" ] || [ -L "$backup_path" ]; then echo 'Backup destination already exists.' >&2; exit 1; fi
+# Backup API takes a consistent snapshot including committed WAL pages; never copy a live DB file.
+# The CLI's VACUUM INTO SQL needs a safely quoted string literal.
+escaped_path=$(printf '%s' "$backup_path" | sed "s/'/''/g")
+sqlite3 -cmd '.timeout 10000' "$source_path" "VACUUM INTO '$escaped_path';"
+if [ "$(sqlite3 "$backup_path" 'PRAGMA quick_check;')" != ok ]; then
+  echo 'Backup integrity verification failed.' >&2
+  exit 1
+fi
+chmod 0600 "$backup_path"
+printf 'Verified SQLite backup: %s\n' "$backup_path"

@@ -11077,6 +11077,2510 @@
       ]
     },
     {
+      "name": "thin-app-view-core",
+      "source": "packages/swift/thin-app-view-core",
+      "target": "packages/go/thin-app-view-core",
+      "sources": [
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AggregateFeedQuerySupport.swift",
+          "sha256": "dcd87ed2441ed12cc4263966dbe04f681e335b003882108291a6cab9cd61745a",
+          "lines": 123,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedConnectionLifetime.swift",
+          "sha256": "fb7567f4e530d892abb32281c96ca20f8d738880c843a4c3600fcf376300d296",
+          "lines": 67,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedKind.swift",
+          "sha256": "aa5e2e559856f5ac549488e577e68ae71736b67ae1c052dd90ebc333e943458b",
+          "lines": 13,
+          "publicDeclarations": [
+            "public enum AppViewFeedKind: String, Codable, Sendable, Equatable {",
+            "public var requiresId: Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedPage.swift",
+          "sha256": "da2f90681546e0649afc3d1e823f7d03b335af8fd5d99b188be4f2e020b3d02d",
+          "lines": 17,
+          "publicDeclarations": [
+            "public struct AppViewFeedPage: Sendable {",
+            "public let response: AppViewEntryListResponse",
+            "public let membershipUpdatedAt: Date",
+            "public let databaseDurationMilliseconds: Double",
+            "public init("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedPublication.swift",
+          "sha256": "ed06f6eb92526c34e0eea529f19144c4ba1af2ef0db42201de8d40a55e3aa08f",
+          "lines": 15,
+          "publicDeclarations": [
+            "public struct AppViewFeedPublication: Codable, Sendable, Equatable {",
+            "public let viewerDid: String",
+            "public let kind: AppViewFeedKind",
+            "public let feedId: String",
+            "public let publicationId: String",
+            "public init(viewerDid: String, kind: AppViewFeedKind, feedId: String, publicationId: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedQueryDeadline.swift",
+          "sha256": "fed45cc57d87b52e0d73ee4d0eaca9ad094058a11975f2cf973417b1c3b7eada",
+          "lines": 28,
+          "publicDeclarations": [
+            "public struct AppViewFeedQueryDeadline: Sendable {",
+            "public enum Failure: Error { case exceeded }",
+            "public let instant: ContinuousClock.Instant",
+            "public init(duration: Duration = .seconds(2), startedAt: ContinuousClock.Instant = .now) {",
+            "public func check(at now: ContinuousClock.Instant = .now) throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedRequestTimings.swift",
+          "sha256": "7a3abb9a18b6c436bf1d248e190c6e923e6ec62cd8fdaa1a598717fa0a588b4c",
+          "lines": 97,
+          "publicDeclarations": [
+            "public final class AppViewFeedRequestTimings: @unchecked Sendable {",
+            "public enum Stage: String, CaseIterable, Sendable {",
+            "public init() {}",
+            "public static func start(_ stage: Stage, at: ContinuousClock.Instant = .now) -> Span? {",
+            "public static func measure<Value: Sendable>(",
+            "public func finish() -> [String: Int64] {",
+            "public final class Span: @unchecked Sendable {",
+            "public func finish(at: ContinuousClock.Instant = .now) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewFeedSelector.swift",
+          "sha256": "ef5af22b17a01fc16992c75f33eac12e0e6437f7465c8680ef1ed65118d10b75",
+          "lines": 16,
+          "publicDeclarations": [
+            "public struct AppViewFeedSelector: Codable, Sendable, Equatable {",
+            "public let kind: AppViewFeedKind",
+            "public let id: String",
+            "public init(kind: AppViewFeedKind, id: String? = nil) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewIngestionInboxModels.swift",
+          "sha256": "d200567e52a32b53d5270a8410062c5e6864b3c2ed4fcb077fb41a5223ca68c0",
+          "lines": 80,
+          "publicDeclarations": [
+            "public enum AppViewIngestionEventKind: String, Sendable, Codable, Equatable {",
+            "public struct AppViewIngestionInboxItem: Sendable, Equatable {",
+            "public let environment: String",
+            "public let sourceGeneration: String",
+            "public let sequence: Int64",
+            "public let sourceHost: String",
+            "public let eventKind: AppViewIngestionEventKind",
+            "public let repoDid: String",
+            "public let collection: String?",
+            "public let operation: String?",
+            "public let repoRev: String?",
+            "public let recordKey: String?",
+            "public let recordCID: String?",
+            "public let payload: Data",
+            "public let eventTime: Date",
+            "public let attemptCount: Int",
+            "public let leaseToken: String",
+            "public let leaseExpiresAt: Date",
+            "public init(",
+            "public enum AppViewIngestionInboxStoreError: Error, Sendable, Equatable {",
+            "public struct AppViewIngestionReconciliationRequest: Sendable, Equatable {",
+            "public let environment: String",
+            "public let id: String",
+            "public let sourceGeneration: String",
+            "public let repoDid: String",
+            "public let reason: String",
+            "public let triggerSequence: Int64",
+            "public let attemptCount: Int",
+            "public let leaseToken: String",
+            "public let leaseExpiresAt: Date"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewProjectionCacheBackend.swift",
+          "sha256": "213e50d52eb6f4ba268debd2194058f1d8071d4e5c34b0d5f4d2d4212432d1ca",
+          "lines": 22,
+          "publicDeclarations": [
+            "public enum AppViewProjectionCacheBackend: String, Sendable {",
+            "public static func fromEnvironment(",
+            "public enum AppViewProjectionCacheBackendError: Error, Sendable, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewProjectionCacheStore.swift",
+          "sha256": "4b609d780bd4f98b2197d2a1e1c0ae04ef96a8493cd3effa65d13c14e70a8bcc",
+          "lines": 269,
+          "publicDeclarations": [
+            "public enum AppViewProjectionCacheTTL {",
+            "public static let sidebarSeconds: TimeInterval = 60 * 60",
+            "public static let unreadCountsSeconds: TimeInterval = 2 * 60",
+            "public static let firstPageSeconds: TimeInterval = 5 * 60",
+            "public static let sidebarHardSeconds: TimeInterval = 6 * 60 * 60",
+            "public static let unreadCountsHardSeconds: TimeInterval = 15 * 60",
+            "public static let firstPageHardSeconds: TimeInterval = 30 * 60",
+            "public enum AppViewProjectionCacheViewerKeys {",
+            "public static let sharedFirstPage = \"__shared_first_page__\"",
+            "public enum AppViewProjectionCacheSource: String, Codable, Sendable, Equatable {",
+            "public struct AppViewProjectionCacheEntry<Value: Sendable>: Sendable {",
+            "public let value: Value",
+            "public let cachedAt: Date",
+            "public let freshUntil: Date",
+            "public let hardExpiresAt: Date",
+            "public let source: AppViewProjectionCacheSource",
+            "public var expiresAt: Date { freshUntil }",
+            "public init(",
+            "public init(",
+            "public enum AppViewProjectionCacheLookup<Value: Sendable>: Sendable {",
+            "public struct AppViewProjectionRefreshLease: Sendable, Equatable {",
+            "public let key: String",
+            "public let owner: String",
+            "public let ttlMilliseconds: Int",
+            "public init(key: String, owner: String, ttlMilliseconds: Int) {",
+            "public protocol AppViewProjectionCacheStore: Actor {",
+            "public enum AppViewProjectionCacheScopeKeys {",
+            "public static func publicationSiteKeys("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewUnreadCounterSupport.swift",
+          "sha256": "fc202c76f3d69cf9760a0b2a609106360056dd1c8a304b7c9e939769e5cd0a00",
+          "lines": 61,
+          "publicDeclarations": [
+            "public enum AppViewUnreadCounterSupport {",
+            "public static func generation(for date: Date = Date()) -> Int64 {",
+            "public static func scopeKeys(",
+            "public static func publicationScope(",
+            "public static func contentMatchesScope("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AppViewViewerFeed.swift",
+          "sha256": "9a8f1be993a679fd6dd8534459b581d1a5546301a72e3fd7d46f731d3258d2a3",
+          "lines": 15,
+          "publicDeclarations": [
+            "public struct AppViewViewerFeed: Codable, Sendable, Equatable {",
+            "public let viewerDid: String",
+            "public let kind: AppViewFeedKind",
+            "public let feedId: String",
+            "public let updatedAt: Date",
+            "public init(viewerDid: String, kind: AppViewFeedKind, feedId: String, updatedAt: Date) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AuthoritativeContentCheck.swift",
+          "sha256": "f8ab3e7c29b0685812308da2183328c6424742311af518b8e0d6e504ec56eee1",
+          "lines": 145,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AuthoritativeContentVerificationError.swift",
+          "sha256": "e4437361f5fe8a90eac5016ae25d7091096c1e08e15c464dac766e1136d8f852",
+          "lines": 6,
+          "publicDeclarations": [
+            "public enum AuthoritativeContentVerificationError: Error, Sendable, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AuthoritativeContentVerifier.swift",
+          "sha256": "14b5371f79024e1e3ee93e0d7ec5e39b8388122a6dab53898884b778dc9449d6",
+          "lines": 105,
+          "publicDeclarations": [
+            "public actor AuthoritativeContentVerifier: AuthoritativeContentVerifying {",
+            "public init(store: any ThinAppViewStore, indexer: ThinAppViewIndexer,",
+            "public func verify(entryURI: String) async throws -> Bool {",
+            "public func shutdown() async {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/AuthoritativeContentVerifying.swift",
+          "sha256": "df7c3a25332fafe0610b970096002fbdcb9c00037aee2d49bda935b04ecf9bab",
+          "lines": 5,
+          "publicDeclarations": [
+            "public protocol AuthoritativeContentVerifying: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/BoundedSequentialMessagePump.swift",
+          "sha256": "f9f05ab992b30cd368e12725d53c9af9aa0f43bdf6e2714734c2d64c26f429eb",
+          "lines": 131,
+          "publicDeclarations": [
+            "public struct BoundedQueueObservation: Sendable, Equatable {",
+            "public let depth: Int",
+            "public let capacity: Int",
+            "public let dropped: Int64",
+            "public init(depth: Int, capacity: Int, dropped: Int64) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ContentVerificationExpectation.swift",
+          "sha256": "5b108f87e484e7c85488b1d35858ddfd32741486370ec08f8183e88b0234db11",
+          "lines": 6,
+          "publicDeclarations": [
+            "public struct ContentVerificationExpectation: Sendable {",
+            "public let cid: String?",
+            "public init(cid: String?) { self.cid = cid }"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ContentVerificationJSON.swift",
+          "sha256": "1911737589988ba69195d12f4b96b7b2f49d65006a5e7b7ce6656d794c972de6",
+          "lines": 83,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ContentVerificationMetadata.swift",
+          "sha256": "41be493286734c29ce246aaf006951ff9883ee74814011393889e3d273d45d09",
+          "lines": 9,
+          "publicDeclarations": [
+            "public struct ContentVerificationMetadata: Sendable, Equatable {",
+            "public let cid: String",
+            "public let publicationSite: String?",
+            "public init(cid: String, publicationSite: String?) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ContentVerificationMetadataStoring.swift",
+          "sha256": "ecd8d6cfa045726fa64ed064b3c67b20d2aee4767351c1f2d5b4ec5e619ab524",
+          "lines": 6,
+          "publicDeclarations": [
+            "public protocol ContentVerificationMetadataStoring: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/DatabaseBackend.swift",
+          "sha256": "96a4fc2694bb3095ce6b098286720dafbc193de4915dec694e13042c79a44d2e",
+          "lines": 47,
+          "publicDeclarations": [
+            "public enum DatabaseBackend: Sendable {",
+            "public static func fromEnvironment(",
+            "public enum DatabaseBackendConfigurationError: Error, Equatable, CustomStringConvertible {",
+            "public var description: String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/FinanceSelectionMutation.swift",
+          "sha256": "8116a0d90201f1bf43de58021ae991f4a1564bf9f41ecaebab294656233eeb6c",
+          "lines": 32,
+          "publicDeclarations": [
+            "public struct FinanceSelectionMutation: Sendable, Equatable {",
+            "public let viewerDID: String",
+            "public let recordKey: String",
+            "public let kind: String?",
+            "public let reference: String?",
+            "public let eventAt: Date",
+            "public let repoRev: String",
+            "public var isDeleted: Bool { kind == nil }",
+            "public static func parse(viewerDID: String, recordKey: String, operation: String,"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/FinanceSelectionStoring.swift",
+          "sha256": "46905267f53d73c76dd6099818756e134d54889447d64110196026835412f3aa",
+          "lines": 3,
+          "publicDeclarations": [
+            "public protocol FinanceSelectionStoring: Actor {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/FirehoseLinuxWebSocket.swift",
+          "sha256": "09ed0122e1b2258f6fabdc6eed1f40a843b89e6821318b60df5f0a3539d2de7f",
+          "lines": 167,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/FirehoseSubscriberURLSessionTransport.swift",
+          "sha256": "098d255fadde0e14ec13f307466168b55cc85fedf8c3ddb3b60681fa07c56241",
+          "lines": 67,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/FrozenReadMarkStoring.swift",
+          "sha256": "4a8f62ba74db0c8c25757e71428d842b8c52e9bae6bcedce1c5b4a7109df7d1d",
+          "lines": 6,
+          "publicDeclarations": [
+            "public protocol FrozenReadMarkStoring: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/HTTPResponseBodyDrain.swift",
+          "sha256": "81d8220057016536f1abafdb02ac3d828b5141609549674d60925bc1dff62ace",
+          "lines": 20,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/HtmlTextDecoder.swift",
+          "sha256": "c27765cb665c73056c84c6e5d920997ac9a68904c837da501dc2b17099b99508",
+          "lines": 106,
+          "publicDeclarations": [
+            "public enum HtmlTextDecoder {",
+            "public static func decodePlainText(_ raw: String) -> String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/JetstreamCursor.swift",
+          "sha256": "cad68f780e357f9c38acf2fa7563d650d6770bc4f984cc07f2d62a82628fab6c",
+          "lines": 44,
+          "publicDeclarations": [
+            "public enum JetstreamCursor {",
+            "public static func parse(_ value: Any?) -> Int64? {",
+            "public static func resumeCursor(",
+            "public static func url(_ raw: String, cursor: Int64?) throws -> String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/JetstreamInboxProjectionWorker.swift",
+          "sha256": "b28c0361fffc6a27a9c99a73f9918af23119bae67bff1bd539a9b71818242ca4",
+          "lines": 793,
+          "publicDeclarations": [
+            "public final class JetstreamInboxProjectionWorker: Sendable {",
+            "public init(",
+            "public func runForever() async {",
+            "public func drainOnce(at now: Date = Date()) async throws -> Int {",
+            "public enum JetstreamInboxProjectionError: Error, Sendable, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/JetstreamReplayEnvelopePolicy.swift",
+          "sha256": "7f0c5ac3242678e08ef839c3d4c59c6d13e7d01a413c1922e5e85c9cfcec66e9",
+          "lines": 35,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/JetstreamReplayProgressMonitor.swift",
+          "sha256": "35ee70a5056221831860cca207764813834df0272007f07935ed92980858f109",
+          "lines": 58,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/JetstreamV2ProjectionEvent.swift",
+          "sha256": "a54fd832944241467e40082df9719a919939196e17913d4f9f2dcf7252f374ff",
+          "lines": 226,
+          "publicDeclarations": [
+            "public enum JetstreamV2ProjectionEvent: Sendable, Equatable {",
+            "public struct Commit: Sendable, Equatable {",
+            "public let did: String",
+            "public let sequence: Int64",
+            "public let eventTime: Date",
+            "public let operation: Operation",
+            "public let collection: String",
+            "public let rkey: String",
+            "public let repoRev: String",
+            "public let cid: String?",
+            "public let recordJSON: Data?",
+            "public enum Operation: String, Sendable, Equatable {",
+            "public struct Identity: Sendable, Equatable {",
+            "public let did: String",
+            "public let sequence: Int64",
+            "public let eventTime: Date",
+            "public let handle: String?",
+            "public struct Account: Sendable, Equatable {",
+            "public let did: String",
+            "public let sequence: Int64",
+            "public let eventTime: Date",
+            "public let active: Bool",
+            "public let status: TapAccountStatus",
+            "public struct Sync: Sendable, Equatable {",
+            "public let did: String",
+            "public let sequence: Int64",
+            "public let eventTime: Date",
+            "public let repoRev: String",
+            "public enum JetstreamV2ProjectionEventParseError: Error, Sendable, Equatable {",
+            "public enum JetstreamV2ProjectionEventParser {",
+            "public static func parse("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/LivePDSReadStateRecordFetcher.swift",
+          "sha256": "f5de7f16eebcb6d21c64b386c17f41637b19d902220200da9e290fc6bb75f03b",
+          "lines": 55,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/MicrocosmContentDiscovery.swift",
+          "sha256": "02f4a6d872680292786df5b62e5aaba1da822950da17e317069a97789dbd1db1",
+          "lines": 129,
+          "publicDeclarations": [
+            "public struct MicrocosmContentDiscovery: PublicContentDiscovering {",
+            "public init(indexer: ThinAppViewIndexer, httpClient: HTTPClient) {",
+            "public func discover(scope: PublicContentDiscoveryScope) async throws -> Int {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/MicrocosmPublicHTTPTransport.swift",
+          "sha256": "7358bcd9bda007cd4f0ec828e2876aed9187a92be3b82df32deb510c9099524a",
+          "lines": 17,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/OperationsHeartbeatJob.swift",
+          "sha256": "f127fd563877f5663bb8bdd4a12cf0d98c1e01aa39104505fc1d0ba61a34624b",
+          "lines": 373,
+          "publicDeclarations": [
+            "public struct OperationsServiceProbeResult: Sendable {",
+            "public let liveness: OperationsHealthState",
+            "public let readiness: OperationsHealthState",
+            "public let freshness: OperationsHealthState",
+            "public let completeness: OperationsHealthState",
+            "public let dependencyState: [String: String]",
+            "public let requiredDependencyKeys: Set<String>",
+            "public let observedAt: Date",
+            "public let validUntil: Date",
+            "public init(",
+            "public struct OperationsHeartbeatJob: Sendable {",
+            "public init(",
+            "public func runForever() async {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSHTTPTransport.swift",
+          "sha256": "6c8b4aff6d63f3c2f5e00c435dcb757b7bf014e6b3953caa2d27445531d9d49a",
+          "lines": 34,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSListRecordsCursor.swift",
+          "sha256": "43eb8ae2f922c676da79fd052f413bd6eeeb4a209e88f1a77ee036b124cc9467",
+          "lines": 25,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateEvictionBatch.swift",
+          "sha256": "2be7790928dc879a4684f6c78c1a3e15f7f28492af2e31b884ec83ea923a892e",
+          "lines": 10,
+          "publicDeclarations": [
+            "public struct PDSReadStateEvictionBatch: Sendable {",
+            "public let viewerDid: String?",
+            "public let deletedRows: Int",
+            "public let hasMore: Bool",
+            "public init(viewerDid: String?, deletedRows: Int, hasMore: Bool) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateEvictionConfiguration.swift",
+          "sha256": "ccce8ed573284e52577a8db01dc458712a41be4a8417b07f6ad4db866e405a6c",
+          "lines": 17,
+          "publicDeclarations": [
+            "public struct PDSReadStateEvictionConfiguration: Sendable {",
+            "public let enabled: Bool",
+            "public let idleSeconds: TimeInterval",
+            "public static let disabled = Self(enabled: false, idleSeconds: 7 * 86_400)",
+            "public init(enabled: Bool, idleSeconds: TimeInterval = 7 * 86_400) {",
+            "public static func fromEnvironment(_ values: [String: String]) -> Self {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateFetchedRecord.swift",
+          "sha256": "93998aa77ea673fec95d74789234b0e5475109b190d1a7045035f6a90054ee6f",
+          "lines": 14,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateLifecycleStoring.swift",
+          "sha256": "4bf3b9474234117dc3f6d1fd6771096536a6abf9f35de0c74f92849eaa1ffa8e",
+          "lines": 9,
+          "publicDeclarations": [
+            "public protocol PDSReadStateLifecycleStoring: PDSReadStateStoring {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateManifestTransition.swift",
+          "sha256": "a2904283a8de4450caaa5deffd5cbfe1f00c892c88e9b618ca0105803ccb9f1b",
+          "lines": 31,
+          "publicDeclarations": [
+            "public enum PDSReadStateManifestTransition {",
+            "public static func validate(previous: ReadStateManifest, previousCID: String,",
+            "public static func isMaintenance(previous: ReadStateManifest?, candidate: ReadStateManifest) -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateProjector.swift",
+          "sha256": "94511094c2134a24079b3fed50a9a9d60d4517577f1f4cf93cb608061f6aa7b9",
+          "lines": 44,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateRecoveryCoordinator.swift",
+          "sha256": "617c20b489fcab7b336aacd5aac413c7b82ccb24bdaa1768ace617ca65ccd420",
+          "lines": 179,
+          "publicDeclarations": [
+            "public actor PDSReadStateRecoveryCoordinator {",
+            "public init(store: any PDSReadStateLifecycleStoring, operations: any OperationsStore,",
+            "public func requireReady(viewerDid: String) async throws {",
+            "public func shutdown() async {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateStorageError.swift",
+          "sha256": "8b3fcab5ee2302a86bb8c181641228217162da1620b0b3265fc55aee60d3725c",
+          "lines": 10,
+          "publicDeclarations": [
+            "public enum PDSReadStateStorageError: Error, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateStoring.swift",
+          "sha256": "1e7bd8d5f373f58da820f19b263e68e896f2a5ff44c59662160dcbfd628d0bfc",
+          "lines": 26,
+          "publicDeclarations": [
+            "public protocol PDSReadStateStoring: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSReadStateVerifiedRecordCache.swift",
+          "sha256": "aaa2b28e52b129e7bfafbcea528bec12278c107afe8344cc320747bad37ac29b",
+          "lines": 45,
+          "publicDeclarations": [
+            "public actor PDSReadStateVerifiedRecordCache {",
+            "public init(maximumBytes: Int = 8 * 1024 * 1024, maximumEntries: Int = 512, ttl: TimeInterval = 3600) {",
+            "public func value(for reference: ReadStateReference, now: Date = Date()) -> Data? {",
+            "public func insert(_ json: Data, for reference: ReadStateReference, now: Date = Date()) throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSRepositoryRecovery.swift",
+          "sha256": "80b21d00279a5fba5ae46dc6f7272a78d3e8c5765ebb23dc6c3b3bf0d5c8c7c4",
+          "lines": 107,
+          "publicDeclarations": [
+            "public struct PDSRepositoryRecoveryContext: Sendable {",
+            "public let environment: String",
+            "public let sourceGeneration: String",
+            "public let sequence: Int64",
+            "public let repoDid: String",
+            "public let requestId: String?",
+            "public let workerId: String",
+            "public let leaseToken: String"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PDSResolvedEndpointValidator.swift",
+          "sha256": "a92355cf46749eee8cefc0fd260558d886a403ea7eb15a35d3b3b51661dc1e04",
+          "lines": 110,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastChapter.swift",
+          "sha256": "81eb4150a60823b819bcbac4698bb772c55d7c43eba370d8cb9d24abbf71370c",
+          "lines": 14,
+          "publicDeclarations": [
+            "public struct PodcastChapter: Codable, Sendable, Equatable {",
+            "public var startSeconds: Double",
+            "public var title: String",
+            "public var artworkUrl: String?",
+            "public var url: String?",
+            "public init(startSeconds: Double, title: String, artworkUrl: String? = nil, url: String? = nil) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastChapterParser.swift",
+          "sha256": "de40b4082eff6499c7129191fb94c0fe134a836af88d8b50d5311561c3703984",
+          "lines": 38,
+          "publicDeclarations": [
+            "public enum PodcastChapterParser {",
+            "public static func parse(_ data: Data, duration: Double? = nil) -> [PodcastChapter] {",
+            "public static func chapters(_ rows: [[String: Any]], duration: Double? = nil) -> [PodcastChapter] {",
+            "public static func people(_ rows: [[String: Any]]) -> [PodcastPerson] {",
+            "public static func safeURL(_ raw: String?) -> String? {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastClip.swift",
+          "sha256": "2130155bcb03a0b2c28388aa0b3c912dc27d45c7b6299cb1e9cb13de95fbcbf5",
+          "lines": 33,
+          "publicDeclarations": [
+            "public struct PodcastClip: Codable, Sendable, Equatable {",
+            "public var id: String",
+            "public var episodeId: String",
+            "public var sourceUri: String?",
+            "public var jobId: String?",
+            "public var startSeconds: Double",
+            "public var endSeconds: Double",
+            "public var title: String",
+            "public var status: String",
+            "public var audioUrl: String?",
+            "public var videoUrl: String?",
+            "public var publicAudioUrl: String?",
+            "public var publicVideoUrl: String?",
+            "public var audioKey: String?",
+            "public var videoKey: String?",
+            "public var durationSeconds: Double?",
+            "public var publishedUri: String?",
+            "public var createdAt: String",
+            "public init("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastDirectoryCandidate.swift",
+          "sha256": "664e4ecfb4714a91864dcbefa3d29448fbee207b6450f4773731427720848be3",
+          "lines": 18,
+          "publicDeclarations": [
+            "public struct PodcastDirectoryCandidate: Codable, Sendable, Equatable {",
+            "public var provider: String = \"podcastindex\"",
+            "public var id: String",
+            "public var title: String",
+            "public var description: String?",
+            "public var artworkUrl: String?",
+            "public var feedUrl: String",
+            "public init(id: String, title: String, description: String? = nil, artworkUrl: String? = nil, feedUrl: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastEpisode.swift",
+          "sha256": "6643c467c640b67d135d034175033c645df3ab9b8614de05b74844a3d9a132d2",
+          "lines": 45,
+          "publicDeclarations": [
+            "public struct PodcastEpisode: Codable, Sendable, Equatable {",
+            "public var id: String",
+            "public var showId: String",
+            "public var title: String",
+            "public var description: String?",
+            "public var publishedAt: String",
+            "public var audioUrl: String",
+            "public var audioMimeType: String?",
+            "public var durationSeconds: Double?",
+            "public var artworkUrl: String?",
+            "public var guid: String?",
+            "public var sourceUri: String?",
+            "public var transcripts: [PodcastTranscript]",
+            "public var visibility: String? = nil",
+            "public var chapters: [PodcastChapter] = []",
+            "public var chapterSourceUrl: String? = nil",
+            "public var showArtworkUrl: String? = nil",
+            "public init(from decoder: any Decoder) throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastID3ChapterArtwork.swift",
+          "sha256": "6da0fcd7ee934143e8168da219eb597f34cdc58418590e9794c57ae4173e8f5e",
+          "lines": 13,
+          "publicDeclarations": [
+            "public struct PodcastID3ChapterArtwork: Sendable, Equatable {",
+            "public let startSeconds: Double",
+            "public let data: Data",
+            "public let mimeType: String",
+            "public init(startSeconds: Double, data: Data, mimeType: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastID3ChapterArtworkParser.swift",
+          "sha256": "61649ef11f0529c114e9e1eb36b711fb280345c9aa406144adca38892a91c334",
+          "lines": 102,
+          "publicDeclarations": [
+            "public enum PodcastID3ChapterArtworkParser {",
+            "public static let maximumTagBytes = 4 * 1024 * 1024",
+            "public static let maximumImageBytes = 1024 * 1024",
+            "public static func tagByteCount(header: Data) -> Int? {",
+            "public static func parse(_ data: Data) -> [PodcastID3ChapterArtwork] {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastImage.swift",
+          "sha256": "e368cc2785975d3fdfc2ad259b7461c0df941eef237c404437d9075daf991d47",
+          "lines": 19,
+          "publicDeclarations": [
+            "public enum PodcastImage {",
+            "public static func mimeType(_ data: Data) -> String? {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastListenerState.swift",
+          "sha256": "5943841f1f4f733eecc5b73f21494ef5b8dba9e150496e5479bef3c389ead929",
+          "lines": 27,
+          "publicDeclarations": [
+            "public struct PodcastListenerState: Codable, Sendable, Equatable {",
+            "public var subscriptions: [String] = []",
+            "public var queue: [String] = []",
+            "public var progress: [String: PodcastProgress] = [:]",
+            "public var playbackSpeed: Double = 1",
+            "public var removeSilences: Bool = false",
+            "public var manualLinks: [PodcastManualLink] = []",
+            "public init() {}",
+            "public func validate() -> Bool {",
+            "public mutating func normalizePlaybackSpeed() {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastManualLink.swift",
+          "sha256": "cf97c5bf546a01e6d8d91953299f74cb88c461d7cc0b1b8758810ad986932e80",
+          "lines": 10,
+          "publicDeclarations": [
+            "public struct PodcastManualLink: Codable, Sendable, Equatable {",
+            "public var rssShowId: String",
+            "public var protocolShowId: String",
+            "public init(rssShowId: String, protocolShowId: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastParseError.swift",
+          "sha256": "f8b311eb389551601885512ad2c57cc3c400cf18ddca7a9cfc6993198aaedf74",
+          "lines": 1,
+          "publicDeclarations": [
+            "public enum PodcastParseError: Error { case invalidXML, unsupportedSource, invalidMedia }"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastPerson.swift",
+          "sha256": "d1ba03518b6b9a2e0021512d58b5a79518d5d36ddf6ec79f556cfbfc127e9dec",
+          "lines": 14,
+          "publicDeclarations": [
+            "public struct PodcastPerson: Codable, Sendable, Equatable {",
+            "public var name: String",
+            "public var role: String?",
+            "public var imageUrl: String?",
+            "public var url: String?",
+            "public init(name: String, role: String? = nil, imageUrl: String? = nil, url: String? = nil) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastPrivateCatalog.swift",
+          "sha256": "95e54d8a14dda741813147b986b3e36e447ac89e0523d25c137920ebc678ffd7",
+          "lines": 90,
+          "publicDeclarations": [
+            "public enum PodcastPrivateCatalog {",
+            "public static func isPrivateID(_ id: String) -> Bool { id.hasPrefix(\"private-podcast:\") }",
+            "public static func isAllowedURL(_ raw: String) -> Bool {",
+            "public static func scope(",
+            "public static func imageURL(showID: String? = nil, episodeID: String? = nil, kind: String, index: Int = 0) -> String {",
+            "public static func visibleText(_ text: String) -> String {",
+            "public static func visible(_ original: PodcastShow) -> PodcastShow {",
+            "public static func visible(_ original: PodcastEpisode) -> PodcastEpisode {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastPrivateStorage.swift",
+          "sha256": "644918033e64f0d254698cda5947f34e9f9266176fc4728824c1c03d5e8d20ad",
+          "lines": 33,
+          "publicDeclarations": [
+            "public struct PodcastPrivateStorage: Sendable {",
+            "public init(base64Key: String) throws {",
+            "public func seal(_ plaintext: String, viewer: String, entity: String, id: String) throws -> String {",
+            "public func open(_ payload: String, viewer: String, entity: String, id: String) throws -> String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastProgress.swift",
+          "sha256": "ce4d9b2238827e267f7ef92396b59d261499dc3b5ef901f42adee1f903c9c594",
+          "lines": 12,
+          "publicDeclarations": [
+            "public struct PodcastProgress: Codable, Sendable, Equatable {",
+            "public var positionSeconds: Double",
+            "public var updatedAt: String",
+            "public var completed: Bool",
+            "public init(positionSeconds: Double, updatedAt: String, completed: Bool = false) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastProtocolAdapter.swift",
+          "sha256": "8e4c2aa06a58fe24980b9e4b22bb87052c19e4fd2696e850df28308072470331",
+          "lines": 86,
+          "publicDeclarations": [
+            "public enum PodcastProtocolAdapter {",
+            "public static let collections = [",
+            "public static func show(uri: String, record: [String: Any], blobBase: String? = nil) throws",
+            "public static func episode("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastRSSParser.swift",
+          "sha256": "316b565b62a0842f8bd780c173b3e37ccd8c34824f3c628a70fae96bfc26ec92",
+          "lines": 186,
+          "publicDeclarations": [
+            "public final class PodcastRSSParser: NSObject, XMLParserDelegate {",
+            "public init(feedURL: String) { self.feedURL = feedURL }",
+            "public static func identity(_ value: String) -> String {",
+            "public func parse(_ data: Data) throws -> (show: PodcastShow, episodes: [PodcastEpisode]) {",
+            "public func parser(",
+            "public func parser(_ parser: XMLParser, foundCharacters text: String) {",
+            "public func parser(_ parser: XMLParser, foundCDATA data: Data) {",
+            "public func parser(",
+            "public func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {",
+            "public static func isAudio(url: String, type: String?) -> Bool {",
+            "public static func duration(_ raw: String?) -> Double? {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastRSSURL.swift",
+          "sha256": "da07095dd74ea385b76ae27f93f66f86d9d377012becb930d8167b9c8ca09c41",
+          "lines": 21,
+          "publicDeclarations": [
+            "public enum PodcastRSSURL {",
+            "public static func isAllowed(_ raw: String) -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastSearch.swift",
+          "sha256": "fa6306ce500e95cf49e2c4c15288e002bad69e8369b8d70dfd7242986628b6ad",
+          "lines": 20,
+          "publicDeclarations": [
+            "public enum PodcastSearch {",
+            "public static func matches(_ query: String, title: String, description: String?, hosts: [PodcastPerson] = []) -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastSearchCursor.swift",
+          "sha256": "164a397da40cfbc6708c20eb05295c77af35219756175d61d7faeb99be063a45",
+          "lines": 17,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastSearchRequest.swift",
+          "sha256": "f9ae66c580e005ace884fa9b8b6aaf456c3e301fd6f6698a122b9759003c13f4",
+          "lines": 28,
+          "publicDeclarations": [
+            "public struct PodcastSearchRequest: Codable, Sendable {",
+            "public var query: String",
+            "public var scope: String?",
+            "public var kind: String?",
+            "public var showId: String?",
+            "public var limit: Int?",
+            "public var cursor: String?",
+            "public init(query: String, scope: String? = nil, kind: String? = nil, showId: String? = nil, limit: Int? = nil, cursor: String? = nil) {",
+            "public func validate() throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastSearchResponse.swift",
+          "sha256": "94830e2323fd3cd1647c0c5013cd202723661a6de6c8a3faac56639e732364c0",
+          "lines": 29,
+          "publicDeclarations": [
+            "public struct PodcastSearchResponse: Codable, Sendable {",
+            "public var shows: [PodcastShow]",
+            "public var episodes: [PodcastEpisode]",
+            "public var cursor: String?",
+            "public var candidates: [PodcastDirectoryCandidate] = []",
+            "public var directoryLimit: Int? = nil",
+            "public var hasMore: Bool",
+            "public init(from decoder: any Decoder) throws {",
+            "public init(shows: [PodcastShow] = [], episodes: [PodcastEpisode] = [], cursor: String? = nil, hasMore: Bool = false) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastShow.swift",
+          "sha256": "abd2ccc01cd18ff037c9c0a50cce2de5c1845c7f0bca10bbf5d4627a38dd862e",
+          "lines": 39,
+          "publicDeclarations": [
+            "public struct PodcastShow: Codable, Sendable, Equatable {",
+            "public var id: String",
+            "public var title: String",
+            "public var description: String?",
+            "public var artworkUrl: String?",
+            "public var feedUrl: String?",
+            "public var sourceKind: String",
+            "public var sourceUri: String?",
+            "public var guid: String?",
+            "public var episodeCollection: String?",
+            "public var bridgeJobId: String?",
+            "public var bridgeStatus: String?",
+            "public var visibility: String? = nil",
+            "public var hosts: [PodcastPerson] = []",
+            "public init(from decoder: any Decoder) throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastStateSnapshot.swift",
+          "sha256": "1628865dfdd3055c8ef2b71256c2aaf68552b01378b725d427aee7b00ca5ca5f",
+          "lines": 8,
+          "publicDeclarations": [
+            "public struct PodcastStateSnapshot: Codable, Sendable {",
+            "public var revision: Int64",
+            "public var state: PodcastListenerState",
+            "public init(revision: Int64, state: PodcastListenerState) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastStoreError.swift",
+          "sha256": "1498fe8c206d7da60dfe1f4e527ddae76bb20cda2d73a519f685831287fb4506",
+          "lines": 3,
+          "publicDeclarations": [
+            "public enum PodcastStoreError: Error {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastStoring.swift",
+          "sha256": "6a9114a14930fe91f3a81efa9fd40fcebab74fff17e91ecaebec8b9b57d1d921",
+          "lines": 80,
+          "publicDeclarations": [
+            "public protocol PodcastStoring: Sendable {",
+            "public func job(",
+            "public func clip(id: String, viewer: String?, publishedOnly: Bool = false) async throws",
+            "public func stalePrivateFeeds(viewer: String, limit: Int = 2) async throws -> [String] {",
+            "public func savePrivateCatalog("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastTranscript.swift",
+          "sha256": "29dc5679c97133e5a05855f143675c7d364ce0e1bec977f44c33581ea16480bf",
+          "lines": 19,
+          "publicDeclarations": [
+            "public struct PodcastTranscript: Codable, Sendable, Equatable {",
+            "public var url: String",
+            "public var type: String",
+            "public var language: String?",
+            "public var text: String?",
+            "public var cues: [PodcastTranscriptCue]?",
+            "public init("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastTranscriptCue.swift",
+          "sha256": "076572d6d50b2c63420d40049ec37fed0822cdce6af99f34fac25d78791ef083",
+          "lines": 12,
+          "publicDeclarations": [
+            "public struct PodcastTranscriptCue: Codable, Sendable, Equatable {",
+            "public var startSeconds: Double",
+            "public var endSeconds: Double?",
+            "public var text: String",
+            "public init(startSeconds: Double, endSeconds: Double? = nil, text: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PodcastTranscriptParser.swift",
+          "sha256": "e8336f1b5a015b07cd4899cacbabf5c2eccd2b9ec3f851d5d044eb6f7565c5b0",
+          "lines": 46,
+          "publicDeclarations": [
+            "public enum PodcastTranscriptParser {",
+            "public static func parse(_ data: Data, type: String) -> ("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PostgresPodcastStore+Metadata.swift",
+          "sha256": "3b3d308234ff1018b8af0b747527563d4b1b29f9ba2867da5b6e819b4b44d3c6",
+          "lines": 29,
+          "publicDeclarations": [
+            "public func updateMetadata(episode: PodcastEpisode, viewer: String?) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PostgresPodcastStore+Private.swift",
+          "sha256": "963b007fa4d26f3a78a39c88af305c038abf2e0192c0464ba70021ce8c1f8433",
+          "lines": 183,
+          "publicDeclarations": [
+            "public func requirePrivateStorage() throws -> PodcastPrivateStorage {",
+            "public func stalePrivateFeeds(viewer: String, limit: Int = 2) async throws -> [String] {",
+            "public func queuedEpisodes(viewer: String) async throws -> [PodcastEpisode] {",
+            "public func ownsPrivateEpisodes(viewer: String, ids: [String]) async throws -> Bool {",
+            "public func savePrivateCatalog(",
+            "public func privateShows(viewer: String) async throws -> [PodcastShow] {",
+            "public func privateShow(viewer: String, id: String) async throws -> PodcastShow? {",
+            "public func privateFeed(viewer: String, id: String) async throws -> (url: String, refreshedAt: Date)? {",
+            "public func privateEpisode(viewer: String, id: String) async throws -> PodcastEpisode? {",
+            "public func privateEpisodes(viewer: String, showID: String, cursor: String?, limit: Int) async throws -> [PodcastEpisode] {",
+            "public func subscribedEpisodes(viewer: String, cursor: String?, limit: Int) async throws -> [PodcastEpisode] {",
+            "public func removePrivateSubscription(viewer: String, showID: String) async throws -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PostgresPodcastStore+Search.swift",
+          "sha256": "b5f6312498481d3cfe4751fb4d98f14de4a60a9d65fcd7db4904787315151bff",
+          "lines": 72,
+          "publicDeclarations": [
+            "public func search(viewer: String, request: PodcastSearchRequest) async throws -> PodcastSearchResponse {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/PostgresPodcastStore.swift",
+          "sha256": "69e8fc0ffef15f86cdded26e5846dafdef8ccfbcaca79252642e1c6a08f03383",
+          "lines": 297,
+          "publicDeclarations": [
+            "public actor PostgresPodcastStore {",
+            "public init(pool: PostgresClient, logger: Logger, privateStorageKey: String? = ProcessInfo.processInfo.environment[\"PODCAST_PRIVATE_STORAGE_KEY\"]) {",
+            "public func upsert(show: PodcastShow, episodes: [PodcastEpisode]) async throws {",
+            "public func alias(_ alias: String, canonical: String, kind: String) async throws {",
+            "public func show(id: String) async throws -> PodcastShow? {",
+            "public func shows(viewer: String) async throws -> [PodcastShow] {",
+            "public func episode(id: String) async throws -> PodcastEpisode? {",
+            "public func episodes(showID: String, cursor: String?, limit: Int) async throws -> [PodcastEpisode]",
+            "public func canonicalEpisodeIDs(_ ids: [String]) async throws -> [String: String] {",
+            "public func manualEpisodeAliases(links: [PodcastManualLink]) async throws -> [String: String] {",
+            "public func subscriptions(viewer: String, records: [(showID: String, uri: String)]) async throws {",
+            "public func state(viewer: String) async throws -> PodcastStateSnapshot {",
+            "public func saveState(viewer: String, expected: Int64, state: PodcastListenerState) async throws",
+            "public func enqueue(",
+            "public func job(",
+            "public func invalidateAnalysis(id: String, fingerprint: String) async throws {",
+            "public func retry(viewer: String, id: String) async throws -> Bool {",
+            "public func prepareClip(viewer: String, clip: PodcastClip, payload: String) async throws -> String",
+            "public func removeClip(viewer: String, clip: PodcastClip, payload: String) async throws {",
+            "public func createClip(viewer: String, clip: PodcastClip) async throws {",
+            "public func clips(viewer: String) async throws -> [PodcastClip] {",
+            "public func clip(id: String, viewer: String?, publishedOnly: Bool = false) async throws",
+            "public func publishClip(id: String, viewer: String, uri: String) async throws {",
+            "public func deleteClip(id: String, viewer: String) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Jobs.swift",
+          "sha256": "c9f81f954a46fa4a7e40798381ba11989349e9f5433da3e5ab436742e60812a2",
+          "lines": 192,
+          "publicDeclarations": [
+            "public func enqueue(",
+            "public func job(",
+            "public func invalidateAnalysis(id: String, fingerprint: String) async throws {",
+            "public func retry(viewer: String, id: String) async throws -> Bool {",
+            "public func prepareClip(viewer: String, clip: PodcastClip, payload: String) async throws -> String",
+            "public func removeClip(viewer: String, clip: PodcastClip, payload: String) async throws {",
+            "public func createClip(viewer: String, clip: PodcastClip) async throws {",
+            "public func clips(viewer: String) async throws -> [PodcastClip] {",
+            "public func clip(id: String, viewer: String?, publishedOnly: Bool = false) async throws",
+            "public func publishClip(id: String, viewer: String, uri: String) async throws {",
+            "public func deleteClip(id: String, viewer: String) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Metadata.swift",
+          "sha256": "b4f27c4239ec80363315a619e93f118fdde2e77b6fb566292117899e06ac754e",
+          "lines": 48,
+          "publicDeclarations": [
+            "public func updateMetadata(episode: PodcastEpisode, viewer: String?) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Private.swift",
+          "sha256": "81b649b7d453b90f7033921e59d6b8020accced078f3e3bde5a92c6668bd8f19",
+          "lines": 241,
+          "publicDeclarations": [
+            "public func requirePrivateStorage() throws -> PodcastPrivateStorage {",
+            "public func stalePrivateFeeds(viewer: String, limit: Int = 2) async throws -> [String] {",
+            "public func queuedEpisodes(viewer: String) async throws -> [PodcastEpisode] {",
+            "public func ownsPrivateEpisodes(viewer: String, ids: [String]) async throws -> Bool {",
+            "public func savePrivateCatalog(",
+            "public func privateShows(viewer: String) async throws -> [PodcastShow] {",
+            "public func privateShow(viewer: String, id: String) async throws -> PodcastShow? {",
+            "public func privateFeed(viewer: String, id: String) async throws -> (",
+            "public func privateEpisode(viewer: String, id: String) async throws -> PodcastEpisode? {",
+            "public func privateEpisodes(viewer: String, showID: String, cursor: String?, limit: Int)",
+            "public func subscribedEpisodes(viewer: String, cursor: String?, limit: Int) async throws",
+            "public func removePrivateSubscription(viewer: String, showID: String) async throws -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift",
+          "sha256": "c100af548bcd06deb2bd0548fa55d3ef6a13d0b2a90fd6deb59e12388b5dfbab",
+          "lines": 62,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Search.swift",
+          "sha256": "013aed0a178a5d62d586bd81b6450ffef9857a1bd724627226aa7483f0006908",
+          "lines": 105,
+          "publicDeclarations": [
+            "public func search(viewer: String, request: PodcastSearchRequest) async throws"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore.swift",
+          "sha256": "2f56afef3b0f750e63ff3527e7707b3031f88fb3462e6e5f9972b1b180e110de",
+          "lines": 213,
+          "publicDeclarations": [
+            "public actor SQLitePodcastStore: PodcastStoring {",
+            "public init(",
+            "public func upsert(show: PodcastShow, episodes: [PodcastEpisode]) async throws {",
+            "public func alias(_ alias: String, canonical: String, kind: String) async throws {",
+            "public func show(id: String) async throws -> PodcastShow? {",
+            "public func shows(viewer: String) async throws -> [PodcastShow] {",
+            "public func episode(id: String) async throws -> PodcastEpisode? {",
+            "public func episodes(showID: String, cursor: String?, limit: Int) async throws -> [PodcastEpisode]",
+            "public func canonicalEpisodeIDs(_ ids: [String]) async throws -> [String: String] {",
+            "public func manualEpisodeAliases(links: [PodcastManualLink]) async throws -> [String: String] {",
+            "public func subscriptions(viewer: String, records: [(showID: String, uri: String)]) async throws {",
+            "public func state(viewer: String) async throws -> PodcastStateSnapshot {",
+            "public func saveState(viewer: String, expected: Int64, state: PodcastListenerState) async throws"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresAppViewProjectionCacheStore.swift",
+          "sha256": "c7791b1f935b7a259b1cc704ed9b15cda9b3a1c7f2daee6f93b6628109435e6b",
+          "lines": 312,
+          "publicDeclarations": [
+            "public actor PostgresAppViewProjectionCacheStore: AppViewProjectionCacheStore {",
+            "public init(pool: PostgresClient, logger: Logger) {",
+            "public func sidebarProjectionCacheEntry(",
+            "public func sidebarProjectionCacheEntryIncludingExpired(",
+            "public func storeSidebarProjectionJSON(",
+            "public func invalidateSidebarProjection(viewerDid: String) async throws {",
+            "public func unreadCountsCacheEntry(",
+            "public func storeUnreadCounts(",
+            "public func invalidateUnreadCounts(viewerDid: String, publicationId: String?) async throws {",
+            "public func firstPageCacheEntry(",
+            "public func storeFirstPageJSON(",
+            "public func invalidateFirstPage(viewerDid: String, publicationId: String?) async throws {",
+            "public func invalidateFirstPageForAllViewers(publicationId: String) async throws {",
+            "public func invalidateAllProjectionCaches() async throws {",
+            "public func deleteExpiredProjectionCaches(before: Date, batchSize: Int) async throws -> Int {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresConfig.swift",
+          "sha256": "0012fe9a7627265821e77d21f38fb75090df74bba0e639d5b8dff23beea8332b",
+          "lines": 78,
+          "publicDeclarations": [
+            "public enum PostgresConfigError: Error {",
+            "public func makePostgresConfig("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresFeedQueryExecutor.swift",
+          "sha256": "ea80f321087828bf460c8c176295c9658ce1862b8e628778ac8bbeefe723b8e0",
+          "lines": 63,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+ContentVerification.swift",
+          "sha256": "67fcb2eca5051f04967dccc3880286ad510a20fad7f323c1d4b5f4e136d34a11",
+          "lines": 42,
+          "publicDeclarations": [
+            "public func contentVerificationMetadata(uri: String) async throws -> ContentVerificationMetadata? {",
+            "public func upsertContentItem(_ item: IndexedContentItem, expectedCID: String?) async throws -> Bool {",
+            "public func deleteContentItem(uri: String, expectedCID: String) async throws -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+Finance.swift",
+          "sha256": "564a674a824537e070e0f6baf72354836a02b5fcfdb0a274af17c212cebda764",
+          "lines": 33,
+          "publicDeclarations": [
+            "public func applyFinanceSelection(_ mutation: FinanceSelectionMutation) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+FrozenReadMarks.swift",
+          "sha256": "5bdab676cf7e933792fd76093fddfc94ce4df4027c4fe6248087c0ac63eaa1d2",
+          "lines": 92,
+          "publicDeclarations": [
+            "public func applyFrozenReadMarks(viewerDid: String, subjectUris: [String], createdAt: Date) async throws -> [String] {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+PDSLifecycle.swift",
+          "sha256": "271ec53b60856b2791c6414c92a73252b3bd14f3f74c8d96b84293a2a991af4b",
+          "lines": 58,
+          "publicDeclarations": [
+            "public func touchPDSReadStateAccess(viewerDid: String, at: Date) async throws {",
+            "public func evictIdlePDSReadState(before: Date, at: Date, batchSize: Int) async throws -> PDSReadStateEvictionBatch {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+PDSProjection.swift",
+          "sha256": "93d8dddc91c3c60a6a1d8f4789dc9c67d4328559b18f6b9d75cf6694e1b1da19",
+          "lines": 79,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+PDSReadState.swift",
+          "sha256": "3aa27009b96ac852dde56e9d6b9310d095a1b8485db0517a91140b267cb9694a",
+          "lines": 285,
+          "publicDeclarations": [
+            "public func pdsReadStateStatus(viewerDid: String) async throws -> PDSReadStateStatus {",
+            "public func exportPDSReadStatePage(",
+            "public func activatePDSReadState(",
+            "public func preparePDSReadStateBoundaries("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+PDSReadStatePreview.swift",
+          "sha256": "08b94e4cd12eaaeaa913d956abcac5854a252dd44e361c6447e094e3a35fbc5e",
+          "lines": 28,
+          "publicDeclarations": [
+            "public func previewPDSReadStateBoundaries("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+RepositoryRecovery.swift",
+          "sha256": "33eda0bf4951d46ef3fd2d2a97ab22df66402d60d92d5caa90d4b1cac7738133",
+          "lines": 208,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore+Sports.swift",
+          "sha256": "138c7600f0c741d25b643b21aee47c367a831e3749e1def7bdd9b34fefb0023f",
+          "lines": 33,
+          "publicDeclarations": [
+            "public func applySportsSelection(_ mutation: SportsSelectionMutation) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PostgresThinAppViewStore.swift",
+          "sha256": "3ed4e4740f9e373b67e0821173a6b09fea5df3da577e64841eb5bae0d977f171",
+          "lines": 4286,
+          "publicDeclarations": [
+            "public actor PostgresThinAppViewStore: ThinAppViewStore {",
+            "public init(pool: PostgresClient, logger: Logger) {",
+            "public func ping() async throws {",
+            "public func claimIngestionInbox(",
+            "public func filterIngestionInboxOutsideScope(",
+            "public func markIngestionInboxApplied(",
+            "public func retryIngestionInbox(",
+            "public func advanceIngestionInboxAppliedWatermark(",
+            "public func renewIngestionInboxLease(",
+            "public func deadLetterIngestionInbox(",
+            "public func markIngestionInboxReconciled(",
+            "public func deleteExpiredIngestionInbox(",
+            "public func resolveRecoveredIngestionIncidents(",
+            "public func resolveTerminalRetiredGenerationIncidents(",
+            "public func claimIngestionReconciliationRequests(",
+            "public func renewIngestionReconciliationLease(",
+            "public func retryIngestionReconciliation(",
+            "public func completeIngestionReconciliation(",
+            "public func upsertContentItem(_ item: IndexedContentItem) async throws {",
+            "public func insertContentItemIfAbsent(_ item: IndexedContentItem) async throws -> Bool {",
+            "public func deleteContentItem(uri: String) async throws {",
+            "public func deleteContentItems(authorDid: String) async throws -> Int {",
+            "public func deleteContentItems(",
+            "public func fetchContentIdentity(uri: String) async throws -> IndexedContentIdentity? {",
+            "public func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {",
+            "public func deleteReadMark(viewerDid: String, subjectUri: String) async throws {",
+            "public func upsertReadMarks(",
+            "public func markEntryUnread(",
+            "public func purgeReadMarks(viewerDid: String) async throws {",
+            "public func fetchContentItem(uri: String) async throws -> AppViewEntryListItem? {",
+            "public func fetchContentRender(uri: String) async throws -> ContentRenderFields? {",
+            "public func listContentItemsForPublicationSite(",
+            "public func hasReadMark(viewerDid: String, subjectUri: String) async throws -> Bool {",
+            "public func readStates(",
+            "public func listEntries(",
+            "public func listFeedEntries(",
+            "public func listFeedEntries(",
+            "public func hasViewerFeedProjection(viewerDid: String) async throws -> Bool {",
+            "public func publicationScopes(",
+            "public func listAggregateEntries(",
+            "public func listUnreadEntriesForReadMutation(",
+            "public func countUnreadEntries(",
+            "public func countUnreadEntriesBatch(",
+            "public func upsertPublicationScopes(_ scopes: [AppViewPublicationScope]) async throws {",
+            "public func replacePublicationScopes(",
+            "public func upsertViewerFeedProjection(",
+            "public func replaceViewerFeedProjection(",
+            "public func fetchUnreadCounters(",
+            "public func refreshUnreadCounters(",
+            "public func incrementUnreadCountersForContentItem(_ item: IndexedContentItem) async throws {",
+            "public func markUnreadCountersDirtyForContent(authorDid: String, publicationSite: String?) async throws {",
+            "public func markUnreadCountersDirtyForAuthor(authorDid: String) async throws {",
+            "public func adjustUnreadCountersForReadState(",
+            "public func markAllReadCounters(",
+            "public func deleteExpiredCircleCaches(before: Date, batchSize: Int) async throws -> Int {",
+            "public func deleteExpiredContent(before: Date, batchSize: Int) async throws -> Int {",
+            "public func deleteExpiredReadMarks(before: Date, batchSize: Int) async throws -> Int {",
+            "public func deleteExpiredTapEventReceipts(",
+            "public func deleteExpiredProjectionRepairs(",
+            "public func desiredTapRepositoryScope(limit: Int) async throws -> TapDesiredRepositoryScope {",
+            "public func registeredTapRepositoryDids(environment: String) async throws -> [String] {",
+            "public func markTapRepositoriesRegistered(",
+            "public func markTapRepositoriesRemoved(",
+            "public func recordIngestionCheckpoint(",
+            "public func fetchTapRepositorySyncState(",
+            "public func upsertTapRepositorySyncState(_ state: TapRepositorySyncState) async throws {",
+            "public func hasProcessedTapEvent(environment: String, eventId: Int64) async throws -> Bool {",
+            "public func commitTapEvent(",
+            "public func listTapParityDiscrepancies(",
+            "public func applyTapContentMutation(",
+            "public func projectionRepairBacklog(",
+            "public func claimProjectionRepair(",
+            "public func completeProjectionRepair(",
+            "public func failProjectionRepair(",
+            "public func listAuthorDidsForProactiveBackfill(limit: Int) async throws -> [String] {",
+            "public func listRssPublicationSites(limit: Int) async throws -> [String] {",
+            "public func fetchRssFeedMetadata(normalizedFeedUrl: String) async throws -> RssFeedFetchMetadata? {",
+            "public func storeRssFeedMetadata(_ metadata: RssFeedFetchMetadata) async throws {",
+            "public func readBoundary("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicContentDiscovering.swift",
+          "sha256": "366d314a9931d98c232f8736bf9606e6b8c58fff40713bae0a681fd88f574f39",
+          "lines": 4,
+          "publicDeclarations": [
+            "public protocol PublicContentDiscovering: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicContentDiscoveryError.swift",
+          "sha256": "4570e1985d6ee26423a031fc388149e6694b5889339e89d44eb74f0d18cbec45",
+          "lines": 5,
+          "publicDeclarations": [
+            "public enum PublicContentDiscoveryError: Error, Equatable, Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicContentDiscoveryScope.swift",
+          "sha256": "da43a938c5ea158ccd44810918f9c31b1acaf687ab77bf6cb39ff3ea4989f231",
+          "lines": 34,
+          "publicDeclarations": [
+            "public struct PublicContentDiscoveryScope: Hashable, Sendable {",
+            "public let authorDid: String",
+            "public let publicationKeys: [String]",
+            "public init(authorDid: String, publicationKeys: [String]) throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicContentInsertStoring.swift",
+          "sha256": "11cb54157b91e56847592756a12b0b9393336cecb8765e9e505a85ab5d48bfcf",
+          "lines": 8,
+          "publicDeclarations": [
+            "public protocol PublicContentInsertStoring: Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicContentRecordCID.swift",
+          "sha256": "52d5d0cf76edad88b537c5983498ccb30e80ee779a0dde08f764dc977e2ec8f8",
+          "lines": 52,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/PublicationUnreadScope.swift",
+          "sha256": "4e834892c857098c5ec3b7e8baa45ac8c070ebf9c630720fbbf9b6d7705c5f72",
+          "lines": 23,
+          "publicDeclarations": [
+            "public struct PublicationUnreadScope: Sendable, Hashable {",
+            "public let publicationId: String",
+            "public let authorDid: String",
+            "public let publicationAtUri: String?",
+            "public let publicationScopeAtUris: [String]",
+            "public let publicationSiteUrls: [String]",
+            "public init("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RedisAppViewProjectionCacheStore.swift",
+          "sha256": "69918d79c376044a0108b6699c55734a4630d008a709cc4924c41cb218638ace",
+          "lines": 395,
+          "publicDeclarations": [
+            "public actor RedisAppViewProjectionCacheStore: AppViewProjectionCacheStore {",
+            "public init(",
+            "public func sidebarProjectionCacheEntry(",
+            "public func sidebarProjectionCacheEntryIncludingExpired(",
+            "public func sidebarProjectionCacheLookup(",
+            "public func storeSidebarProjectionJSON(",
+            "public func invalidateSidebarProjection(viewerDid: String) async throws {",
+            "public func unreadCountsCacheEntry(",
+            "public func unreadCountsCacheLookup(",
+            "public func unreadCountsCacheLookup(",
+            "public func storeUnreadCounts(",
+            "public func invalidateUnreadCounts(viewerDid: String, publicationId: String?) async throws {",
+            "public func firstPageCacheEntry(",
+            "public func firstPageCacheLookup(",
+            "public func storeFirstPageJSON(",
+            "public func invalidateFirstPage(viewerDid: String, publicationId: String?) async throws {",
+            "public func invalidateFirstPageForAllViewers(publicationId: String) async throws {",
+            "public func invalidateAllProjectionCaches() async throws {",
+            "public func acquireRefreshLease(",
+            "public func releaseRefreshLease(_ lease: AppViewProjectionRefreshLease) async {",
+            "public func renewRefreshLease(_ lease: AppViewProjectionRefreshLease) async -> Bool {",
+            "public func deleteExpiredProjectionCaches(before: Date, batchSize: Int) async throws -> Int {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RedisOperationsTelemetryAdapter.swift",
+          "sha256": "4e29e4694701cf990b43b0c53683446e6cdda373cf74c087221d9c0495cc0a0b",
+          "lines": 58,
+          "publicDeclarations": [
+            "public enum RedisOperationsTelemetryAdapter {",
+            "public static func sink("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RedisProjectionCacheRuntime.swift",
+          "sha256": "025a401c1f909908de057ab51245d931f138e7085e240fb02bfa8ab4109a344b",
+          "lines": 125,
+          "publicDeclarations": [
+            "public struct RedisProjectionCacheRuntime: Sendable {",
+            "public let store: any AppViewProjectionCacheStore",
+            "public let resolutionCache: any PDSResolutionCache",
+            "public let client: any RedisCommandClient",
+            "public static func make(",
+            "public func shutdown() async {",
+            "public func installResolutionCache() async {",
+            "public func runInfoSampling() async {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RenderFieldExtractor.swift",
+          "sha256": "ad20aa4f28cf09ba74479b381131e3555c8a7a5a0c727529e80a549ffdc9d080",
+          "lines": 348,
+          "publicDeclarations": [
+            "public enum RenderFieldExtractor {",
+            "public static func extractRenderFields(",
+            "public static func publicationIconUrl(",
+            "public static func publicationSiteField(from record: [String: Any]) -> String? {",
+            "public static func publicationSiteBaseUrl(fromPublicationRecord value: [String: Any]) -> String? {",
+            "public static func normalizePublicationSiteUrl(_ raw: String) -> String? {",
+            "public static func matchesPublication(",
+            "public static func matchesPublicationAtUriOnly(siteField: String?, publicationAtUri: String) -> Bool {",
+            "public static func createdAtDate(from record: [String: Any], fallback render: ContentRenderFields) -> Date {",
+            "public static func canonicalPublicationAtUriKey(_ uri: String) -> String? {",
+            "public static func publicationFilterEquivalenceKeys(publicationAtUri: String) -> Set<String> {",
+            "public static func parseAtUri(_ uri: String) -> (did: String, collection: String, rkey: String)? {",
+            "public static func buildEntryUri(did: String, collection: String, rkey: String) -> String {",
+            "public static func articleUrl(",
+            "public static func extractBlobLink(_ value: Any?) -> String? {",
+            "public static func buildSyncGetBlobUrl(pdsBase: String?, repoDid: String, cid: String) -> String? {",
+            "public static func faviconUrl(forSiteOrFeedUrl raw: String) -> String? {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryBinaryCursor.swift",
+          "sha256": "2e69b3c9df02edf56d2f77c603f7cf68c219b5cb6bc1ffdff65fc6420fdce1f4",
+          "lines": 36,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryCAR.swift",
+          "sha256": "9ec548e5f9eb605f860df28c6475f7dd2d699b9da3ce988bcf0a92f8846075dc",
+          "lines": 35,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryCBORValue.swift",
+          "sha256": "3cf0d77ef3009859b6cab090ccbe4541d0e6c50a303c027e45812da2341ecca6",
+          "lines": 55,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryCID.swift",
+          "sha256": "df9e74637acd1a261201a9291ba6a68faa195cee39636d86b160fe6b29ad8ee0",
+          "lines": 69,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryDAGCBOR.swift",
+          "sha256": "9f97d135d0ef0277c19030217377e4f9cff56f4952cdffad80b25259f5782f20",
+          "lines": 147,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryDNSAddressValidator.swift",
+          "sha256": "83e79b5e62855cbb29340c8ccbb77913065126739255b54d6a2fbaa8e79f1588",
+          "lines": 268,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositoryMST.swift",
+          "sha256": "d713afecc97dbd8ed6784fc8d77a34547e9d937fc4758accf54e34e5d94b5e1a",
+          "lines": 150,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySigningKey.swift",
+          "sha256": "c01af025021b6cdce76b2891fae7621aff24b6c95869a4a21b681ea86f2050f7",
+          "lines": 74,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshot.swift",
+          "sha256": "ee94860465f60c2f19a25d76f8f9df592cb218d87e23edd5591e7eab0816595d",
+          "lines": 8,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotAttempt.swift",
+          "sha256": "f63bc7e9b6fe0d3e051f6c93efbe650c8abbd6a242cc0d4e3bdfdd55909211b7",
+          "lines": 225,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotError.swift",
+          "sha256": "d847860e3018e7fc64b8a64cbb8483ac00f408cfd985426307378b230fd249df",
+          "lines": 5,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotHTTPTransport.swift",
+          "sha256": "33b1d8f1aac0bcf5fcb8983fdcf628fc6b3908e1afbf48470d3d663696165020",
+          "lines": 65,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotReader.swift",
+          "sha256": "5644ab892977d1fef8e47424740b62ae030d891dbc1d4c409381829877c79a28",
+          "lines": 54,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotRecord.swift",
+          "sha256": "4811c51b5c517d31b2c098cc8c1573186358a4ec244841476edcb588568213eb",
+          "lines": 7,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotStatus.swift",
+          "sha256": "ad4d4d36665132f5bc23f43c489dc9cb2ccacabd20d261a5960a9d954268cc67",
+          "lines": 6,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RepositorySnapshotValidator.swift",
+          "sha256": "ee69e952c494026b51f179631947a53edf86cd86bca1c251c72eac872bf7afc3",
+          "lines": 66,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RssFeedIdentity.swift",
+          "sha256": "f0aeac5af84ae965ccc95b5ef15d69cc5462fafdd95494780ce7eaa22bf6122a",
+          "lines": 371,
+          "publicDeclarations": [
+            "public enum RssFeedLexicons {",
+            "public static let rssAuthorDid = \"did:web:skyreader.rss\"",
+            "public static let skyreaderFeedSubscription = \"app.skyreader.feed.subscription\"",
+            "public static let skyreaderFeedEntry = \"app.skyreader.feed.entry\"",
+            "public static let publicationPrefix = \"rss:\"",
+            "public static let entryPrefix = \"rssentry:\"",
+            "public enum RssFeedIdentity {",
+            "public static func normalizeFeedUrl(_ raw: String) -> String? {",
+            "public static func isFetchableFeedUrl(_ raw: String) -> Bool {",
+            "public static func rssPublicationId(from normalizedFeedUrl: String) -> String {",
+            "public static func normalizedFeedUrl(fromRssPublicationId pubId: String) -> String? {",
+            "public static func stableItemKey(from item: ParsedRssItem) -> String {",
+            "public static func dedupeIdentityKeys(",
+            "public static func registersAsDuplicateIdentity(",
+            "public static func decodeEntryId(_ entryId: String) -> (feedUrl: String, stableItemKey: String)? {",
+            "public static func canonicalArticleUrl(_ raw: String) -> String? {",
+            "public static func canonicalLinkFromStableItemKey(_ stableItemKey: String) -> String? {",
+            "public static func canonicalLink(",
+            "public static func canonicalLinkForEntryListItem(_ item: AppViewEntryListItem) -> String? {",
+            "public static func originalArticleURL(",
+            "public static func isPreferredRssEntryURI(_ candidate: String, over incumbent: String) -> Bool {",
+            "public static func dedupeEntryListItems(_ items: [AppViewEntryListItem]) -> [AppViewEntryListItem] {",
+            "public static func rssEntryId(normalizedFeedUrl: String, stableItemKey: String) -> String {",
+            "public static func deterministicCid(for entryUri: String) -> String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RssFeedParser.swift",
+          "sha256": "3436067b76253b3312dbf3f223c805b7f3e8f3b4a677e9aeaeadae7e8c238df5",
+          "lines": 228,
+          "publicDeclarations": [
+            "public struct ParsedRssItem: Sendable {",
+            "public var guid: String?",
+            "public var title: String",
+            "public var link: String?",
+            "public var summary: String?",
+            "public var contentHTML: String?",
+            "public var publishedAtISO: String",
+            "public var thumbnailUrl: String?",
+            "public init(",
+            "public struct ParsedRssFeed: Sendable {",
+            "public var title: String?",
+            "public var items: [ParsedRssItem]",
+            "public final class RssFeedParser: NSObject, XMLParserDelegate, @unchecked Sendable {",
+            "public init(data: Data, feedURL: String? = nil) {",
+            "public func parse() -> ParsedRssFeed {",
+            "public func parser(",
+            "public func parser(_ parser: XMLParser, foundCharacters string: String) {",
+            "public func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {",
+            "public func parser("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RssFeedThumbnailExtractor.swift",
+          "sha256": "5aa7ab29a1723c1d99896d66a98d360a32bf102f91bdd63fc72d2ea560d5aaba",
+          "lines": 102,
+          "publicDeclarations": [
+            "public enum RssFeedThumbnailExtractor {",
+            "public static func normalizeThumbnailURL(_ raw: String?, relativeTo base: String?) -> String? {",
+            "public static func acceptsMediaURL(",
+            "public static func firstImageURL(inHTML html: String?) -> String? {",
+            "public static func resolveThumbnail("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RssHtmlBodyFormatter.swift",
+          "sha256": "568e23ac4cfcc24d5babec71748aadbc397e1dda898f5ba4aeb1c5e2f5b17619",
+          "lines": 95,
+          "publicDeclarations": [
+            "public enum RssHtmlBodyFormatter {",
+            "public static func htmlBody(contentHTML: String?, summary: String?) -> String {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/RuntimeEnvironment.swift",
+          "sha256": "fb607ed4d541ea254d686f52403a3a1aaa812b48d27bc3088de636ef2db03ea5",
+          "lines": 73,
+          "publicDeclarations": [
+            "public enum RuntimeEnvironment {",
+            "public static func mergeProcessWithDotenv(",
+            "public static func mergeDotenvFile(_ fromFile: [String: String], into process: [String: String]) -> [String: String] {",
+            "public static func parseDotenv(_ text: String) -> [String: String] {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteAppViewProjectionCacheStore.swift",
+          "sha256": "e7f666b4c54f9b8a07cf72cf3fe3a7a8b3765a16b30f9555b2d298ce04cf976b",
+          "lines": 369,
+          "publicDeclarations": [
+            "public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {",
+            "public init(path dbPath: String, logger: Logger) throws {",
+            "public init(db: DatabasePool, logger: Logger) throws {",
+            "public func sidebarProjectionCacheEntry(",
+            "public func sidebarProjectionCacheEntryIncludingExpired(",
+            "public func storeSidebarProjectionJSON(",
+            "public func invalidateSidebarProjection(viewerDid: String) async throws {",
+            "public func unreadCountsCacheEntry(",
+            "public func storeUnreadCounts(",
+            "public func invalidateUnreadCounts(viewerDid: String, publicationId: String?) async throws {",
+            "public func firstPageCacheEntry(",
+            "public func storeFirstPageJSON(",
+            "public func invalidateFirstPage(viewerDid: String, publicationId: String?) async throws {",
+            "public func invalidateFirstPageForAllViewers(publicationId: String) async throws {",
+            "public func invalidateAllProjectionCaches() async throws {",
+            "public func deleteExpiredProjectionCaches(before: Date, batchSize: Int) async throws -> Int {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+ContentVerification.swift",
+          "sha256": "bf885430b4a1d8218cceb06f21a4406b3efa7cfe72148541adf58a193944133b",
+          "lines": 41,
+          "publicDeclarations": [
+            "public func contentVerificationMetadata(uri: String) async throws -> ContentVerificationMetadata? {",
+            "public func upsertContentItem(_ item: IndexedContentItem, expectedCID: String?) async throws -> Bool {",
+            "public func deleteContentItem(uri: String, expectedCID: String) async throws -> Bool {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+Finance.swift",
+          "sha256": "193581c47d66a6512d778280184b42a135c1ff2f0adea2ad53c38e1d26fc3541",
+          "lines": 41,
+          "publicDeclarations": [
+            "public func applyFinanceSelection(_ mutation: FinanceSelectionMutation) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+FrozenReadMarks.swift",
+          "sha256": "681cb95a0426b2021327ee96e4e7b1f2ea59030b52c666647204b54853a7e905",
+          "lines": 48,
+          "publicDeclarations": [
+            "public func applyFrozenReadMarks(viewerDid: String, subjectUris: [String], createdAt: Date) async throws -> [String] {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+PDSReadState.swift",
+          "sha256": "551fe4213764f1ba33f892eb41f8eb55c9912d90e91648452ae6dd986c5cde11",
+          "lines": 488,
+          "publicDeclarations": [
+            "public func pdsReadStateStatus(viewerDid: String) async throws -> PDSReadStateStatus {",
+            "public func exportPDSReadStatePage(",
+            "public func activatePDSReadState(",
+            "public func preparePDSReadStateBoundaries(",
+            "public func previewPDSReadStateBoundaries(",
+            "public func touchPDSReadStateAccess(viewerDid: String, at: Date) async throws {",
+            "public func evictIdlePDSReadState(before: Date, at: Date, batchSize: Int) async throws"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+RepositoryRecovery.swift",
+          "sha256": "c9116c014973069f2eaa29bccbd468d1876687d2e09787227baa14990bc29c6e",
+          "lines": 203,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+Sports.swift",
+          "sha256": "30c205935f054fd35b761c562aaa709faeb9993c0cefcdfac1d373812e67fe3a",
+          "lines": 41,
+          "publicDeclarations": [
+            "public func applySportsSelection(_ mutation: SportsSelectionMutation) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
+          "sha256": "7f4fca75be2bec2eb7221705fa78d808372c9ea4c7c12dea32c23fb544b820da",
+          "lines": 4571,
+          "publicDeclarations": [
+            "public actor SQLiteThinAppViewStore: ThinAppViewStore {",
+            "public init(path dbPath: String, logger: Logger) throws {",
+            "public func ping() async throws {",
+            "public func claimIngestionInbox(",
+            "public func filterIngestionInboxOutsideScope(",
+            "public func markIngestionInboxApplied(",
+            "public func retryIngestionInbox(",
+            "public func advanceIngestionInboxAppliedWatermark(",
+            "public func renewIngestionInboxLease(",
+            "public func deadLetterIngestionInbox(",
+            "public func markIngestionInboxReconciled(",
+            "public func deleteExpiredIngestionInbox(",
+            "public func resolveRecoveredIngestionIncidents(",
+            "public func resolveTerminalRetiredGenerationIncidents(",
+            "public func claimIngestionReconciliationRequests(",
+            "public func renewIngestionReconciliationLease(",
+            "public func retryIngestionReconciliation(",
+            "public func completeIngestionReconciliation(",
+            "public func upsertContentItem(_ item: IndexedContentItem) async throws {",
+            "public func insertContentItemIfAbsent(_ item: IndexedContentItem) async throws -> Bool {",
+            "public func deleteContentItem(uri: String) async throws {",
+            "public func deleteContentItems(authorDid: String) async throws -> Int {",
+            "public func deleteContentItems(",
+            "public func fetchContentIdentity(uri: String) async throws -> IndexedContentIdentity? {",
+            "public func upsertReadMark(viewerDid: String, subjectUri: String, createdAt: Date) async throws {",
+            "public func deleteReadMark(viewerDid: String, subjectUri: String) async throws {",
+            "public func upsertReadMarks(",
+            "public func markEntryUnread(",
+            "public func purgeReadMarks(viewerDid: String) async throws {",
+            "public func fetchContentItem(uri: String) async throws -> AppViewEntryListItem? {",
+            "public func fetchContentRender(uri: String) async throws -> ContentRenderFields? {",
+            "public func listContentItemsForPublicationSite(",
+            "public func hasReadMark(viewerDid: String, subjectUri: String) async throws -> Bool {",
+            "public func readStates(",
+            "public func listEntries(",
+            "public func publicationScopes(",
+            "public func listAggregateEntries(",
+            "public func listUnreadEntriesForReadMutation(",
+            "public func listFeedEntries(",
+            "public func hasViewerFeedProjection(viewerDid: String) async throws -> Bool {",
+            "public func countUnreadEntries(",
+            "public func countUnreadEntriesBatch(",
+            "public func upsertPublicationScopes(_ scopes: [AppViewPublicationScope]) async throws {",
+            "public func replacePublicationScopes(",
+            "public func upsertViewerFeedProjection(",
+            "public func replaceViewerFeedProjection(",
+            "public func fetchUnreadCounters(",
+            "public func refreshUnreadCounters(",
+            "public func incrementUnreadCountersForContentItem(_ item: IndexedContentItem) async throws {",
+            "public func markUnreadCountersDirtyForContent(authorDid: String, publicationSite: String?) async throws {",
+            "public func markUnreadCountersDirtyForAuthor(authorDid: String) async throws {",
+            "public func adjustUnreadCountersForReadState(",
+            "public func markAllReadCounters(",
+            "public func readBoundary(",
+            "public func deleteExpiredContent(before: Date, batchSize: Int) async throws -> Int {",
+            "public func deleteExpiredReadMarks(before: Date, batchSize: Int) async throws -> Int {",
+            "public func deleteExpiredTapEventReceipts(",
+            "public func deleteExpiredProjectionRepairs(",
+            "public func desiredTapRepositoryScope(limit: Int) async throws -> TapDesiredRepositoryScope {",
+            "public func registeredTapRepositoryDids(environment: String) async throws -> [String] {",
+            "public func markTapRepositoriesRegistered(",
+            "public func markTapRepositoriesRemoved(",
+            "public func recordIngestionCheckpoint(",
+            "public func fetchTapRepositorySyncState(",
+            "public func upsertTapRepositorySyncState(_ state: TapRepositorySyncState) async throws {",
+            "public func hasProcessedTapEvent(environment: String, eventId: Int64) async throws -> Bool {",
+            "public func commitTapEvent(",
+            "public func listTapParityDiscrepancies(",
+            "public func applyTapContentMutation(",
+            "public func projectionRepairBacklog(",
+            "public func claimProjectionRepair(",
+            "public func completeProjectionRepair(",
+            "public func failProjectionRepair(",
+            "public func listAuthorDidsForProactiveBackfill(limit: Int) async throws -> [String] {",
+            "public func listRssPublicationSites(limit: Int) async throws -> [String] {",
+            "public func fetchRssFeedMetadata(normalizedFeedUrl: String) async throws -> RssFeedFetchMetadata? {",
+            "public func storeRssFeedMetadata(_ metadata: RssFeedFetchMetadata) async throws {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SportsSelectionMutation.swift",
+          "sha256": "154374cdd491cb77101a5d5ca85827dfadc60fc69b952bcaa373a76e5f265ee1",
+          "lines": 32,
+          "publicDeclarations": [
+            "public struct SportsSelectionMutation: Sendable, Equatable {",
+            "public let viewerDID: String",
+            "public let recordKey: String",
+            "public let action: String?",
+            "public let reference: String?",
+            "public let eventAt: Date",
+            "public let repoRev: String",
+            "public var isDeleted: Bool { action == nil }",
+            "public static func parse(viewerDID: String, recordKey: String, operation: String,"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SportsSelectionStoring.swift",
+          "sha256": "b5ba77595c1cd74cefb95c384dc452d36dfe21abf2224d14e40b40c9c78af88f",
+          "lines": 3,
+          "publicDeclarations": [
+            "public protocol SportsSelectionStoring: Actor {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/TapConsumerConfiguration.swift",
+          "sha256": "2d7c09717080704812a075eac077b0de67b53ab5a94a6ef21387a0ef7d4a6b3a",
+          "lines": 140,
+          "publicDeclarations": [
+            "public enum TapConsumerMode: String, Sendable, Equatable {",
+            "public enum TapConsumerConfigurationError: Error, CustomStringConvertible, Equatable, Sendable {",
+            "public var description: String {",
+            "public struct TapConsumerConfiguration: Sendable, Equatable {",
+            "public static let registeredCollections = [",
+            "public let mode: TapConsumerMode",
+            "public let environment: String",
+            "public let baseURL: URL",
+            "public let channelURL: URL",
+            "public let adminPassword: String",
+            "public let collections: [String]",
+            "public let queueCapacity: Int",
+            "public let repoSyncIntervalSeconds: TimeInterval",
+            "public let repoSyncLimit: Int",
+            "public init(",
+            "public static func fromEnvironment("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/TapEvent.swift",
+          "sha256": "b4559abc081c5a91a24860018d032ff436d34a29fdd7c5ed0f6d8d69f46ee272",
+          "lines": 161,
+          "publicDeclarations": [
+            "public struct TapRecordEvent: Sendable, Equatable {",
+            "public enum Action: String, Sendable, Equatable {",
+            "public let id: Int64",
+            "public let did: String",
+            "public let rev: String",
+            "public let collection: String",
+            "public let rkey: String",
+            "public let action: Action",
+            "public let cid: String?",
+            "public let recordJSON: Data?",
+            "public let live: Bool",
+            "public struct TapIdentityEvent: Sendable, Equatable {",
+            "public let id: Int64",
+            "public let did: String",
+            "public let handle: String",
+            "public let isActive: Bool",
+            "public let status: TapAccountStatus",
+            "public enum TapEvent: Sendable, Equatable {",
+            "public var id: Int64 {",
+            "public var repoDid: String {",
+            "public enum TapEventParseError: Error, CustomStringConvertible {",
+            "public var description: String {",
+            "public enum TapEventParser {",
+            "public static func parse(_ text: String) throws -> TapEvent {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/TapRepositoryRestorer.swift",
+          "sha256": "4102a53b91e170ed4740ce2933b5d94b0647ce31e064e69ac382ccdb52e7374c",
+          "lines": 262,
+          "publicDeclarations": [
+            "public protocol TapRepositoryRestorer: Sendable {",
+            "public func restoreCurrentRepository(repoDid: String, recovery: PDSRepositoryRecoveryContext)",
+            "public struct TapPDSRepositoryRestorer: TapRepositoryRestorer, Sendable {",
+            "public init(",
+            "public func restoreCurrentRepository(repoDid: String) async throws",
+            "public func restoreCurrentRepository(",
+            "public enum TapRepositoryRestorationError: Error, Sendable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/TapShadowModels.swift",
+          "sha256": "7e0fb9887c00b07e93960797a9d289b70794ffb856920a909692c3c9ef222062",
+          "lines": 212,
+          "publicDeclarations": [
+            "public struct IndexedContentIdentity: Sendable, Equatable {",
+            "public let uri: String",
+            "public let cid: String",
+            "public let authorDid: String",
+            "public let collection: String",
+            "public init(uri: String, cid: String, authorDid: String, collection: String) {",
+            "public enum TapContentMutation: Sendable {",
+            "public var uri: String {",
+            "public var authorDid: String {",
+            "public var collection: String {",
+            "public struct AppViewProjectionRepair: Sendable, Equatable {",
+            "public let id: String",
+            "public let environment: String",
+            "public let eventId: Int64",
+            "public let uri: String",
+            "public let authorDid: String",
+            "public let publicationSite: String?",
+            "public let action: String",
+            "public let attempts: Int",
+            "public let leaseOwner: String",
+            "public let leaseUntil: Date",
+            "public struct AppViewProjectionRepairBacklogSnapshot: Sendable, Equatable {",
+            "public let environment: String",
+            "public let queuedCount: Int",
+            "public let runningCount: Int",
+            "public let failedCount: Int",
+            "public let oldestActionableAt: Date?",
+            "public let oldestActionableAgeSeconds: TimeInterval?",
+            "public let observedAt: Date",
+            "public init(",
+            "public enum AppViewProjectionRepairError: Error {",
+            "public struct TapDesiredRepositoryScope: Sendable, Equatable {",
+            "public let repoDids: [String]",
+            "public let truncated: Bool",
+            "public init(repoDids: [String], truncated: Bool) {",
+            "public enum TapAccountStatus: String, Codable, Sendable, Equatable {",
+            "public var isActive: Bool { self == .active }",
+            "public enum TapParityStatus: String, Codable, Sendable, Equatable {",
+            "public enum TapParityDiscrepancyStatus: String, Codable, Sendable, Equatable {",
+            "public struct TapParityEventEvidence: Sendable, Equatable {",
+            "public let uri: String",
+            "public let collection: String",
+            "public let mismatchKind: String?",
+            "public let expectedCid: String?",
+            "public let observedCid: String?",
+            "public init(",
+            "public struct TapParityDiscrepancy: Sendable, Equatable {",
+            "public let environment: String",
+            "public let eventId: Int64",
+            "public let repoDid: String",
+            "public let uri: String",
+            "public let collection: String",
+            "public let mismatchKind: String",
+            "public let expectedCid: String?",
+            "public let observedCid: String?",
+            "public let status: TapParityDiscrepancyStatus",
+            "public let openedAt: Date",
+            "public let resolvedAt: Date?",
+            "public let resolutionEventId: Int64?",
+            "public struct TapRepositorySyncState: Sendable, Equatable {",
+            "public let environment: String",
+            "public let repoDid: String",
+            "public let repoRev: String?",
+            "public let accountStatus: TapAccountStatus",
+            "public let pdsBase: String?",
+            "public let lastEventId: Int64?",
+            "public let lastEventLive: Bool",
+            "public let parityStatus: TapParityStatus",
+            "public let matchedEventCount: Int64",
+            "public let mismatchedEventCount: Int64",
+            "public let lastMismatch: String?",
+            "public let lastIndexedAt: Date?",
+            "public let lastValidatedAt: Date?",
+            "public let updatedAt: Date",
+            "public init("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewConfig.swift",
+          "sha256": "262a24baff35dbbc49b1bddeab5c25026fb84e99358d49ae01216bc79948cd4b",
+          "lines": 199,
+          "publicDeclarations": [
+            "public enum ThinAppViewJetstreamMode: String, Sendable, Equatable {",
+            "public var runsLegacySubscriber: Bool { self != .v2Authoritative }",
+            "public var drainsV2Inbox: Bool { self == .v2Authoritative }",
+            "public var runsLegacyProactiveBackfill: Bool { self != .v2Authoritative }",
+            "public struct ThinAppViewConfig: Sendable {",
+            "public static let defaultJetstreamLeaderLeaseName = \"jetstream-v2-ingest\"",
+            "public static let canonicalContentCollections: [String] = [",
+            "public static let legacyContentCollections: [String] = [",
+            "public static let contentCollections = canonicalContentCollections + legacyContentCollections",
+            "public static let graphSubscriptionCollection = \"site.standard.graph.subscription\"",
+            "public static let defaultRelayWebSocketURLs = [",
+            "public static let defaultRelayWebSocketURL = defaultRelayWebSocketURLs[0]",
+            "public let enabled: Bool",
+            "public let relayWebSocketURLs: [String]",
+            "public var relayWebSocketURL: String { relayWebSocketURLs[0] }",
+            "public let jetstreamMode: ThinAppViewJetstreamMode",
+            "public let jetstreamV2SourceGeneration: String",
+            "public let jetstreamLeaderLeaseName: String",
+            "public let ingestionInboxMaxConcurrency: Int",
+            "public let ingestionInboxLeaseSeconds: TimeInterval",
+            "public let ingestionInboxPollMilliseconds: Int",
+            "public let ingestionInboxAppliedRetentionSeconds: TimeInterval",
+            "public let ingestionInboxDeadLetterRetentionSeconds: TimeInterval",
+            "public let repositoryRestoreTimeoutSeconds: TimeInterval",
+            "public let contentRetentionSeconds: TimeInterval",
+            "public let readMarkRetentionSeconds: TimeInterval",
+            "public let maxEnrollAuthors: Int",
+            "public let maxEnrollRecordsPerAuthor: Int",
+            "public let maxEnrollConcurrency: Int",
+            "public let proactiveBackfillEnabled: Bool",
+            "public let proactiveBackfillIntervalSeconds: TimeInterval",
+            "public let proactiveBackfillAuthorLimit: Int",
+            "public let maxRssItemsPerFeed: Int",
+            "public let rssFeedPollEnabled: Bool",
+            "public let rssFeedPollIntervalSeconds: TimeInterval",
+            "public let rssFeedPollFeedLimit: Int",
+            "public static func fromEnvironment(",
+            "public static let disabled = ThinAppViewConfig("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewEnrollBackfill.swift",
+          "sha256": "149f91e84502b58f389f1254175aea79d282fc9f1115be8ac17bb2ba9cf4a034",
+          "lines": 984,
+          "publicDeclarations": [
+            "public struct PDSReconciliationOptions: Sendable, Equatable {",
+            "public let recentOnly: Bool",
+            "public let maxConcurrency: Int",
+            "public let rateLimitPerSecond: Int",
+            "public let recordCapPerAuthor: Int",
+            "public let maxRateLimitRetries: Int",
+            "public init(",
+            "public struct PDSReconciliationLimitsEvidence: Codable, Sendable, Equatable {",
+            "public let maximumAuthors: Int",
+            "public let recordCapPerAuthor: Int",
+            "public let maxConcurrency: Int",
+            "public let rateLimitPerSecond: Int",
+            "public let maxRateLimitRetries: Int",
+            "public enum PDSReconciliationIssueKind: String, Codable, Sendable, Equatable {",
+            "public enum PDSAuthorScopeIssueKind: String, Codable, Sendable, Equatable {",
+            "public struct PDSAuthorScopeIssue: Codable, Sendable, Equatable {",
+            "public let kind: PDSAuthorScopeIssueKind",
+            "public let value: String",
+            "public init(kind: PDSAuthorScopeIssueKind, value: String) {",
+            "public struct PDSAuthorScopeEvidence: Codable, Sendable, Equatable {",
+            "public let requestedAuthorDids: [String]",
+            "public let acceptedAuthorDids: [String]",
+            "public let issues: [PDSAuthorScopeIssue]",
+            "public var isAccepted: Bool { issues.isEmpty && !acceptedAuthorDids.isEmpty }",
+            "public struct PDSReconciliationIssue: Codable, Sendable, Equatable {",
+            "public let kind: PDSReconciliationIssueKind",
+            "public let detail: String",
+            "public init(kind: PDSReconciliationIssueKind, detail: String) {",
+            "public struct PDSCollectionReconciliationResult: Codable, Sendable, Equatable {",
+            "public let collection: String",
+            "public let observedCount: Int",
+            "public let indexedCount: Int",
+            "public let truncated: Bool",
+            "public let issues: [PDSReconciliationIssue]",
+            "public let rateLimitRetries: [PDSRateLimitRetryEvidence]?",
+            "public init(",
+            "public enum PDSRateLimitDelaySource: String, Codable, Sendable, Equatable {",
+            "public enum PDSRateLimitRetryOutcome: String, Codable, Sendable, Equatable {",
+            "public struct PDSRateLimitRetryEvidence: Codable, Sendable, Equatable {",
+            "public let attempt: Int",
+            "public let source: PDSRateLimitDelaySource",
+            "public let retryAfterValue: String?",
+            "public let baseDelaySeconds: Double",
+            "public let jitterSeconds: Double",
+            "public let appliedDelaySeconds: Double",
+            "public let capped: Bool",
+            "public let outcome: PDSRateLimitRetryOutcome",
+            "public struct PDSAuthorReconciliationResult: Codable, Sendable, Equatable {",
+            "public let authorDid: String",
+            "public let pdsBase: String?",
+            "public let collections: [PDSCollectionReconciliationResult]",
+            "public let issues: [PDSReconciliationIssue]",
+            "public var indexedCount: Int { collections.reduce(0) { $0 + $1.indexedCount } }",
+            "public var truncated: Bool { collections.contains(where: \\.truncated) }",
+            "public var failed: Bool {",
+            "public struct PDSReconciliationReport: Codable, Sendable, Equatable {",
+            "public let authorScope: PDSAuthorScopeEvidence",
+            "public let limits: PDSReconciliationLimitsEvidence",
+            "public let authors: [PDSAuthorReconciliationResult]",
+            "public let unsupportedCollections: [String]",
+            "public let historicalDeletesProvable: Bool",
+            "public var indexedCount: Int { authors.reduce(0) { $0 + $1.indexedCount } }",
+            "public var failedAuthorCount: Int { authors.filter(\\.failed).count }",
+            "public var truncated: Bool {",
+            "public var complete: Bool {",
+            "public struct PDSReconciliationProgress: Sendable, Equatable {",
+            "public let authorDid: String",
+            "public let collection: String",
+            "public let indexedCount: Int",
+            "public let lastRecordUri: String",
+            "public struct PDSReconciliationIncompleteError: Error, Sendable {",
+            "public let report: PDSReconciliationReport",
+            "public struct ThinAppViewEnrollBackfill: Sendable {",
+            "public init(",
+            "public func enroll(",
+            "public func reconcile(",
+            "public func diagnosticOptions(",
+            "public static func isBackfillEligibleAuthorDid(_ raw: String) -> Bool {",
+            "public static func validateAuthorScope("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewEntryPagination.swift",
+          "sha256": "9cc64415353d1277cf19af7f6ab8c683b671a898b4cf62427c4f913f5478ad52",
+          "lines": 112,
+          "publicDeclarations": [
+            "public enum ThinAppViewEntryPagination {",
+            "public static let defaultPageLimit = 50",
+            "public static let maxAggregateEntries = 500",
+            "public static func mergeEntries(",
+            "public struct AggregateStepResult: Sendable {",
+            "public let merged: [AppViewEntryListItem]",
+            "public let responseCursor: String?",
+            "public let completed: Bool",
+            "public let nextFetchCursor: String?",
+            "public init(",
+            "public static func step(",
+            "public static func aggregate("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewIndexer.swift",
+          "sha256": "0fc702c59a5f1d58b3a4da9cd44fef1b35603bdb60e2ea5f800138dcea931f84",
+          "lines": 484,
+          "publicDeclarations": [
+            "public actor ThinAppViewIndexer {",
+            "public init(",
+            "public func handleCommit(",
+            "public func applyAuthoritativeContentDeletion(repoDid: String, collection: String, rkey: String,",
+            "public func handleIdentity("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewMaintenanceCacheProbe.swift",
+          "sha256": "6332f1cf6bea34dc05336d9aa7d65cffab39d8d6c281f7f92059ded2acbee2f0",
+          "lines": 32,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewMaintenanceJob.swift",
+          "sha256": "9389135f890764d64b11d419670cef9f51b5f666fd38a83bf3343d655481615a",
+          "lines": 4,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewMaintenanceRuntime.swift",
+          "sha256": "eefdc0008589b82cff367108744079db717898a3cebc6d52f41143cdb7172227",
+          "lines": 50,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewMaintenanceState.swift",
+          "sha256": "c5a2f44a06b0d6e5afb468c61223c0daf9115b7a95fd5f96b1a898a46ad0a4c1",
+          "lines": 57,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewModels.swift",
+          "sha256": "a3a2ce75850f92194e6f560f8e0f85a6d9a4e68574faca4cfce7cf590cfd934c",
+          "lines": 328,
+          "publicDeclarations": [
+            "public struct ContentRenderFields: Codable, Sendable, Equatable {",
+            "public let title: String",
+            "public let publishedAt: String",
+            "public var summary: String?",
+            "public var thumbnailUrl: String?",
+            "public var contentHtml: String?",
+            "public var articleUrl: String?",
+            "public init(",
+            "public struct IndexedContentItem: Sendable {",
+            "public let uri: String",
+            "public let cid: String",
+            "public let authorDid: String",
+            "public let collection: String",
+            "public let createdAt: Date",
+            "public let indexedAt: Date",
+            "public let publicationSite: String?",
+            "public let render: ContentRenderFields",
+            "public let expiresAt: Date",
+            "public init(",
+            "public struct ReadMarkRow: Sendable {",
+            "public let viewerDid: String",
+            "public let subjectUri: String",
+            "public let createdAt: Date",
+            "public struct ReadWatermarkBoundary: Codable, Sendable, Equatable {",
+            "public let publicationId: String",
+            "public let createdAt: Date",
+            "public let entryId: String?",
+            "public init(publicationId: String, createdAt: Date, entryId: String?) {",
+            "public func contains(createdAt candidateDate: Date, entryId candidateId: String) -> Bool {",
+            "public func isAfter(_ other: ReadWatermarkBoundary) -> Bool {",
+            "public enum AppViewUnreadCounterAccuracy: String, Codable, Sendable, Equatable {",
+            "public struct AppViewPublicationScope: Sendable, Equatable {",
+            "public let viewerDid: String",
+            "public let publicationId: String",
+            "public let authorDid: String",
+            "public let publicationAtUri: String?",
+            "public let publicationScopeAtUris: [String]",
+            "public let publicationSiteUrls: [String]",
+            "public let scopeKeys: [String]",
+            "public let sectionKeys: [String]",
+            "public let updatedAt: Date",
+            "public init(",
+            "public struct AppViewUnreadCounter: Codable, Sendable, Equatable {",
+            "public let publicationId: String",
+            "public let unreadCount: Int",
+            "public let generation: Int64",
+            "public let accuracy: AppViewUnreadCounterAccuracy",
+            "public let dirty: Bool",
+            "public let countedAt: Date",
+            "public init(",
+            "public enum EntryListFilter: String, Sendable {",
+            "public struct AppViewEntryListItem: Codable, Sendable {",
+            "public let entryId: String",
+            "public let title: String",
+            "public let summary: String?",
+            "public let publishedAt: Date",
+            "public let thumbnailUrl: String?",
+            "public let thumbnailFallbackUrl: String?",
+            "public let originalUrl: String?",
+            "public let publicationId: String?",
+            "public let feedPositionAt: Date",
+            "public let isRead: Bool",
+            "public init(",
+            "public func withPublicationId(_ publicationId: String) -> AppViewEntryListItem {",
+            "public func withReadState(_ isRead: Bool) -> AppViewEntryListItem {",
+            "public struct AppViewEntryListResponse: Codable, Sendable {",
+            "public let entries: [AppViewEntryListItem]",
+            "public let cursor: String?",
+            "public init(entries: [AppViewEntryListItem], cursor: String?) {",
+            "public struct AppViewAggregatePageDiagnostics: Sendable, Equatable {",
+            "public let rowsScanned: Int",
+            "public let rowsReturned: Int",
+            "public let duplicatesSuppressed: Int",
+            "public let queryDuration: TimeInterval",
+            "public init(",
+            "public struct AppViewAggregatePageResult: Sendable {",
+            "public let response: AppViewEntryListResponse",
+            "public let diagnostics: AppViewAggregatePageDiagnostics",
+            "public init(",
+            "public struct AppViewEnrollRequest: Codable, Sendable {",
+            "public let authorDids: [String]",
+            "public let feedUrls: [String]",
+            "public init(authorDids: [String], feedUrls: [String] = []) {",
+            "public init(from decoder: Decoder) throws {",
+            "public struct AppViewReadMarkRequest: Codable, Sendable {",
+            "public let subjectUri: String",
+            "public let readAt: Date?",
+            "public init(subjectUri: String, readAt: Date?) {",
+            "public init(from decoder: Decoder) throws {",
+            "public struct AppViewReadMarkDeleteRequest: Codable, Sendable {",
+            "public let subjectUri: String"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewPdsResolution.swift",
+          "sha256": "84ca14e5195ede57fbebd8ad123489686b23939c536ac06f45818e8bb51a2cc0",
+          "lines": 135,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewProactiveBackfillJob.swift",
+          "sha256": "ff180dcf3c1c5fc3ab61e9dabbd34d03c55d7558fe11b177f00230b4284ea4e0",
+          "lines": 87,
+          "publicDeclarations": [
+            "public struct ThinAppViewProactiveBackfillJob: Sendable {",
+            "public init(",
+            "public func runForever() async {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewProjectionCacheWarmer.swift",
+          "sha256": "e196dde871cee5c6d7a2554402121ac12f9c199e4c0edb8ff6a4ab37605453d3",
+          "lines": 76,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewProjectionRepairJob.swift",
+          "sha256": "7b2a4ae60e17d4785effc7fd6710d9e523288506b3a7fa1d203298da05b46133",
+          "lines": 126,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewPublicationSiteResolver.swift",
+          "sha256": "45edcd0ba00f94d1b7c5c9df66ae773aa37343f6ca8e96c56e37ba596bd1c923",
+          "lines": 145,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewQuerySupport.swift",
+          "sha256": "14166e63a5c14ec0b4f8d0fd4754d48a433e12e5e22b68e9e91e03cb9bdb637d",
+          "lines": 314,
+          "publicDeclarations": [
+            "public enum ThinAppViewCursor {",
+            "public static func encode(createdAt: Date, uri: String) -> String {",
+            "public static func decode(_ cursor: String) -> (createdAt: Date, uri: String)? {",
+            "public enum ThinAppViewQuerySupport {",
+            "public enum ThinAppViewStoreError: Error {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewRecoveryJobRunner.swift",
+          "sha256": "dce6ddf2bf1e0e605fb07d13b19b12c5ba1cabe7b0b1324e229d5d51bf28d696",
+          "lines": 641,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewRssFeedPollJob.swift",
+          "sha256": "ee1d9e44efd8d989597bf45c6ba3c155e50dafd80e9be3df616ac4da103e1cf7",
+          "lines": 63,
+          "publicDeclarations": [
+            "public struct ThinAppViewRssFeedPollJob: Sendable {",
+            "public init(",
+            "public func runForever() async { await runForever(maintenanceState: nil) }"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewRssIngestion.swift",
+          "sha256": "b9bcbcc36b2d06148bb613ad73c9b7857e33e76fa00d280382ba75f4138be18a",
+          "lines": 352,
+          "publicDeclarations": [
+            "public struct ThinAppViewRssIngestion: Sendable {",
+            "public init(",
+            "public func ingestFeed(normalizedFeedUrl: String) async throws -> Int {",
+            "public func ingestFeeds(_ feedUrls: [String]) async throws -> Int {",
+            "public static func feedUrl(fromSubscriptionRecord record: [String: Any]) -> String? {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewStore.swift",
+          "sha256": "f8241137f16fed8e6e41e26998a331a639bbf33db57df2f034d9df291c1f4878",
+          "lines": 550,
+          "publicDeclarations": [
+            "public enum AppViewIngestionScopePolicy {",
+            "public static let version = \"publication-author-viewer-v1\"",
+            "public static let publicationAuthorCollections = [",
+            "public static let viewerCollections = [",
+            "public struct RssFeedFetchMetadata: Sendable {",
+            "public let normalizedFeedUrl: String",
+            "public let etag: String?",
+            "public let lastModified: String?",
+            "public let lastPollAt: Date?",
+            "public let backoffUntil: Date?",
+            "public let consecutiveErrorCount: Int",
+            "public init(",
+            "public protocol ThinAppViewStore: Actor {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewTtlCleanupJob.swift",
+          "sha256": "1375ccc0e502d57766984488d60e7ac8c11ea05ec752671b650bf13e9912f9ad",
+          "lines": 152,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewWorkerMode.swift",
+          "sha256": "9130b6900e63e71b11c22f149d519ce3fd3300964632adfc9a86eeeb31ed58d7",
+          "lines": 22,
+          "publicDeclarations": [
+            "public enum ThinAppViewWorkerMode: String, Sendable, Equatable {",
+            "public static func fromEnvironment(_ environment: [String: String]) throws -> Self {",
+            "public func validate(role: ThinAppViewWorkerRole) throws {",
+            "public enum ConfigurationError: Error, Sendable, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewWorkerRole.swift",
+          "sha256": "fb1241ffc4d3df77e6a70e92d186f53c23e7df9c632aa461c21e8d764d0332a5",
+          "lines": 52,
+          "publicDeclarations": [
+            "public enum ThinAppViewWorkerRole: String, CaseIterable, Sendable, Equatable {",
+            "public struct ThinAppViewWorkerRuntimePlan: Sendable, Equatable {",
+            "public let runsLegacySubscriber: Bool",
+            "public let runsInboxProjection: Bool",
+            "public let runsProjectionRepair: Bool",
+            "public let runsTapConsumer: Bool",
+            "public let runsTtlCleanup: Bool",
+            "public let runsProactiveBackfill: Bool",
+            "public let runsRecovery: Bool",
+            "public let runsRssPolling: Bool",
+            "public let runsTelemetry: Bool",
+            "public let runsHeartbeat: Bool",
+            "public init(role: ThinAppViewWorkerRole) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewWorkerRuntime.swift",
+          "sha256": "b70fbdd3a0e9575b70ddd10cc082242e8ed9dc2b2eec0c259db8e93a27815806",
+          "lines": 641,
+          "publicDeclarations": [
+            "public enum ThinAppViewWorkerRuntime {",
+            "public static func run(",
+            "public enum ThinAppViewWorkerRuntimeError: Error, Sendable, Equatable {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/UnreadReadMutationEntry.swift",
+          "sha256": "fb6b52251ed44434dc80ca68475d6842525fc2c87f3cd369ced1cc3b62f7fed6",
+          "lines": 17,
+          "publicDeclarations": [
+            "public struct UnreadReadMutationEntry: Sendable, Equatable {",
+            "public let entryId: String",
+            "public let publishedAt: Date",
+            "public let feedPositionAt: Date",
+            "public let publicationId: String",
+            "public init(entryId: String, publishedAt: Date, feedPositionAt: Date, publicationId: String) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/UnreadReadMutationPage.swift",
+          "sha256": "a58868cde8bfb967a7dae5b24044c04839f311f2ca638ecf86b65249893e785a",
+          "lines": 20,
+          "publicDeclarations": [
+            "public struct UnreadReadMutationPage: Sendable {",
+            "public let entries: [UnreadReadMutationEntry]",
+            "public let cursor: String?",
+            "public init(entries: [UnreadReadMutationEntry], cursor: String?) {"
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/UnreadReadMutationScope.swift",
+          "sha256": "65ca54d54fa457687de990cd63edbf1feeed9196e65dd1900ecf29270f5d2c7b",
+          "lines": 62,
+          "publicDeclarations": []
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/WebSocketHeartbeatSupport.swift",
+          "sha256": "c73a6e14e82ed5bce5789c5b13fd2b8dda20030bfdb44494f8af6059f3eac008",
+          "lines": 88,
+          "publicDeclarations": []
+        }
+      ],
+      "tests": [
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/AppViewFeedQueryDeadlineTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/AppViewFeedRequestTimingsTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/AppViewProjectionCacheTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/AuthoritativeContentTestTransport.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/AuthoritativeContentVerifierTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/BatchReadMarksTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ContentVerificationCASTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/DatabaseBackendTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/FinanceSelectionTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/FrozenReadMarksPostgresTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/FrozenReadMarksTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/HtmlTextDecoderTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/JetstreamInboxProjectionWorkerTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/JetstreamV2ProjectionEventTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/MicrocosmContentDiscoveryTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/MicrocosmTestTransport.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/OperationsGapPersistenceTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/OperationsHeartbeatJobTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSBoundarySelectionPostgresIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSDiagnosticNetworkSafetyTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateEvictionIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateMaintenanceIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateManifestTransitionTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStatePostgresIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateProjectorTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateScopeParityTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReadStateVerifiedRecordCacheTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSReconciliationScopeTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSRecoveryShutdownProgress.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PDSRepositoryRecoveryTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastID3ChapterArtworkTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastMetadataTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastPrivateCatalogTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastPrivateStorageTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastRSSURLTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastSearchTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PodcastTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresConfigTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresFeedIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresFinanceSelectionTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresJetstreamInboxIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresPodcastIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresPrivatePodcastIntegrationTests+Search.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresPrivatePodcastIntegrationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresPublicationReadTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresReadAgePaginationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresRepositoryRecoveryTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresSportsSelectionTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresTestSchemaPreparation.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresTestSchemaPreparationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PostgresTopicSelectionTestSchema.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PublicContentAtomicInsertTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PublicContentRecordCIDTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/PublicationSiteBaseResolverTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RedisAppViewProjectionCacheTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RepositorySnapshotReaderTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssFeedIdentityTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssFeedThumbnailExtractorTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssHtmlBodyFormatterTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePDSReadStateTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePodcastJobsSearchTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePodcastStoreTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SportsSelectionTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewActiveWorkerModeTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewEnrollBackfillTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewEntryPaginationTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewIndexerTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewMaintenanceCacheProbeTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewMaintenanceTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewTtlCleanupJobTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/ThinAppViewWorkerRuntimePlanTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/UnreadMutationQueryTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/UnreadReadMutationScopeTests.swift"
+      ]
+    },
+    {
       "name": "lexicons",
       "source": "packages/lexicons",
       "target": "packages/go/lexicons",
@@ -11761,11 +14265,11 @@
         },
         {
           "path": "packages/spec/__tests__/ci-bun-installation.test.ts",
-          "sha256": "1ab2356f7c443ed4a25f62f46160d6aca8ad2966be9a6eee953b562e33435300"
+          "sha256": "69ab9f102657589d37d9ca6f33dcba4d8d5d43ea5a9e5e2edd8f3407275f1b14"
         },
         {
           "path": "packages/spec/__tests__/ci-path-detection.test.ts",
-          "sha256": "c5a2c650fd4d53bc8740823e192ae17af0fb1e112d76400361e21de2df3598a2"
+          "sha256": "beea57612d9ba49923fc50a1999bb5ec6075f6f8ea6baca6117ad8304229e584"
         },
         {
           "path": "packages/spec/__tests__/ci-postgres-preparation.test.ts",
@@ -11773,11 +14277,11 @@
         },
         {
           "path": "packages/spec/__tests__/ci-validated-merge-workflow.test.ts",
-          "sha256": "337c2b0bccea3b41147e315646f177d00f1b41df7369ac0cdac7d32b5960fa9b"
+          "sha256": "b00c91c986879bee8f20cfef6eba6e5bd0ea8f0c5e11ac9f89631b853691bcc8"
         },
         {
           "path": "packages/spec/__tests__/ci-workflow-config.test.ts",
-          "sha256": "97cea8954a24271f2058ad4c094614bb58458dbe0ffe51e485c4cd05f0694625"
+          "sha256": "3499ad87b6c53adf2ba884d7f43c274372dce21f616b657225161154315926d9"
         },
         {
           "path": "packages/spec/__tests__/circle-private-state-migration.test.ts",
@@ -11817,7 +14321,7 @@
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-drain-indexes.test.ts",
-          "sha256": "18ccb26ff10fd0a62dac421caae17e4c57e448764fe8a200d307726c1bb2ec89"
+          "sha256": "f7f35bb530114416820a4704b4be81f8826385eafc0ca9b1ec3f2d494b636c93"
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-durability-migration.test.ts",
@@ -11861,7 +14365,7 @@
         },
         {
           "path": "packages/spec/__tests__/podcast-deployment.test.ts",
-          "sha256": "4f91872b623871cf569aa21baeb08d39fb24e4d67d6b8d19d4304225c2915878"
+          "sha256": "35051499d5cca6833ede428d4a0d559793e00ee44a3f29d8df1133adb24978b6"
         },
         {
           "path": "packages/spec/__tests__/postgres-replay-harness.test.ts",
@@ -11886,6 +14390,10 @@
         {
           "path": "packages/spec/__tests__/sports-public-contract.test.ts",
           "sha256": "916c5a2c6d553adf2d3c5fc66411356e69fba7884cd540deffc3f2602a09165c"
+        },
+        {
+          "path": "packages/spec/__tests__/standalone-railway-config.test.ts",
+          "sha256": "eb3b666acd0fa12b3d8e83643db69f08a17fedf79f765b3fe089e03222c52429"
         },
         {
           "path": "packages/spec/__tests__/subscribed-feed-performance-migration.test.ts",

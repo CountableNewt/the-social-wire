@@ -1,4 +1,5 @@
-import { SQL, S3Client } from "bun";
+import { S3Client } from "bun";
+import { SQLitePodcastDatabase, type PodcastDatabase } from "./sqlite";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -14,9 +15,10 @@ import type { PodcastEpisode, PodcastJob, PodcastShow, TranscriptCue } from "./t
 export class PodcastWorker {
   readonly id=randomUUID();
   private lastPoll=0;
-  constructor(readonly database:SQL,readonly storage:S3Client,readonly bridge?:PodcastBridge) {}
+  constructor(readonly database:PodcastDatabase,readonly storage:S3Client,readonly bridge?:PodcastBridge) {}
 
   async claim():Promise<PodcastJob|undefined> {
+    if(this.database instanceof SQLitePodcastDatabase)return this.database.claim(this.id,bridgeEnabled());
     await this.database`WITH expired AS (
       UPDATE podcast_jobs SET status='failed',error='Processing lease expired',lease_until=NULL,updated_at=now()
       WHERE status='running' AND lease_until<now() AND attempts>=3 RETURNING kind,payload_json
@@ -34,7 +36,7 @@ export class PodcastWorker {
   }
 
   private async pollSubscriptions():Promise<void> {
-    const shows=await this.database`SELECT DISTINCT s.id,s.show_json FROM podcast_shows s JOIN podcast_subscriptions sub ON sub.show_id=s.id ORDER BY s.id`;
+    const shows=this.database instanceof SQLitePodcastDatabase?this.database.subscribedShows():await this.database`SELECT DISTINCT s.id,s.show_json FROM podcast_shows s JOIN podcast_subscriptions sub ON sub.show_id=s.id ORDER BY s.id`;
     for(const row of shows) {
       try {
         const show=row.show_json as PodcastShow;
@@ -43,7 +45,9 @@ export class PodcastWorker {
         if(bridgeEnabled()&&this.bridge&&show.sourceKind==="rss"&&show.feedUrl) {
           // Queue publication, never perform repository writes in feed-serving requests.
           const key=`bridge:${row.id}:${mediaVersion({audioUrl:JSON.stringify(episodes.map(e=>e.id))})}`;
-          await this.database`INSERT INTO podcast_jobs(id,kind,dedupe_key,payload_json) VALUES(${randomUUID()}::uuid,'bridge',${key},${{showId:row.id,feedUrl:(row.show_json as PodcastShow).feedUrl}}::jsonb) ON CONFLICT(dedupe_key) DO NOTHING`;
+          const payload={showId:row.id,feedUrl:(row.show_json as PodcastShow).feedUrl};
+          if(this.database instanceof SQLitePodcastDatabase)this.database.enqueueBridge(key,payload);
+          else await this.database`INSERT INTO podcast_jobs(id,kind,dedupe_key,payload_json) VALUES(${randomUUID()}::uuid,'bridge',${key},${payload}::jsonb) ON CONFLICT(dedupe_key) DO NOTHING`;
         }
       } catch(error) {console.error(JSON.stringify({event:"podcast_poll_failed",showId:row.id,error:safeError(error)}));}
     }
@@ -51,18 +55,28 @@ export class PodcastWorker {
 
   private async execute(job:PodcastJob):Promise<void> {
     let leaseLost=false;
-    const heartbeat=setInterval(()=>void this.database`UPDATE podcast_jobs SET lease_until=now()+interval '2 minutes' WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running' RETURNING id`.then(rows=>{if(!rows.length)leaseLost=true;}).catch(()=>{leaseLost=true;}),30_000);
+    const heartbeat=setInterval(()=>{
+      if(this.database instanceof SQLitePodcastDatabase) {
+        try {if(!this.database.heartbeat(job.id,this.id))leaseLost=true;}catch {leaseLost=true;}
+      } else void this.database`UPDATE podcast_jobs SET lease_until=now()+interval '2 minutes' WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running' AND lease_until>now() RETURNING id`.then(rows=>{if(!rows.length)leaseLost=true;}).catch(()=>{leaseLost=true;});
+    },30_000);
     try {
       const result=await this.process(job);
       if(leaseLost)throw new Error("Media job lease lost");
-      await this.database.begin(async transaction=>{
-        const rows=await transaction`UPDATE podcast_jobs SET status='complete',result_json=${result}::jsonb,error=NULL,lease_until=NULL,updated_at=now() WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running' RETURNING id`;
-        if(rows.length && job.kind==="clip")await transaction`UPDATE podcast_clips SET clip_json=clip_json || ${{...result,status:"complete"}}::jsonb,updated_at=now() WHERE id=${String(job.payload_json.clipId)}::uuid`;
+      if(this.database instanceof SQLitePodcastDatabase) {
+        if(!this.database.complete(job,this.id,result))throw new Error("Media job lease lost");
+      } else await this.database.begin(async transaction=>{
+        const rows=await transaction`UPDATE podcast_jobs SET status='complete',result_json=${result}::jsonb,error=NULL,lease_until=NULL,updated_at=now() WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running' AND lease_until>now() RETURNING id`;
+        if(!rows.length)throw new Error("Media job lease lost");
+        if(job.kind==="clip")await transaction`UPDATE podcast_clips SET clip_json=clip_json || ${{...result,status:"complete"}}::jsonb,updated_at=now() WHERE id=${String(job.payload_json.clipId)}::uuid`;
       });
     } catch(error) {
       const failed=job.attempts>=3;
-      await this.database`UPDATE podcast_jobs SET status=${failed?"failed":"queued"},error=${safeError(error)},lease_until=NULL,available_at=now()+interval '1 minute',updated_at=now() WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running'`;
-      if(failed && job.kind==="clip")await this.database`UPDATE podcast_clips SET clip_json=clip_json || ${{status:"failed",error:safeError(error)}}::jsonb WHERE id=${String(job.payload_json.clipId)}::uuid`;
+      if(this.database instanceof SQLitePodcastDatabase)this.database.fail(job,this.id,safeError(error));
+      else await this.database.begin(async transaction=>{
+        const rows=await transaction`UPDATE podcast_jobs SET status=${failed?"failed":"queued"},error=${safeError(error)},lease_until=NULL,available_at=now()+interval '1 minute',updated_at=now() WHERE id=${job.id}::uuid AND worker_id=${this.id} AND status='running' AND lease_until>now() RETURNING id`;
+        if(rows.length && failed && job.kind==="clip")await transaction`UPDATE podcast_clips SET clip_json=clip_json || ${{status:"failed",error:safeError(error)}}::jsonb,updated_at=now() WHERE id=${String(job.payload_json.clipId)}::uuid`;
+      });
     } finally {clearInterval(heartbeat);}
   }
 
@@ -71,6 +85,11 @@ export class PodcastWorker {
       if(!bridgeEnabled())throw new Error("Podcast bridge is disabled");
       if(!this.bridge)throw new Error("Podcast bridge credentials are not configured");
       const showId=String(job.payload_json.showId);
+      if(this.database instanceof SQLitePodcastDatabase) {
+        if(!this.database.subscribed(showId))return {skipped:true,reason:"No active subscriptions"};
+        const show=this.database.show(showId);if(!show)throw new Error("Podcast show not found");
+        return this.bridge.mirror(show,this.database.episodes(showId));
+      }
       const subscribed=await this.database`SELECT show_id FROM podcast_subscriptions WHERE show_id=${showId} LIMIT 1`;
       if(!subscribed.length)return {skipped:true,reason:"No active subscriptions"};
       const rows=await this.database`SELECT show_json FROM podcast_shows WHERE id=${showId}`;
@@ -82,8 +101,8 @@ export class PodcastWorker {
       const clipId=String(job.payload_json.clipId??job.payload_json.id);
       // Derive keys from validated clip ID; never delete arbitrary supplied storage keys.
       if(!/^[0-9a-f-]{36}$/i.test(clipId))throw new Error("Invalid clip ID");
-      const rows=await this.database`SELECT published_uri FROM podcast_clips WHERE id=${clipId}::uuid`;
-      if(rows[0]?.published_uri)throw new Error("Published clips cannot be cleaned up");
+      const published=this.database instanceof SQLitePodcastDatabase?this.database.clip(clipId)?.published_uri:(await this.database`SELECT published_uri FROM podcast_clips WHERE id=${clipId}::uuid`)[0]?.published_uri;
+      if(published)throw new Error("Published clips cannot be cleaned up");
       for(const name of ["audio.m4a","audiogram.mp4"])await this.storage.file(`clips/${clipId}/${name}`).delete();
       return {deleted:true};
     }

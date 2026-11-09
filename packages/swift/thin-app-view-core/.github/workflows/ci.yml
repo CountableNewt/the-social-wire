@@ -1,0 +1,55 @@
+name: Swift Package CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: package_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d package_test"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.4"
+          skip-verify-signature: true
+      - name: Prepare disposable PostgreSQL schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/package_test
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client
+          fi
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'"
+          docker restart "$POSTGRES_CONTAINER"
+          for attempt in $(seq 1 30); do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d postgres; then break; fi
+            sleep 1
+          done
+          docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d postgres
+          bash scripts/apply-test-migrations.sh
+          bash scripts/apply-test-migrations.sh
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM pg_stat_statements'
+      - name: Test package
+        env:
+          THIN_APPVIEW_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/package_test?sslmode=disable
+          PODCAST_PRIVATE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/package_test?sslmode=disable
+        run: swift test -Xswiftc -warnings-as-errors

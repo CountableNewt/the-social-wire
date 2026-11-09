@@ -1,5 +1,5 @@
 import { bridgeEnabled } from "./metadata";
-import { SQL } from "bun";
+import { SQLitePodcastDatabase, type PodcastDatabase } from "./sqlite";
 import { createHash } from "node:crypto";
 import { podcastGuid, uuidV5 } from "./identity";
 import { fetchPublic, publicFeedUrl } from "./publicFetch";
@@ -9,7 +9,7 @@ import type { PodcastEpisode, PodcastShow } from "./types";
 interface BridgeCredentials { pds: string; identifier: string; password: string; did: string }
 export class PodcastBridge {
   private token?: string;
-  constructor(private credentials: BridgeCredentials, private database: SQL) {}
+  constructor(private credentials: BridgeCredentials, private database: PodcastDatabase) {}
 
   private async call(method: string, body: object, retry = true): Promise<Record<string, unknown>> {
     if (!this.token) {
@@ -74,24 +74,35 @@ export class PodcastBridge {
     const publisherShowUri=show.sourceUri&&!show.sourceUri.startsWith(`at://${this.credentials.did}/`)?show.sourceUri:undefined;
     await this.call("com.atproto.repo.putRecord",{repo:this.credentials.did,collection:"org.atpodcasting.podcast",rkey:guid,record:{$type:"org.atpodcasting.podcast",title:show.title.slice(0,500),description:(show.description??"").slice(0,4000),artwork,language:"und",feedUrl:show.feedUrl,categories:[],guid,createdAt}});
     await this.call("com.atproto.repo.putRecord",{repo:this.credentials.did,collection:"app.thesocialwire.podcast.source",rkey:guid,record:{$type:"app.thesocialwire.podcast.source",feedUrl:show.feedUrl,podcastGuid:guid,showUri,bridgeDid:this.credentials.did,publisherShowUri,createdAt,updatedAt:now}});
-    await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${showUri},${show.id},'show') ON CONFLICT(alias) DO NOTHING`;
-    await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${"guid:"+guid},${show.id},'show') ON CONFLICT(alias) DO NOTHING`;
+    if(this.database instanceof SQLitePodcastDatabase) {
+      this.database.addAlias(showUri,show.id,"show");this.database.addAlias("guid:"+guid,show.id,"show");
+    } else {
+      await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${showUri},${show.id},'show') ON CONFLICT(alias) DO NOTHING`;
+      await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${"guid:"+guid},${show.id},'show') ON CONFLICT(alias) DO NOTHING`;
+    }
     let mirrored = 0;
     for(const episode of episodes) {
       if(!episode.guid)continue; // Never pretend a synthesized identifier came from RSS.
       const rkey=uuidV5(guid,episode.guid);const sourceUri=`at://${this.credentials.did}/org.atpodcasting.episode/${rkey}`;
-      const exists=await this.database`SELECT alias FROM podcast_aliases WHERE alias=${sourceUri}`;
-      if(exists.length)continue;
+      const exists=this.database instanceof SQLitePodcastDatabase?this.database.hasAlias(sourceUri):(await this.database`SELECT alias FROM podcast_aliases WHERE alias=${sourceUri}`).length>0;
+      if(exists)continue;
       let duration=episode.durationSeconds;
       if(!duration || duration<=0) duration=await withMedia(episode.audioUrl,path=>probeDuration(path));
       await this.call("com.atproto.repo.putRecord",{repo:this.credentials.did,collection:"org.atpodcasting.episode",rkey,record:{$type:"org.atpodcasting.episode",podcast:{podcastGuid:guid,feedUrl:show.feedUrl},title:episode.title.slice(0,500),description:(episode.description??"").slice(0,10000),media:{url:episode.audioUrl,mimeType:episode.audioMimeType??"audio/mpeg"},publishedAt:episode.publishedAt,duration:Math.max(1,Math.round(duration)),feedItemGuid:episode.guid,createdAt:now,transcript:episode.transcripts.map(t=>({url:t.url,mimeType:t.type,...(t.language?{language:t.language}:{})}))}});
       const publisherEpisodeUri=episode.sourceUri&&!episode.sourceUri.startsWith(`at://${this.credentials.did}/`)?episode.sourceUri:undefined;
       await this.call("com.atproto.repo.putRecord",{repo:this.credentials.did,collection:"app.thesocialwire.podcast.source",rkey,record:{$type:"app.thesocialwire.podcast.source",feedUrl:show.feedUrl,podcastGuid:guid,itemGuid:episode.guid,showUri,episodeUri:sourceUri,bridgeDid:this.credentials.did,publisherShowUri,publisherEpisodeUri,createdAt:now,updatedAt:now}});
-      await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${sourceUri},${episode.id},'episode') ON CONFLICT(alias) DO NOTHING`;
-      await this.database`UPDATE podcast_episodes SET episode_json=episode_json || ${{sourceUri:episode.sourceUri&&!episode.sourceUri.startsWith(`at://${this.credentials.did}/`)?episode.sourceUri:sourceUri,durationSeconds:duration}}::jsonb,updated_at=now() WHERE id=${episode.id}`;
+      const patch={sourceUri:episode.sourceUri&&!episode.sourceUri.startsWith(`at://${this.credentials.did}/`)?episode.sourceUri:sourceUri,durationSeconds:duration};
+      if(this.database instanceof SQLitePodcastDatabase) {
+        this.database.addAlias(sourceUri,episode.id,"episode");this.database.mergeEpisode(episode.id,patch);
+      } else {
+        await this.database`INSERT INTO podcast_aliases(alias,canonical_id,entity_kind) VALUES(${sourceUri},${episode.id},'episode') ON CONFLICT(alias) DO NOTHING`;
+        await this.database`UPDATE podcast_episodes SET episode_json=episode_json || ${patch}::jsonb,updated_at=now() WHERE id=${episode.id}`;
+      }
       mirrored++;
     }
-    await this.database`UPDATE podcast_shows SET show_json=show_json || ${{sourceUri:show.sourceUri&&!show.sourceUri.startsWith(`at://${this.credentials.did}/`)?show.sourceUri:showUri,guid}}::jsonb,updated_at=now() WHERE id=${show.id}`;
+    const patch={sourceUri:show.sourceUri&&!show.sourceUri.startsWith(`at://${this.credentials.did}/`)?show.sourceUri:showUri,guid};
+    if(this.database instanceof SQLitePodcastDatabase)this.database.mergeShow(show.id,patch);
+    else await this.database`UPDATE podcast_shows SET show_json=show_json || ${patch}::jsonb,updated_at=now() WHERE id=${show.id}`;
     return {showUri,episodes:mirrored};
   }
 }

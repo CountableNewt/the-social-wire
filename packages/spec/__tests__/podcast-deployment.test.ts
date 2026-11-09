@@ -69,17 +69,13 @@ describe("Podcast deployment graph", () => {
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/local/bin/schema-ready", "--", "/usr/local/bin/bun", "services/podcast-worker/src/index.ts"]');
   });
 
-  it("tests the source entrypoint database gate without building a deployment image", () => {
-    const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-    const job = workflow.slice(workflow.indexOf("  podcast-worker:"), workflow.indexOf("  required:"));
-    expect(job).toContain("Test source entrypoint database gate");
-    expect(job).toContain('go build -o "$RUNNER_TEMP/schema-ready-test" ./cmd/schema-ready');
-    expect(job).toContain("env -u DATABASE_URL APP_ENV=dev");
-    expect(job).toContain("schema readiness requires DATABASE_URL");
-    expect(job).toContain("absolute application path");
-    expect(job).not.toContain("docker build");
-    expect(job).toContain("bun --cwd services/podcast-worker typecheck");
-    expect(job).toContain("bun --cwd services/podcast-worker test");
+  it("tests the bundled processor inside the standalone backend release image", () => {
+    const workflow = Bun.YAML.parse(readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")) as any;
+    expect(workflow.jobs["podcast-worker"]).toBeUndefined();
+    expect(workflow.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
+    const image = readFileSync(join(root, "services/appview/Dockerfile.standalone"), "utf8");
+    expect(image).toContain("FROM media-builder AS media-tests");
+    expect(image).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
   });
 
   it.each(["dev", "production"])("keeps podcast variables out of indexing services in %s", async (environment) => {
