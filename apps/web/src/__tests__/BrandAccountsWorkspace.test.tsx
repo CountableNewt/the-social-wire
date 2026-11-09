@@ -23,6 +23,9 @@ let client: QueryClient;
 let state: ReturnType<typeof Social.useBrandAccountSocial>;
 const restores: (() => void)[] = [];
 beforeEach(() => {
+  const previousBrandFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  restores.push(() => { if (previousBrandFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandFlag; });
   const suggestions = spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>); restores.push(() => suggestions.mockRestore());
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   for (const [name, value] of Object.entries({ getComputedStyle: window.getComputedStyle.bind(window), HTMLInputElement: window.HTMLInputElement, requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0), cancelAnimationFrame: clearTimeout })) { const previous = Object.getOwnPropertyDescriptor(globalThis, name); Object.defineProperty(globalThis, name, { configurable: true, value }); restores.push(() => { if (previous) Object.defineProperty(globalThis, name, previous); else Reflect.deleteProperty(globalThis, name); }); }
@@ -101,4 +104,14 @@ test("selects a suggested brand handle before authorizing the linked account", a
   expect(link).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Authorize Account" }));
   await waitFor(() => expect(link).toHaveBeenCalledWith(owner, "brand.test"));
+});
+
+
+test("does not mount Brand Accounts or its private children while disabled", () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  expect(() => BrandAccountsPage()).toThrow();
+  const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace: mock(() => {}) } as unknown as ReturnType<typeof Navigation.useRouter>); restores.push(() => router.mockRestore());
+  render(<BrandAccountsLayout><p>Private Brand Workspace</p></BrandAccountsLayout>);
+  expect(screen.queryByText("Private Brand Workspace")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Link Account" })).toBeNull();
 });

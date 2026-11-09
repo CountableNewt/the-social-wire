@@ -1,4 +1,4 @@
-import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { BrowserOAuthClient, OAuthClient, OAuthCallbackError, type BrowserOAuthClientLoadOptions, type BrowserOAuthClientOptions } from "@atproto/oauth-client-browser";
 import { assertOAuthDiscoverableClientId, atprotoLoopbackClientMetadata } from "@atproto/oauth-types";
 import { BRAND_LINK_STATE_PREFIX, assertBrandAccountAvailable, validateBrandLinkIntent } from "./brandAccountStorage";
@@ -21,17 +21,20 @@ export class BrandAwareOAuthClient extends BrowserOAuthClient {
     // the regular SDK callback replaces an existing session for the returned DID.
     await this.stateStore.del(stateKey!);
     const appState = stored.appState;
+    const assertAvailable = () => { if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment."); };
     const requireOwnerPro = async () => {
-      if (!toolsEnabled()) throw new Error("Tools Are Not Available In This Environment.");
+      assertAvailable();
       const intent = validateBrandLinkIntent(appState, this.primaryDid());
       const session = await OAuthClient.prototype.restore.call(this, intent.ownerDid);
+      assertAvailable();
       validateBrandLinkIntent(appState, this.primaryDid());
       if (session.did !== intent.ownerDid) throw new Error("Your Personal Account Changed. Reopen Brand Accounts.");
       await requirePro(session);
+      assertAvailable();
       validateBrandLinkIntent(appState, this.primaryDid());
     };
     try {
-      if (!toolsEnabled()) throw new Error("Tools Are Not Available In This Environment.");
+      assertAvailable();
       validateBrandLinkIntent(appState, this.primaryDid());
       if (params.has("response")) throw new Error("JARM Is Not Supported.");
       if (params.has("error")) throw new OAuthCallbackError(params, undefined, appState);
@@ -42,10 +45,12 @@ export class BrandAwareOAuthClient extends BrowserOAuthClient {
       await requireOwnerPro();
       const tokenSet = await server.exchangeCode(code, stored.verifier, options.redirect_uri ?? server.clientMetadata.redirect_uris[0]);
       try {
+        assertAvailable();
         const intent = validateBrandLinkIntent(appState, this.primaryDid());
         assertBrandAccountAvailable(intent.ownerDid, tokenSet.sub);
         await requireOwnerPro();
         try { await this.revoke(tokenSet.sub); } catch { /* Same SDK best-effort replacement of a prior brand grant. */ }
+        assertAvailable();
         validateBrandLinkIntent(appState, this.primaryDid());
         await this.sessionGetter.setStored(tokenSet.sub, { dpopKey: stored.dpopKey, authMethod: server.authMethod, tokenSet });
         return { session: this.createSession(server, tokenSet.sub), state: appState };

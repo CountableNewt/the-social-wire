@@ -49,3 +49,49 @@ it("permits signed-in feature access without fetching when gating is disabled", 
   expect(view.result.current.isPro).toBe(false);
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("disabled consumers do not fetch or grant access from shared cached entitlements", async () => {
+  const did = "did:plc:owner";
+  const gating = spyOn(client, "isProGatingEnabled").mockReturnValue(true);
+  const authSpy = spyOn(auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof auth.useAuth>);
+  const fetch = spyOn(client, "getProEntitlements").mockResolvedValue({ viewerDid: did, plan: "pro" });
+  restores.push(() => gating.mockRestore(), () => authSpy.mockRestore(), () => fetch.mockRestore());
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } }); restores.push(() => cache.clear());
+  cache.setQueryData(["proEntitlements", did, 0], { viewerDid: did, plan: "pro" });
+  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={cache}>{children}</QueryClientProvider>;
+  const view = renderHook(({ enabled }) => useProEntitlements(enabled), { initialProps: { enabled: false }, wrapper });
+  await act(async () => {});
+  expect(view.result.current.isPro).toBe(false); expect(fetch).not.toHaveBeenCalled();
+  await act(async () => { await view.result.current.refetch(); });
+  expect(fetch).not.toHaveBeenCalled(); expect(view.result.current.isPro).toBe(false);
+  view.rerender({ enabled: true });
+  await waitFor(() => expect(view.result.current.isPro).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  view.rerender({ enabled: false }); expect(view.result.current.isPro).toBe(false);
+});
+
+it("disabled consumers remain closed when Pro enforcement is off", () => {
+  const gating = spyOn(client, "isProGatingEnabled").mockReturnValue(false);
+  const authSpy = spyOn(auth, "useAuth").mockReturnValue({ session: { did: "did:plc:owner" }, getOAuthSession: () => undefined, oauthSessionReloadSeq: 0 } as unknown as ReturnType<typeof auth.useAuth>);
+  const fetch = spyOn(client, "getProEntitlements");
+  restores.push(() => gating.mockRestore(), () => authSpy.mockRestore(), () => fetch.mockRestore());
+  const cache = new QueryClient(); restores.push(() => cache.clear());
+  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={cache}>{children}</QueryClientProvider>;
+  const { result } = renderHook(() => useProEntitlements(false), { wrapper });
+  expect(result.current.isPro).toBe(false); expect(fetch).not.toHaveBeenCalled();
+});
+
+it("a disabled observer cannot disrupt another feature using the shared entitlement query", async () => {
+  const did = "did:plc:owner";
+  const gating = spyOn(client, "isProGatingEnabled").mockReturnValue(true);
+  const authSpy = spyOn(auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did } as unknown as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof auth.useAuth>);
+  const fetch = spyOn(client, "getProEntitlements").mockResolvedValue({ viewerDid: did, plan: "pro" });
+  restores.push(() => gating.mockRestore(), () => authSpy.mockRestore(), () => fetch.mockRestore());
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } }); restores.push(() => cache.clear());
+  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={cache}>{children}</QueryClientProvider>;
+  const { result } = renderHook(() => ({ active: useProEntitlements(), disabled: useProEntitlements(false) }), { wrapper });
+  await waitFor(() => expect(result.current.active.isPro).toBe(true));
+  await act(async () => { await cache.invalidateQueries({ queryKey: ["proEntitlements", did, 0] }); });
+  expect(fetch).toHaveBeenCalledTimes(2); expect(result.current.active.isError).toBe(false);
+  expect(result.current.active.isPro).toBe(true); expect(result.current.disabled.isPro).toBe(false);
+});

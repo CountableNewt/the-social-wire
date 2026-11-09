@@ -1,13 +1,14 @@
-import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { OAuthClient, type OAuthSession } from "@atproto/oauth-client-browser";
 import { getOAuthClientForScopes, getSession, getStoredOAuthDid, localLoopbackCanonicalHref } from "@/lib/auth";
 import { requirePro } from "@/lib/proEntitlements";
 import { atprotoScopesForNetwork, authorizationScopesForClient } from "@/lib/atprotoNetwork";
 import { observeOAuthScopeErrors } from "@/lib/oauthScopeRecovery";
 import { BRAND_ACCOUNT_OAUTH_SCOPES } from "./brandAccountScopes";
-import { BRAND_LINK_STATE_PREFIX, cancelBrandLinkIntent, createBrandLinkIntent, listBrandAccounts, removeBrandAccount } from "./brandAccountStorage";
-export { listBrandAccounts, onBrandAccountsChanged } from "./brandAccountStorage";
-function requireOwner(ownerDid: string): void { if (!toolsEnabled()) throw new Error("Tools Are Not Available In This Environment."); if (getStoredOAuthDid() !== ownerDid) throw new Error("Your Personal Account Changed. Reopen Brand Accounts."); }
+import { BRAND_LINK_STATE_PREFIX, cancelBrandLinkIntent, createBrandLinkIntent, listBrandAccounts as storedBrandAccounts, removeBrandAccount } from "./brandAccountStorage";
+export { onBrandAccountsChanged } from "./brandAccountStorage";
+export function listBrandAccounts(ownerDid: string): string[] { return brandAccountsEnabled() ? storedBrandAccounts(ownerDid) : []; }
+function requireOwner(ownerDid: string): void { if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment."); if (getStoredOAuthDid() !== ownerDid) throw new Error("Your Personal Account Changed. Reopen Brand Accounts."); }
 async function requireOwnerPro(ownerDid: string): Promise<void> {
   requireOwner(ownerDid);
   const ownerSession = await getSession();

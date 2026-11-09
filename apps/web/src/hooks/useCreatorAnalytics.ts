@@ -7,17 +7,20 @@ import { useAuth } from "@/hooks/useAuth";
 import { getCreatorAnalytics } from "@/lib/analytics/creatorAnalyticsClient";
 import { getBlueskyAnalytics } from "@/lib/analytics/blueskyAnalyticsClient";
 import { listBrandAccounts, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 
 export function useCreatorAnalytics(days: number, accountDid?: string) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const owner = session?.did;
   const actor = accountDid ?? owner;
+  const brandsAvailable = brandAccountsEnabled();
   const client = useQueryClient();
   const identity = useRef({ owner, actor });
   const mounted = useRef(true);
   useLayoutEffect(() => { identity.current = { owner, actor }; mounted.current = true; return () => { mounted.current = false; }; }, [owner, actor]);
   function assertIdentity(expectedOwner = owner, expectedActor = actor) {
     if (!mounted.current || !expectedOwner || !expectedActor || identity.current.owner !== expectedOwner || identity.current.actor !== expectedActor || getOAuthSession()?.did !== expectedOwner || getStoredOAuthDid() !== expectedOwner) throw new Error("Your account changed. Please reload Analytics.");
+    if (expectedActor !== expectedOwner && !brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available.");
     if (expectedActor !== expectedOwner && !listBrandAccounts(expectedOwner).includes(expectedActor)) throw new Error("This brand account is no longer linked.");
   }
   async function requireSession(expectedOwner = owner, expectedActor = actor) {
@@ -29,8 +32,8 @@ export function useCreatorAnalytics(days: number, accountDid?: string) {
     return oauth;
   }
   const blueskyQuery = useQuery({
-    queryKey: ["blueskyAnalytics", owner ?? "", oauthSessionReloadSeq, days, actor],
-    enabled: !!owner && !!actor,
+    queryKey: ["blueskyAnalytics", owner ?? "", oauthSessionReloadSeq, days, actor, brandsAvailable],
+    enabled: !!owner && !!actor && (actor === owner || brandsAvailable),
     queryFn: async ({ signal }) => {
       const result = await getBlueskyAnalytics(await requireSession(owner, actor), { days, signal });
       assertIdentity(owner, actor);

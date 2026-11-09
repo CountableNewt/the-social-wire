@@ -23,6 +23,7 @@ import { resolveHostedOAuthClientId } from "@/lib/oauthClientMetadata";
 import { createOAuthHandleResolverFetch } from "@/lib/oauthHandleResolverFetch";
 import { atprotoScopesForNetwork, getAtprotoNetwork, localLoopbackOAuthScopes, authorizationScopesForClient, compactLoopbackClientId } from "@/lib/atprotoNetwork";
 
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { BRAND_ACCOUNT_OAUTH_SCOPES } from "@/lib/brandAccounts/brandAccountScopes";
 import { BrandAwareOAuthClient } from "@/lib/brandAccounts/BrandAwareOAuthClient";
 import { BRAND_ACCOUNTS_PATH, BRAND_LINK_STATE_PREFIX, cancelBrandLinkIntent, completeBrandLinkIntent, readBrandLinkIntent } from "@/lib/brandAccounts/brandAccountStorage";
@@ -474,7 +475,8 @@ export async function handleCallback(): Promise<OAuthSession> {
 
     const work = (async () => {
       _clientPromise = null;
-      const pendingLink = readBrandLinkIntent();
+      if (!brandAccountsEnabled()) cancelBrandLinkIntent();
+      const pendingLink = brandAccountsEnabled() ? readBrandLinkIntent() : null;
       if (pendingLink) callbackDestination = BRAND_ACCOUNTS_PATH;
       const client = pendingLink ? await getOAuthClientForScopes(BRAND_ACCOUNT_OAUTH_SCOPES) : await getOAuthClient();
       if (pendingLink && pendingLink.clientId !== client.clientMetadata.client_id) throw new Error("Your Account Link Configuration Changed. Start Linking Again.");
@@ -490,6 +492,7 @@ export async function handleCallback(): Promise<OAuthSession> {
           redirect_uri: redirectUri as Parameters<BrowserOAuthClient["initCallback"]>[1],
         });
         if (state?.startsWith(BRAND_LINK_STATE_PREFIX)) {
+          if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment.");
           callbackDestination = BRAND_ACCOUNTS_PATH;
           completeBrandLinkIntent(state, session.did, getStoredOAuthDid());
         } else {
@@ -502,7 +505,7 @@ export async function handleCallback(): Promise<OAuthSession> {
         // parameters to decide whether this was an additive account link.
         const state = error && typeof error === "object" && "state" in error ? error.state : null;
         if (typeof state === "string" && state.startsWith(BRAND_LINK_STATE_PREFIX)) {
-          callbackDestination = BRAND_ACCOUNTS_PATH; cancelBrandLinkIntent();
+          callbackDestination = brandAccountsEnabled() ? BRAND_ACCOUNTS_PATH : null; cancelBrandLinkIntent();
         }
         throw error;
       }

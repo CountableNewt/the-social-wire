@@ -18,6 +18,9 @@ let legacy: ReturnType<typeof spyOn<typeof API, "getCreatorAnalytics">>;
 const restores: (() => void)[] = [];
 function Wrapper({ children }: { children: ReactNode }) { return <QueryClientProvider client={client}>{children}</QueryClientProvider>; }
 beforeEach(() => {
+  const previousBrandFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  restores.push(() => { if (previousBrandFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandFlag; });
   viewer = "did:plc:alice"; oauth = viewer;
   const hint = spyOn(AuthStorage, "getStoredOAuthDid").mockImplementation(() => viewer); restores.push(() => hint.mockRestore());
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -80,7 +83,7 @@ describe("AppView analytics query isolation", () => {
     viewer = "did:plc:bob"; oauth = viewer; rerender();
     await waitFor(() => expect(result.current.blueskyQuery.isSuccess).toBe(true));
     await act(async () => { resolve(summary()); await expect(pending).rejects.toThrow("account changed"); });
-    expect(client.getQueryState(["blueskyAnalytics", viewer, 0, 30, viewer])?.isInvalidated).toBe(false);
+    expect(client.getQueryState(["blueskyAnalytics", viewer, 0, 30, viewer, true])?.isInvalidated).toBe(false);
     expect(bluesky).toHaveBeenCalledTimes(2);
   });
 
@@ -104,4 +107,31 @@ describe("AppView analytics query isolation", () => {
     await act(async () => { await expect(result.current.collect()).rejects.toThrow("no longer linked"); });
     expect(legacy).not.toHaveBeenCalled();
   });
+});
+
+
+it("rejects a brand actor when the release flag is off before restoring or fetching", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const registry = spyOn(Brands, "listBrandAccounts").mockReturnValue(["did:plc:brand"]); restores.push(() => registry.mockRestore());
+  const restore = spyOn(Brands, "restoreBrandAccount"); restores.push(() => restore.mockRestore());
+  const { result } = renderHook(() => useCreatorAnalytics(30, "did:plc:brand"), { wrapper: Wrapper });
+  expect(result.current.blueskyQuery.fetchStatus).toBe("idle");
+  expect(result.current.blueskyQuery.data).toBeUndefined();
+  expect(restore).not.toHaveBeenCalled();
+  expect(bluesky).not.toHaveBeenCalled();
+  await act(async () => { await expect(result.current.collect()).rejects.toThrow("Brand Accounts Are Not Available"); });
+  expect(legacy).not.toHaveBeenCalled();
+});
+
+it("hides an already cached brand report when Brand Accounts becomes unavailable", async () => {
+  const registry = spyOn(Brands, "listBrandAccounts").mockReturnValue(["did:plc:brand"]); restores.push(() => registry.mockRestore());
+  const restore = spyOn(Brands, "restoreBrandAccount").mockResolvedValue({ did: "did:plc:brand" } as unknown as OAuthSession); restores.push(() => restore.mockRestore());
+  const { result, rerender } = renderHook(() => useCreatorAnalytics(30, "did:plc:brand"), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.blueskyQuery.data).toBeDefined());
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  rerender();
+  expect(result.current.blueskyQuery.data).toBeUndefined();
+  expect(result.current.blueskyQuery.fetchStatus).toBe("idle");
+  expect(bluesky).toHaveBeenCalledTimes(1);
+  expect(restore).toHaveBeenCalledTimes(1);
 });

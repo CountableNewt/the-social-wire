@@ -12,6 +12,7 @@ const owner = "did:plc:owner", brand = "did:plc:brand", hint = "@@atproto/oauth-
 const restores: (() => void)[] = [];
 const clients: BrandAwareOAuthClient[] = [];
 beforeEach(() => {
+  const flag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; restores.push(() => { if (flag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = flag; });
   window.localStorage.clear(); window.sessionStorage.clear();
   for (const [key, value] of Object.entries({ localStorage: window.localStorage, sessionStorage: window.sessionStorage, indexedDB })) { const prior = Object.getOwnPropertyDescriptor(globalThis, key); Object.defineProperty(globalThis, key, { configurable: true, value }); restores.push(() => { if (prior) Object.defineProperty(globalThis, key, prior); else Reflect.deleteProperty(globalThis, key); }); }
   window.localStorage.setItem(hint, owner);
@@ -134,7 +135,7 @@ test("Free owners can still unlink and revoke existing brand credentials", async
 test("disabled Tools rejects an already pending brand callback before exchange without changing personal credentials", async () => {
   const f = clientFixture();
   const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
-  await expect(f.client.callback(f.params)).rejects.toThrow("Tools Are Not Available");
+  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
   expect(f.del).toHaveBeenCalled();
   expect(f.exchange).not.toHaveBeenCalled();
   expect(f.stored).not.toHaveBeenCalled();
@@ -147,8 +148,8 @@ test("disabled Tools rejects direct brand linking and restoration before request
   addBrandAccount(owner, brand);
   const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
   const client = spyOn(Auth, "getOAuthClientForScopes"); restores.push(() => client.mockRestore());
-  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Tools Are Not Available");
-  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Tools Are Not Available");
+  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
   expect(client).not.toHaveBeenCalled();
   expect(Auth.getStoredOAuthDid()).toBe(owner);
 });
@@ -163,4 +164,59 @@ test("disabled Tools delegates personal OAuth callbacks to the regular browser c
   const params = new URLSearchParams({ state: "personal-sdk-state", code: "code" });
   expect((await client.callback(params)).session).toBe(session);
   expect(callback).toHaveBeenCalledWith(params, {});
+});
+
+test("default-off flag blocks brand linking, restoration and unlinking while preserving saved registry", async () => {
+  addBrandAccount(owner, brand);
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const client = spyOn(Auth, "getOAuthClientForScopes"); restores.push(() => client.mockRestore());
+  const sessions = await import("@/lib/brandAccounts/brandAccountSessions");
+  expect(sessions.listBrandAccounts(owner)).toEqual([]);
+  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(unlinkBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
+  expect(client).not.toHaveBeenCalled();
+  expect(listBrandAccounts(owner)).toEqual([brand]);
+  expect(Auth.getStoredOAuthDid()).toBe(owner);
+});
+
+test("disabled brand flag rejects a pending SDK callback before exchanging or replacing credentials", async () => {
+  const f = clientFixture();
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
+  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
+  expect(f.exchange).not.toHaveBeenCalled(); expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled();
+  expect(Auth.getStoredOAuthDid()).toBe(owner);
+});
+
+test("disabling during authorization rejects the new grant without replacing stored credentials", async () => {
+  const f = clientFixture();
+  f.exchange.mockImplementation(async () => { process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false"; return { sub: brand, access_token: "new-test-token", refresh_token: "new-test-refresh" }; });
+  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
+  expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled(); expect(f.revokeNew).toHaveBeenCalledWith("new-test-refresh");
+  expect(Auth.getStoredOAuthDid()).toBe(owner);
+});
+
+test("disabled brand callbacks cannot become the personal account and stale intents do not block personal login", async () => {
+  createBrandLinkIntent(owner, "http://localhost/client");
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
+  const previousEnv = process.env.NEXT_PUBLIC_APP_ENV; process.env.NEXT_PUBLIC_APP_ENV = "local"; restores.push(() => { if (previousEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = previousEnv; });
+  const callback = mock(async (): Promise<{ session: { did: string }; state: string | null }> => ({ session: { did: brand }, state: BRAND_LINK_STATE_PREFIX + "validated-test-state" }));
+  const loader = spyOn(BrandAwareOAuthClient, "loadForAccounts").mockImplementation(async ({ clientId }) => ({ clientMetadata: atprotoLoopbackClientMetadata(clientId), findRedirectUrl: () => "http://127.0.0.1:3016/callback", callback }) as unknown as BrandAwareOAuthClient); restores.push(() => loader.mockRestore());
+  window.history.replaceState(null, "", "/callback?state=opaque-state&code=test-code"); restores.push(() => window.history.replaceState(null, "", "/"));
+  await expect(Auth.handleCallback()).rejects.toThrow("Brand Accounts Are Not Available");
+  expect(Auth.getStoredOAuthDid()).toBe(owner); expect(Auth.consumeOAuthCallbackDestination()).toBeNull();
+  expect(window.sessionStorage.getItem("the-social-wire.brand-link.v1")).toBeNull();
+  callback.mockResolvedValue({ session: { did: "did:plc:normal" }, state: null });
+  window.history.replaceState(null, "", "/callback?state=personal-state&code=test-code");
+  expect((await Auth.handleCallback()).did).toBe("did:plc:normal"); expect(Auth.getStoredOAuthDid()).toBe("did:plc:normal");
+});
+
+test("disabled brand notification preferences neither enable integrations nor overwrite retained settings", async () => {
+  const preferences = await import("@/lib/brandAccounts/brandNotificationPreferences");
+  preferences.setIncludeBrandNotifications(owner, true);
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
+  expect(preferences.includeBrandNotifications(owner)).toBe(false);
+  preferences.setIncludeBrandNotifications(owner, false);
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  expect(preferences.includeBrandNotifications(owner)).toBe(true);
 });

@@ -59,5 +59,17 @@ it("hides Content Calendar independently when scheduling is disabled", () => {
 });
 
 let previousSchedulingFlag: string | undefined;
-beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
+beforeEach(() => {
+  const previousBrandFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  restores.push(() => { if (previousBrandFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandFlag; }); previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
 afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
+
+
+it("hides Brand Accounts by default while leaving personal tools available", () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
+  render(<SidebarProvider><SidebarToolsSection pathname="/analytics" onNavigate={() => {}} /></SidebarProvider>);
+  expect(screen.queryByRole("button", { name: "Brand Accounts" })).toBeNull();
+  for (const name of ["Articles", "Live Post", "Livestream", "Content Calendar", "Analytics"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+});

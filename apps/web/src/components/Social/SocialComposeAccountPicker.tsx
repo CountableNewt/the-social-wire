@@ -1,12 +1,19 @@
 "use client";
 
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useQueries } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { getAtprotoNetwork } from "@/lib/atprotoNetwork";
 import { getBrandAccountPublicProfile } from "@/lib/brandAccounts/brandAccountPublicProfile";
 import { Avatar } from "@/components/shared/Avatar";
 
-export function SocialComposeAccountPicker({ ownerDid, accounts, actorDid, disabled, onChange, label = "Post As" }: { label?: string; ownerDid: string; accounts: string[]; actorDid: string; disabled: boolean; onChange: (did: string) => void }) {
+type AccountPickerProps = { label?: string; ownerDid: string; accounts: string[]; actorDid: string; disabled: boolean; onChange: (did: string) => void };
+
+export function SocialComposeAccountPicker(props: AccountPickerProps) {
+  return brandAccountsEnabled() ? <EnabledAccountPicker {...props} /> : null;
+}
+
+function EnabledAccountPicker({ ownerDid, accounts, actorDid, disabled, onChange, label = "Post As" }: AccountPickerProps) {
   const appView = getAtprotoNetwork().publicAppView;
   const dids = [ownerDid, ...accounts.filter(did => did !== ownerDid)];
   const queries = useQueries({ queries: dids.map(did => ({ queryKey: ["brandPublicProfile", did, appView], queryFn: ({ signal }: { signal: AbortSignal }) => getBrandAccountPublicProfile(did, appView, signal), staleTime: 300_000, retry: false })) });

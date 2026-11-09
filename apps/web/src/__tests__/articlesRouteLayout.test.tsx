@@ -82,12 +82,17 @@ describe("Tools route access", () => {
     ["/analytics", AnalyticsLayout],
   ] as const) {
     it(`denies direct ${path} access to Free viewers before mounting the workspace`, async () => {
+      if (path === "/brand-accounts") {
+        const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+        process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+        restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });
+      }
       isPro = false;
       const workspace = mock(() => <p>Protected Workspace</p>);
       function ProtectedContent() { return workspace(); }
       await act(async () => { render(<Layout><ProtectedContent /></Layout>); });
       expect(screen.getByRole("heading", { name: "Social Wire Pro" })).toBeTruthy();
-      expect(screen.getByText("Tools and multi-account support are available with Pro. Subscriptions are coming soon.")).toBeTruthy();
+      expect(screen.getByText(path === "/brand-accounts" ? "Tools and multi-account support are available with Pro. Subscriptions are coming soon." : "Tools are available with Pro. Subscriptions are coming soon.")).toBeTruthy();
       expect(screen.queryByText("Protected Workspace")).toBeNull();
       expect(workspace).not.toHaveBeenCalled();
       expect(replace).not.toHaveBeenCalled();
