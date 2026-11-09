@@ -9,7 +9,6 @@ test('listener state is private revision CAS and supports exact rewind source po
  expect(spec.components.schemas.PodcastListenerState.properties.playbackSpeed).toEqual({type:'number',minimum:.75,maximum:2,multipleOf:.25});
  expect(spec.components.schemas.PodcastStateSnapshot.required).toEqual(['revision','state']);
  expect(read('database/migrations/20261005010000_podcast_listener.sql')).toContain('podcast_viewer_state');
- expect(read('packages/go/podcastcore/state_store.go')).toContain('revision=');
 });
 test('podcast media and private/public clips preserve HTTP ranges and server contracts',()=>{
  expect(Object.keys(spec.paths).some(path=>path.startsWith('/v1/podcasts'))).toBe(false);
@@ -21,13 +20,10 @@ test('podcast media and private/public clips preserve HTTP ranges and server con
  for(const service of ['appview','gateway']) expect(read(`services/${service}/bruno/XRPC/app.thesocialwire.podcast.publishClip.bru`)).toContain('/xrpc/app.thesocialwire.podcast.publishClip');
 });
 test('podcasts remain gated and isolated from article retention and public private history',()=>{
- expect(read('services/appview/internal/runtime/host.go')).toContain('if c.PodcastsEnabled');
- expect(read('services/appview/internal/config/config.go')).toContain('strings.EqualFold(env["PODCASTS_ENABLED"], "true")');
+ expect(read('services/appview/Sources/AppView/AppViewRouterBuilder.swift')).toContain('if config.podcastsEnabled');
+ expect(read('services/appview/Sources/AppView/AppViewServiceConfig.swift')).toContain('env["PODCASTS_ENABLED"]?.lowercased() == "true"');
  const migration=read('database/migrations/20261005010000_podcast_listener.sql');
  expect(migration).not.toContain('expires_at');expect(migration).toContain('dedupe_key text UNIQUE NOT NULL');
- expect(read('packages/go/podcastcore/protocol.go')).toContain('org.atpodcasting.podcast');
- expect(read('packages/go/podcastcore/protocol.go')).toContain('place.pod.show');
- expect(read('packages/go/podcastcore/protocol.go')).toContain('live.voxport.podcast.series');
 });
 
 test('private RSS subscriptions are viewer-owned and excluded from public processing',()=>{
@@ -51,7 +47,6 @@ test('publisher chapter and host metadata use shared arrays and private artwork 
  expect(spec.components.schemas.PodcastShow.properties.hosts.items.$ref).toBe('#/components/schemas/PodcastPerson');
  expect(spec.paths['/xrpc/app.thesocialwire.podcast.getImage'].get.security).toEqual([{ATProtoOAuthDPoP:[]}]);
  for(const service of ['appview','gateway']) expect(read(`services/${service}/bruno/XRPC/app.thesocialwire.podcast.getImage.bru`)).toContain('/xrpc/app.thesocialwire.podcast.getImage');
- expect(read('services/appview/internal/podcasts/job_routes.go')).toContain('silence:v2:');
  expect(read('services/podcast-worker/.env.example')).toContain('PODCAST_BRIDGE_ENABLED=false');
 });
 
@@ -63,9 +58,6 @@ test('library search protects viewer queries and uses bounded continuation pages
  expect(spec.components.schemas.PodcastSearchRequest.properties.scope.enum).toEqual(['library','directory']);
  expect(spec.components.schemas.PodcastSearchResponse.required).toEqual(['shows','episodes','hasMore']);
  for(const service of ['appview','gateway']) expect(read(`services/${service}/bruno/XRPC/app.thesocialwire.podcast.findPodcasts.bru`)).toContain('/xrpc/app.thesocialwire.podcast.findPodcasts');
- const store=read('packages/go/podcastcore/search_store.go');
- expect(store).toContain('LIMIT 501');expect(store).toContain('scanned >= 500');
- expect(store).not.toContain('INSERT');expect(store).not.toContain('UPDATE');
 });
 
 test('Podcast Index discovery is explicit and returns bounded public candidates',()=>{
@@ -74,8 +66,8 @@ test('Podcast Index discovery is explicit and returns bounded public candidates'
  expect(spec.components.schemas.PodcastSearchResponse.properties.directoryLimit.enum).toEqual([50]);
  expect(spec.paths['/xrpc/app.thesocialwire.podcast.findPodcasts'].post.responses['502']).toBeDefined();
  for(const service of ['appview','gateway']) expect(read(`services/${service}/bruno/XRPC/app.thesocialwire.podcast.findPodcasts-directory.bru`)).toContain('"scope": "directory"');
- const source=read('services/appview/internal/podcasts/directory.go');
+ const source=read('services/appview/Sources/AppView/Podcasts/PodcastDirectoryFetcher.swift');
  expect(source).toContain('https://api.podcastindex.org/search');expect(source).toContain('User-Agent');
- expect(source).toContain('ValidateURL: func(raw string) bool { return raw == target }');expect(source).toContain('Timeout: 8 * time.Second');
+ expect(source).toContain('validateURL: { $0 == url }');expect(source).toContain('timeout: .seconds(8)');
  expect(source).not.toContain('Authorization');
 });

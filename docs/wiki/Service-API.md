@@ -82,10 +82,10 @@ APP_ENV=dev DATABASE_URL='postgresql://…' \
   APPVIEW_BASE_URL=http://127.0.0.1:8081 \
   GATEWAY_APPVIEW_INTERNAL_SECRET=local-development-only swift run Gateway
 
-# Terminal 3: Go Projection Pool (requires an explicitly configured durable inbox)
+# Terminal 3: Projection Pool (requires an explicitly configured durable inbox)
 cd services/indexing-worker
 APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true \
-  INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative go run ./cmd/indexing-worker
+  INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative swift run IndexingWorker
 ```
 
 Use the same disposable database for these three processes. Do not point local runs at hosted Development or Production data. Charybdis consumes external Jetstream traffic unless you explicitly configure an isolated source, so start it only when that effect is intended.
@@ -103,9 +103,9 @@ Use the same disposable database for these three processes. Do not point local r
 | `redis` | `packages/swift/SocialWireRedis` with Redis integration service |
 | `gateway` | `packages/swift/GatewayCore`, `services/gateway` |
 | `appview` | `services/appview` |
-| `indexing-worker` | `services/indexing-worker` Go runtime and image |
+| `indexing-worker` | `services/indexing-worker` Swift runtime and image |
 | `appview` | Retained `packages/swift/ThinAppViewCore` API contracts |
-| `operations` | `packages/swift/OperationsCore`, `services/operations` |
+| `operations` | `packages/swift/OperationsCore` |
 | `spec` | OpenAPI contract/drift tests |
 
 Related: [[Thin-AppView]], [[Operations]], [[Deployment-and-environments]], [[Web-app]], [[Apple-client]].

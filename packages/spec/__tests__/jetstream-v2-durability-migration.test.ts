@@ -11,10 +11,6 @@ const legacyTool = readFileSync(
   join(repositoryRoot, "scripts/operations/legacy-gap-incidents.sql"),
   "utf8",
 )
-const operationsStore = readFileSync(
-  join(repositoryRoot, "packages/go/operationsapi/durability_store.go"),
-  "utf8",
-)
 
 describe("Jetstream V2 durable ingestion migration", () => {
   it("keeps Supabase role grants optional on provider-neutral Postgres", () => {
@@ -39,17 +35,6 @@ describe("Jetstream V2 durable ingestion migration", () => {
     expect(migration).toContain("CREATE TABLE IF NOT EXISTS appview_ingestion_leases")
     expect(migration).toContain("fencing_token BIGINT NOT NULL")
     expect(migration).toContain("released_at TIMESTAMPTZ")
-  })
-
-  it("counts only dead letters that have not been reconciled", () => {
-    const query = operationsStore.match(/tx\.Query\(budget, `([^`]+)`/)?.[1]
-    expect(query).toBeDefined()
-    expect(query).toMatch(/count\(\*\) FILTER\(WHERE status\s*=\s*'dead_letter' AND reconciled_at IS NULL\)/)
-    expect(query).toContain("WHERE environment=$1 GROUP BY source_generation")
-    expect(query).toContain("count(*) FILTER(WHERE status='filtered_scope')")
-    expect(operationsStore).toContain("&value.FilteredScope, &value.DeadLetters, &value.Total")
-    expect(operationsStore).toContain("context.WithTimeout(ctx, 3*time.Second)")
-    expect(operationsStore).toContain("statement_timeout='2s'")
   })
 
   it("retains and links legacy gap evidence without converting timestamp cursors to V2 sequences", () => {

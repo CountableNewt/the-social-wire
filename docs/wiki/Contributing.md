@@ -22,8 +22,6 @@ Never work directly on `main`. If the checkout is already on an issue branch, ke
 | Gateway | `services/gateway` |
 | AppView | `services/appview` |
 | Projection Pool / Coordinator | `services/indexing-worker` |
-| Operations service | `services/operations` |
-| Ingress Controller | [services/jetstream-ingest/README.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/services/jetstream-ingest/README.md) |
 
 Gateway, AppView, and the Swift indexing workers require `APP_ENV=dev|prod` at process startup because their Operations telemetry namespace uses the same environment guard. Although SQLite backends still exist in code, the documented `APP_ENV=local` launch path is not runnable at present. For local service integration, use `APP_ENV=dev` with an isolated disposable Postgres database; never point local experiments at hosted Development or Production data.
 

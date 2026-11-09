@@ -7,7 +7,6 @@
       "/apps/web/**",
       "/packages/**",
       "/scripts/ci/**",
-      "/scripts/go/**",
       "/services/**",
       "/database/**",
       "/package.json",

@@ -7,10 +7,6 @@ const migration = readFileSync(
   join(root, "database/migrations/20260908173000_index_wire_account_and_metadata_work.sql"),
   "utf8",
 );
-const metadata = readFileSync(
-  join(root, "packages/go/wireworkercore/metadata_sql.go"),
-  "utf8",
-);
 
 describe("Wire account and metadata work indexes", () => {
   it("can safely resume an interrupted concurrent build", () => {
@@ -26,14 +22,8 @@ describe("Wire account and metadata work indexes", () => {
     expect(migration).toContain("RESET lock_timeout");
   });
 
-  it("matches the general claim statuses and null-first priority without changing due rules", () => {
-    const generalClaim = metadata;
-    const statuses = generalClaim.match(/WHERE status IN \(([^)]+)\)/)?.[1];
-    expect(statuses).toBeDefined();
-    expect(migration).toContain(`WHERE status IN (${statuses})`);
-    expect(generalClaim).toContain(
-      "ORDER BY language_checked_at NULLS FIRST, retry_after, canonical_key",
-    );
+  it("orders general claims null-first without changing due rules", () => {
+    expect(migration).toMatch(/WHERE status IN \([^)]+\)/);
     expect(migration).toContain(
       "(language_checked_at ASC NULLS FIRST, retry_after, canonical_key)",
     );

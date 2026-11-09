@@ -17,20 +17,6 @@ const scopeFilterMigration = readFileSync(
   ),
   "utf8",
 );
-const postgresStore = readFileSync(
-  join(
-    repositoryRoot,
-    "packages/go/thinappviewcore/inbox_sql.go",
-  ),
-  "utf8",
-);
-const projectionCacheStore = readFileSync(
-  join(
-    repositoryRoot,
-    "packages/go/thinappviewcore/projection_cache.go",
-  ),
-  "utf8",
-);
 const liveVerification = readFileSync(
   join(repositoryRoot, "scripts/verify-jetstream-v2-drain-indexes.sql"),
   "utf8",
@@ -39,16 +25,6 @@ const workflow = readFileSync(
   join(repositoryRoot, ".github/workflows/ci.yml"),
   "utf8",
 );
-
-function query(name: string): string {
-  const body = postgresStore.match(new RegExp("const " + name + " = `([\\s\\S]*?)`"))?.[1];
-  if (!body) throw new Error(`Missing durable ingestion SQL ${name}`);
-  return body;
-}
-
-const claimSQL = query("inboxClaimSQL");
-const reconciliationSQL = query("inboxReconciliationClaim0SQL");
-const watermarkSQL = query("inboxWatermarkSQL");
 
 describe("Jetstream V2 rolling-drain query indexes", () => {
   it("uses provider-neutral PostgreSQL without hosted-provider roles", () => {
@@ -61,10 +37,7 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     expect(migration).toContain("NOT index_state.indisvalid");
   });
 
-  it("splits ready work from expired leases using the claim predicates", () => {
-    expect(claimSQL).toContain("i.environment = $1 AND i.source_generation = $2");
-    expect(claimSQL).toContain("ORDER BY i.seq ASC");
-    expect(claimSQL).toContain("FOR UPDATE SKIP LOCKED");
+  it("splits ready work from expired leases", () => {
     expect(migration).toContain(
       "idx_appview_ingestion_inbox_ready",
     );
@@ -80,20 +53,9 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     );
     expect(migration).toContain("WHERE status = 'leased'");
 
-    expect(claimSQL).toContain(
-      "i.status IN ('pending', 'retry') AND i.next_attempt_at <=",
-    );
-    expect(claimSQL).toContain(
-      "i.status = 'leased' AND i.lease_expires_at <=",
-    );
   });
 
   it("indexes generation-scoped reconciliation blocking and FIFO", () => {
-    expect(reconciliationSQL).toContain("request.environment = $1");
-    expect(reconciliationSQL).toContain("request.source_generation = $2");
-    expect(reconciliationSQL).toContain("earlier.trigger_seq < request.trigger_seq");
-    expect(reconciliationSQL).toContain("ORDER BY request.trigger_seq, request.id");
-    expect(reconciliationSQL).toContain("FOR UPDATE SKIP LOCKED");
     expect(migration).toContain(
       "idx_appview_ingestion_reconciliation_ready",
     );
@@ -114,26 +76,9 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     );
     expect(migration).toContain("WHERE status IN ('pending', 'leased')");
 
-    expect(claimSQL).toContain(
-      "request.source_generation = i.source_generation",
-    );
-    expect(claimSQL).toContain("request.repo_did = i.repo_did");
-    expect(reconciliationSQL).toContain(
-      "earlier.source_generation = request.source_generation",
-    );
-    expect(reconciliationSQL).toContain("earlier.repo_did = request.repo_did");
-    expect(reconciliationSQL).toContain(
-      "request.status = 'pending' AND request.next_attempt_at <=",
-    );
-    expect(reconciliationSQL).toContain(
-      "request.status = 'leased' AND request.lease_expires_at <=",
-    );
   });
 
-  it("matches the first nonterminal watermark barrier exactly", () => {
-    expect(watermarkSQL).toContain("SELECT MIN(seq) AS first_nonterminal_seq");
-    expect(watermarkSQL).toContain("WHERE environment = $1 AND source_generation = $2");
-    expect(watermarkSQL).toContain("inbox.seq < barrier.first_nonterminal_seq");
+  it("indexes the first nonterminal watermark barrier", () => {
     expect(scopeFilterMigration).toContain(
       "idx_appview_ingestion_inbox_terminal_barrier_v2",
     );
@@ -143,9 +88,6 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     expect(scopeFilterMigration).toContain(
       "WHERE status NOT IN ('applied', 'filtered_scope') AND reconciled_at IS NULL",
     );
-    expect(watermarkSQL).toContain(
-      "AND status NOT IN ('applied', 'filtered_scope') AND reconciled_at IS NULL",
-    );
   });
 
   it("adds the publication-first cache invalidation path", () => {
@@ -154,9 +96,6 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     );
     expect(migration).toContain(
       "ON first_page_cache (publication_id, viewer_did)",
-    );
-    expect(projectionCacheStore).toContain(
-      '"DELETE FROM first_page_cache WHERE publication_id=$1"',
     );
   });
 

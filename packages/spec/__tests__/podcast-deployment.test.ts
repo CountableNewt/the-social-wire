@@ -6,7 +6,7 @@ import graph, { partial } from "../../../.railway/railway";
 
 const root = join(import.meta.dir, "../../..");
 const plan = (environmentName: string) => graph(createRailwayContext({ environmentName }), project);
-const existing = ["Ingress Controller", "Projection Pool", "Coordinator"];
+const existing = ["Projection Pool", "Coordinator"];
 
 describe("Development podcast deployment graph", () => {
   it("copies workspace file dependencies before the frozen install", () => {
@@ -47,7 +47,7 @@ describe("Development podcast deployment graph", () => {
       multiRegionConfig: { sfo: { numReplicas: 1 } },
     });
     expect(worker.build?.dockerfilePath).toBe("/services/podcast-worker/Dockerfile");
-    for (const path of ["/.railway/**", "/services/podcast-worker/**", "/database/migrations/**", "/services/jetstream-ingest/cmd/schema-ready/**", "/services/jetstream-ingest/internal/schemaready/**", "/services/jetstream-ingest/go.mod", "/services/jetstream-ingest/go.sum", "/package.json", "/bun.lock"]) {
+    for (const path of ["/.railway/**", "/services/podcast-worker/**", "/database/migrations/**", "/tools/schema-ready/**", "/package.json", "/bun.lock"]) {
       expect(worker.build?.watchPatterns).toContain(path);
     }
     expect(worker.variables?.APP_ENV).toEqual({ type: "literal", value: "dev" });

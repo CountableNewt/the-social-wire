@@ -5,11 +5,9 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "../../..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 const images = {
-  "jetstream-ingest": "jetstream-ingest",
   "indexing-worker": "IndexingWorker",
   appview: "AppView",
   gateway: "Gateway",
-  operations: "Operations",
 };
 
 describe("schema readiness deployment contract", () => {
@@ -28,15 +26,12 @@ describe("schema readiness deployment contract", () => {
     });
   }
 
-  for (const service of ["gateway", "appview", "operations", "jetstream-ingest", "wire-jetstream-ingest"]) {
+  for (const service of ["gateway", "appview"]) {
     it(`${service} rebuilds on schema/gate changes without bypassing the entrypoint`, () => {
       const config = JSON.parse(read(`railway/${service}.json`));
       expect(config.deploy.startCommand).toBeUndefined();
       expect(config.build.watchPatterns).toContain("/database/migrations/**");
-      const nativeGate = config.build.watchPatterns.includes("/tools/schema-ready/**");
-      const watchesGate = nativeGate || config.build.watchPatterns.includes("/services/jetstream-ingest/**") ||
-        ["/services/jetstream-ingest/cmd/schema-ready/**", "/services/jetstream-ingest/internal/schemaready/**", "/services/jetstream-ingest/go.mod", "/services/jetstream-ingest/go.sum"].every((path) => config.build.watchPatterns.includes(path));
-      expect(watchesGate).toBe(true);
+      expect(config.build.watchPatterns).toContain("/tools/schema-ready/**");
       expect(config.deploy.healthcheckTimeout).toBeGreaterThan(90);
     });
   }
@@ -52,7 +47,6 @@ describe("schema readiness deployment contract", () => {
     }
     expect(iac.match(/build: indexingBuild/g)).toHaveLength(1);
     expect(iac).toContain('watchPatterns: ["/__global_projection_retired__/**"]');
-    expect(iac).toContain('watchPatterns: ["/__global_ingress_retired__/**"]');
     expect(iac).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
     expect(iac).toContain('OPERATIONS_RECOVERY_ENABLED: "false"');
     expect(iac.match(/deploy: longRunningDeploy/g)).toHaveLength(1);
@@ -68,23 +62,17 @@ describe("schema readiness deployment contract", () => {
   it("keeps retired intake and projection dormant while RSS maintenance can restart", () => {
     const iac = read(".railway/railway.ts");
     const retiredDeploy = iac.slice(iac.indexOf("const retiredWorkerDeploy"), iac.indexOf("export default"));
-    const ingress = iac.slice(iac.indexOf('const ingressController = service('), iac.indexOf('const projectionPool = service('));
     const projection = iac.slice(iac.indexOf('const projectionPool = service('), iac.indexOf('const coordinator = service('));
     const coordinator = iac.slice(iac.indexOf('const coordinator = service('), iac.indexOf('return project('));
     expect(retiredDeploy).toContain('restartPolicyType: "NEVER"');
-    for (const dormant of [ingress, projection]) {
-      expect(dormant).toContain("deploy: retiredWorkerDeploy");
-      expect(dormant).not.toContain("deploy: longRunningDeploy");
-    }
-    const overrides = ingress.slice(ingress.indexOf("...profile.ingress,"));
-    expect(overrides).toContain('JETSTREAM_APPVIEW_ENABLED: "false"');
-    expect(overrides).toContain('JETSTREAM_WIRE_ENABLED: "false"');
-    expect(overrides).toContain('JETSTREAM_WIRE_LANES: ""');
+    expect(projection).toContain("deploy: retiredWorkerDeploy");
+    expect(projection).not.toContain("deploy: longRunningDeploy");
     expect(coordinator).toContain("deploy: longRunningDeploy");
     expect(coordinator).toContain("build: indexingBuild");
     expect(coordinator).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
     expect(coordinator).toContain('THIN_APPVIEW_RSS_FEED_POLL_ENABLED: "true"');
-    expect(iac).toContain("ingressController, projectionPool, coordinator,");
+    expect(iac).toContain("projectionPool, coordinator,");
+    expect(iac).not.toContain("Ingress Controller");
   });
 
   it("keeps the consolidated IaC entrypoint and rebuild dependencies", () => {
@@ -94,9 +82,16 @@ describe("schema readiness deployment contract", () => {
     expect(iac).toContain('"/database/migrations/**"');
   });
 
-  it("does not gate migrators or the separately owned Corpus Edge schema", () => {
-    for (const service of ["database-migrator", "wire-corpus-edge"]) {
-      expect(read(`services/${service}/Dockerfile`)).not.toContain("schema-ready");
-    }
+  it("does not gate the database migrator", () => {
+    expect(read("services/database-migrator/Dockerfile")).not.toContain("schema-ready");
+  });
+
+  it("gates the podcast worker with the Swift schema-ready image stage", () => {
+    const dockerfile = read("services/podcast-worker/Dockerfile");
+    expect(dockerfile).toContain("--product schema-ready --static-swift-stdlib");
+    expect(dockerfile).toContain("--generate-manifest /src/database/migrations");
+    expect(dockerfile).not.toMatch(/golang|go build/);
+    const entrypoint = JSON.parse(dockerfile.match(/^ENTRYPOINT (.+)$/m)![1]);
+    expect(entrypoint.slice(0, 2)).toEqual(["/usr/local/bin/schema-ready", "--"]);
   });
 });

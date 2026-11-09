@@ -5,7 +5,7 @@ The Social Wire has a dedicated, operator-only control plane rather than embeddi
 ## Components
 
 - **Operations Web** (`apps/operations`) is the Next.js console.
-- **Operations service** (`services/operations`) owns environment-scoped evidence and control routes.
+- **Operations service**: the former Go service was removed from the repository. The console's `/v1/operations/*` routes have no in-repo backend until a Swift replacement exists.
 - **Gateway** verifies the operator's ATProto OAuth session and currently proxies `/v1/operations/*` over a private service origin. The checkout adds Lexicon-defined `app.thesocialwire.operations.*` XRPC aliases, but they are not deployed on the public gateways as of 2026-08-12.
 - **Postgres** stores health, alerts, commands, audit records, events, metrics, traces, ingestion gaps, and backfill state.
 

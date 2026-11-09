@@ -90,7 +90,7 @@ describe("standalone reader CI", () => {
     }
     expect(verifier).toContain('coverage_status=$?');
     expect(verifier).toContain('exit "$coverage_status"');
-    expect(verifier.indexOf("run('python3', ['scripts/go/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
+    expect(verifier.indexOf("run('python3', ['scripts/ci/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
   });
 
   it("fails the aggregate gate for every selected check that does not succeed", () => {
@@ -121,7 +121,7 @@ describe("extracted Swift reference fixtures", () => {
     const destination = join(root, "packages/swift/FixtureCore");
     const manifest = join(root, "manifest.json");
     const run = (...args: string[]) => spawnSync("python3", [
-      join(repositoryRoot, "scripts/go/check-out-swift-contracts.py"),
+      join(repositoryRoot, "scripts/ci/check-out-swift-contracts.py"),
       "--root", root, "--manifest", manifest, ...args,
     ], { encoding: "utf8" });
     try {

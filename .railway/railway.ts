@@ -5,57 +5,12 @@ export const partial = "indexing-consolidation";
 
 const repository = "Stygian-Tech/the-social-wire";
 
-function ingressPoolEnvironment(...prefixes: string[]) {
-  return Object.fromEntries(prefixes.flatMap((prefix) => [
-    [`${prefix}DATABASE_POOL_MAX_OPEN`, "8"],
-    [`${prefix}DATABASE_POOL_MAX_IDLE`, "1"],
-    [`${prefix}DATABASE_POOL_IDLE_TIMEOUT`, "60s"],
-  ]));
-}
-
 const developmentProfile = {
   appEnvironment: "dev",
   branch: "dev",
-  ingressRegion: "us-west2",
   workerRegion: "us-west2",
   projectionReplicas: 2,
   appViewGeneration: "jetstream-v2-us-west-finance-sports-v1-20261003",
-  ingress: {
-    ...ingressPoolEnvironment("JETSTREAM_APPVIEW_", "JETSTREAM_WIRE_PUBLICATIONWEST_"),
-    JETSTREAM_WIRE_PUBLICATIONWEST_COMPACT_INGEST_ENABLED: "false",
-    JETSTREAM_APPVIEW_BOOTSTRAP_AFTER_SEQ: "26608279414",
-    JETSTREAM_APPVIEW_ENABLED: "true",
-    JETSTREAM_APPVIEW_HOST: "jetstream.us-west.bsky.network",
-    JETSTREAM_APPVIEW_SOURCE_GENERATION: "jetstream-v2-us-west-finance-sports-v1-20261003",
-    JETSTREAM_APPVIEW_COLLECTIONS:
-      "site.standard.document,site.standard.entry,com.standard.document,com.standard.entry,app.skyreader.feed.subscription,site.standard.graph.subscription,app.thesocialwire.readState,app.thesocialwire.finance.selection,app.thesocialwire.sports.selection",
-    JETSTREAM_WIRE_BOOTSTRAP_AFTER_SEQ: "24941037520",
-    JETSTREAM_WIRE_ENABLED: "false",
-    JETSTREAM_WIRE_ADMISSION_BURST_EVENTS: "1",
-    JETSTREAM_WIRE_ADMISSION_RATE_PER_SECOND: "3",
-    JETSTREAM_WIRE_SOURCE_GENERATION: "wire-global-v4-dev-live-20260830",
-    JETSTREAM_WIRE_LANES: "publicationwest",
-    JETSTREAM_WIRE_PUBLICATIONWEST_ADMISSION_BURST_EVENTS: "64",
-    JETSTREAM_WIRE_PUBLICATIONWEST_ADMISSION_RATE_PER_SECOND: "50",
-    JETSTREAM_WIRE_PUBLICATIONWEST_BATCH_SIZE: "256",
-    JETSTREAM_WIRE_PUBLICATIONWEST_BOOTSTRAP_AFTER_SEQ: "26512357203",
-    JETSTREAM_WIRE_PUBLICATIONWEST_COLLECTIONS:
-      "site.standard.document,site.standard.entry,site.standard.publication,site.standard.graph.recommend,app.thesocialwire.wireFeedback",
-    JETSTREAM_WIRE_PUBLICATIONWEST_DATABASE_MAX_BYTES: "17179869184",
-    JETSTREAM_WIRE_PUBLICATIONWEST_DOWNLOAD_CONCURRENCY: "1",
-    JETSTREAM_WIRE_PUBLICATIONWEST_EXIT_AFTER_SNAPSHOT: "false",
-    JETSTREAM_WIRE_PUBLICATIONWEST_HOST: "jetstream.us-west.bsky.network",
-    JETSTREAM_WIRE_PUBLICATIONWEST_INBOX_MAX_ROWS: "50000",
-    JETSTREAM_WIRE_PUBLICATIONWEST_LEADER_LEASE_NAME:
-      "wire-global-v6-dev-publication-finance-live-20261001",
-    JETSTREAM_WIRE_PUBLICATIONWEST_MAX_DOWNLOAD_ATTEMPTS: "3",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_DAILY_BYTES: "4294967296",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_INCIDENT_BYTES: "4294967296",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_SNAPSHOT_ONLY: "false",
-    JETSTREAM_WIRE_PUBLICATIONWEST_SEGMENT_STRIPES: "1",
-    JETSTREAM_WIRE_PUBLICATIONWEST_SOURCE_GENERATION:
-      "wire-global-v6-dev-publication-finance-live-20261001",
-  },
   projection: {
     POSTGRES_MAX_CONNECTIONS: "8",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "16",
@@ -119,66 +74,9 @@ const productionWireCoordinatorGenerations = [
 const productionProfile = {
   appEnvironment: "prod",
   branch: "main",
-  ingressRegion: "us-west2",
   workerRegion: "sfo",
   projectionReplicas: 4,
   appViewGeneration: "jetstream-v2-us-west-v2",
-  ingress: {
-    ...ingressPoolEnvironment("JETSTREAM_APPVIEW_", "JETSTREAM_WIRE_EXTERNAL_", "JETSTREAM_WIRE_PUBLICATION_"),
-    JETSTREAM_WIRE_EXTERNAL_COMPACT_INGEST_ENABLED: "false",
-    JETSTREAM_WIRE_PUBLICATION_COMPACT_INGEST_ENABLED: "false",
-    JETSTREAM_APPVIEW_BOOTSTRAP_AFTER_SEQ: "24794992678",
-    JETSTREAM_APPVIEW_ENABLED: "true",
-    JETSTREAM_APPVIEW_SOURCE_GENERATION: "jetstream-v2-us-west-v2",
-    // The west replay canary expired. Retain its configuration without restarting it.
-    JETSTREAM_WIRE_LANES: "external,publication",
-    JETSTREAM_WIRE_EXTERNAL_ADMISSION_BURST_EVENTS: "1",
-    JETSTREAM_WIRE_EXTERNAL_ADMISSION_RATE_PER_SECOND: "3",
-    JETSTREAM_WIRE_EXTERNAL_BOOTSTRAP_AFTER_SEQ: "25324903480",
-    JETSTREAM_WIRE_EXTERNAL_DATABASE_MAX_BYTES: "42949672960",
-    JETSTREAM_WIRE_EXTERNAL_INBOX_MAX_ROWS: "5000000",
-    JETSTREAM_WIRE_EXTERNAL_LEADER_LEASE_NAME:
-      "wire-global-v8-prod-external-live-v1",
-    JETSTREAM_WIRE_EXTERNAL_REPLAY_DAILY_BYTES: "34359738368",
-    JETSTREAM_WIRE_EXTERNAL_REPLAY_INCIDENT_BYTES: "17179869184",
-    JETSTREAM_WIRE_EXTERNAL_SOURCE_GENERATION:
-      "wire-global-v8-prod-external-live-v1",
-    JETSTREAM_WIRE_PUBLICATION_ADMISSION_BURST_EVENTS: "256",
-    JETSTREAM_WIRE_PUBLICATION_ADMISSION_RATE_PER_SECOND: "600",
-    JETSTREAM_WIRE_PUBLICATION_BOOTSTRAP_AFTER_SEQ: "25265377992",
-    JETSTREAM_WIRE_PUBLICATION_COLLECTIONS:
-      "site.standard.document,site.standard.entry,site.standard.publication,site.standard.graph.recommend,app.thesocialwire.wireFeedback",
-    JETSTREAM_WIRE_PUBLICATION_DATABASE_MAX_BYTES: "85899345920",
-    JETSTREAM_WIRE_PUBLICATION_HOST: "jetstream.us-east.bsky.network",
-    JETSTREAM_WIRE_PUBLICATION_INBOX_MAX_ROWS: "5000000",
-    JETSTREAM_WIRE_PUBLICATION_LEADER_LEASE_NAME:
-      "wire-global-v8-prod-publication-live-tail-v1",
-    JETSTREAM_WIRE_PUBLICATION_REPLAY_DAILY_BYTES: "274877906944",
-    JETSTREAM_WIRE_PUBLICATION_REPLAY_INCIDENT_BYTES: "274877906944",
-    JETSTREAM_WIRE_PUBLICATION_SOURCE_GENERATION:
-      "wire-global-v8-prod-publication-live-tail-v1",
-    JETSTREAM_WIRE_PUBLICATIONWEST_ADMISSION_BURST_EVENTS: "128",
-    JETSTREAM_WIRE_PUBLICATIONWEST_ADMISSION_RATE_PER_SECOND: "100",
-    JETSTREAM_WIRE_PUBLICATIONWEST_BATCH_SIZE: "256",
-    JETSTREAM_WIRE_PUBLICATIONWEST_BOOTSTRAP_AFTER_SEQ: "26032080808",
-    JETSTREAM_WIRE_PUBLICATIONWEST_COLLECTIONS:
-      "site.standard.document,site.standard.entry,site.standard.publication,site.standard.graph.recommend,app.thesocialwire.wireFeedback",
-    JETSTREAM_WIRE_PUBLICATIONWEST_DATABASE_MAX_BYTES: "34359738368",
-    JETSTREAM_WIRE_PUBLICATIONWEST_DOWNLOAD_CONCURRENCY: "1",
-    JETSTREAM_WIRE_PUBLICATIONWEST_EXIT_AFTER_SNAPSHOT: "false",
-    JETSTREAM_WIRE_PUBLICATIONWEST_HOST: "jetstream.us-west.bsky.network",
-    JETSTREAM_WIRE_PUBLICATIONWEST_INBOX_MAX_ROWS: "100000",
-    JETSTREAM_WIRE_PUBLICATIONWEST_LEADER_LEASE_NAME:
-      "wire-global-v9-prod-publication-west-20260919",
-    JETSTREAM_WIRE_PUBLICATIONWEST_MAX_DOWNLOAD_ATTEMPTS: "3",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_DAILY_BYTES: "5368709120",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_CANARY_EXPIRES_AT: "2026-09-23T00:00:00Z",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_INCIDENT_BYTES: "5368709120",
-    JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_SNAPSHOT_ONLY: "false",
-    JETSTREAM_WIRE_PUBLICATIONWEST_SEGMENT_STRIPES: "1",
-    JETSTREAM_WIRE_PUBLICATIONWEST_SOURCE_GENERATION:
-      "wire-global-v9-prod-publication-west-20260919",
-  },
   projection: {
     POSTGRES_MAX_CONNECTIONS: "8",
     THIN_APPVIEW_INGESTION_INBOX_MAX_CONCURRENCY: "8",
@@ -277,29 +175,6 @@ export default defineRailway((context) => {
     WIRE_INBOX_IDLE_MILLISECONDS: "250",
   } as const;
 
-  const ingressController = service("Ingress Controller", {
-    source: github(repository, { branch: profile.branch, rootDirectory: "/" }),
-    build: {
-      builder: "DOCKERFILE",
-      dockerfilePath: "/services/jetstream-ingest/Dockerfile",
-      // Retain ownership and history without automatic restarts after retirement.
-      watchPatterns: ["/__global_ingress_retired__/**"],
-    },
-    deploy: retiredWorkerDeploy,
-    replicas: { [profile.ingressRegion]: 2 },
-    env: {
-      APP_ENV: profile.appEnvironment,
-      DATABASE_MIGRATOR_SERVICE_ID: preserve(),
-      DATABASE_URL: preserve(),
-      JETSTREAM_API_KEY: preserve(),
-      ...profile.ingress,
-      // Keep both intake lanes disabled even if a retained deployment is started.
-      JETSTREAM_APPVIEW_ENABLED: "false",
-      JETSTREAM_WIRE_ENABLED: "false",
-      JETSTREAM_WIRE_LANES: "",
-    },
-  });
-
   const projectionPool = service("Projection Pool", {
     source: github(repository, { branch: profile.branch, rootDirectory: "/" }),
     // This service is stopped during the provider cutover, not deleted by omission.
@@ -330,7 +205,7 @@ export default defineRailway((context) => {
 
   return project("The Social Wire", {
     resources: [
-      ingressController, projectionPool, coordinator,
+      projectionPool, coordinator,
       ...(context.isEnvironment("dev") ? developmentPodcasts() : []),
     ],
   });
