@@ -7,46 +7,44 @@ A reader for the [standard.site](https://standard.site) publishing ecosystem, bu
 The Social Wire lets you read publications from people you follow on Bluesky and the broader ATProto network. Your reading preferences — folders, publication organisation — are stored on your own ATProto PDS, not on our servers.
 
 ```
-Web (Next.js 16.2+)     iOS/iPadOS (SwiftUI)
-       │                        │
-       └─── ATProto OAuth ──────┘
-                   │
-       ┌───────────┴───────────┐
-       ▼                       ▼
-User's ATProto PDS      Social Wire gateway (Railway)
-  app.thesocialwire.*     /xrpc/app.thesocialwire.* + compatibility /v1/*
-  link.latr.saved.*       bootstrap stream, PDS write-through, /v1/latr/*
-                               │
-                               └── AppView + replicated indexing services
-                                   Redis (disposable cache/leases)
-                                   Postgres (durable derived state)
+Web Frontend (Next.js)       iOS/iPadOS (SwiftUI)
+          │                         │
+          └────── ATProto OAuth ────┘
+                         │
+       User's PDS        │       Swift AppView (Railway)
+       User-owned        └────── OAuth/DPoP + Reader API
+       protocol records          SQLite on persistent /data
+                                 Bounded RSS + bundled media processor
 ```
 
-The current checkout adds Lexicon-defined `/xrpc/app.thesocialwire.*` aliases
-and migrates eligible clients to them. As verified on 2026-08-12, those aliases
-are not yet registered on the public Testing or Production gateways; deployed
-clients still use the retained `/v1/*` contract until the migration ships.
+The hosted target has two services: Frontend and AppView with SQLite. AppView
+retains the public XRPC and `/v1/*` compatibility contracts on the existing API
+domains. See the [standalone cutover runbook](docs/architecture/standalone-reader.md)
+for data import, key preservation, backups, and Development-first acceptance.
+
+GitHub remains origin, GitHub Actions runs required verification, and Railway
+builds and deploys the protected branches through its GitHub integration.
 
 ## Monorepo Structure
 
 ```
 the-social-wire/
   apps/
-    web/             # Next.js 16.2+ reader (Bun)
+    web/             # Next.js Frontend; standalone Node runtime
     apple/           # SwiftUI iOS/iPadOS app
     operations/      # Next.js operator console (Bun)
   services/
-    gateway/         # OAuth, sync, PDS writes, AppView proxy (Hummingbird; Railway)
-    appview/         # Publication sidebar + Thin AppView read index (Railway)
-    jetstream-ingest/ # Replicated multi-lane Ingress Controller (Swift; Railway)
-    indexing-worker/ # Projection Pool / Coordinator shared runtime (Swift; Railway)
+    gateway/         # Distributed rollback source
+    appview/         # Public Swift API, SQLite, RSS and bundled media
+    jetstream-ingest/ # Retired ingress source and historical contracts
+    indexing-worker/ # Retained distributed worker source
     operations/      # Operations control plane (Railway)
   packages/
     lexicons/        # record schemas plus app.thesocialwire.* service XRPC lexicons
     spec/            # OpenAPI 3.1 compatibility contract + endpoint manifest
-    swift/           # Native ReadStateCore; ignored historical contract checkouts
+    swift/           # Read-state and vendored reader core; contract fixtures
   database/
-    migrations/      # Provider-neutral Postgres migration history
+    migrations/      # Historical Postgres schema and import source
   docs/
     architecture/
     wiki/        # Canonical public wiki Markdown (GitHub sync; manual Lichen publish)
@@ -127,8 +125,8 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 
 - **Protocol-first where data is portable**: folders, publication preferences, subscriptions, and read-later records live on the user's own ATProto PDS
 - **AppView-owned read state**: feed read/unread state is local-first in clients and synchronized to Social Wire AppView for counters and unread filtering
-- **Thin AppView read path**: signed-in clients load bootstrap data, feeds, and entry detail through the gateway-backed AppView; standard.site bodies remain authoritative on publisher PDSes, while RSS feed bodies may be retained in the derived index (see [docs/architecture/appview.md](docs/architecture/appview.md))
-- **Disposable acceleration**: projection/PDS caches, PLC coalescing, RSS leases, and reusable ranking sets can use Redis; PDS/Postgres remain authoritative. Development and Production currently select Redis, while Postgres cache tables remain the rollback backend (see [docs/architecture/redis.md](docs/architecture/redis.md))
+- **Thin AppView read path**: signed-in clients load bootstrap data, feeds, and entry detail through the public AppView; standard.site bodies remain authoritative on publisher PDSes, while RSS feed bodies may be retained in the derived index (see [docs/architecture/appview.md](docs/architecture/appview.md))
+- **Local projections**: AppView keeps reader projections, private drafts, analytics, podcasts and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
 - **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
 
@@ -136,21 +134,15 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 
 | Component | Where |
 |-----------|-------|
-| Web + Operations UI | Railway |
-| Gateway, AppView, Ingress Controller, Projection Pool, Coordinator | Railway |
-| Operations | Railway |
-| Database migrations | Railway Database Migrator job |
-| Durable index/state | Railway Postgres (`database/migrations/`) |
-| Optional disposable cache/coordination | Private Railway Redis (currently selected in Development and Production) |
-| CI/CD | GitHub Actions validates source; Railway deploys through its Git integration |
+| Frontend | Railway, `apps/web/Dockerfile` |
+| AppView + SQLite + bundled media processor | Railway, `services/appview/Dockerfile.standalone`, one `/data` volume |
+| Required CI | GitHub Actions, packaged Frontend and SQLite AppView checks |
+| Releases | Railway GitHub integration, Development before Production |
 
-The active backend builds Swift runtimes with version-pinned remote packages.
-Operations and dormant corpus-edge services are excluded from this migration.
-Old Go sources remain as parity references during cutover; active Dockerfiles
-build native Swift products. See [shared packages](docs/architecture/extracted-swift-packages.md)
-and [the replicated indexing design](docs/architecture/indexing-services.md).
-
-See [docs/architecture/overview.md](docs/architecture/overview.md) for the full architecture narrative.
+Select `/railway/web-standalone.json` and `/railway/appview-standalone.json` for
+the two services. Historical distributed sources and Postgres backups remain
+available during the rollback window. Follow the [cutover runbook](docs/architecture/standalone-reader.md)
+before retiring old compute; preserve databases, data volumes, object buckets and keys.
 
 ## Docs
 

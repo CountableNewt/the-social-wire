@@ -5,7 +5,7 @@ import HTTPTypes
 import NIOFoundationCompat
 
 struct SocialDraftRoutes: Sendable {
-  let service: SocialDraftService?
+  let service: (any SocialDraftStoring)?
   var transferSeconds: Double = 120
   var mutationSeconds: Double = 60
   private static let prefix = "/xrpc/app.thesocialwire.socialDraft."

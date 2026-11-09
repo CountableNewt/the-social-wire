@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 import { chapters, people, safeUrl, object } from "./metadata";
 import { createHash } from "node:crypto";
-import type { SQL } from "bun";
+import { SQLitePodcastDatabase, type PodcastDatabase } from "./sqlite";
 import { fetchPublic, publicUrl, publicFeedUrl } from "./publicFetch";
 import type { PodcastEpisode, PodcastShow, TranscriptReference } from "./types";
 
@@ -45,11 +45,12 @@ export async function parsePodcast(xml:string,feedUrl:string,existing?:PodcastSh
   return {show,episodes};
 }
 
-export async function pollCatalog(database:SQL,show:PodcastShow):Promise<PodcastEpisode[]> {
+export async function pollCatalog(database:PodcastDatabase,show:PodcastShow):Promise<PodcastEpisode[]> {
   if(!show.feedUrl)return [];
   const response=await fetchPublic(show.feedUrl,16*1024*1024,5,publicFeedUrl);
   const parsed=await parsePodcast(await response.text(),show.feedUrl,show);
-  await database`UPDATE podcast_shows SET show_json=${parsed.show}::jsonb,updated_at=now() WHERE id=${show.id}`;
+  if(database instanceof SQLitePodcastDatabase)database.updateShow(parsed.show);
+  else await database`UPDATE podcast_shows SET show_json=${parsed.show}::jsonb,updated_at=now() WHERE id=${show.id}`;
   // AppView resolves cloud chapters on requested pages; preserve those results during re-polls.
   for(const episode of parsed.episodes) {
     await upsertPodcastEpisode(database,episode);
@@ -57,7 +58,8 @@ export async function pollCatalog(database:SQL,show:PodcastShow):Promise<Podcast
   return parsed.episodes;
 }
 
-export async function upsertPodcastEpisode(database:SQL,episode:PodcastEpisode):Promise<void> {
+export async function upsertPodcastEpisode(database:PodcastDatabase,episode:PodcastEpisode):Promise<void> {
+    if(database instanceof SQLitePodcastDatabase){database.upsertRssEpisode(episode);return;}
     // Identity is stable; retain enriched protocol references when RSS updates.
     await database`INSERT INTO podcast_episodes(id,show_id,guid,episode_json,published_at) VALUES(${episode.id},${episode.showId},${episode.guid??null},${episode}::jsonb,${episode.publishedAt}::timestamptz)
       ON CONFLICT(show_id,guid) WHERE guid IS NOT NULL DO UPDATE SET episode_json=EXCLUDED.episode_json || jsonb_strip_nulls(jsonb_build_object(

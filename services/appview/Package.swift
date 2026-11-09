@@ -9,7 +9,7 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/Stygian-Tech/gateway-core.git", revision: "d504847ef1321f7fb2bb1c38eef8812ea6b10d9c"),
     .package(url: "https://github.com/Stygian-Tech/operations-core.git", revision: "a3b7bb328189a423f3e2d2fdd1dcfd4022faddc1"),
-    .package(url: "https://github.com/Stygian-Tech/thin-app-view-core.git", revision: "984ff9ab19241f6a495b8e419b2894e7df5d49bb"),
+    .package(path: "../../packages/swift/thin-app-view-core"),
     .package(url: "https://github.com/Stygian-Tech/wire-core.git", revision: "a37340974f2d26d92faa70bfb048ab0681017b28"),
     .package(url: "https://github.com/Stygian-Tech/finance-core.git", revision: "0509d93c44d2958622471e2a452317407e699cc2"),
     .package(url: "https://github.com/Stygian-Tech/sports-core.git", revision: "dab4c7a598265077260feee6589fc09903731084"),
@@ -60,6 +60,7 @@ let package = Package(
       name: "AppViewTests",
       dependencies: [
         "AppView",
+        .product(name: "GRDB", package: "GRDB.swift"),
         .product(name: "GatewayCore", package: "gateway-core"),
         .product(name: "ThinAppViewCore", package: "thin-app-view-core"),
         .product(name: "WireCore", package: "wire-core"),
