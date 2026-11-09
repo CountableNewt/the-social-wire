@@ -111,7 +111,9 @@ for (const scope of ["publication", "subscribed", "following"] as const) {
         }
         await act(async () => { (replaceSession ? replacement : afterConfirmation).resolve(page("confirmed-fresh")); });
         const ids = () => hook.result.current.data?.pages.flatMap(value => value.entries.map(entry => entry.entryId));
-        const expected = filter === "all" ? ["confirmed-fresh", "cached-head", "cached-tail"] : ["confirmed-fresh"];
+        // A session replacement is a lifecycle head merge. Confirmation itself
+        // rechecks the complete loaded range; this fixture reports no next page.
+        const expected = replaceSession && filter === "all" ? ["confirmed-fresh", "cached-head", "cached-tail"] : ["confirmed-fresh"];
         await waitFor(() => expect(ids()).toEqual(expected));
         await act(async () => {
           beforeConfirmation.resolve(page("late-before-confirmation"));
@@ -122,11 +124,75 @@ for (const scope of ["publication", "subscribed", "following"] as const) {
         expect(hook.result.current.isFetching).toBe(false);
         expect(hook.result.current.isError).toBe(false);
         expect(client.getQueryState(key)?.isInvalidated).toBe(false);
-        if (filter === "all") {
+        if (replaceSession && filter === "all") {
           expect(hook.result.current.data?.pages[0].entries.find(entry => entry.entryId === "cached-head")?.isRead).toBe(true);
           expect(hook.result.current.data?.pageParams).toEqual([undefined, "page-two"]);
         }
       });
     }
+  }
+}
+
+for (const scope of ["publication", "subscribed", "following"] as const) {
+  for (const filter of ["all", "unread"] as const) {
+    it(`${scope} appends the next page through settled lifecycle options (${filter})`, async () => {
+      const key = scope === "publication" ? ["entries", viewer, publication, filter] : ["aggregateEntries", viewer, scope, "", filter];
+      const cached: InfiniteData<EntriesPage> = {
+        pages: [{ ...page("cached-head"), cursor: "page-two" }, { ...page("cached-tail"), cursor: "page-three" }],
+        pageParams: [undefined, "page-two"],
+      };
+      client.setQueryData(key, cached);
+      const feed = spyOn(Thin, "listAggregateFeedFromAppView")
+        .mockResolvedValueOnce({ ...page("cached-head"), cursor: "page-two" })
+        .mockResolvedValueOnce(page("next-page"));
+      restores.push(() => feed.mockRestore());
+      const hook = renderHook(() => useFeed(scope, filter), { wrapper: Wrapper });
+
+      await act(async () => {
+        await hook.result.current.refetch();
+        client.setQueryData(key, cached);
+        // Exercise fetchNextPage's forward-pagination metadata while the query
+        // still has lifecycle options and before the observer restores its own.
+        const query = client.getQueryCache().find({ queryKey: key, exact: true })!;
+        await query.fetch(undefined, { meta: { fetchMore: { direction: "forward" } } });
+      });
+
+      expect(feed).toHaveBeenCalledTimes(2);
+      expect(feed.mock.calls[1][0].cursor).toBe("page-three");
+      await waitFor(() => expect(hook.result.current.data?.pages.flatMap(value => value.entries.map(entry => entry.entryId)))
+        .toEqual(["cached-head", "cached-tail", "next-page"]));
+      expect(hook.result.current.data?.pageParams).toEqual([undefined, "page-two", "page-three"]);
+      expect(hook.result.current.isError).toBe(false);
+    });
+
+    it(`${scope} rechecks loaded tail pages after a settled lifecycle refresh (${filter})`, async () => {
+      const key = scope === "publication" ? ["entries", viewer, publication, filter] : ["aggregateEntries", viewer, scope, "", filter];
+      const cached: InfiniteData<EntriesPage> = {
+        pages: [{ ...page("cached-head"), cursor: "page-two" }, page("cached-tail")],
+        pageParams: [undefined, "page-two"],
+      };
+      client.setQueryData(key, cached);
+      const feed = spyOn(Thin, "listAggregateFeedFromAppView")
+        .mockResolvedValueOnce({ ...page("cached-head"), cursor: "page-two" })
+        .mockResolvedValueOnce({ ...page("confirmed-head"), cursor: "page-two" })
+        .mockResolvedValueOnce(page("cached-tail"));
+      restores.push(() => feed.mockRestore());
+      const hook = renderHook(() => useFeed(scope, filter), { wrapper: Wrapper });
+
+      await act(async () => {
+        await hook.result.current.refetch();
+        // Model pages loaded after the head refresh without letting the observer
+        // reinstall its normal options before confirmation starts.
+        client.setQueryData(key, cached);
+        await client.invalidateQueries({ queryKey: key, exact: true });
+      });
+
+      expect(feed).toHaveBeenCalledTimes(3);
+      expect(feed.mock.calls[2][0].cursor).toBe("page-two");
+      await waitFor(() => expect(hook.result.current.data?.pages.flatMap(value => value.entries.map(entry => entry.entryId)))
+        .toEqual(["confirmed-head", "cached-tail"]));
+      expect(hook.result.current.data?.pageParams).toEqual([undefined, "page-two"]);
+      expect(hook.result.current.isError).toBe(false);
+    });
   }
 }
