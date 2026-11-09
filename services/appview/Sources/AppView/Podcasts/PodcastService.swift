@@ -6,7 +6,7 @@ import NIOCore
 import ThinAppViewCore
 
 struct PodcastService: Sendable {
-  let store: PostgresPodcastStore
+  let store: any PodcastStoring
   let http: HTTPClient
   let repo: ATProtoAuthenticatedRepoClient
   var bridgeEnabled: Bool { ProcessInfo.processInfo.environment["PODCAST_BRIDGE_ENABLED"] == "true" }

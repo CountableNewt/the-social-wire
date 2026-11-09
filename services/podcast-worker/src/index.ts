@@ -3,9 +3,12 @@ import { timingSafeEqual } from "node:crypto";
 import { bridgeEnabled } from "./metadata";
 import { PodcastBridge } from "./bridge";
 import { PodcastWorker } from "./worker";
+import { SQLitePodcastDatabase } from "./sqlite";
+import { mediaRuntimeConfiguration } from "./runtime";
 
 function required(name:string):string {const value=process.env[name];if(!value)throw new Error(`${name} is required`);return value;}
-const database=new SQL(required("DATABASE_URL"));
+const runtime=mediaRuntimeConfiguration();
+const database=runtime.standalone?new SQLitePodcastDatabase(runtime.sqlitePath!):new SQL(required("DATABASE_URL"));
 const storage=new S3Client({endpoint:required("PODCAST_S3_ENDPOINT"),bucket:required("PODCAST_S3_BUCKET"),accessKeyId:required("PODCAST_S3_ACCESS_KEY_ID"),secretAccessKey:required("PODCAST_S3_SECRET_ACCESS_KEY"),region:process.env.PODCAST_S3_REGION??"auto"});
 const secret=required("PODCAST_MEDIA_INTERNAL_SECRET");
 const bridge=bridgeEnabled()&&process.env.PODCAST_BRIDGE_DID ? new PodcastBridge({did:required("PODCAST_BRIDGE_DID"),pds:required("PODCAST_BRIDGE_PDS_URL").replace(/\/$/,""),identifier:required("PODCAST_BRIDGE_IDENTIFIER"),password:required("PODCAST_BRIDGE_APP_PASSWORD")},database):undefined;
@@ -13,7 +16,7 @@ const worker=new PodcastWorker(database,storage,bridge);
 let stopping=false;let ready=false;let lastTick=Date.now();
 const internal=(request:Request)=>{const given=Buffer.from(request.headers.get("X-Podcast-Media-Secret")??"");const expected=Buffer.from(secret);return given.length===expected.length&&timingSafeEqual(given,expected);};
 
-Bun.serve({port:Number(process.env.PORT??8080),async fetch(request) {
+const server=Bun.serve({hostname:runtime.hostname,port:runtime.port,async fetch(request) {
   const url=new URL(request.url);
   if(url.pathname==="/healthz")return Response.json({status:!stopping&&Date.now()-lastTick<1_200_000?"ok":"unhealthy"},{status:!stopping&&Date.now()-lastTick<1_200_000?200:503});
   if(url.pathname==="/startupz")return Response.json({ready},{status:ready?200:503});
@@ -22,7 +25,7 @@ Bun.serve({port:Number(process.env.PORT??8080),async fetch(request) {
   if(!match||!['GET','HEAD'].includes(request.method))return new Response("Not Found",{status:404});
   const [,privatePath,clipId,filename]=match;
   if(privatePath&&!internal(request))return new Response("Unauthorized",{status:401});
-  const rows=await database`SELECT published_uri,clip_json FROM podcast_clips WHERE id=${clipId!}::uuid`;
+  const rows=database instanceof SQLitePodcastDatabase?[database.clip(clipId!)].filter((row):row is NonNullable<typeof row>=>row!==undefined):await database`SELECT published_uri,clip_json FROM podcast_clips WHERE id=${clipId!}::uuid`;
   if(!rows.length||(!privatePath&&!rows[0].published_uri)||rows[0].clip_json.status!=="complete")return new Response("Not Found",{status:404});
   const object=storage.file(`clips/${clipId}/${filename}`);
   const size=object.size;
@@ -41,7 +44,15 @@ Bun.serve({port:Number(process.env.PORT??8080),async fetch(request) {
   return new Response(request.method==="HEAD"?null:object.slice(start,end+1).stream(),{status:partial?206:200,headers:{"Content-Type":filename==="audio.m4a"?"audio/mp4":"video/mp4","Content-Length":String(end-start+1),"Accept-Ranges":"bytes",...(partial?{"Content-Range":`bytes ${start}-${end}/${length}`}:{ }),"Cache-Control":"private, no-store","Access-Control-Allow-Origin":"*"}});
 }});
 
-await database`SELECT id FROM podcast_jobs LIMIT 0`; // Migrator deploy dependency + actual readiness check.
+if(database instanceof SQLitePodcastDatabase) {
+  const deadline=Date.now()+90_000;
+  for(;;) {
+    try {database.ready();break;} catch {
+      if(Date.now()>=deadline)throw new Error("Swift podcast schema was not ready within 90 seconds");
+      await Bun.sleep(250);
+    }
+  }
+} else await database`SELECT id FROM podcast_jobs LIMIT 0`; // PostgreSQL migration readiness.
 ready=true;
 process.on("SIGTERM",()=>{stopping=true;});process.on("SIGINT",()=>{stopping=true;});
 while(!stopping) {
@@ -50,4 +61,5 @@ while(!stopping) {
   } else lastTick=Date.now();
   await Bun.sleep(2000);
 }
+await server.stop(true);
 await database.close();

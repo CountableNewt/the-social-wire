@@ -5,7 +5,7 @@ import HTTPTypes
 import NIOFoundationCompat
 
 struct ArticleDraftRoutes: Sendable {
-  let service: SocialDraftService?
+  let service: (any SocialDraftStoring)?
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
     for (name, path) in [("list", "/xrpc/app.thesocialwire.articleDraft.list"), ("get", "/xrpc/app.thesocialwire.articleDraft.get")] {

@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Create and verify a private SQLite snapshot, including committed WAL pages."""
+from contextlib import closing
+import importlib.util
+import os
+from pathlib import Path
+import sqlite3
+import sys
+import time
+
+
+def timestamp_support():
+    installed = Path("/usr/local/share/social-wire/postgres_to_sqlite.py")
+    source_tree = Path(__file__).resolve().parents[3] / "scripts/migrations/postgres_to_sqlite.py"
+    path = installed if installed.is_file() else source_tree
+    spec = importlib.util.spec_from_file_location("social_wire_backup_timestamp_support", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.timestamp
+
+
+def register_timestamps(db, timestamp):
+    db.create_collation("tsw_timestamp", lambda left, right: (timestamp(left) > timestamp(right)) - (timestamp(left) < timestamp(right)))
+    db.create_function("tsw_timestamp_us", 1, lambda value: round(timestamp(value).timestamp() * 1_000_000) if value else None, deterministic=True)
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: sqlite-backup /absolute/path/to/new-backup.sqlite", file=sys.stderr)
+        return 2
+    target = Path(sys.argv[1])
+    source = Path(os.environ.get("SQLITE_DB_PATH", "/data/social-wire.sqlite"))
+    if not target.is_absolute():
+        print("Backup destination must be absolute.", file=sys.stderr)
+        return 2
+    if source.is_symlink() or not source.is_file():
+        print("Source database must be an existing regular file, not a symlink.", file=sys.stderr)
+        return 1
+    reserved = None
+    verified = False
+    try:
+        # Reserve the destination atomically: never follow symlinks or overwrite a
+        # backup created by another invocation after an existence check.
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        reserved = os.fstat(descriptor)
+        os.close(descriptor)
+        timestamp = timestamp_support()
+        deadline = time.monotonic() + 60
+
+        def progress(status, remaining, total):
+            if time.monotonic() > deadline:
+                raise TimeoutError("Backup deadline exceeded")
+
+        with closing(sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=10)) as origin:
+            origin.execute("PRAGMA query_only=ON")
+            with closing(sqlite3.connect(target, timeout=10)) as backup:
+                # Pager backup copies committed WAL content without rebuilding
+                # custom-collation indexes or writing to the source database.
+                origin.backup(backup, pages=256, progress=progress, sleep=0.1)
+                register_timestamps(backup, timestamp)
+                if backup.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+                    raise ValueError("Invalid backup")
+                if backup.execute("PRAGMA foreign_key_check").fetchall():
+                    raise ValueError("Invalid backup")
+        os.chmod(target, 0o600)
+        verified = True
+        print(f"Verified SQLite backup: {target}")
+        return 0
+    except FileExistsError:
+        print("Backup destination already exists.", file=sys.stderr)
+        return 1
+    except (OSError, sqlite3.Error, ValueError, ImportError):
+        # Database errors can contain private values; expose only a fixed message.
+        print("Backup integrity verification failed.", file=sys.stderr)
+        return 1
+    finally:
+        if reserved is not None and not verified:
+            # Do not remove a file replaced by someone else while we worked.
+            try:
+                current = target.lstat()
+                if (current.st_dev, current.st_ino) == (reserved.st_dev, reserved.st_ino):
+                    target.unlink()
+            except FileNotFoundError:
+                pass
+
+
+if __name__ == "__main__":
+    os.umask(0o077)
+    sys.dont_write_bytecode = True
+    sys.exit(main())

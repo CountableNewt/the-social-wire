@@ -1,0 +1,38 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "/services/appview/Dockerfile.standalone",
+    "watchPatterns": [
+      "/services/appview/**",
+      "/packages/swift/thin-app-view-core/**",
+      "/services/podcast-worker/**",
+      "/scripts/migrations/**",
+      "/packages/vendor/**",
+      "/apps/web/package.json",
+      "/apps/operations/package.json",
+      "/packages/read-state/package.json",
+      "/packages/lexicons/package.json",
+      "/packages/spec/package.json",
+      "/package.json",
+      "/bun.lock",
+      "/.dockerignore",
+      "/railway/appview-standalone.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": null,
+    "preDeployCommand": null,
+    "requiredMountPath": "/data",
+    "numReplicas": 1,
+    "region": "sfo",
+    "multiRegionConfig": {
+      "sfo": { "numReplicas": 1 }
+    },
+    "sleepApplication": false,
+    "overlapSeconds": 0,
+    "healthcheckPath": "/readyz",
+    "healthcheckTimeout": 600,
+    "restartPolicyType": "ALWAYS"
+  }
+}

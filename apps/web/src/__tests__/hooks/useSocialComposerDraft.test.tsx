@@ -97,9 +97,13 @@ it("saves locally before network, skips empty creates, and starts a new composit
   expect(await Storage.loadComposerDraft(did, "new-post")).toBeUndefined();
   expect(Transport.deleteSocialDraft).not.toHaveBeenCalled();
   hook.rerender({ enabled: false, actor: session }); hook.rerender({ enabled: true, actor: session });
-  await waitFor(() => expect(hook.result.current.loaded).toBe(true));
-  expect(hook.result.current.segments[0].text).toBe("");
-  expect(hook.result.current.cloudId).toBeUndefined();
+  // Reopening initializes asynchronously; the old loaded=true state can still
+  // be visible before the new composition clears its remote identity.
+  await waitFor(() => {
+    expect(hook.result.current.loaded).toBe(true);
+    expect(hook.result.current.segments[0].text).toBe("");
+    expect(hook.result.current.cloudId).toBeUndefined();
+  });
 });
 it("coalesces edits while create is pending and updates only after its ID is durable", async () => {
   const gate = deferred<{ id: string }>();

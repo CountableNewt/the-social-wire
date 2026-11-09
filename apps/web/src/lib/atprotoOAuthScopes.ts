@@ -36,8 +36,8 @@ export const SOCIAL_WIRE_REPO_SCOPES = [
 
 /** Article drafts stay private; these permissions publish finished native records. */
 export const ARTICLE_PUBLISHING_SCOPES = [
-  "repo:site.standard.document?action=create&action=update",
-  "repo:app.offprint.document.article?action=create&action=update",
+  "repo:site.standard.document?action=create&action=update&action=delete",
+  "repo:app.offprint.document.article?action=create&action=update&action=delete",
   "repo:blog.pckt.document?action=create&action=update",
   "blob:text/markdown",
   "blob:application/json",

@@ -1,7 +1,7 @@
 import * as Mobile from "@/hooks/use-mobile";
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { act, useState } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as auth from "@/hooks/useAuth";
 import * as playerModule from "@/components/Podcasts/PodcastPlayerProvider";
@@ -83,15 +83,18 @@ it("seeks current episode notes without reloading and starts other episode notes
   const local = spyOn(offline, "listPodcastDownloads").mockResolvedValue([]);
   const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string): Promise<T> => (path === "shows" ? { shows: [] } : { episodes: [current, other] }) as T);
   restores.push(() => useAuth.mockRestore(), () => player.mockRestore(), () => local.mockRestore(), () => request.mockRestore());
-  render(<SidebarProvider><PodcastLibrary /></SidebarProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: "Show Notes: Current Episode" }));
-  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Seek to 0:30" }));
+  // Flush bootstrap promises and Base UI portal/focus effects at each interaction.
+  await act(async () => { render(<SidebarProvider><PodcastLibrary /></SidebarProvider>); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show Notes: Current Episode" })); });
+  const currentNotes = screen.getByRole("dialog", { name: "Current Episode" });
+  await act(async () => { fireEvent.click(within(currentNotes).getByRole("button", { name: "Seek to 0:30" })); });
   expect(sought).toEqual([30]);
   expect(played).toEqual([]);
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  fireEvent.click(screen.getByRole("button", { name: "Show Notes: Other Episode" }));
-  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Seek to 1:00" }));
+  await act(async () => { fireEvent.click(within(currentNotes).getByRole("button", { name: "Close" })); });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show Notes: Other Episode" })); });
+  const otherNotes = screen.getByRole("dialog", { name: "Other Episode" });
+  await act(async () => { fireEvent.click(within(otherNotes).getByRole("button", { name: "Seek to 1:00" })); });
   expect(played).toEqual([["other", 60]]);
   expect(sought).toEqual([30]);
 });
