@@ -1,7 +1,7 @@
 name: CI
 
 # GitHub remains the protected source gate during the Railway standalone cutover.
-# Verify the same packaged processes used by the future Spindle delivery pipeline.
+# Verify the packaged Web and SQLite backend processes before Railway source builds.
 on:
   pull_request:
     branches: [main, dev]
@@ -69,7 +69,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Verify Web image, coverage, and shared contracts
-        run: bash scripts/ci/spindle-verify.sh web
+        run: bash scripts/ci/verify-runtime-images.sh web
 
   appview:
     name: SQLite AppView
@@ -83,7 +83,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Verify SQLite backend, bundled media processor, migrations, and runtime
-        run: bash scripts/ci/spindle-verify.sh appview
+        run: bash scripts/ci/verify-runtime-images.sh appview
 
   required:
     name: CI — Required

@@ -68,7 +68,7 @@ describe("Development podcast deployment graph", () => {
   it("tests the bundled processor inside the standalone backend release image", () => {
     const workflow = Bun.YAML.parse(readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")) as any;
     expect(workflow.jobs["podcast-worker"]).toBeUndefined();
-    expect(workflow.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/spindle-verify.sh appview")).toBe(true);
+    expect(workflow.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
     const image = readFileSync(join(root, "services/appview/Dockerfile.standalone"), "utf8");
     expect(image).toContain("FROM media-builder AS media-tests");
     expect(image).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");

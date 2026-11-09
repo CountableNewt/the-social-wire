@@ -25,7 +25,7 @@ docker build --target media-tests -f services/appview/Dockerfile.standalone .
 ```
 
 Web image public build arguments must match the destination environment; see its
-Dockerfile and `.tangled/README.md`. Server-only Web credentials stay in Railway,
+Dockerfile. Server-only Web credentials stay in Railway,
 never in image build arguments.
 
 Select `/railway/web-standalone.json` on the existing Web service to run the same
@@ -121,5 +121,6 @@ migration or explicit reconciliation; swapping the image alone would hide
 those writes. Prefer rolling the standalone image back while preserving its
 SQLite volume. Retained Postgres is the pre-cutover recovery point.
 
-Canonical source/CI/image migration follows runtime acceptance; see
-[the Tangled delivery configuration](../../.tangled/README.md).
+GitHub remains the canonical source. GitHub Actions verifies both packaged runtime
+images and the Development-first promotion guard; Railway builds and deploys the
+protected `dev` and `main` branches using the selected standalone service configs.

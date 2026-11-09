@@ -12,8 +12,8 @@ describe("Bounded CI dependency installation", () => {
     for (const path of ["apps/web/Dockerfile", "services/appview/Dockerfile.standalone"]) {
       expect(readFileSync(join(root, path), "utf8")).toContain("--frozen-lockfile");
     }
-    expect(ci.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/spindle-verify.sh web")).toBe(true);
-    expect(ci.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/spindle-verify.sh appview")).toBe(true);
+    expect(ci.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
+    expect(ci.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
   });
   it("runs hermetic retry tests in the always-required changes job", () => {
     expect(ci.jobs.changes.steps.some((step: any) => step.run === "node --test scripts/ci/install-bun.test.mjs")).toBe(true);

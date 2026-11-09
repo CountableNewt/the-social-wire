@@ -81,7 +81,6 @@ filter_changed web \
   'tools/**' \
   'railway/**' \
   '.railway/**' \
-  '.tangled/**' \
   'docs/runbooks/**' \
   'package.json' \
   'bun.lock' \

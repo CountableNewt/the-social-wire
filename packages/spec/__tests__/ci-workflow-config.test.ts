@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 const repositoryRoot = join(import.meta.dir, "../../..");
 const workflow = readFileSync(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
 const parsed = Bun.YAML.parse(workflow) as any;
-const verifier = readFileSync(join(repositoryRoot, "scripts/ci/spindle.mjs"), "utf8");
+const verifier = readFileSync(join(repositoryRoot, "scripts/ci/verify-runtime-images.mjs"), "utf8");
 const backendImage = readFileSync(join(repositoryRoot, "services/appview/Dockerfile.standalone"), "utf8");
 
 describe("standalone reader CI", () => {
@@ -21,7 +21,7 @@ describe("standalone reader CI", () => {
       expect(value.needs).toBe("changes");
       expect(value.if).toContain(`outputs.${selection} == 'true'`);
       expect(value["timeout-minutes"]).toBeGreaterThanOrEqual(60);
-      expect(value.steps.some((step: any) => step.run === `bash scripts/ci/spindle-verify.sh ${selection}`)).toBe(true);
+      expect(value.steps.some((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${selection}`)).toBe(true);
       expect(value.services).toBeUndefined();
     }
     expect(workflow).not.toMatch(/runs-on: macos-|working-directory: services\/(?:gateway|indexing-worker)/);
