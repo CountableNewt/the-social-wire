@@ -226,8 +226,8 @@ function useGuardedFeedRefresh(args: {
     if (callerSignal?.aborted) onCallerAbort();
     let operationSettled = false;
     const fetchMerged = async (signal: AbortSignal): Promise<InfiniteData<EntriesPage>> => {
-      // Query.fetch(undefined) can reuse this installed function after a read
-      // confirmation. Snapshots belong to this request, not the installing call.
+      // Capture request evidence before fetching so newer read gestures or
+      // session changes can retire this lifecycle response.
       const requestSession = getOAuthSession();
       if (!requestSession || requestSession.did !== queryKey[1]) {
         throw new SupersededFeedRefreshError();
@@ -239,8 +239,7 @@ function useGuardedFeedRefresh(args: {
         signal,
       );
       assertCurrent();
-      // The installed query function can be reused by later confirmations.
-      // Only this invocation belongs to the visible-refresh caller lifetime.
+      // This response still belongs to the visible-refresh caller lifetime.
       if (!operationSettled && !isCurrent()) throw new SupersededFeedRefreshError();
       if (reloadSeq.current !== requestReloadSeq) throw new SupersededFeedRefreshError();
       const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
@@ -252,14 +251,23 @@ function useGuardedFeedRefresh(args: {
     };
     try {
       await queryClient.fetchQuery({
+        ...cachedQuery.options,
         queryKey,
         staleTime: 0,
         retry: shouldRetryAppViewRequest,
-        queryFn: ({ signal }) => fetchMerged(signal),
+        queryFn: cachedQuery.options.queryFn,
         // An infinite query retains its behavior even through fetchQuery. The
         // query persister wraps the entire fetch, allowing a first-page merge
         // while Query still owns cancellation, retries, and the error state.
-        persister: (_fetch, { signal }) => fetchMerged(signal),
+        persister: (fetch, context) => {
+          // Query can reuse these options for a later invalidation before its
+          // observer renders again. Only this lifecycle request is a head merge;
+          // confirmation and pagination must retain normal infinite-query reads.
+          if (operationSettled || !isCurrent() || cachedQuery.state.fetchMeta?.fetchMore) {
+            return fetch(context);
+          }
+          return fetchMerged(context.signal);
+        },
       });
     } catch (error) {
       if (isCancelledError(error) || error instanceof SupersededFeedRefreshError) return false;
