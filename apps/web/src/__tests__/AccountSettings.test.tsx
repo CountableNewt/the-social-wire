@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
+import type { OAuthSession } from "@atproto/oauth-client-browser";
+import * as Editing from "@/lib/profileEditing";
 import * as Auth from "@/hooks/useAuth";
 import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import * as Profile from "@/hooks/useViewerProfile";
@@ -15,12 +19,16 @@ import { AccountHeader } from "@/components/Account/AccountHeader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import SettingsPage from "@/app/me/settings/page";
 
+let cache: QueryClient;
+function render(ui: ReactElement) { return renderUI(ui, { wrapper: ({ children }) => <QueryClientProvider client={cache}>{children}</QueryClientProvider> }); }
+
 const restoreGlobals: (() => void)[] = [];
 const signOut = mock(async () => {});
 const changeState = mock(async () => {});
 const setRemoveSilences = mock(async () => {});
 
 beforeEach(() => {
+  cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
   window.history.replaceState(null, "", "/me");
   const mediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
@@ -45,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  cache.clear();
   window.history.replaceState(null, "", "/");
   mock.restore();
   for (const restore of restoreGlobals.splice(0).reverse()) restore();
@@ -56,6 +65,7 @@ test("settings route renders the existing preferences, import, account, and enab
   expect(screen.getByRole("region", { name: "Existing Feed Settings" })).toBeTruthy();
   expect(screen.getByRole("region", { name: "Existing OPML Import" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Playback Defaults" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Edit Profile" })).toBeTruthy();
 });
 
 test("podcast defaults are hidden when the feature is disabled or the player is unavailable", () => {
@@ -169,4 +179,20 @@ test("podcast settings reuse the player mutation handlers", async () => {
   expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1.5 });
   fireEvent.click(screen.getByRole("checkbox", { name: "Remove Silences by Default" }));
   expect(setRemoveSilences).toHaveBeenCalledWith(true);
+});
+
+test("Edit Profile opens inside Settings and Cancel returns to the settings dialog", async () => {
+  const oauth = { did: "did:plc:settings-viewer" } as unknown as OAuthSession;
+  spyOn(Auth, "useAuth").mockReturnValue({ session: { did: oauth.did }, getOAuthSession: () => oauth } as ReturnType<typeof Auth.useAuth>);
+  const load = spyOn(Editing, "loadEditableProfile").mockResolvedValue({ cid: "profile-cid", record: { displayName: "Reader Name", description: "Reader Bio" } });
+  render(<AccountSettingsDialog />);
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  const settings = await screen.findByRole("dialog", { name: "Settings" });
+  fireEvent.click(within(settings).getByRole("button", { name: "Edit Profile" }));
+  const editor = await screen.findByRole("dialog", { name: "Edit Profile" });
+  await within(editor).findByRole("textbox", { name: "Display Name" });
+  fireEvent.click(within(editor).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Profile" })).toBeNull());
+  expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+  expect(load).toHaveBeenCalledTimes(1);
 });
