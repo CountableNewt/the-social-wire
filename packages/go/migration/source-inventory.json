@@ -14357,11 +14357,11 @@
         },
         {
           "path": "packages/spec/__tests__/ci-bun-installation.test.ts",
-          "sha256": "1ab2356f7c443ed4a25f62f46160d6aca8ad2966be9a6eee953b562e33435300"
+          "sha256": "69ab9f102657589d37d9ca6f33dcba4d8d5d43ea5a9e5e2edd8f3407275f1b14"
         },
         {
           "path": "packages/spec/__tests__/ci-path-detection.test.ts",
-          "sha256": "e2c760e6796f219ec2f95751c72153b0a7ca274260264e8388d0157236611048"
+          "sha256": "beea57612d9ba49923fc50a1999bb5ec6075f6f8ea6baca6117ad8304229e584"
         },
         {
           "path": "packages/spec/__tests__/ci-postgres-preparation.test.ts",
@@ -14369,11 +14369,11 @@
         },
         {
           "path": "packages/spec/__tests__/ci-validated-merge-workflow.test.ts",
-          "sha256": "337c2b0bccea3b41147e315646f177d00f1b41df7369ac0cdac7d32b5960fa9b"
+          "sha256": "b00c91c986879bee8f20cfef6eba6e5bd0ea8f0c5e11ac9f89631b853691bcc8"
         },
         {
           "path": "packages/spec/__tests__/ci-workflow-config.test.ts",
-          "sha256": "32a33605d285cb0b694b506398ef030e37eca973d2b80da20e0f356f6ad81fb3"
+          "sha256": "3499ad87b6c53adf2ba884d7f43c274372dce21f616b657225161154315926d9"
         },
         {
           "path": "packages/spec/__tests__/circle-private-state-migration.test.ts",
@@ -14413,7 +14413,7 @@
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-drain-indexes.test.ts",
-          "sha256": "6e222a94ed768059048b3037cda0598d3dad9c9651dba1290ff2d3175bbaf27d"
+          "sha256": "f7f35bb530114416820a4704b4be81f8826385eafc0ca9b1ec3f2d494b636c93"
         },
         {
           "path": "packages/spec/__tests__/jetstream-v2-durability-migration.test.ts",
@@ -14457,7 +14457,7 @@
         },
         {
           "path": "packages/spec/__tests__/podcast-deployment.test.ts",
-          "sha256": "2b23cedf8740e7544d47caee70f882a4037df5d90d6a38de49e885915632c975"
+          "sha256": "86b194479172f93262581b2bcf46e129311f8ab2283073931cb86aa30412c520"
         },
         {
           "path": "packages/spec/__tests__/postgres-replay-harness.test.ts",
@@ -14482,6 +14482,10 @@
         {
           "path": "packages/spec/__tests__/sports-public-contract.test.ts",
           "sha256": "916c5a2c6d553adf2d3c5fc66411356e69fba7884cd540deffc3f2602a09165c"
+        },
+        {
+          "path": "packages/spec/__tests__/standalone-railway-config.test.ts",
+          "sha256": "eb3b666acd0fa12b3d8e83643db69f08a17fedf79f765b3fe089e03222c52429"
         },
         {
           "path": "packages/spec/__tests__/subscribed-feed-performance-migration.test.ts",
