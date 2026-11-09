@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModerationOpts } from "@atproto/api";
+import * as Moderation from "@atproto/api";
 import * as Navigation from "next/navigation";
 import * as Auth from "@/hooks/useAuth";
 import * as Catalog from "@/hooks/useBlueskySocialCatalog";
 import * as Profile from "@/hooks/useBlueskyProfile";
 import * as Timeline from "@/hooks/useBlueskyProfileTimeline";
+import * as ProfileLinkClient from "@/lib/profileLinks";
 import * as Atproto from "@/lib/atprotoClient";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import ProfilePage from "@/app/social/profile/page";
@@ -44,6 +46,8 @@ beforeEach(() => {
   const search = spyOn(Navigation, "useSearchParams").mockImplementation(() => params as ReturnType<typeof Navigation.useSearchParams>);
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did }), oauthSessionReloadSeq: 0 } as unknown as ReturnType<typeof Auth.useAuth>);
   const catalog = spyOn(Catalog, "useBlueskySocialCatalog").mockImplementation(() => ({ data: { feeds: [], moderation }, isError: !!catalogError, error: catalogError, refetch: mock(async () => undefined) } as unknown as ReturnType<typeof Catalog.useBlueskySocialCatalog>));
+  const links = spyOn(ProfileLinkClient, "loadProfileLinks").mockImplementation(async actor => [{ uri: `at://${actor}/app.bsky.actor.link/site`, url: `https://${actor === did ? "viewer" : "other"}.example/`, title: actor === did ? "My Website" : "Other Website", domain: actor === did ? "viewer.example" : "other.example" }]);
+  restores.push(() => links.mockRestore());
   const profile = spyOn(Profile, "useBlueskyProfile").mockImplementation(() => ({ data: profileValue, isError: false, isPending: false, refetch: mock(async () => undefined) } as unknown as ReturnType<typeof Profile.useBlueskyProfile>));
   const timeline = spyOn(Timeline, "useBlueskyProfileTimeline").mockReturnValue({ data: { pages: [{ feed: [] }] }, isError: false, isPending: false, hasNextPage: false } as unknown as ReturnType<typeof Timeline.useBlueskyProfileTimeline>);
   restores.push(() => profile.mockRestore(), () => timeline.mockRestore());
@@ -58,10 +62,11 @@ describe("other-user profile page", () => {
     expect(screen.getByRole("heading", { name: "Other Person he/they" })).toBeTruthy();
     expect(screen.getByText("he/they").closest("h2")?.tagName).toBe("H2");
     expect(screen.getByText("A profile biography")).toBeTruthy();
-    const bluesky = screen.getByRole("link", { name: "Open on Bluesky" });
-    expect(bluesky.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aother");
-    expect(bluesky.getAttribute("target")).toBe("_blank");
-    expect(bluesky.getAttribute("rel")).toBe("noopener noreferrer");
+    const website = await screen.findByRole("link", { name: /Other Website/ });
+    expect(website.getAttribute("href")).toBe("https://other.example/");
+    expect(website.getAttribute("target")).toBe("_blank");
+    expect(website.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
     for (const name of ["Posts", "Replies", "Media", "Likes"]) expect(screen.getByRole("button", { name })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publications" }) === null).toBe(true);
     expect(screen.queryByRole("button", { name: /Edit Profile|Settings/ }) === null).toBe(true);
@@ -78,7 +83,20 @@ describe("other-user profile page", () => {
     expect(screen.queryByText("he/they")).toBeNull();
     expect(screen.queryByRole("button", { name: "Posts" }) === null).toBe(true);
     expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Profile Links" })).toBeNull();
+    expect(ProfileLinkClient.loadProfileLinks).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
+  });
+  it.each(["displayName", "contentMedia"])("omits profile link cards when moderation withholds %s", context => {
+    const decision = spyOn(Moderation, "moderateProfile").mockReturnValue({
+      ui: (kind: string) => ({ filter: false, blur: kind === context, noOverride: false }),
+    } as unknown as ReturnType<typeof Moderation.moderateProfile>);
+    restores.push(() => decision.mockRestore());
+    show();
+    expect(screen.queryByText("Profile withheld by your moderation settings.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Posts" })).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Profile Links" })).toBeNull();
+    expect(ProfileLinkClient.loadProfileLinks).not.toHaveBeenCalled();
   });
   it("follows from the full viewer and shares Following state with profile previews", async () => {
     const follow = mock(async () => ({ uri: `at://${did}/app.bsky.graph.follow/one`, cid: "cid" }));
@@ -91,7 +109,7 @@ describe("other-user profile page", () => {
     expect(follow).toHaveBeenCalledWith(post.author.did);
     expect(cache.getQueryData<string>(["blueskySocial", did, "following", 0, post.author.did])).toBe(`at://${did}/app.bsky.graph.follow/one`);
   });
-  it("shows an existing follow and omits following your own profile", () => {
+  it("shows an existing follow and omits following your own profile", async () => {
     profileValue.viewer = { following: `at://${did}/app.bsky.graph.follow/existing` };
     const view = show();
     expect(screen.getByRole("button", { name: "Following @other.test" }).hasAttribute("disabled")).toBe(true);
@@ -100,7 +118,8 @@ describe("other-user profile page", () => {
     params = new URLSearchParams({ actor: did, returnTo: "/social" });
     show();
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
-    expect(screen.getByRole("link", { name: "Open on Bluesky" }).getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
+    expect((await screen.findByRole("link", { name: /My Website/ })).getAttribute("href")).toBe("https://viewer.example/");
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
   });
   it("fails closed when the viewer moderation catalog fails", async () => {
     catalogError = new Error(SCOPE_RECOVERY_MESSAGE);
