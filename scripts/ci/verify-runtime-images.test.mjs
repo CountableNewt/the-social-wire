@@ -276,6 +276,7 @@ test('default local builds preserve Docker behavior without cache or Buildx requ
   assert.equal(image, `social-wire-ci-web:${sha}-verify`);
   assert.equal(invocation.command, 'docker');
   assert.equal(invocation.args[0], 'build');
+  assert.ok(invocation.args.includes('org.opencontainers.image.source=https://github.com/CountableNewt/the-social-wire'));
   assert.ok(!invocation.args.some(value => value.startsWith('--cache-') || value === '--load'));
   assert.ok(invocation.args.includes('NEXT_PUBLIC_APP_ENV=dev'));
 });

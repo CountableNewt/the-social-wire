@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const canonical = 'https://github.com/Stygian-Tech/the-social-wire';
+const canonical = 'https://github.com/CountableNewt/the-social-wire';
 const shaPattern = /^[a-f0-9]{40}$/;
 const credentials = ['RAILWAY_TOKEN', 'RAILWAY_API_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN'];
 
