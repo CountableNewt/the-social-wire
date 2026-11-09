@@ -927,6 +927,21 @@ public init(path dbPath: String, logger: Logger) throws {
         ON content_items (author_did, publication_site, created_at DESC, uri DESC);
       """)
 
+    // Persist only built-in SQLite expressions: sibling services migrate this
+    // shared database through connections without our custom collation.
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_content_items_author_timestamp_uri
+        ON content_items (author_did, \(Self.feedTimestampSQL("created_at")) DESC, uri DESC);
+      """)
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_content_items_author_site_timestamp_uri
+        ON content_items (author_did, publication_site, \(Self.feedTimestampSQL("created_at")) DESC, uri DESC);
+      """)
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS idx_content_items_timestamp_uri
+        ON content_items (\(Self.feedTimestampSQL("created_at")) DESC, uri DESC);
+      """)
+
     try db.execute(sql: """
       CREATE TABLE IF NOT EXISTS read_marks (
         viewer_did TEXT NOT NULL,
@@ -1804,7 +1819,24 @@ public init(path dbPath: String, logger: Logger) throws {
     viewerDid: String,
     entries: [AppViewEntryListItem]
   ) async throws -> [String: Bool] {
-    guard !entries.isEmpty else { return [:] }
+    let flags = try await readStateFlags(viewerDid: viewerDid, entries: entries)
+    var states: [String: Bool] = [:]
+    for (entry, isRead) in zip(entries, flags) {
+      // This ID-only API cannot represent conflicting publication floors.
+      // Reject ambiguous input instead of trapping or silently choosing a floor.
+      if let previous = states[entry.entryId], previous != isRead {
+        throw ThinAppViewStoreError.ambiguousReadState
+      }
+      states[entry.entryId] = isRead
+    }
+    return states
+  }
+
+  private func readStateFlags(
+    viewerDid: String,
+    entries: [AppViewEntryListItem]
+  ) async throws -> [Bool] {
+    guard !entries.isEmpty else { return [] }
     let entryIds = Array(Set(entries.map(\.entryId))).sorted()
     let publicationIds = Array(Set(entries.compactMap(\.publicationId))).sorted()
     return try await db.read { db in
@@ -1832,16 +1864,13 @@ public init(path dbPath: String, logger: Logger) throws {
         publicationIds: publicationIds,
         db: db
       )
-      return Dictionary(uniqueKeysWithValues: entries.map { entry in
+      return entries.map { entry in
         let covered = entry.publicationId
           .flatMap { floors[$0] }?
           .contains(createdAt: entry.feedPositionAt, entryId: entry.entryId) ?? false
-        return (
-          entry.entryId,
-          explicitReads.contains(entry.entryId)
-            || (covered && !unreadOverrides.contains(entry.entryId))
-        )
-      })
+        return explicitReads.contains(entry.entryId)
+          || (covered && !unreadOverrides.contains(entry.entryId))
+      }
     }
   }
 
@@ -1868,11 +1897,34 @@ public init(path dbPath: String, logger: Logger) throws {
       scoped: scoped
     )
     var dbCursor = cursor.flatMap { ThinAppViewCursor.decode($0) }
+    // Resolve the stored spellings with the existing matcher before applying
+    // SQL equality. This retains URL/feed/legacy AT aliases without scanning
+    // every other RSS publication's content in repeated hundred-row batches.
+    let matchingSites: [String]?
+    if scoped {
+      matchingSites = try await db.read { db in
+        try String.fetchAll(db, sql: """
+          SELECT DISTINCT publication_site FROM content_items
+          WHERE author_did = ? AND publication_site IS NOT NULL
+          """, arguments: [authorDid]).filter {
+          ThinAppViewQuerySupport.publicationSiteMatches(
+            siteField: $0, publicationAtUri: publicationAtUri,
+            publicationScopeAtUris: publicationScopeAtUris,
+            publicationSiteUrls: publicationSiteUrls)
+        }
+      }
+      if matchingSites?.isEmpty == true {
+        return AppViewEntryListResponse(entries: [], cursor: nil)
+      }
+    } else {
+      matchingSites = nil
+    }
 
     if !scoped {
       let fetched = try await fetchContentBatch(
         viewerDid: viewerDid,
         authorDid: authorDid,
+        publicationSites: matchingSites,
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
@@ -1904,6 +1956,7 @@ public init(path dbPath: String, logger: Logger) throws {
       let fetched = try await fetchContentBatch(
         viewerDid: viewerDid,
         authorDid: authorDid,
+        publicationSites: matchingSites,
         filter: filter,
         cursor: dbCursor,
         limit: batchSize,
@@ -2245,6 +2298,7 @@ public init(path dbPath: String, logger: Logger) throws {
   private func fetchContentBatch(
     viewerDid: String,
     authorDid: String,
+    publicationSites: [String]?,
     filter: EntryListFilter,
     cursor: (createdAt: Date, uri: String)?,
     limit: Int,
@@ -2273,9 +2327,13 @@ public init(path dbPath: String, logger: Logger) throws {
             ON uo.viewer_did = ? AND uo.subject_uri = ci.uri
         """
       }
+      let contentIndex = publicationSites == nil
+        ? "idx_content_items_author_timestamp_uri"
+        : "idx_content_items_author_site_timestamp_uri"
+      let timestampSQL = Self.feedTimestampSQL("ci.created_at")
       var sql = """
         SELECT ci.uri, ci.render_json, ci.created_at, ci.publication_site
-        FROM content_items ci
+        FROM content_items ci INDEXED BY \(contentIndex)
         \(joinClause)
         WHERE ci.author_did = ?
           AND ci.expires_at > ?
@@ -2286,6 +2344,10 @@ public init(path dbPath: String, logger: Logger) throws {
         args.append(contentsOf: [viewerDid, viewerDid])
       }
       args.append(contentsOf: [authorDid, nowIso])
+      if let publicationSites {
+        sql += " AND ci.publication_site IN (\(publicationSites.map { _ in "?" }.joined(separator: ",")))"
+        args.append(contentsOf: publicationSites)
+      }
 
       switch filter {
       case .all:
@@ -2337,12 +2399,12 @@ public init(path dbPath: String, logger: Logger) throws {
       }
 
       if let decoded = cursor {
-        sql += " AND (ci.created_at COLLATE tsw_timestamp < ? OR (ci.created_at COLLATE tsw_timestamp = ? AND ci.uri < ?))"
-        let createdIso = Self.pdsTimestamp(decoded.createdAt)
+        sql += " AND (\(timestampSQL) < ? OR (\(timestampSQL) = ? AND ci.uri < ?))"
+        let createdIso = Self.feedTimestampKey(decoded.createdAt)
         args.append(contentsOf: [createdIso, createdIso, decoded.uri])
       }
 
-      sql += " ORDER BY ci.created_at COLLATE tsw_timestamp DESC, ci.uri DESC LIMIT ?"
+      sql += " ORDER BY \(timestampSQL) DESC, ci.uri DESC LIMIT ?"
       args.append(limit)
 
       let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
@@ -2447,11 +2509,11 @@ public init(path dbPath: String, logger: Logger) throws {
       cursor: cursor,
       limit: limit
     )
-    let states = try await readStates(viewerDid: viewerDid, entries: response.entries)
+    let flags = try await readStateFlags(viewerDid: viewerDid, entries: response.entries)
     return AppViewFeedPage(
       response: AppViewEntryListResponse(
-        entries: response.entries.map {
-          $0.withReadState(states[$0.entryId] ?? false)
+        entries: zip(response.entries, flags).map { entry, isRead in
+          entry.withReadState(isRead)
         },
         cursor: response.cursor
       ),

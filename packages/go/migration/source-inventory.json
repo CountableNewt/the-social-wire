@@ -12740,6 +12740,20 @@
           ]
         },
         {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+FeedEntries.swift",
+          "sha256": "3b9e51713bb74dd06b7443c77e921e97ef0ce40f52c91f8058393ede31f159f5",
+          "lines": 231,
+          "publicDeclarations": [
+            "public func listFeedEntries("
+          ]
+        },
+        {
+          "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+FeedTimestamp.swift",
+          "sha256": "49c249409df80c5358a243c5f1e95b261d49dc961b1981b4e510da775046b103",
+          "lines": 17,
+          "publicDeclarations": []
+        },
+        {
           "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+Finance.swift",
           "sha256": "193581c47d66a6512d778280184b42a135c1ff2f0adea2ad53c38e1d26fc3541",
           "lines": 41,
@@ -12757,8 +12771,8 @@
         },
         {
           "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore+PDSReadState.swift",
-          "sha256": "551fe4213764f1ba33f892eb41f8eb55c9912d90e91648452ae6dd986c5cde11",
-          "lines": 488,
+          "sha256": "2564ad0bd6be833c4e8deefdeb944495b730f0564eaacbb5428dd9201f6a2534",
+          "lines": 485,
           "publicDeclarations": [
             "public func pdsReadStateStatus(viewerDid: String) async throws -> PDSReadStateStatus {",
             "public func exportPDSReadStatePage(",
@@ -12785,8 +12799,8 @@
         },
         {
           "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
-          "sha256": "7f4fca75be2bec2eb7221705fa78d808372c9ea4c7c12dea32c23fb544b820da",
-          "lines": 4571,
+          "sha256": "f74d9b2337d06800fabe200ccaacbd293df4bc75ca11718f9c0d3f0d7578e32e",
+          "lines": 4633,
           "publicDeclarations": [
             "public actor SQLiteThinAppViewStore: ThinAppViewStore {",
             "public init(path dbPath: String, logger: Logger) throws {",
@@ -13361,8 +13375,8 @@
         },
         {
           "path": "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/ThinAppViewQuerySupport.swift",
-          "sha256": "14166e63a5c14ec0b4f8d0fd4754d48a433e12e5e22b68e9e91e03cb9bdb637d",
-          "lines": 314,
+          "sha256": "ef145096959f73e46fee434deec21c59dc32d26d2002a6f10d13e692eed055ca",
+          "lines": 323,
           "publicDeclarations": [
             "public enum ThinAppViewCursor {",
             "public static func encode(createdAt: Date, uri: String) -> String {",
@@ -13563,6 +13577,9 @@
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssFeedIdentityTests.swift",
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssFeedThumbnailExtractorTests.swift",
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/RssHtmlBodyFormatterTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLiteCombinedFeedTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLiteFeedSelectorOverlapTests.swift",
+        "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLiteImportedFeedTimestampTests.swift",
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePDSReadStateTests.swift",
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePodcastJobsSearchTests.swift",
         "packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/SQLitePodcastStoreTests.swift",

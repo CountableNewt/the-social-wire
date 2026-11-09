@@ -108,10 +108,7 @@ extension SQLiteThinAppViewStore: PDSReadStateLifecycleStoring {
   }
 
   static func pdsTimestamp(_ date: Date) -> String {
-    let microseconds = Int64((date.timeIntervalSince1970 * 1_000_000).rounded())
-    let base = ISO8601DateFormatter().string(
-      from: Date(timeIntervalSince1970: Double(microseconds / 1_000_000)))
-    return String(base.dropLast()) + String(format: ".%06lldZ", microseconds % 1_000_000)
+    ThinAppViewCursor.timestamp(date)
   }
 
   static func requireLegacyReadState(_ database: Database, viewer: String) throws {
