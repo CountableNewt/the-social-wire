@@ -27,6 +27,9 @@ struct SubscriptionMigrationTests {
       router.add(middleware: Viewer())
       AnalyticsProxyRoutes(proxy: AppViewProxyRoutes(baseURL: "http://must-not-be-called.invalid", internalSecret: nil, httpClient: http, logger: Logger(label: "analytics-test")), entitlements: GatewayEntitlements(gatingEnabled: true, proDIDs: [])).register(on: router.group())
       try await Application(router: router).test(.router) { client in
+        let bluesky = try await client.execute(uri: "/v1/analytics/bluesky", method: .get)
+        #expect(bluesky.status == .forbidden)
+        #expect(bluesky.headers[.cacheControl] == "private, no-store")
         let response = try await client.execute(uri: "/v1/analytics/summary", method: .get)
         #expect(response.status == .forbidden)
         #expect(response.headers[.cacheControl] == "private, no-store")

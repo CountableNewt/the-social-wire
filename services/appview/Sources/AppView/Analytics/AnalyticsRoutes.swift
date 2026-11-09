@@ -7,10 +7,12 @@ import NIOFoundationCompat
 struct AnalyticsRoutes: Sendable {
   let store: any AnalyticsStoring
   let provider: any AnalyticsContentProviding
+  var bluesky: BlueskyAnalyticsProvider? = nil
   let limits = AnalyticsLimits()
   var now: @Sendable () -> Date = { Date() }
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
+    group.get("/v1/analytics/bluesky") { request, context in try await handle(request, context: context) }
     group.get("/v1/analytics/summary") { request, context in try await handle(request, context: context) }
     group.post("/v1/analytics/refresh") { request, context in try await handle(request, context: context) }
     group.post("/v1/analytics/events") { request, context in try await handle(request, context: context) }
@@ -40,7 +42,7 @@ struct AnalyticsRoutes: Sendable {
       author != GatewayInternalTrustAuthMiddleware.anonymousDiscoveryDID else { return try Self.failure(.unauthorized, "Authentication Required") }
     let at = now()
     let path = request.uri.path
-    guard await limits.allow(key: author + "\0" + path, at: at, maximum: path == "/v1/analytics/refresh" ? 1 : 120) else {
+    guard await limits.allow(key: author + "\0" + path, at: at, maximum: path == "/v1/analytics/refresh" ? 1 : (path == "/v1/analytics/bluesky" ? 10 : 120)) else {
       return try Self.failure(.tooManyRequests, "Analytics Request Limit Reached")
     }
     if path == "/v1/analytics/events" {
@@ -65,6 +67,12 @@ struct AnalyticsRoutes: Sendable {
     }
     let query = request.uri.queryParameters
     let days = query.get("days").flatMap(Int.init) ?? (query.get("days") == nil ? 30 : 0)
+    if path == "/v1/analytics/bluesky" {
+      guard [7, 30, 90].contains(days) else { return try Self.failure(.badRequest, "Invalid Analytics Range") }
+      guard let bluesky else { return try Self.failure(.serviceUnavailable, "Analytics Unavailable") }
+      let articles = try await store.articles(author: author)
+      return try Self.json(await bluesky.summary(author: author, days: days, articles: articles, at: at))
+    }
     let limit = query.get("limit").flatMap(Int.init) ?? (query.get("limit") == nil ? 50 : 0)
     guard (1...90).contains(days), (1...100).contains(limit) else { return try Self.failure(.badRequest, "Invalid Analytics Range") }
     let cursor = query.get("cursor") ?? ""

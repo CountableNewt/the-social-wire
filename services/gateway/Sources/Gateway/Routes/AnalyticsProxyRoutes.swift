@@ -8,8 +8,10 @@ struct AnalyticsProxyRoutes {
   let entitlements: GatewayEntitlements
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
-    group.get("/v1/analytics/summary") { request, context in
-      try await forward(request, context: context, path: "/v1/analytics/summary", method: "GET", requiresPro: true)
+    for path in ["/v1/analytics/summary", "/v1/analytics/bluesky"] {
+      group.get(RouterPath(path)) { request, context in
+        try await forward(request, context: context, path: path, method: "GET", requiresPro: true)
+      }
     }
     for path in ["/v1/analytics/refresh", "/v1/analytics/events"] {
       group.post(RouterPath(path)) { request, context in
