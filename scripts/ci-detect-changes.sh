@@ -70,175 +70,33 @@ filter_changed() {
   echo "${name}=false" >> "$out"
 }
 
+# Web verification includes source-reading API/schema contracts and shared packages.
 filter_changed web \
   'apps/web/**' \
-  'packages/vendor/**' \
-  'packages/record-keys/**' \
-  'packages/read-state/**' \
-  'package.json' \
-  'bun.lock' \
-  'turbo.json' \
-  'scripts/check-bun-coverage-inventory.ts' \
-  'railway/web.json' \
-  '.github/workflows/ci.yml'
-
-filter_changed operations_web \
-  'apps/operations/**' \
-  'docs/runbooks/operations/**' \
-  'package.json' \
-  'bun.lock' \
-  'turbo.json' \
-  'scripts/check-bun-coverage-inventory.ts' \
-  'railway/operations-web.json' \
-  '.github/workflows/ci.yml'
-
-filter_changed apple \
   'apps/apple/**' \
-  'packages/swift/ReadStateCore/**' \
-  '.github/workflows/ci.yml'
-
-# Retained Swift package contracts remain independent from retired service runtimes.
-
-filter_changed redis \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
-  'packages/swift/SocialWireRedis/**' \
-  '.github/workflows/ci.yml'
-
-filter_changed shared_swift \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
-  'database/migrations/**' \
-  'packages/swift/GatewayCore/**' \
-  'packages/swift/OperationsCore/**' \
-  'packages/swift/ThinAppViewCore/**' \
-  'packages/swift/ReadStateCore/**' \
-  'packages/swift/SocialWireRedis/**' \
-  'packages/swift/WireCore/**' \
-  'packages/swift/FinanceCore/**' \
-  'packages/swift/SportsCore/**' \
-  '.github/workflows/ci.yml'
-
-filter_changed swift_backend \
-  'packages/swift/thin-app-view-core/**' \
-  'services/appview/Dockerfile.standalone' \
-  'services/appview/bin/**' \
-  'scripts/migrations/**' \
-  'tools/schema-ready/**' \
-  'services/gateway/Dockerfile' \
-  'services/gateway/Package.swift' \
-  'services/gateway/Package.resolved' \
-  'services/gateway/Sources/**' \
-  'services/gateway/Tests/**' \
-  'services/appview/Package.swift' \
-  'services/appview/Dockerfile' \
-  'services/appview/Package.resolved' \
-  'services/appview/Sources/**' \
-  'services/appview/Tests/**' \
-  'services/indexing-worker/Package.swift' \
-  'services/indexing-worker/Dockerfile' \
-  'services/indexing-worker/Package.resolved' \
-  'services/indexing-worker/Sources/**' \
-  'services/indexing-worker/Tests/**' \
-  'database/migrations/**' \
-  'railway/gateway.json' \
-  'railway/appview.json' \
-  'railway/jetstream-ingest.json' \
-  '.railway/railway.ts' \
-  '.github/workflows/ci.yml'
-
-
-filter_changed wire_corpus_edge \
-  'services/wire-corpus-edge/**' \
-  'packages/go/**' \
-  'database/migrations/**' \
-  'scripts/verify-wire-corpus-serving.sql' \
-  'railway/wire-corpus-edge.json' \
-  '.github/workflows/ci.yml'
-
-filter_changed database_migrator \
-  'database/migrations/**' \
-  'scripts/apply-database-migrations.sh' \
-  'scripts/verify-postgres-restore.sh' \
-  'scripts/verify-jetstream-v2-drain-indexes.sql' \
-  'scripts/verify-wire-inbox-claim-index.sql' \
-  'scripts/operations/wire-inbox-readiness.sql' \
-  'packages/spec/__tests__/wire-inbox-readiness-postgres.test.ts' \
-  'scripts/verify-wire-corpus-serving.sql' \
-  'services/database-migrator/**' \
-  'services/postgres/**' \
-  'railway/postgres.json' \
-  'railway/database-migrator.json' \
-  '.github/workflows/ci.yml'
-
-filter_changed lexicons \
-  'packages/lexicons/**' \
-  'packages/spec/endpoint-manifest.json' \
-  'package.json' \
-  'bun.lock' \
-  '.github/workflows/ci.yml'
-
-filter_changed spec \
-  'scripts/go/check-out-swift-contracts.py' \
-  'packages/go/migration/extracted-swift-packages.json' \
-  'scripts/ci/**' \
-  'services/jetstream-ingest/cmd/schema-ready/**' \
-  'services/jetstream-ingest/internal/schemaready/**' \
-  'services/*/Dockerfile' \
-  'packages/read-state/**' \
-  'packages/spec/**' \
-  'scripts/benchmarks/**' \
-  'scripts/capture-postgres-cost.sql' \
-  'scripts/verify-postgres-restore.sh' \
-  '.railway/**' \
-  'docs/runbooks/operations/jetstream-v2-durable-replay.md' \
-  'packages/lexicons/**' \
-  'apps/web/**' \
-  'apps/apple/**' \
-  'packages/swift/ReadStateCore/**' \
+  'packages/**' \
+  'services/**' \
+  'database/**' \
+  'scripts/**' \
+  'tools/**' \
   'railway/**' \
-  '**/migrations/**' \
-  'services/**/bruno/**' \
-  'services/gateway/Sources/Gateway/**' \
-  'services/appview/Sources/AppView/**' \
-  'services/operations/Sources/Operations/**' \
-  'services/jetstream-ingest/internal/config/config.go' \
-  'services/jetstream-ingest/internal/store/postgres.go' \
-  'packages/swift/GatewayCore/**' \
-  'packages/swift/ThinAppViewCore/**' \
-  'packages/swift/ReadStateCore/**' \
-  'packages/swift/OperationsCore/**' \
-  'packages/swift/WireCore/**' \
-  'packages/swift/FinanceCore/**' \
-  'packages/swift/SportsCore/**' \
-  'services/wire-corpus-edge/**' \
-  'scripts/apply-database-migrations.sh' \
-  'scripts/verify-jetstream-v2-drain-indexes.sql' \
-  'scripts/verify-wire-corpus-serving.sql' \
-  'scripts/operations/**' \
+  '.railway/**' \
+  '.tangled/**' \
+  'docs/runbooks/**' \
   'package.json' \
   'bun.lock' \
-  '.github/workflows/ci.yml'
+  'turbo.json' \
+  '.dockerignore'
 
-filter_changed docs \
-  'docs/wiki/**' \
-  'scripts/check-wiki-links.sh' \
-  '.github/workflows/ci.yml'
-
-filter_changed benchmark_tools \
-  'scripts/benchmarks/**' \
-  '.github/workflows/ci.yml'
-
-filter_changed podcast_worker \
-  'packages/go/go.mod' \
-  'packages/go/go.sum' \
+# Only the consolidated backend and its bundled processor are runtime targets.
+filter_changed appview \
+  'services/appview/**' \
   'services/podcast-worker/**' \
-  'services/jetstream-ingest/cmd/schema-ready/**' \
-  'services/jetstream-ingest/internal/schemaready/**' \
-  'services/jetstream-ingest/go.mod' \
-  'services/jetstream-ingest/go.sum' \
+  'packages/swift/thin-app-view-core/**' \
+  'scripts/migrations/**' \
+  'scripts/ci/**' \
   'database/migrations/**' \
-  '.railway/**' \
+  'railway/appview*.json' \
   'package.json' \
-  'bun.lock'
-
+  'bun.lock' \
+  '.dockerignore'

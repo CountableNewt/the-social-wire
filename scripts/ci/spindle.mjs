@@ -73,9 +73,9 @@ export function sourceRevision(reference, namespace, kind, appEnvironment) {
   return suffix.slice(0, 40);
 }
 
-function run(command, args, { environment = process.env, capture = false, input } = {}) {
+function run(command, args, { environment = process.env, capture = false, input, timeout = 60 * 60 * 1000 } = {}) {
   const result = spawnSync(command, args, { env: cleanEnvironment(environment), encoding: 'utf8', input,
-    stdio: capture || input !== undefined ? ['pipe', 'pipe', 'pipe'] : 'inherit', timeout: 60 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 });
+    stdio: capture || input !== undefined ? ['pipe', 'pipe', 'pipe'] : 'inherit', timeout, maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`${command} failed${result.status === null ? '' : ` (exit ${result.status})`}.`);
   return capture ? result.stdout.trim() : '';
 }
@@ -146,6 +146,23 @@ function build(context, kind, target) {
   return target ? `${reference}-verify` : reference;
 }
 
+/** Reject an ephemeral root-filesystem database before starting any service. */
+export async function runtimeVolumeGuardSmoke(image, { execute = run } = {}) {
+  if (typeof image !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) throw new Error('Invalid runtime smoke image.');
+  const name = `tsw-spindle-volume-guard-${randomUUID()}`;
+  const docker = (args, options = {}) => execute('docker', args, { capture: true, timeout: 30000, ...options });
+  try {
+    docker(['run', '--detach', '--name', name, '--network', 'none', image]);
+    const status = docker(['wait', name]);
+    if (!/^[1-9][0-9]*$/.test(status)) throw new Error('Standalone image must reject startup without a persistent /data mount.');
+    const logs = docker(['logs', name]);
+    if (!logs.includes('Standalone backend requires a persistent volume mounted at /data.')) throw new Error('Standalone startup did not report its required volume.');
+    console.log('Packaged runtime rejected startup without a persistent /data mount.');
+  } finally {
+    try { docker(['rm', '--force', name]); } catch {}
+  }
+}
+
 /** Exercise the final packaged processes, not just Swift/Bun build targets.
  * No host ports, network access, production credentials or existing volumes. */
 export async function runtimeSmoke(image, {
@@ -214,6 +231,44 @@ export async function runtimeSmoke(image, {
   }
 }
 
+/** Check the final standalone Next.js image, including copied runtime assets. */
+export async function webRuntimeSmoke(image, {
+  execute = run,
+  pause = ms => new Promise(done => setTimeout(done, ms)),
+  attempts = 60,
+} = {}) {
+  if (typeof image !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) throw new Error('Invalid runtime smoke image.');
+  const name = `tsw-spindle-web-smoke-${randomUUID()}`;
+  const docker = (args, options = {}) => execute('docker', args, { capture: true, timeout: 10000, ...options });
+  try {
+    docker(['run', '--detach', '--name', name, '--network', 'none', image]);
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      let response;
+      try {
+        response = docker(['exec', name, 'node', '-e', "fetch('http://127.0.0.1:3000/', { signal: AbortSignal.timeout(3000) }).then(response => console.log(response.status)).catch(() => process.exit(1))"]);
+      } catch {}
+      if (response === '200') {
+        console.log('Packaged Web runtime served the homepage successfully.');
+        return;
+      }
+      if (docker(['inspect', '--format', '{{.State.Running}}', name]) !== 'true') throw new Error('Packaged Web runtime exited during startup.');
+      await pause(1000);
+    }
+    throw new Error('Packaged Web runtime did not serve the homepage within the bounded deadline.');
+  } catch (error) {
+    try { console.error(docker(['logs', '--tail', '80', name])); } catch {}
+    throw error;
+  } finally {
+    try { docker(['rm', '--force', name]); } catch {}
+  }
+}
+
+export function webVerificationCommand() {
+  // Bun's text coverage reporter cannot reliably write directly to Docker's log pipe.
+  const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; cat /tmp/web-coverage.log; exit "$coverage_status")';
+  return `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
+}
+
 async function verify(context, selection = 'all') {
   if (!['all', 'web', 'appview'].includes(selection)) throw new Error('Verification target must be all, web or appview.');
   run('node', ['--test', 'scripts/ci/spindle.test.mjs', 'scripts/ci/development-parity.test.mjs']);
@@ -222,14 +277,16 @@ async function verify(context, selection = 'all') {
     if (kind === 'appview') {
       build(context, kind, 'backend-tests');
       build(context, kind, 'media-tests');
-      await runtimeSmoke(build(context, kind));
+      const image = build(context, kind);
+      await runtimeVolumeGuardSmoke(image);
+      await runtimeSmoke(image);
       continue;
     }
+    // Contract tests read pinned upstream source fixtures in clean checkouts.
+    run('python3', ['scripts/go/check-out-swift-contracts.py']);
     const image = build(context, kind, 'builder');
-    // Bun's text coverage reporter cannot reliably write directly to Docker's log pipe.
-    const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; cat /tmp/web-coverage.log; exit "$coverage_status")';
-    const command = `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
-    run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', command]);
+    run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', webVerificationCommand()]);
+    await webRuntimeSmoke(build(context, kind));
   }
 }
 

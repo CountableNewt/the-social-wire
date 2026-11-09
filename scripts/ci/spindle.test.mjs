@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cleanEnvironment, releaseContext, webBuildArguments, imageReference, sourceRevision, railway, waitForDeployment, runtimeSmoke } from './spindle.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { cleanEnvironment, releaseContext, webBuildArguments, imageReference, sourceRevision, railway, waitForDeployment, runtimeSmoke, runtimeVolumeGuardSmoke, webVerificationCommand, webRuntimeSmoke } from './spindle.mjs';
 
 const sha = 'a'.repeat(40);
 const digest = 'b'.repeat(64);
@@ -166,4 +170,90 @@ test('runtime smoke rejects an exited container and always resumes a stopped pro
   await assert.rejects(() => runtimeSmoke('fixture-runtime:tag', { execute }), /expected HTTP 503/);
   assert.ok(fake.calls.some(args => args[0] === 'exec' && args[3] === '-CONT'));
   assert.ok(fake.calls.some(args => args[0] === 'volume' && args[1] === 'rm'));
+});
+
+function fakeVolumeGuard(exit = '1', logs = 'Standalone backend requires a persistent volume mounted at /data.') {
+  const calls = [];
+  return { calls, execute(command, args, options) {
+    assert.equal(command, 'docker');
+    assert.equal(options.timeout, 30000);
+    calls.push(args);
+    if (args[0] === 'wait') return exit;
+    if (args[0] === 'logs') return logs;
+    return '';
+  } };
+}
+
+test('packaged standalone image rejects missing persistent volume within a bounded deadline', async () => {
+  const fake = fakeVolumeGuard();
+  await runtimeVolumeGuardSmoke('fixture-runtime:tag', { execute: fake.execute });
+  const start = fake.calls.find(args => args[0] === 'run');
+  assert.ok(start.includes('none'));
+  assert.ok(!start.includes('--volume'));
+  assert.ok(fake.calls.some(args => args[0] === 'rm' && args[1] === '--force'));
+});
+
+test('volume guard smoke rejects successful startup or an unrelated failure and always cleans up', async () => {
+  for (const fake of [fakeVolumeGuard('0'), fakeVolumeGuard('1', 'Unrelated startup error')]) {
+    await assert.rejects(() => runtimeVolumeGuardSmoke('fixture-runtime:tag', { execute: fake.execute }));
+    assert.ok(fake.calls.some(args => args[0] === 'rm'));
+  }
+});
+
+test('volume guard smoke cleans up when the container fails to exit before the deadline', async () => {
+  const fake = fakeVolumeGuard();
+  await assert.rejects(() => runtimeVolumeGuardSmoke('fixture-runtime:tag', { execute(command, args, options) {
+    fake.execute(command, args, options);
+    if (args[0] === 'wait') throw new Error('deadline exceeded');
+    return '';
+  } }), /deadline exceeded/);
+  assert.ok(fake.calls.some(args => args[0] === 'rm'));
+});
+
+test('the actual Web image command emits coverage output and preserves failing test exit status', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tsw-web-coverage-command-'));
+  try {
+    for (const path of ['bin', 'apps/web', 'packages/spec']) mkdirSync(join(root, path), { recursive: true });
+    writeFileSync(join(root, 'bin/bunx'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    writeFileSync(join(root, 'bin/bun'), '#!/bin/sh\nif [ "$*" = "run test:coverage" ]; then echo coverage-fixture-output; exit "$FIXTURE_COVERAGE_STATUS"; fi\nexit 0\n', { mode: 0o700 });
+    for (const status of [0, 23]) {
+      const result = spawnSync('bash', ['-euc', webVerificationCommand()], {
+        cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, FIXTURE_COVERAGE_STATUS: String(status) },
+      });
+      assert.equal(result.status, status, result.stderr);
+      assert.ok(result.stdout.includes('coverage-fixture-output'));
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+function fakeWebRuntime({ statuses = ['503', '200'], running = true } = {}) {
+  const calls = [];
+  return { calls, execute(command, args, options) {
+    assert.equal(command, 'docker');
+    assert.equal(options.timeout, 10000);
+    calls.push(args);
+    if (args[0] === 'exec') return statuses.shift() ?? '503';
+    if (args[0] === 'inspect') return String(running);
+    return '';
+  } };
+}
+
+test('Web smoke exercises final image defaults in a network-isolated container', async () => {
+  const fake = fakeWebRuntime();
+  let pauses = 0;
+  await webRuntimeSmoke('web-runtime:tag', { execute: fake.execute, pause: async () => { pauses++; } });
+  const launch = fake.calls.find(args => args[0] === 'run');
+  assert.ok(launch.includes('none'));
+  assert.ok(!launch.includes('--env') && !launch.includes('--publish'));
+  assert.ok(fake.calls.some(args => args[0] === 'exec' && args.includes('node') && args.at(-1).includes('http://127.0.0.1:3000/')));
+  assert.equal(pauses, 1);
+  assert.ok(fake.calls.some(args => args[0] === 'rm'));
+});
+
+test('Web smoke bounds unhealthy startup and rejects exited processes with cleanup', async () => {
+  for (const fake of [fakeWebRuntime({ statuses: [] }), fakeWebRuntime({ statuses: ['503'], running: false })]) {
+    await assert.rejects(() => webRuntimeSmoke('web-runtime:tag', { execute: fake.execute, pause: async () => {}, attempts: 2 }));
+    assert.ok(fake.calls.some(args => args[0] === 'logs'));
+    assert.ok(fake.calls.some(args => args[0] === 'rm'));
+  }
 });

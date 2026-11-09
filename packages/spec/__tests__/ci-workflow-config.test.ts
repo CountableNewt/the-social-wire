@@ -1,508 +1,95 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = join(import.meta.dir, "../../..");
-const workflow = readFileSync(
-  join(repositoryRoot, ".github/workflows/ci.yml"),
-  "utf8",
-);
-const pathFilters = readFileSync(
-  join(repositoryRoot, "scripts/ci-detect-changes.sh"),
-  "utf8",
-);
-const railwayInfrastructure = readFileSync(
-  join(repositoryRoot, ".railway/railway.ts"),
-  "utf8",
-);
+const workflow = readFileSync(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+const parsed = Bun.YAML.parse(workflow) as any;
+const verifier = readFileSync(join(repositoryRoot, "scripts/ci/spindle.mjs"), "utf8");
+const backendImage = readFileSync(join(repositoryRoot, "services/appview/Dockerfile.standalone"), "utf8");
 
-const railwayServices = [
-  { service: "Web", config: "web", restartPolicy: "ALWAYS" },
-  { service: "Operations Web", config: "operations-web", restartPolicy: "ALWAYS" },
-  { service: "Gateway", config: "gateway", restartPolicy: "ALWAYS" },
-  { service: "App View", config: "appview", restartPolicy: "ALWAYS" },
-  { service: "Jetstream V2 Ingest", config: "jetstream-ingest", restartPolicy: "ALWAYS" },
-  { service: "The Wire Global Ingest", config: "wire-jetstream-ingest", restartPolicy: "ALWAYS" },
-  { service: "The Wire Corpus Edge", config: "wire-corpus-edge", restartPolicy: "ALWAYS" },
-  { service: "Ops", config: "operations", restartPolicy: "ALWAYS" },
-  { service: "Database Migrator", config: "database-migrator", restartPolicy: "NEVER" },
-] as const;
-
-describe("CI workflow configuration", () => {
-  it("checks only the active Swift runtime targets behind the required aggregate gate", () => {
-    const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, { needs?: string[]; if?: string; strategy?: { matrix: { include: { service: string; package: string }[] } }; env?: Record<string, string>; steps: { run?: string; env?: Record<string, string> }[] }>;
-    };
-    const backend = parsed.jobs["swift-active-backend"];
-    expect(backend.strategy?.matrix.include).toEqual([
-      { service: "gateway", package: "services/gateway" },
-      { service: "appview", package: "services/appview" },
-      { service: "indexing-worker", package: "services/indexing-worker" },
-      { service: "schema-ready", package: "tools/schema-ready" },
-    ]);
-    expect(backend.env?.SCHEMA_READY_TEST_DATABASE_URL).toContain("tsw_backend_test");
-    expect(backend.if).toContain("outputs.swift_backend == 'true'");
-    expect(backend.steps.some(step => step.run === "swift test --force-resolved-versions -j 2")).toBe(true);
-    expect(backend.env?.ANALYTICS_TEST_DATABASE_URL).toContain("tsw_backend_test");
-    expect(backend.env?.SOCIAL_DRAFT_TEST_DATABASE_URL).toContain("tsw_backend_test");
-    expect(backend.env?.TEST_SOCIAL_DRAFT_REDIS_URL).toBe("redis://127.0.0.1:6379");
-    expect(parsed.jobs.required.needs).toContain("swift-active-backend");
-    const gate = parsed.jobs.required.steps.find(step => step.run)!;
-    expect(gate.env?.SWIFT_BACKEND_RESULT).toContain("needs.swift-active-backend.result");
-  });
-  it("runs AppView PostgreSQL deadline contracts separately without dropping coverage", () => {
-    const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, { steps: { name?: string; run?: string; env?: Record<string, string>; "working-directory"?: string; if?: string; "continue-on-error"?: boolean }[] }>;
-    };
-    const steps = parsed.jobs["shared-swift"].steps;
-    const mainIndex = steps.findIndex(step => step.name === "Test retained AppView shared contracts");
-    expect(mainIndex).toBeGreaterThanOrEqual(0);
-    const main = steps[mainIndex];
-    const isolated = steps[mainIndex + 1];
-    // The exact skip leaves pure AppViewFeedQueryDeadlineTests in the main suite.
-    expect(main.run).toBe("swift test --skip PostgresFeedQueryDeadlineTests");
-    expect(isolated.run).toBe("swift test --skip-build --no-parallel --filter PostgresFeedQueryDeadlineTests");
-    for (const step of [main, isolated]) {
-      expect(step["working-directory"]).toBe("packages/swift/ThinAppViewCore");
-      expect(step.env?.THIN_APPVIEW_TEST_DATABASE_URL).toBe("postgresql://postgres:postgres@127.0.0.1:5432/socialwire_shared_test?sslmode=disable");
-      expect(step.env?.PODCAST_PRIVATE_TEST_DATABASE_URL).toBe(main.env?.PODCAST_PRIVATE_TEST_DATABASE_URL);
-      expect(step.if).toBeUndefined();
-      expect(step["continue-on-error"]).toBeUndefined();
+describe("standalone reader CI", () => {
+  it("requires only the two packaged runtime targets and path detection", () => {
+    expect(Object.keys(parsed.jobs)).toEqual(["changes", "web", "appview", "required"]);
+    expect(parsed.jobs.required.name).toBe("CI — Required");
+    expect(parsed.jobs.required.needs).toEqual(["changes", "web", "appview"]);
+    expect(parsed.jobs.required.if).toBe("always()");
+    for (const [job, selection] of [["web", "web"], ["appview", "appview"]]) {
+      const value = parsed.jobs[job];
+      expect(value.needs).toBe("changes");
+      expect(value.if).toContain(`outputs.${selection} == 'true'`);
+      expect(value["timeout-minutes"]).toBeGreaterThanOrEqual(60);
+      expect(value.steps.some((step: any) => step.run === `bash scripts/ci/spindle-verify.sh ${selection}`)).toBe(true);
+      expect(value.services).toBeUndefined();
     }
+    expect(workflow).not.toMatch(/runs-on: macos-|working-directory: services\/(?:gateway|indexing-worker)/);
+    expect(workflow).not.toContain("REDIS_INTEGRATION_URL");
+    expect(workflow).not.toContain("DATABASE_URL");
   });
 
-  it("retires standalone Swift worker jobs while retaining API domain tests", () => {
-    for (const name of ["charybdis", "wire-worker"]) {
-      expect(workflow).not.toContain(`  ${name}:`);
-      expect(workflow).not.toContain(`services/${name}/Package.swift`);
-    }
-    for (const path of ["packages/swift/ThinAppViewCore", "packages/swift/WireCore", "packages/swift/FinanceCore", "packages/swift/SportsCore"]) {
-      expect(workflow).toContain(path);
-    }
-  });
-  it("keeps deactivated service commands out of Swift CI while retaining shared contract suites", () => {
-    for (const service of ["operations", "wire-corpus-edge"]) {
-      expect(workflow).not.toMatch(new RegExp(`working-directory: services/${service}\\n\\s*(?:env:[\\s\\S]*?)?run: swift test`));
-      expect(workflow).not.toContain(`services/${service}/.build`);
-    }
-    for (const core of ["GatewayCore", "OperationsCore", "ReadStateCore", "ThinAppViewCore", "WireCore", "FinanceCore", "SportsCore", "SocialWireRedis"]) {
-      expect(workflow).toContain(`packages/swift/${core}`);
-    }
-    expect(workflow).toContain("--skip-build --no-parallel --filter");
-    expect(workflow).toContain("Verify presentation-only read contract");
-    expect(workflow).toContain("wire-corpus-serving-verifier-postgres.test.ts");
-  });
-  it("packages active Swift services while preserving excluded corpus images", () => {
-    for (const image of ["gateway", "indexing-worker", "appview"]) {
-      const dockerfile = readFileSync(join(repositoryRoot, `services/${image}/Dockerfile`), "utf8");
-      expect(dockerfile).toMatch(/^FROM swift:6\.4\.2-jammy/m);
-      expect(dockerfile).not.toMatch(/^FROM golang:/m);
-      expect(dockerfile).toContain("--force-resolved-versions");
-      expect(dockerfile).toContain("--product schema-ready");
-      expect(dockerfile).toContain("--package-path tools/schema-ready");
-      expect(dockerfile).not.toContain("services/jetstream-ingest");
-      expect(dockerfile).not.toContain("COPY packages/go");
-      expect(dockerfile).toContain("-name '*.resources'");
-      expect(dockerfile).toContain("-name '*.bundle'");
-    }
-    const excluded = readFileSync(join(repositoryRoot, "services/wire-corpus-edge/Dockerfile"), "utf8");
-    expect(excluded).toMatch(/^FROM golang:/m);
-    for (const configName of ["gateway", "appview"]) {
-      const config = JSON.parse(readFileSync(join(repositoryRoot, `railway/${configName}.json`), "utf8"));
-      expect(config.build.watchPatterns).not.toContain("/packages/go/**");
-      expect(config.build.watchPatterns).toContain("/tools/schema-ready/**");
-    }
-    const indexingBuild = railwayInfrastructure.slice(railwayInfrastructure.indexOf("const indexingBuild"), railwayInfrastructure.indexOf("const longRunningDeploy"));
-    expect(indexingBuild).toContain('"/tools/schema-ready/**"');
-    expect(indexingBuild).not.toContain('"/packages/go/**"');
+  it("preserves read-only merge verification and Development-first promotion", () => {
+    expect(parsed.permissions).toEqual({ contents: "read" });
+    expect(parsed.on).toHaveProperty("pull_request");
+    expect(parsed.on).toHaveProperty("merge_group");
+    expect(parsed.on).toHaveProperty("workflow_dispatch");
+    expect(parsed.on).not.toHaveProperty("push");
+    const steps = parsed.jobs.changes.steps;
+    expect(steps.some((step: any) => step.run === "node scripts/ci/validated-merge.mjs --receipt")).toBe(true);
+    expect(steps.some((step: any) => step.run === "node --test scripts/ci/validated-merge.test.mjs")).toBe(true);
+    const parity = steps.find((step: any) => step.name === "Require Production changes in Development first");
+    expect(parity.if).toContain("pull_request.base.ref == 'main'");
+    expect(parity.if).toContain("merge_group.base_ref == 'refs/heads/main'");
+    expect(parity.run).toContain("git show refs/remotes/origin/dev:scripts/ci/development-parity.mjs");
+    expect(parity.run).toContain('--development refs/remotes/origin/dev');
+    const detector = steps.find((step: any) => step.id === "filter");
+    expect(detector.env.GITHUB_EVENT_BEFORE).toBe("${{ github.event.before }}");
+    expect(detector.env.GITHUB_EVENT_PULL_REQUEST_BASE_SHA).toBe("${{ github.event.pull_request.base.sha }}");
   });
 
-  it("keeps excluded domain runtime modes disabled in both deployment profiles", () => {
-    expect(railwayInfrastructure.match(/WIRE_FEED_MODE: "off"/g)).toHaveLength(4);
-    expect(railwayInfrastructure.match(/FINANCE_FEED_MODE: "off"/g)).toHaveLength(4);
-    expect(railwayInfrastructure.match(/SPORTS_FEED_MODE: "off"/g)).toHaveLength(4);
-    expect(railwayInfrastructure).not.toMatch(/(?:WIRE|FINANCE|SPORTS)_FEED_MODE: "(?:visible|shadow|api)"/);
+  it("checks real release images, SQLite migrations, and the bundled processor", () => {
+    expect(verifier).toContain("build(context, kind, 'backend-tests')");
+    expect(verifier).toContain("build(context, kind, 'media-tests')");
+    expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
+    expect(verifier).toContain("await runtimeSmoke(image)");
+    expect(verifier).toContain("await webRuntimeSmoke(build(context, kind))");
+    expect(backendImage).toContain("FROM builder AS backend-tests");
+    expect(backendImage).toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
+    expect(backendImage).toContain("swift test --package-path services/appview -c release --force-resolved-versions");
+    expect(backendImage).toContain("swift test --package-path packages/swift/thin-app-view-core");
+    expect(backendImage).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
+    expect(backendImage).toContain("BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite");
+    expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/readyz', '503')");
+    expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/livez', '200')");
   });
 
-  it("keeps Finance and Sports selection ingestion in Development's explicit collection override", () => {
-    const developmentProfile = railwayInfrastructure.slice(
-      railwayInfrastructure.indexOf("const developmentProfile"),
-      railwayInfrastructure.indexOf("const productionWireLiveGenerations"),
-    );
-    const collections = developmentProfile.match(/JETSTREAM_APPVIEW_COLLECTIONS:\s*"([^"]+)"/)?.[1].split(",");
-    expect(collections).toContain("app.thesocialwire.finance.selection");
-    expect(collections).toContain("app.thesocialwire.sports.selection");
-    expect(developmentProfile).toContain('appViewGeneration: "jetstream-v2-us-west-finance-sports-v1-20261003"');
-    expect(developmentProfile).toContain('JETSTREAM_APPVIEW_SOURCE_GENERATION: "jetstream-v2-us-west-finance-sports-v1-20261003"');
-    expect(developmentProfile).toContain('JETSTREAM_APPVIEW_HOST: "jetstream.us-west.bsky.network"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_ENABLED: "false"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_LANES: "publicationwest"');
-    expect(developmentProfile).toContain('WIRE_INBOX_SOURCE_GENERATIONS: "wire-global-v6-dev-publication-finance-live-20261001"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_INCIDENT_BYTES: "4294967296"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_DAILY_BYTES: "4294967296"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_DATABASE_MAX_BYTES: "17179869184"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_INBOX_MAX_ROWS: "50000"');
-    expect(developmentProfile).toContain('JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_SNAPSHOT_ONLY: "false"');
-    const appViewCursor = developmentProfile.match(/JETSTREAM_APPVIEW_BOOTSTRAP_AFTER_SEQ: "(\d+)"/)?.[1];
-    const publicationCursor = developmentProfile.match(/JETSTREAM_WIRE_PUBLICATIONWEST_BOOTSTRAP_AFTER_SEQ: "(\d+)"/)?.[1];
-    expect(appViewCursor).toBe("26608279414");
-    expect(publicationCursor).toBe("26512357203");
-  });
-
-  it("matches the independently deployed Railway services", () => {
-    expect(workflow).toContain("branches: [main, dev]");
-
-    for (const job of [
-      "web",
-      "operations-web",
-      "shared-swift",
-      "wire-corpus-edge",
-      "database-migrator",
-      "docs",
-    ]) {
-      expect(workflow).toContain(`  ${job}:`);
+  it("retains Web coverage, type/lint, lexicon/schema and shared read-state checks", () => {
+    for (const command of ["bunx turbo typecheck --filter=web", "bunx turbo lint --filter=web", "bun --cwd packages/read-state typecheck", "bun --cwd packages/read-state test", "bun run test:coverage", "bun --cwd packages/lexicons test", "cd packages/spec && bun test --timeout 30000"]) {
+      expect(verifier).toContain(command);
     }
+    expect(verifier).toContain('coverage_status=$?');
+    expect(verifier).toContain('exit "$coverage_status"');
+    expect(verifier.indexOf("run('python3', ['scripts/go/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = build(context, kind, 'builder')"));
   });
 
-  it("keeps package checks and one required aggregate gate", () => {
-    expect(workflow).toContain("  lexicons:");
-    expect(workflow).toContain("  spec:");
-    expect(workflow).toContain("  required:");
-    expect(workflow).toContain("name: CI — Required");
-  });
-
-  it("runs bounded benchmark tests with an isolated receipt fixture and requires success", () => {
-    const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, {
-        "timeout-minutes"?: number;
-        needs?: string[];
-        services?: Record<string, { image: string; ports: string[]; options: string }>;
-        steps: { run?: string; env?: Record<string, string> }[];
-      }>;
-    };
-    const tools = parsed.jobs["benchmark-tools"];
-    expect(tools["timeout-minutes"]).toBe(5);
-    expect(tools.services?.postgres.image).toBe("postgres:18-alpine");
-    expect(tools.services?.postgres.ports).toEqual(["5432:5432"]);
-    expect(tools.services?.postgres.options).toContain("pg_isready -U postgres -d postgres");
-    expect(tools.steps.find((step) => step.env?.TSW_RECEIPT_TEST_ADMIN_URL)?.env?.TSW_RECEIPT_TEST_ADMIN_URL)
-      .toBe("postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable");
-    expect(tools.steps.some((step) => step.run ===
-      "python3 -W error::ResourceWarning -m unittest discover -s scripts/benchmarks/tests")).toBe(true);
-    expect(parsed.jobs.required.needs).toContain("benchmark-tools");
-    const gate = parsed.jobs.required.steps.find((step) => step.run)!;
-    const env: Record<string, string> = { ...process.env as Record<string, string>, CHANGES_RESULT: "success" };
-    for (const key of Object.keys(gate.env ?? {})) {
-      if (key.endsWith("_FLAG")) env[key] = "false";
-      if (key.endsWith("_RESULT") && key !== "CHANGES_RESULT") env[key] = "skipped";
-    }
-    env.BENCHMARK_TOOLS_FLAG = "true";
-    for (const result of ["skipped", "failure", "cancelled", "success"]) {
-      env.BENCHMARK_TOOLS_RESULT = result;
-      const run = spawnSync("bash", ["-c", gate.run!], { env, encoding: "utf8" });
-      expect(run.status).toBe(result === "success" ? 0 : 1);
-    }
-  });
-
-  it("fails the aggregate gate for every required check that does not succeed", () => {
-    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: Array<{ run?: string; env?: Record<string, string> }> }> };
-    const gate = parsed.jobs.required.steps.find(step => step.run)!;
-    const baseline: Record<string, string> = { CHANGES_RESULT: "success" };
-    for (const key of Object.keys(gate.env!)) {
-      if (key.endsWith("_FLAG")) baseline[key] = "false";
-      if (key.endsWith("_RESULT") && key !== "CHANGES_RESULT") baseline[key] = "skipped";
-    }
-    for (const flag of Object.keys(baseline).filter(key => key.endsWith("_FLAG"))) {
-      const resultKey = flag.replace(/_FLAG$/, "_RESULT");
+  it("fails the aggregate gate for every selected check that does not succeed", () => {
+    const gate = parsed.jobs.required.steps.find((step: any) => step.run);
+    const baseline = { CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped" };
+    for (const flag of ["WEB", "APPVIEW"]) {
       for (const result of ["failure", "cancelled", "skipped", "success"]) {
-        const run = spawnSync("bash", ["-c", gate.run!], {
-          env: { ...process.env, ...baseline, [flag]: "true", [resultKey]: result },
-          encoding: "utf8",
-        });
+        const run = spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }, encoding: "utf8" });
         expect(run.status).toBe(result === "success" ? 0 : 1);
       }
     }
     for (const result of ["failure", "cancelled", "skipped"]) {
-      const run = spawnSync("bash", ["-c", gate.run!], { env: { ...process.env, ...baseline, CHANGES_RESULT: result }, encoding: "utf8" });
-      expect(run.status).toBe(1);
+      expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, CHANGES_RESULT: result } }).status).toBe(1);
     }
-  });
-
-  it("tests merge previews once and supports merge queues", () => {
-    const triggerBlock = workflow.slice(0, workflow.indexOf("\nenv:"));
-    expect(triggerBlock).toContain("pull_request:");
-    expect(triggerBlock).toContain("merge_group:");
-    expect(triggerBlock).toContain("workflow_dispatch:");
-    expect(triggerBlock).not.toContain("push:");
-  });
-
-  it("passes event SHAs into path detection and enforces coverage", () => {
-    expect(workflow).toContain("GITHUB_EVENT_BEFORE: ${{ github.event.before }}");
-    expect(workflow).toContain("GITHUB_EVENT_PULL_REQUEST_BASE_SHA:");
-    expect(workflow).toContain("bun run --cwd apps/web test:coverage");
-    expect(workflow).toContain("bun run --cwd apps/operations test:coverage");
-  });
-
-  it("executes workspace coverage scripts and propagates their failures", () => {
-    const parsed = Bun.YAML.parse(workflow) as {
-      jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }>;
-    };
-    const fixture = mkdtempSync(join(tmpdir(), "socialwire-coverage-command-"));
-    try {
-      const workspaces = [["web", "apps/web"], ["operations-web", "apps/operations"]];
-      for (const [job, workspace] of workspaces) {
-        const directory = join(fixture, workspace);
-        mkdirSync(directory, { recursive: true });
-        writeFileSync(join(directory, "package.json"), JSON.stringify({
-          scripts: { "test:coverage": "bun coverage-fixture.ts" },
-        }));
-        const command = parsed.jobs[job].steps.find(step => step.name === "Test")?.run;
-        expect(command).toBeDefined();
-        for (const status of [0, 23]) {
-          rmSync(join(directory, "coverage-executed"), { force: true });
-          writeFileSync(join(directory, "coverage-fixture.ts"),
-            `await Bun.write("coverage-executed", "yes"); console.log("coverage-fixture-output"); process.exit(${status});`);
-          // Actions executes run blocks with a shell, including buffered coverage steps.
-          const result = spawnSync("bash", ["-e", "-c", command!], {
-            cwd: fixture,
-            env: {
-              ...process.env,
-              PATH: `${dirname(process.execPath)}:${process.env.PATH}`,
-              RUNNER_TEMP: fixture,
-            },
-            encoding: "utf8",
-          });
-          expect(result.status).toBe(status);
-          expect(result.stdout).toContain("coverage-fixture-output");
-          expect(readFileSync(join(directory, "coverage-executed"), "utf8")).toBe("yes");
-        }
-      }
-    } finally {
-      rmSync(fixture, { recursive: true, force: true });
-    }
-  });
-
-  it("pins the latest production-supported Node.js LTS in JavaScript jobs", () => {
-    expect(workflow).toContain('NODE_VERSION: "24.19.0"');
-    expect(workflow).toContain("FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true");
-    expect(workflow.match(/uses: actions\/setup-node@v6/g)).toHaveLength(5);
-    expect(workflow.match(/node-version: \$\{\{ env\.NODE_VERSION \}\}/g)).toHaveLength(
-      5,
-    );
-  });
-
-  it("tests source contracts without deployment artifact builds", () => {
-    expect(workflow).not.toMatch(/bunx turbo build|next build/);
-    expect(workflow).not.toMatch(/docker build --file services\//);
-    expect(workflow).not.toContain("Build runtime image");
-    expect(workflow).toContain("Apply migrations from empty and verify idempotence");
-    // Native builds are handled separately from repository CI/CD.
-    expect(workflow).not.toContain("Test iOS app with coverage");
-    expect(workflow).not.toContain("runs-on: macos-");
-    const nativeCI = Bun.YAML.parse(workflow) as { jobs: Record<string, { needs?: string[] }> };
-    expect(nativeCI.jobs.apple).toBeUndefined();
-    expect(nativeCI.jobs.required.needs).not.toContain("apple");
-    // Go services are no longer exercised by CI; Web keeps a toolchain only for the AnyPub kit fixture.
-    expect(workflow).not.toMatch(/\bgo (?:test|vet|build)\b/);
-    expect(workflow.match(/uses: actions\/setup-go@v6/g)).toHaveLength(1);
-    // PostgreSQL process-restart images are executable integration fixtures.
-    expect(workflow).toContain("Verify PostgreSQL clean shutdown");
-    expect(workflow).toContain("Build isolated PostgreSQL restart fixture");
-  });
-
-  it("shares canonical migration preparation while keeping databases isolated", () => {
-    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, string> }> }> };
-    const databases: string[] = [];
-    for (const job of ["shared-swift", "wire-corpus-edge", "database-migrator"]) {
-      const preparation = parsed.jobs[job].steps.filter(step => step.uses === "./.github/actions/prepare-postgres");
-      expect(preparation).toHaveLength(1);
-      databases.push(preparation[0].with!["database-url"]);
-    }
-    expect(new Set(databases).size).toBe(3);
-    const migrationStep = parsed.jobs["database-migrator"].steps.find(step => step.uses === "./.github/actions/prepare-postgres");
-    expect(migrationStep!.with!["verify-idempotence"]).toBe("true");
-    const action = readFileSync(join(repositoryRoot, ".github/actions/prepare-postgres/action.yml"), "utf8");
-    expect(action).toContain("bash scripts/ci-prepare-postgres.sh");
-    expect(action).toContain("Preload telemetry statement statistics");
-    expect(action).toContain("SELECT count(*) FROM pg_stat_statements");
-    for (const job of ["shared-swift"]) {
-      const preparation = parsed.jobs[job].steps.find(step => step.uses === "./.github/actions/prepare-postgres");
-      expect(preparation!.with!["postgres-container"]).toBe("${{ job.services.postgres.id }}");
-    }
-  });
-
-  it("leaves deployments to the platform integration", () => {
-    expect(workflow).toContain(
-      "Railway deploys protected branch merges from its GitHub integration",
-    );
-    expect(
-      existsSync(join(repositoryRoot, ".github/workflows/deploy.yml")),
-    ).toBe(false);
-  });
-
-  it("keeps canonical Railway config-as-code covered by required checks", () => {
-    const deploymentReadme = readFileSync(
-      join(repositoryRoot, "railway/README.md"),
-      "utf8",
-    );
-
-    for (const { service, config: configName, restartPolicy } of railwayServices) {
-      const path = join(repositoryRoot, "railway", `${configName}.json`);
-      expect(existsSync(path)).toBe(true);
-
-      const config = JSON.parse(readFileSync(path, "utf8")) as {
-        $schema?: string;
-        build?: {
-          builder?: string;
-          dockerfilePath?: string;
-          watchPatterns?: string[];
-        };
-        deploy?: { healthcheckPath?: string; restartPolicyType?: string };
-      };
-      expect(config.$schema).toBe("https://railway.com/railway.schema.json");
-      expect(["RAILPACK", "DOCKERFILE"]).toContain(config.build?.builder);
-      expect(config.build?.watchPatterns).toContain(
-        `/railway/${configName}.json`,
-      );
-      if (config.build?.builder === "DOCKERFILE") {
-        expect(config.build.dockerfilePath).toMatch(/^\/services\//);
-      }
-      expect(config.deploy?.restartPolicyType).toBe(restartPolicy);
-      if (["jetstream-ingest", "wire-jetstream-ingest"].includes(configName)) {
-        expect(config.deploy?.healthcheckPath).toBe("/startupz");
-      }
-      expect(deploymentReadme).toContain(
-        `| ${service} | \`/railway/${configName}.json\` |`,
-      );
-
-      // Go-built services are deployed but intentionally have no CI job.
-      const dockerfile = config.build?.dockerfilePath ? readFileSync(join(repositoryRoot, config.build.dockerfilePath), "utf8") : "";
-      if (dockerfile.includes("FROM golang")) continue;
-      const filterName = ["gateway", "appview"].includes(configName)
-          ? "swift_backend"
-          : configName.replaceAll("-", "_");
-      const filter = pathFilters
-        .split("\n\n")
-        .find((block) =>
-          block.startsWith(`filter_changed ${filterName} `),
-        );
-      expect(filter).toBeDefined();
-      for (const watchPattern of config.build?.watchPatterns ?? []) {
-        const path = watchPattern.slice(1);
-        const candidates = [filter, ...["swift_backend"].map(name => pathFilters.split("\n\n").find(block => block.startsWith(`filter_changed ${name} `)))].join("\n");
-        const coveredBySharedSwift = path.startsWith("packages/swift/") && candidates.includes("'packages/swift/**'");
-        const coveredByService = ["gateway", "appview"].some(service => path === `services/${service}/**` && candidates.includes(`'services/${service}/Sources/**'`));
-        const coveredByGlob = [...candidates.matchAll(/'([^']+)'/g)].some(match => new Bun.Glob(match[1]).match(path));
-        expect(candidates.includes(`'${path}'`) || coveredBySharedSwift || coveredByService || coveredByGlob).toBe(true);
-      }
-    }
-  });
-
-  it("owns consolidated indexing services through an environment-gated IaC partial", () => {
-    expect(railwayInfrastructure).toContain(
-      'export const partial = "indexing-consolidation";',
-    );
-    expect(railwayInfrastructure).toContain('context.isEnvironment("dev")');
-    expect(railwayInfrastructure).toContain(
-      'context.isEnvironment("production")',
-    );
-    expect(railwayInfrastructure).not.toContain(
-      'return project("The Social Wire", { resources: [] });',
-    );
-    expect(railwayInfrastructure).toContain("throw new Error(");
-
-    for (const serviceName of [
-      "Ingress Controller",
-      "Projection Pool",
-      "Coordinator",
-    ]) {
-      expect(railwayInfrastructure).toContain(`service("${serviceName}"`);
-    }
-
-    expect(railwayInfrastructure).toContain(
-      'dockerfilePath: "/services/jetstream-ingest/Dockerfile"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'dockerfilePath: "/services/indexing-worker/Dockerfile"',
-    );
-    expect(railwayInfrastructure).toContain('healthcheckPath: "/startupz"');
-    expect(railwayInfrastructure).toContain('restartPolicyType: "ALWAYS"');
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_ADMISSION_RATE_PER_SECOND: "3"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_ADMISSION_BURST_EVENTS: "1"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_LANES: "external,publication"',
-    );
-    expect(railwayInfrastructure).toContain(
-      'JETSTREAM_WIRE_PUBLICATIONWEST_REPLAY_CANARY_EXPIRES_AT: "2026-09-23T00:00:00Z"',
-    );
-    expect(railwayInfrastructure).toContain('"wire-global-v9-prod-publication-west-20260919"');
-    expect(railwayInfrastructure).toContain('WIRE_INBOX_SOURCE_GENERATIONS: productionWireCoordinatorGenerations');
-    expect(railwayInfrastructure).toContain('"wire-global-v8-prod-external-8d-snapshot-b-v1"');
-    expect(railwayInfrastructure).toContain('JETSTREAM_WIRE_LANES: "publicationwest"');
-    expect(railwayInfrastructure).toContain('WIRE_INBOX_CONCURRENCY: "52"');
-    expect(railwayInfrastructure).toContain('workerRegion: "sfo"');
-    expect(railwayInfrastructure).toContain('branch: "main"');
-    const productionProfile = railwayInfrastructure.slice(
-      railwayInfrastructure.indexOf("const productionProfile"),
-      railwayInfrastructure.indexOf("const indexingBuild"),
-    );
-    const productionWireSourceGenerations = railwayInfrastructure.slice(
-      railwayInfrastructure.indexOf("const productionWireLiveGenerations"),
-      railwayInfrastructure.indexOf("const productionProfile"),
-    );
-    expect(productionWireSourceGenerations).toContain(
-      '"wire-global-v8-prod-external-live-v1"',
-    );
-    expect(productionWireSourceGenerations).toContain(
-      '"wire-global-v8-prod-publication-live-tail-v1"',
-    );
-    expect(productionProfile).toContain(
-      '"wire-global-v8-prod-external-live-v1"',
-    );
-    expect(productionProfile).toContain(
-      '"wire-global-v8-prod-publication-live-tail-v1"',
-    );
-    expect(productionProfile).toContain(
-      '"wire-global-v9-prod-publication-west-20260919"',
-    );
-    expect(productionProfile).not.toContain("wire-global-v5-dev-publication-west-20260919");
-    expect(productionProfile).not.toContain("wire-global-v4-dev-live-20260830");
-    expect(productionProfile).not.toContain("24790001258");
-    expect(pathFilters.match(/'\.railway\/\*\*'/g)).toHaveLength(2);
-  });
-
-  it("uses the same service names in path detection", () => {
-    for (const filter of [
-      "web",
-      "operations_web",
-      "shared_swift",
-      "wire_corpus_edge",
-      "database_migrator",
-      "lexicons",
-      "spec",
-      "docs",
-    ]) {
-      expect(pathFilters).toContain(`filter_changed ${filter}`);
-    }
+    expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline } }).status).toBe(0);
   });
 });
 
-describe("extracted Swift contract checkouts", () => {
-  it("bootstraps contracts before all source-reading CI jobs", () => {
-    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: { run?: string; uses?: string }[] }> };
-    for (const name of ["redis", "shared-swift", "spec"]) {
-      const steps = parsed.jobs[name].steps;
-      const checkoutIndex = steps.findIndex(step => step.run === "python3 scripts/go/check-out-swift-contracts.py");
-      expect(checkoutIndex, name).toBe(steps.findIndex(step => step.uses === "actions/checkout@v6") + 1);
-    }
-  });
-
+describe("extracted Swift reference fixtures", () => {
   it("pins offline checkouts and rejects changed, mismatched or inherited repositories", () => {
     const root = mkdtempSync(join(tmpdir(), "swift-contract-checkout-"));
     const git = (cwd: string, ...args: string[]) => {

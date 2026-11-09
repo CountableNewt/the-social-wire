@@ -160,7 +160,7 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     );
   });
 
-  it("keeps migration verification centralized in the database migrator job", () => {
+  it("preserves historical PostgreSQL plan verification outside the SQLite runtime gate", () => {
     for (const indexName of [
       "idx_appview_ingestion_inbox_ready",
       "idx_appview_ingestion_inbox_expired_lease",
@@ -179,11 +179,8 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     expect(liveVerification).toContain(
       "Exercise the corresponding representative reconciliation claim shape",
     );
-    const databaseJob = workflow.slice(
-      workflow.indexOf("  database-migrator:"),
-      workflow.indexOf("\n  lexicons:"),
-    );
-    expect(databaseJob).toContain("Verify Jetstream V2 drain indexes and query plans");
-    expect(databaseJob).toContain("verify-jetstream-v2-drain-indexes.sql");
+    const active = Bun.YAML.parse(workflow) as any;
+    expect(active.jobs["database-migrator"]).toBeUndefined();
+    expect(active.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/spindle-verify.sh appview")).toBe(true);
   });
 });
