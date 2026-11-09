@@ -1,0 +1,21 @@
+meta {
+  name: Get Bluesky Analytics
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/v1/analytics/bluesky?days=30
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+docs {
+  Authenticated viewer-owned Bluesky analysis, with the same conditional Pro gate as Creator Analytics. Current profile counts, bounded authored-post activity, and top posts published during the selected period. Engagement is current cumulative engagement, not period gains. Searches up to five cached creator article URLs for discovered shares; search coverage is always incomplete. Refresh Creator Analytics first to populate article URLs. Provider failures remain unknown rather than zero.
+}

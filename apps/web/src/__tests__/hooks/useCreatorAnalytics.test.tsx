@@ -7,6 +7,7 @@ import * as AuthStorage from "@/lib/auth";
 import * as Auth from "@/hooks/useAuth";
 import * as Brands from "@/lib/brandAccounts/brandAccountSessions";
 import * as API from "@/lib/analytics/creatorAnalyticsClient";
+import * as Bluesky from "@/lib/analytics/blueskyAnalyticsClient";
 import { useCreatorAnalytics } from "@/hooks/useCreatorAnalytics";
 
 const summary = (): API.AnalyticsSummary => ({ items: [], totals: { engagement: null, tracking: { impressions: 0, views: 0, outboundClicks: 0, ctr: null } }, series: [], coverage: { snapshotStart: null, inventoryComplete: true, trackingScope: "social-wire", platformImpressions: null } });
@@ -17,7 +18,32 @@ beforeEach(() => {
   viewer = "did:plc:alice"; oauth = viewer;
   const hint = spyOn(AuthStorage, "getStoredOAuthDid").mockImplementation(() => viewer); restores.push(() => hint.mockRestore());
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const bluesky = spyOn(Bluesky, "getBlueskyAnalytics").mockResolvedValue({ sampledAt: "2026-11-09T12:00:00Z", days: 30, profile: { followers: 10, following: 5, posts: 2 }, activity: { posts: 2, replies: 0, postsPerDay: 2 / 30 }, topPosts: [], shares: [], coverage: { feedAvailable: true, feedComplete: true, sharesAvailable: true, sharesComplete: false, articlesSearched: 0, feedPostsExamined: 2 } }); restores.push(() => bluesky.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockImplementation(() => ({ session: { did: viewer }, getOAuthSession: () => ({ did: oauth } as OAuthSession), oauthSessionReloadSeq: 0 } as ReturnType<typeof Auth.useAuth>)); restores.push(() => auth.mockRestore());
+});
+
+it("isolates live Bluesky data by account and period and passes cancellation", async () => {
+  const api = spyOn(API, "getCreatorAnalytics").mockResolvedValue(summary()); restores.push(() => api.mockRestore());
+  const bluesky = spyOn(Bluesky, "getBlueskyAnalytics").mockImplementation(async (session, options) => {
+    if (session.did !== "did:plc:alice" || options.days !== 7) return new Promise(() => {});
+    return { sampledAt: "2026-11-09T12:00:00Z", days: 7, profile: { followers: 10, following: null, posts: null }, activity: null, topPosts: [], shares: [], coverage: { feedAvailable: false, feedComplete: false, sharesAvailable: true, sharesComplete: false, articlesSearched: 0, feedPostsExamined: 0 } };
+  }); restores.push(() => bluesky.mockRestore());
+  const { result, rerender } = renderHook(({ days }) => useCreatorAnalytics(days), { initialProps: { days: 7 }, wrapper: Wrapper });
+  await waitFor(() => expect(result.current.blueskyQuery.data?.profile.followers).toBe(10));
+  expect(bluesky.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  rerender({ days: 30 }); expect(result.current.blueskyQuery.data).toBeUndefined();
+  viewer = "did:plc:bob"; oauth = viewer;
+  rerender({ days: 7 }); expect(result.current.blueskyQuery.data).toBeUndefined();
+});
+
+it("refreshes Bluesky share discovery after collecting creator article URLs", async () => {
+  const api = spyOn(API, "getCreatorAnalytics").mockResolvedValue(summary()); restores.push(() => api.mockRestore());
+  const bluesky = spyOn(Bluesky, "getBlueskyAnalytics"); restores.push(() => bluesky.mockRestore());
+  const { result } = renderHook(() => useCreatorAnalytics(30), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.blueskyQuery.isSuccess).toBe(true));
+  await act(async () => { await result.current.collect(); });
+  await waitFor(() => expect(bluesky.mock.calls.length).toBeGreaterThanOrEqual(2));
+  expect(api.mock.calls.some(([, options]) => options.refresh)).toBe(true);
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).forEach(restore => restore()); });
 describe("creator analytics query isolation", () => {
