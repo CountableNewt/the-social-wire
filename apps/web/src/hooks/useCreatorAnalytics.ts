@@ -1,10 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStoredOAuthDid } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { getCreatorAnalytics, uniqueAnalyticsItems } from "@/lib/analytics/creatorAnalyticsClient";
+import { getBlueskyAnalytics } from "@/lib/analytics/blueskyAnalyticsClient";
 import { listBrandAccounts, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
 
 export function useCreatorAnalytics(days: number, accountDid?: string) {
@@ -38,12 +39,28 @@ export function useCreatorAnalytics(days: number, accountDid?: string) {
     getNextPageParam: (page, _pages, _param, params) => page.cursor && !params.includes(page.cursor) ? page.cursor : undefined,
     retry: false, staleTime: 60_000,
   });
+  const blueskyQuery = useQuery({
+    queryKey: ["blueskyAnalytics", owner ?? "", oauthSessionReloadSeq, days, actor],
+    enabled: !!owner && !!actor,
+    queryFn: async ({ signal }) => {
+      const result = await getBlueskyAnalytics(await requireSession(owner, actor), { days, signal });
+      assertIdentity(owner, actor);
+      return result;
+    },
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
   const refresh = useMutation({
     mutationFn: async ({ did, actingDid, period }: { did: string; actingDid: string; period: number }) => {
       await getCreatorAnalytics(await requireSession(did, actingDid), { days: period, refresh: true });
       assertIdentity(did, actingDid);
     },
-    onSuccess: (_result, args) => { if (identity.current.owner === args.did && identity.current.actor === args.actingDid) void client.invalidateQueries({ queryKey: ["creatorAnalytics", args.did] }); },
+    onSuccess: (_result, args) => {
+      if (identity.current.owner === args.did && identity.current.actor === args.actingDid) {
+        void client.invalidateQueries({ queryKey: ["creatorAnalytics", args.did] });
+        void client.invalidateQueries({ queryKey: ["blueskyAnalytics", args.did] });
+      }
+    },
   });
-  return { query, summary: query.data?.pages[0], items: uniqueAnalyticsItems(query.data?.pages ?? []), refresh, collect: () => refresh.mutateAsync({ did: owner!, actingDid: actor!, period: days }) };
+  return { query, blueskyQuery, summary: query.data?.pages[0], items: uniqueAnalyticsItems(query.data?.pages ?? []), refresh, collect: () => refresh.mutateAsync({ did: owner!, actingDid: actor!, period: days }) };
 }

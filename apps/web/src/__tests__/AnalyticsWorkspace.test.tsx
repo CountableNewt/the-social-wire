@@ -35,7 +35,7 @@ test("distinguishes unavailable platform counters from period tracking, refreshe
   expect(screen.getByText(/These Are Not Gains During the Selected Period/)).toBeTruthy();
   expect(screen.getAllByText("25.0%")).toHaveLength(2);
   expect(screen.getAllByText("—")).toHaveLength(8);
-  expect(screen.getByText(/No Content Indexed Yet/)).toBeTruthy();
+  expect(screen.getByText(/No Content Collected Yet/)).toBeTruthy();
   fireEvent.change(screen.getByRole("combobox", { name: "Analytics Time Range" }), { target: { value: "7" } });
   expect(spy.mock.calls.at(-1)?.[0]).toBe(7);
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -93,4 +93,16 @@ test("selects brand accounts, shows per-account breakdowns and excludes deselect
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:alice" })).toBeNull();
   fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
   expect(screen.getByText("Select Accounts to View Analytics.")).toBeTruthy();
+});
+
+
+test("renders the live Bluesky report even when stored analytics is unavailable", async () => {
+  state = { ...state, summary: undefined, query: { ...state.query, error: new Error("Stored Analytics Unavailable") }, blueskyQuery: {
+    data: { sampledAt: "2026-11-09T12:00:00Z", days: 30, profile: { followers: 42, following: 5, posts: 10 }, activity: { posts: 3, replies: 1, postsPerDay: 0.1 }, topPosts: [], shares: [], coverage: { feedComplete: true, feedAvailable: true, sharesComplete: false, sharesAvailable: true, articlesSearched: 0, feedPostsExamined: 4 } },
+    isPending: false, error: null, refetch: mock(async () => {}),
+  } } as unknown as typeof state;
+  await mount();
+  expect(screen.getByRole("region", { name: "Bluesky Analytics" })).toBeTruthy();
+  expect(screen.getByText("42")).toBeTruthy();
+  expect(screen.getByText("Stored Analytics Unavailable")).toBeTruthy();
 });
