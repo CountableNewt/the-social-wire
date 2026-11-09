@@ -109,3 +109,32 @@ test("keeps calendar account actions in the shared top bar outside the scrolling
 let previousSchedulingFlag: string | undefined;
 beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
 afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("hides account switching and retains personal scheduling when brands are disabled", () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  mount(<ContentCalendarPage />);
+  expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, owner);
+  expect(Profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
+});
+test("drops a selected brand calendar immediately when the feature is disabled", () => {
+  const view = mount(<ContentCalendarPage />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Account" }), { target: { value: brand } });
+  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, brand);
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  view.rerender(<QueryClientProvider client={cache}><SidebarProvider><ContentCalendarPage /></SidebarProvider></QueryClientProvider>);
+  expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, owner);
+});
+
+test("does not mount a directly requested brand calendar while disabled", () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  mount(<ContentCalendarAccount ownerDid={owner} actorDid={brand} />);
+  expect(Scheduling.useSkejScheduling).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+});

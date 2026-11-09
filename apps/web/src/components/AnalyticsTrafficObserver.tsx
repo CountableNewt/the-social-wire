@@ -1,6 +1,7 @@
 "use client";
 
 import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { observeAnalyticsTraffic, type AnalyticsEvent } from "@/lib/analyticsTracking";
@@ -16,7 +17,7 @@ export function AnalyticsTrafficObserver() {
     let queue = Promise.resolve();
     let queued = 0;
     const emit = (event: AnalyticsEvent) => {
-      if (queued >= 30 || ac.signal.aborted || listBrandAccounts(did).some(brand => event.subjectUri.startsWith(`at://${brand}/`))) return;
+      if (queued >= 30 || ac.signal.aborted || (brandAccountsEnabled() && listBrandAccounts(did).some(brand => event.subjectUri.startsWith(`at://${brand}/`)))) return;
       queued++;
       queue = queue.then(async () => {
         if (ac.signal.aborted) return;

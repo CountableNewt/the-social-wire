@@ -32,3 +32,22 @@ it("unmounts protected content after downgrade and supports retry", () => {
 });
 
 afterAll(() => access.mockRestore());
+
+it("advertises multi-account support only when Brand Accounts is enabled", () => {
+  const previousBrand = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const previousTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+  try {
+    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "true";
+    delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+    setAccess({});
+    const view = render(<ProFeatureGate><p>Private Workspace</p></ProFeatureGate>);
+    expect(screen.getByText("Tools are available with Pro. Subscriptions are coming soon.")).toBeTruthy();
+    expect(screen.queryByText(/multi-account/)).toBeNull();
+    process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+    view.rerender(<ProFeatureGate><p>Private Workspace</p></ProFeatureGate>);
+    expect(screen.getByText(/Tools and multi-account support/)).toBeTruthy();
+  } finally {
+    if (previousBrand === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrand;
+    if (previousTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED; else process.env.NEXT_PUBLIC_TOOLS_ENABLED = previousTools;
+  }
+});

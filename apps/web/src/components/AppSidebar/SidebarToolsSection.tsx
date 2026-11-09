@@ -2,6 +2,7 @@ import { LockKeyhole } from "lucide-react";
 import { useProEntitlements } from "@/hooks/useProEntitlements";
 import { isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { CalendarDays, ChartNoAxesCombined, FilePenLine, Radio, UsersRound, Video } from "lucide-react";
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
@@ -19,7 +20,7 @@ export function SidebarToolsSection({ pathname, onNavigate }: { pathname: string
   return <SidebarGroup className="pb-1 pt-1">
     <SidebarGroupLabel>Tools {!isPro ? <span className="ml-2 text-[10px]">Pro</span> : null}</SidebarGroupLabel>
     <SidebarMenu className="gap-0.5" aria-label="Tools">
-      {tools.filter(tool => tool.href === "/articles" || toolsEnabled() && (tool.href !== "/content-calendar" || isPostSchedulingEnabled())).map(({ title, href, icon: Icon }) => {
+      {tools.filter(tool => tool.href === "/articles" || toolsEnabled() && (tool.href !== "/brand-accounts" || brandAccountsEnabled()) && (tool.href !== "/content-calendar" || isPostSchedulingEnabled())).map(({ title, href, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return <SidebarMenuItem key={href}><SidebarMenuButton type="button" tooltip={title} isActive={active} aria-current={active ? "page" : undefined} onClick={() => onNavigate(href)}><Icon aria-hidden="true" /><span>{title}</span>{!isPro ? <LockKeyhole aria-hidden="true" className="ml-auto size-3" /> : null}</SidebarMenuButton></SidebarMenuItem>;
       })}

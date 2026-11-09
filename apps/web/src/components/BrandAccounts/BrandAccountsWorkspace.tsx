@@ -12,9 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { BrandAccountViewer } from "./BrandAccountViewer";
 import { BrandAccountSidebarRow } from "./BrandAccountSidebarRow";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 
 export function BrandAccountsWorkspace() {
   const { session } = useAuth();
+  if (!brandAccountsEnabled()) return null;
   return session ? <BrandAccountsManager key={session.did} ownerDid={session.did} /> : <p className="p-6">Log In to Manage Brand Accounts.</p>;
 }
 

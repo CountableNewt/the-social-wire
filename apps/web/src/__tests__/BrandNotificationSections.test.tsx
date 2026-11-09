@@ -77,3 +77,19 @@ test("personal unread errors do not masquerade as a fully known combined total",
   expect(screen.getByText(/Acting as @brand.test/)).toBeTruthy();
   expect(screen.queryByText("5 Unread")).toBeNull();
 });
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("does not mount brand notifications or add their unread counts when disabled", () => {
+  setIncludeBrandNotifications(owner, true);
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  mount();
+  expect(screen.queryByRole("checkbox", { name: "Include Brand Accounts" })).toBeNull();
+  expect(screen.queryByRole("region", { name: `Notifications for Brand ${brand}` })).toBeNull();
+  expect(screen.getByText("2 Unread")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Mark All As Read" })).toBeTruthy();
+  expect(Social.useBrandAccountSocial).not.toHaveBeenCalled();
+});

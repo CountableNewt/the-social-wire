@@ -1,7 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AppBskyFeedDefs } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { publishBrandPost } from "@/lib/brandAccounts/brandAccountSocialClient";
+
+let previousFlag: string | undefined;
+beforeEach(() => { previousFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousFlag; });
 
 const did = "did:plc:brand";
 const cid = "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku";
@@ -51,4 +55,11 @@ it("publishes brand Markdown links as native label facets", async () => {
     return { uri: `at://${did}/app.bsky.feed.post/one`, cid };
   });
   await publishBrandPost({ session, text: "[XBOX Labs](labs.xbox.com)", assertCurrentActor: () => {} });
+});
+
+it("blocks direct brand publishing while disabled without invoking actor or network actions", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  let calls = 0;
+  await expect(publishBrandPost({ session: sessionFor(() => { calls++; return {}; }), text: "Brand post", assertCurrentActor: () => { calls++; } })).rejects.toThrow("Brand Accounts Are Not Available");
+  expect(calls).toBe(0);
 });

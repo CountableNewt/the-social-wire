@@ -1,6 +1,6 @@
 "use client";
 
-import { toolsEnabled } from "@/lib/toolsEnabled";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useCallback, useState } from "react";
 import { useBrandAccounts } from "@/hooks/useBrandAccounts";
 import { includeBrandNotifications, setIncludeBrandNotifications } from "@/lib/brandAccounts/brandNotificationPreferences";
@@ -31,11 +31,14 @@ export function SocialNotifications() {
 
 function SocialNotificationsViewer() {
   const { session } = useAuth();
-  const brandAccounts = useBrandAccounts(session?.did ?? "");
-  const [includeBrands, setIncludeBrands] = useState(() => includeBrandNotifications(session?.did ?? ""));
+  const linkedAccounts = useBrandAccounts(session?.did ?? "");
+  const brandsAvailable = brandAccountsEnabled();
+  const brandAccounts = brandsAvailable ? linkedAccounts : [];
+  const [includeBrands, setIncludeBrands] = useState(() => brandsAvailable && includeBrandNotifications(session?.did ?? ""));
   const [brandUnread, setBrandUnread] = useState<Record<string, number | undefined>>({});
   const reportBrandUnread = useCallback((did: string, count: number | undefined) => setBrandUnread(previous => previous[did] === count ? previous : { ...previous, [did]: count }), []);
   function changeIncludeBrands(value: boolean) {
+    if (!brandAccountsEnabled()) return;
     setIncludeBrands(value);
     if (session) setIncludeBrandNotifications(session.did, value);
   }
@@ -83,8 +86,8 @@ function SocialNotificationsViewer() {
     </FeedHeader>
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" key={session?.did}>
       <div className="mx-auto flex max-w-2xl flex-col gap-4 p-3 sm:p-4">
-        {toolsEnabled() && session ? <BrandNotificationSections ownerDid={session.did} accounts={brandAccounts} included={includeBrands} setIncluded={changeIncludeBrands} onUnread={reportBrandUnread} /> : null}
-        {toolsEnabled() && includeBrands && brandAccounts.length ? <h2 className="font-semibold">Personal Notifications</h2> : null}
+        {brandsAvailable && session ? <BrandNotificationSections ownerDid={session.did} accounts={brandAccounts} included={includeBrands} setIncluded={changeIncludeBrands} onUnread={reportBrandUnread} /> : null}
+        {brandsAvailable && includeBrands && brandAccounts.length ? <h2 className="font-semibold">Personal Notifications</h2> : null}
         {markSeen.isError || unread.isError ? <section role="alert" className="flex flex-col items-start gap-2"><p className="text-sm text-destructive">{socialDiscoveryErrorMessage(markSeen.error ?? unread.error, "Notifications")}</p>{socialDiscoveryErrorMessage(markSeen.error ?? unread.error, "Notifications") === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : <Button variant="outline" size="sm" onClick={() => { if (markSeen.isError) markSeen.mutate(new Date().toISOString()); else void unread.refetch(); }}>Retry Unread Status</Button>}</section> : null}
         {error ? <section role="alert" className="flex flex-col items-start gap-3 py-4">
           <h2 className="text-lg font-semibold">Notifications Unavailable</h2><p className="text-sm text-muted-foreground">{error}</p>

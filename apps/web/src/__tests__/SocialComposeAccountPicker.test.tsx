@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { beforeEach, afterEach, expect, spyOn, test } from "bun:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as profiles from "@/lib/brandAccounts/brandAccountPublicProfile";
@@ -29,4 +29,19 @@ test("keeps an unlinked selected actor instead of falling back to personal", asy
   expect(screen.getByRole("option", { name: "Unlinked Brand Account" })).toBeTruthy();
   expect(screen.queryByText(/wrong.test/)).toBeNull();
   expect(screen.getByRole("combobox").hasAttribute("disabled")).toBe(true);
+});
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("does not render account choices or fetch profiles when brands are disabled", () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const profile = spyOn(profiles, "getBrandAccountPublicProfile");
+  try {
+    render(<SocialComposeAccountPicker ownerDid="did:plc:owner" accounts={["did:plc:brand"]} actorDid="did:plc:brand" disabled={false} onChange={() => {}} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(profile).not.toHaveBeenCalled();
+  } finally { profile.mockRestore(); }
 });
