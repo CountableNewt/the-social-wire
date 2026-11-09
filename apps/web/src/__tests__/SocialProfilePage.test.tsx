@@ -58,6 +58,10 @@ describe("other-user profile page", () => {
     expect(screen.getByRole("heading", { name: "Other Person he/they" })).toBeTruthy();
     expect(screen.getByText("he/they").closest("h2")?.tagName).toBe("H2");
     expect(screen.getByText("A profile biography")).toBeTruthy();
+    const bluesky = screen.getByRole("link", { name: "Open on Bluesky" });
+    expect(bluesky.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aother");
+    expect(bluesky.getAttribute("target")).toBe("_blank");
+    expect(bluesky.getAttribute("rel")).toBe("noopener noreferrer");
     for (const name of ["Posts", "Replies", "Media", "Likes"]) expect(screen.getByRole("button", { name })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publications" }) === null).toBe(true);
     expect(screen.queryByRole("button", { name: /Edit Profile|Settings/ }) === null).toBe(true);
@@ -73,6 +77,7 @@ describe("other-user profile page", () => {
     expect(screen.queryByText("Other Person") === null).toBe(true);
     expect(screen.queryByText("he/they")).toBeNull();
     expect(screen.queryByRole("button", { name: "Posts" }) === null).toBe(true);
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
   });
   it("follows from the full viewer and shares Following state with profile previews", async () => {
@@ -95,6 +100,7 @@ describe("other-user profile page", () => {
     params = new URLSearchParams({ actor: did, returnTo: "/social" });
     show();
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open on Bluesky" }).getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
   });
   it("fails closed when the viewer moderation catalog fails", async () => {
     catalogError = new Error(SCOPE_RECOVERY_MESSAGE);

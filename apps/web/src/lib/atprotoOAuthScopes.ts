@@ -52,6 +52,7 @@ export const STREAMPLACE_REPO_SCOPES = [
 
 /** Published Bluesky bundles grant unused gate/post-delete powers. */
 export const BLUESKY_SOCIAL_REPO_SCOPES = [
+  "repo:app.bsky.actor.profile?action=create&action=update",
   "repo:app.bsky.feed.post?action=create",
   "repo:app.bsky.graph.list?action=create&action=update&action=delete",
   "repo:app.bsky.graph.listitem?action=create&action=delete",

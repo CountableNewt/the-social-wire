@@ -25,6 +25,10 @@ describe("Profile information", () => {
     expect(screen.getByText("Following").nextElementSibling?.textContent).toBe("0");
     expect(screen.getByText("Posts").nextElementSibling?.textContent).toBe("48");
     expect(screen.getByRole("heading", { name: "Local Viewer" }).closest("section")?.id).toBe("profile");
+    const bluesky = screen.getByRole("link", { name: "Open on Bluesky" });
+    expect(bluesky.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
+    expect(bluesky.getAttribute("target")).toBe("_blank");
+    expect(bluesky.getAttribute("rel")).toBe("noopener noreferrer");
   });
   it("shows trimmed pronouns beside the display name", () => {
     state.data!.pronouns = "  they/them  ";
@@ -52,13 +56,24 @@ describe("Profile information", () => {
     expect(screen.queryByText("Followers")).toBeNull();
     expect(screen.queryByText("Following")).toBeNull();
   });
+  it("keeps the Bluesky action concise and DID-based for long profile identities", () => {
+    state.data!.displayName = "A Very Long Display Name ".repeat(8);
+    state.data!.handle = `${"long".repeat(30)}.test`;
+    render(<ProfileInformation />);
+    const link = screen.getByRole("link", { name: "Open on Bluesky" });
+    expect(link.textContent?.trim()).toBe("Open on Bluesky");
+    expect(link.getAttribute("href")).toBe("https://bsky.app/profile/did%3Aplc%3Aviewer");
+    expect(screen.getByRole("heading", { name: state.data!.displayName.trim() })).toBeTruthy();
+  });
   it("shows loading and provides retry when profile retrieval fails", () => {
     state.data = null; state.isLoading = true;
     const view = render(<ProfileInformation />);
     expect(screen.getByRole("status", { name: "Loading Profile" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
     state.isLoading = false;
     view.rerender(<ProfileInformation />);
     expect(screen.getByRole("heading", { name: "Profile Unavailable" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(state.refetch).toHaveBeenCalledTimes(1);
   });

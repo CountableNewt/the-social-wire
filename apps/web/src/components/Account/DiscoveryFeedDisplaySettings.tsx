@@ -2,10 +2,9 @@
 
 import { Switch } from "@/components/ui/switch";
 import type { FeedDisplayPreferences } from "@/lib/feedPreferences";
+import { podcastsEnabled } from "@/lib/podcasts/playback";
 
 const feeds = [
-  { id: "finance", label: "Finance", preference: "showFinance" },
-  { id: "sports", label: "Sports", preference: "showSports" },
   { id: "social", label: "Social", preference: "showSocial" },
   { id: "podcasts", label: "Podcasts", preference: "showPodcasts" },
 ] as const;
@@ -21,7 +20,7 @@ export function DiscoveryFeedDisplaySettings({
   isPending,
   onVisibilityChange,
 }: DiscoveryFeedDisplaySettingsProps) {
-  return feeds.map(({ id, label, preference }) => (
+  return feeds.filter(({ id }) => id !== "podcasts" || podcastsEnabled()).map(({ id, label, preference }) => (
     <div
       key={id}
       className="grid min-h-12 grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center py-2 text-sm"

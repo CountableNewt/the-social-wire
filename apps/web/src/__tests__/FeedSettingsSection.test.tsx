@@ -8,8 +8,9 @@ import * as FeedPreferences from "@/hooks/useFeedDisplayPreferences";
 import * as ReadLaterPreferences from "@/hooks/useReadLaterPreferences";
 import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import { findReadLaterService } from "@/lib/readLaterServices";
+import * as PodcastPlayback from "@/lib/podcasts/playback";
 
-const setHideFinanceCrypto = mock((hidden: boolean) => hidden);
+const setRssArticleOpenInReader = mock((_visible: boolean) => undefined);
 const setFeedVisible = mock(() => undefined);
 const setFeedUnreadCountVisible = mock(() => undefined);
 
@@ -20,7 +21,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  setHideFinanceCrypto.mockClear();
+  setRssArticleOpenInReader.mockClear();
+  spyOn(PodcastPlayback, "podcastsEnabled").mockReturnValue(true);
   setFeedVisible.mockClear();
   setFeedUnreadCountVisible.mockClear();
   spyOn(Appearance, "AppearanceSettingsSection").mockImplementation(() => <></>);
@@ -33,14 +35,15 @@ beforeEach(() => {
   spyOn(FeedPreferences, "useFeedDisplayPreferences").mockReturnValue({
     preferences: {
       ...DEFAULT_FEED_DISPLAY_PREFERENCES,
+      rssArticleOpenMode: "reader",
       showWire: true, showCircle: true, showFinance: false,
       visibleFeeds: ["readLater", "archive"],
     },
     setFeedVisible, setFeedUnreadCountVisible,
     setDiscoveryFeedVisible: () => undefined,
-    setRssArticleOpenInReader: () => undefined,
+    setRssArticleOpenInReader,
     setHideSportsScores: () => undefined,
-    setHideFinanceCrypto,
+    setHideFinanceCrypto: () => undefined,
     setHideFinancePerformance: () => undefined,
     isLoading: false,
     isPending: false, error: null,
@@ -55,11 +58,15 @@ afterEach(() => {
 test("active feeds expose independent visibility controls without retired products", () => {
   render(<FeedSettingsSection />);
   expect(screen.queryByText("Always Visible")).toBeNull();
-  for (const label of ["Finance", "Sports", "Social", "Podcasts", "Subscribed", "Following"]) {
+  for (const label of ["Social", "Podcasts", "Subscribed", "Following"]) {
     expect(screen.getByRole("switch", { name: `Show ${label}` })).toBeDefined();
   }
   expect(screen.queryByRole("switch", { name: "Show The Wire" })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Show Your Circle" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show Finance" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show Sports" })).toBeNull();
+  expect(screen.queryByText("Finance")).toBeNull();
+  expect(screen.queryByText("Sports")).toBeNull();
   expect(screen.queryByText("The Wire")).toBeNull();
   expect(screen.queryByText("Your Circle")).toBeNull();
   fireEvent.click(screen.getByRole("switch", { name: "Show Read Later" }));
@@ -76,9 +83,11 @@ test("disables counts for explicitly hidden feeds", () => {
   expect(setFeedUnreadCountVisible).not.toHaveBeenCalled();
 });
 
-test("Finance crypto control is available independently of feed visibility", () => {
+test("retired Finance options are absent while RSS reader preferences remain available", () => {
   render(<FeedSettingsSection />);
-  expect(screen.getByRole("switch", { name: "Hide Crypto in Finance" }).getAttribute("aria-checked")).toBe("false");
-  expect(screen.getByText("Exclude cryptocurrency stories and interests from Finance.")).toBeDefined();
-  expect(setFeedVisible).not.toHaveBeenCalled();
+  expect(screen.queryByRole("switch", { name: "Hide Crypto in Finance" })).toBeNull();
+  expect(screen.queryByText("Exclude cryptocurrency stories and interests from Finance.")).toBeNull();
+  fireEvent.click(screen.getByRole("switch", { name: "Open RSS Articles in Reader" }));
+  expect(setRssArticleOpenInReader).toHaveBeenCalledTimes(1);
+  expect(setRssArticleOpenInReader.mock.calls[0]?.[0]).toBe(false);
 });

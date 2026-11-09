@@ -12,6 +12,7 @@ import { TrustedVerifiersSettingsSection } from "./TrustedVerifiersSettingsSecti
 import { FeedSettingsSection } from "./FeedSettingsSection";
 import { OpmlImportSection } from "./OpmlImportSection";
 import { SocialModerationSettingsSection } from "./SocialModerationSettingsSection";
+import { ProfileEditDialog } from "./ProfileEditDialog";
 
 export function AccountSettingsContent() {
   const { session, signOut } = useAuth();
@@ -40,6 +41,7 @@ export function AccountSettingsContent() {
       <div className="mx-auto flex max-w-2xl flex-col gap-3">
         <h2 id="account-settings-heading" className="text-sm font-bold">Account</h2>
         <p className="break-all text-sm text-muted-foreground">{handle ? (handle.startsWith("did:") ? handle : `@${handle}`) : session?.did}</p>
+        <div className="self-start"><ProfileEditDialog /></div>
         <Button variant="outline" className="self-start" disabled={!session || signingOut} onClick={() => { setError(null); setConfirming(true); }}>Log Out</Button>
       </div>
     </section>
