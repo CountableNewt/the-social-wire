@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -210,19 +210,64 @@ test('volume guard smoke cleans up when the container fails to exit before the d
   assert.ok(fake.calls.some(args => args[0] === 'rm'));
 });
 
-test('the actual Web image command emits coverage output and preserves failing test exit status', () => {
+test('the actual Web image command preserves failing coverage and report transport statuses', () => {
   const root = mkdtempSync(join(tmpdir(), 'tsw-web-coverage-command-'));
+  const python = spawnSync('which', ['python3'], { encoding: 'utf8' }).stdout.trim();
   try {
-    for (const path of ['bin', 'apps/web', 'packages/spec']) mkdirSync(join(root, path), { recursive: true });
+    for (const path of ['bin', 'apps/web', 'packages/spec', 'scripts/ci']) mkdirSync(join(root, path), { recursive: true });
+    copyFileSync(new URL('./emit-log.py', import.meta.url), join(root, 'scripts/ci/emit-log.py'));
     writeFileSync(join(root, 'bin/bunx'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
     writeFileSync(join(root, 'bin/bun'), '#!/bin/sh\nif [ "$*" = "run test:coverage" ]; then echo coverage-fixture-output; exit "$FIXTURE_COVERAGE_STATUS"; fi\nexit 0\n', { mode: 0o700 });
-    for (const status of [0, 23]) {
+    writeFileSync(join(root, 'bin/python3'), '#!/bin/sh\nif [ "$FIXTURE_REPORT_STATUS" -ne 0 ]; then exit "$FIXTURE_REPORT_STATUS"; fi\nexec "$FIXTURE_PYTHON" "$@"\n', { mode: 0o700 });
+    for (const [coverage, report, expected] of [[0, 0, 0], [23, 0, 23], [0, 47, 47], [23, 47, 23]]) {
       const result = spawnSync('bash', ['-euc', webVerificationCommand()], {
-        cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, FIXTURE_COVERAGE_STATUS: String(status) },
+        cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, FIXTURE_PYTHON: python, FIXTURE_COVERAGE_STATUS: String(coverage), FIXTURE_REPORT_STATUS: String(report) },
       });
-      assert.equal(result.status, status, result.stderr);
-      assert.ok(result.stdout.includes('coverage-fixture-output'));
+      assert.equal(result.status, expected, result.stderr);
+      if (report === 0) assert.ok(result.stdout.includes('coverage-fixture-output'));
     }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('report emitter transfers the complete report through a pressured nonblocking pipe', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tsw-report-backpressure-'));
+  try {
+    const report = join(root, 'report.log');
+    writeFileSync(report, Buffer.alloc(2 * 1024 * 1024, 65));
+    const check = `import os, subprocess, sys, time
+from pathlib import Path
+reader, writer = os.pipe()
+os.set_blocking(writer, False)
+child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2]], stdout=writer, stderr=subprocess.PIPE)
+os.close(writer)
+time.sleep(0.05)
+output = bytearray()
+while chunk := os.read(reader, 65536):
+    output.extend(chunk)
+os.close(reader)
+errors = child.communicate(timeout=10)[1]
+assert child.returncode == 0, errors
+assert bytes(output) == Path(sys.argv[2]).read_bytes(), 'report was truncated'
+`;
+    const result = spawnSync('python3', ['-c', check, new URL('./emit-log.py', import.meta.url).pathname, report], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(result.status, 0, result.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('report emitter fails when its downstream consumer closes the pipe', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tsw-report-broken-pipe-'));
+  try {
+    const report = join(root, 'report.log');
+    writeFileSync(report, Buffer.alloc(256 * 1024, 65));
+    const check = `import os, subprocess, sys
+reader, writer = os.pipe()
+os.close(reader)
+child = subprocess.run([sys.executable, sys.argv[1], sys.argv[2]], stdout=writer, stderr=subprocess.PIPE, timeout=10)
+os.close(writer)
+assert child.returncode != 0, 'broken report transport succeeded'
+`;
+    const result = spawnSync('python3', ['-c', check, new URL('./emit-log.py', import.meta.url).pathname, report], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(result.status, 0, result.stderr);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

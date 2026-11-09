@@ -265,7 +265,7 @@ export async function webRuntimeSmoke(image, {
 
 export function webVerificationCommand() {
   // Bun's text coverage reporter cannot reliably write directly to Docker's log pipe.
-  const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; cat /tmp/web-coverage.log; exit "$coverage_status")';
+  const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; report_status=0; python3 ../../scripts/ci/emit-log.py /tmp/web-coverage.log || report_status=$?; if [ "$coverage_status" -ne 0 ]; then exit "$coverage_status"; fi; exit "$report_status")';
   return `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
 }
 
