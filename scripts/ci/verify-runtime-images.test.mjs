@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cleanEnvironment, verificationContext, webBuildArguments, imageReference, runtimeSmoke, runtimeVolumeGuardSmoke, webVerificationCommand, webRuntimeSmoke, run, main } from './verify-runtime-images.mjs';
+import { cleanEnvironment, verificationContext, webBuildArguments, imageReference, runtimeSmoke, runtimeVolumeGuardSmoke, webVerificationCommand, webRuntimeSmoke, run, main, build } from './verify-runtime-images.mjs';
 
 const sha = 'a'.repeat(40);
 
@@ -257,4 +257,95 @@ test('process captures keep stdout unchanged unless combined stderr is explicitl
   const args = ['-e', "process.stdout.write('standard-output\\n'); process.stderr.write('diagnostic-output\\n');"];
   assert.equal(run(process.execPath, args, { capture: true }), 'standard-output');
   assert.equal(run(process.execPath, args, { capture: true, combineOutput: true }), 'standard-output\ndiagnostic-output');
+});
+
+function buildCacheFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'tsw-build-cache-'));
+  const cache = join(root, 'appview');
+  mkdirSync(cache);
+  writeFileSync(join(cache, 'index.json'), 'old-index');
+  writeFileSync(join(cache, 'obsolete-blob'), 'old-blob');
+  return { root, cache, environment: { CI_DOCKER_CACHE_DIR: root } };
+}
+
+test('default local builds preserve Docker behavior without cache or Buildx requirements', () => {
+  let invocation;
+  const image = build({ sha, appEnvironment: 'dev' }, 'web', 'builder', {
+    environment: {}, execute: (command, args) => { invocation = { command, args }; },
+  });
+  assert.equal(image, `social-wire-ci-web:${sha}-verify`);
+  assert.equal(invocation.command, 'docker');
+  assert.equal(invocation.args[0], 'build');
+  assert.ok(!invocation.args.some(value => value.startsWith('--cache-') || value === '--load'));
+  assert.ok(invocation.args.includes('NEXT_PUBLIC_APP_ENV=dev'));
+});
+
+test('cached backend builds import prior layers and rotate one complete max-mode export', () => {
+  const fixture = buildCacheFixture();
+  try {
+    const next = join(fixture.root, 'appview-next');
+    mkdirSync(next);
+    writeFileSync(join(next, 'stale-partial-export'), 'partial');
+    let invocation;
+    build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+      environment: fixture.environment,
+      execute: (command, args) => {
+        invocation = { command, args };
+        assert.ok(!existsSync(next), 'Remove interrupted exports before starting.');
+        assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'old-index');
+        mkdirSync(next);
+        writeFileSync(join(next, 'index.json'), 'new-index');
+      },
+    });
+    assert.equal(invocation.command, 'docker');
+    assert.deepEqual(invocation.args.slice(0, 6), ['buildx', 'build', '--load', '--progress', 'plain', '--platform']);
+    assert.equal(invocation.args[invocation.args.indexOf('--cache-from') + 1], `type=local,src=${fixture.cache}`);
+    assert.equal(invocation.args[invocation.args.indexOf('--cache-to') + 1], `type=local,dest=${next},mode=max`);
+    assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'new-index');
+    assert.ok(!existsSync(join(fixture.cache, 'obsolete-blob')), 'Rotation must bound obsolete cache blobs.');
+    assert.ok(!existsSync(next));
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test('failed cached builds retain the previous cache and discard incomplete exports', () => {
+  const fixture = buildCacheFixture();
+  try {
+    const next = join(fixture.root, 'appview-next');
+    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+      environment: fixture.environment, execute: () => {
+        mkdirSync(next);
+        writeFileSync(join(next, 'partial'), 'partial');
+        throw new Error('compilation failed');
+      },
+    }), /compilation failed/);
+    assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'old-index');
+    assert.ok(existsSync(join(fixture.cache, 'obsolete-blob')));
+    assert.ok(!existsSync(next));
+    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+      environment: fixture.environment, execute: () => {},
+    }), /did not export/);
+    assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'old-index');
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test('each kind exports only its final expensive build and imports only complete caches', () => {
+  const fixture = buildCacheFixture();
+  try {
+    const context = { sha, appEnvironment: 'dev' };
+    for (const [kind, target] of [['appview', 'media-tests'], ['appview', undefined], ['web', 'builder']]) {
+      build(context, kind, target, { environment: fixture.environment, execute: (_command, args) => {
+        assert.ok(!args.includes('--cache-to'));
+        assert.equal(args.includes('--cache-from'), kind === 'appview');
+      } });
+    }
+    mkdirSync(join(fixture.root, 'web'));
+    build(context, 'web', undefined, { environment: fixture.environment, execute: (_command, args) => {
+      assert.ok(!args.includes('--cache-from'), 'A directory without an OCI index is not a cache.');
+      assert.ok(args.includes('--cache-to'));
+      const next = join(fixture.root, 'web-next');
+      mkdirSync(next);
+      writeFileSync(join(next, 'index.json'), 'web-index');
+    } });
+    assert.equal(readFileSync(join(fixture.root, 'web/index.json'), 'utf8'), 'web-index');
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });

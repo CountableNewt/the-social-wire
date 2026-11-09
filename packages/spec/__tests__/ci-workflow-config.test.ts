@@ -29,6 +29,22 @@ describe("standalone reader CI", () => {
     expect(workflow).not.toContain("DATABASE_URL");
   });
 
+  it("restores per-runtime build caches before verification and saves fresh commit layers", () => {
+    for (const kind of ["web", "appview"]) {
+      const steps = parsed.jobs[kind].steps;
+      const setup = steps.findIndex((step: any) => step.uses === "docker/setup-buildx-action@v3");
+      const cache = steps.findIndex((step: any) => step.uses === "actions/cache@v5");
+      const verify = steps.findIndex((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${kind}`);
+      expect(setup).toBeGreaterThan(-1);
+      expect(cache).toBeGreaterThan(setup);
+      expect(verify).toBeGreaterThan(cache);
+      expect(steps[cache].with.key).toContain(`docker-${kind}-v1-`);
+      expect(steps[cache].with.key).toEndWith("${{ github.sha }}");
+      expect(steps[cache].with["restore-keys"]).toContain(`docker-${kind}-v1-`);
+      expect(steps[cache].with.path).toBe(steps[verify].env.CI_DOCKER_CACHE_DIR);
+    }
+  });
+
   it("preserves read-only merge verification and Development-first promotion", () => {
     expect(parsed.permissions).toEqual({ contents: "read" });
     expect(parsed.on).toHaveProperty("pull_request");
@@ -53,11 +69,11 @@ describe("standalone reader CI", () => {
   });
 
   it("checks real release images, SQLite migrations, and the bundled processor", () => {
-    expect(verifier).toContain("build(context, kind, 'backend-tests')");
-    expect(verifier).toContain("build(context, kind, 'media-tests')");
+    expect(verifier).toContain("buildImage(kind, 'backend-tests')");
+    expect(verifier).toContain("buildImage(kind, 'media-tests')");
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
-    expect(verifier).toContain("await webRuntimeSmoke(build(context, kind))");
+    expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
     expect(backendImage).toContain("FROM builder AS backend-tests");
     expect(backendImage).toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
     expect(backendImage).toContain("swift test --package-path services/appview -c release --force-resolved-versions");
@@ -74,7 +90,7 @@ describe("standalone reader CI", () => {
     }
     expect(verifier).toContain('coverage_status=$?');
     expect(verifier).toContain('exit "$coverage_status"');
-    expect(verifier.indexOf("run('python3', ['scripts/go/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = build(context, kind, 'builder')"));
+    expect(verifier.indexOf("run('python3', ['scripts/go/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
   });
 
   it("fails the aggregate gate for every selected check that does not succeed", () => {
