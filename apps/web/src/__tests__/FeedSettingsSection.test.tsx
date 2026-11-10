@@ -10,7 +10,7 @@ import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import { findReadLaterService } from "@/lib/readLaterServices";
 import * as PodcastPlayback from "@/lib/podcasts/playback";
 
-const setRssArticleOpenInReader = mock((visible: boolean) => visible);
+const setRssArticleOpenInReader = mock((_visible: boolean) => undefined);
 const setFeedVisible = mock(() => undefined);
 const setFeedUnreadCountVisible = mock(() => undefined);
 
