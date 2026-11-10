@@ -99,7 +99,7 @@ export default function ReadPubPage({
     (entryId: string) => markEntryRead(entryId, markOptions),
     [markEntryRead, markOptions]
   );
-  const { open: deferRead, finish: finishReading, cancel: cancelDeferredRead } = useDeferredArticleRead({ scope, viewerKey, markRead: markEntryReadForPub });
+  const { open: deferRead, finish: finishReading, cancel: cancelDeferredRead, selectedEntryId } = useDeferredArticleRead({ scope, viewerKey, markRead: markEntryReadForPub });
   const deferEntryRead = useCallback((entryId: string) => {
     const oauth = getOAuthSession();
     deferRead(entryId, () => getOAuthSession() === oauth);
@@ -248,7 +248,7 @@ export default function ReadPubPage({
               pubId={pubId}
               aggregateFeed={aggregateFeed}
               wireFeed={wireFeed}
-              selectedEntryId={rssReaderEntry?.entryId ?? null}
+              selectedEntryId={selectedEntryId ?? rssReaderEntry?.entryId ?? null}
               resolvingEntryId={resolvingEntryId}
               onSelectEntry={handleSelectEntry}
               isEntryRead={editorialFeed ? theWireEntryIsUnread : isEntryRead}

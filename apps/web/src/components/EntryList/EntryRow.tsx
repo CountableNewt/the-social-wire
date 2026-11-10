@@ -236,7 +236,7 @@ export const EntryRow = memo(function EntryRow({
       <ContextMenuTrigger className="flex w-full min-w-0 outline-none">
         {rowButton}
       </ContextMenuTrigger>
-      <ContextMenuContent className="min-w-[11rem]">
+      <ContextMenuContent data-entry-owner={entry.entryId} className="min-w-[11rem]">
         <EntryRowActions
           entry={entry}
           isRead={isRead}

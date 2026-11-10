@@ -84,6 +84,7 @@ export function RssArticleReaderDialogView({
   return (
     <dialog
       ref={dialogRef}
+      data-entry-owner={entryId ?? undefined}
       aria-labelledby="rss-article-reader-title"
       aria-modal="true"
       className="fixed left-1/2 top-1/2 z-[200] m-0 h-[min(92svh,900px)] w-[min(calc(100vw-2rem),48rem)] max-w-none -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-border bg-background p-0 text-foreground shadow-2xl outline-none open:flex open:flex-col [&::backdrop]:bg-black/60"

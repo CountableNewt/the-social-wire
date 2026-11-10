@@ -38,6 +38,7 @@ describe("RssArticleReaderDialog", () => {
     expect(screen.getByText("Rendered by the app.")).toBeDefined();
     expect(container.querySelector(".article-content")).not.toBeNull();
     expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("dialog")?.getAttribute("data-entry-owner")).toBe("rssentry:article");
     expect(
       screen
         .getByRole("link", { name: "Open Article on Original Site" })

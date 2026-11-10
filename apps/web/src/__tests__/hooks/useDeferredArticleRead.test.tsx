@@ -1,9 +1,16 @@
 import { afterEach, expect, it, mock } from "bun:test";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { StrictMode, type ReactNode } from "react";
 import { useDeferredArticleRead } from "@/hooks/useDeferredArticleRead";
 
 afterEach(cleanup);
+
+function fixture(attribute?: string, value?: string) {
+  const element = document.createElement("button");
+  if (attribute) element.setAttribute(attribute, value!);
+  document.body.append(element);
+  return element;
+}
 
 it("keeps the opened article unread through focus changes, rerenders, and repeated opens", () => {
   const markRead = mock();
@@ -81,4 +88,51 @@ it("fences an authorization change that happens before the next render", () => {
   current = false;
   unmount();
   expect(markRead).not.toHaveBeenCalled();
+});
+
+it("keeps same-card and owned portal actions selected until an outside click", async () => {
+  const markRead = mock();
+  const { result } = renderHook(() => useDeferredArticleRead({ scope: "feed", viewerKey: "alice:1", markRead }));
+  const card = fixture("data-entry-id", "a");
+  const popup = fixture("data-entry-owner", "a");
+  const outside = fixture();
+  try {
+    act(() => result.current.open("a"));
+    await act(async () => { fireEvent.click(card); fireEvent.click(popup); });
+    expect(result.current.selectedEntryId).toBe("a");
+    expect(markRead).not.toHaveBeenCalled();
+    outside.addEventListener("click", event => event.stopPropagation());
+    await act(async () => fireEvent.click(outside));
+    expect(result.current.selectedEntryId).toBeNull();
+    expect(markRead.mock.calls).toEqual([["a"]]);
+    await act(async () => fireEvent.click(outside));
+    expect(markRead).toHaveBeenCalledTimes(1);
+  } finally { card.remove(); popup.remove(); outside.remove(); }
+});
+
+it("marks the previous article and leaves the newly clicked card highlighted and unread", async () => {
+  const markRead = mock();
+  const { result } = renderHook(() => useDeferredArticleRead({ scope: "feed", viewerKey: "alice:1", markRead }));
+  const other = fixture("data-entry-id", "b");
+  other.addEventListener("click", () => result.current.open("b"));
+  try {
+    act(() => result.current.open("a"));
+    await act(async () => fireEvent.click(other));
+    expect(markRead.mock.calls).toEqual([["a"]]);
+    expect(result.current.selectedEntryId).toBe("b");
+  } finally { other.remove(); }
+});
+
+it("treats another card's popup as outside and preserves an explicit unread decision", async () => {
+  const markRead = mock();
+  const { result } = renderHook(() => useDeferredArticleRead({ scope: "feed", viewerKey: "alice:1", markRead }));
+  const popup = fixture("data-entry-owner", "b");
+  try {
+    act(() => result.current.open("a"));
+    act(() => result.current.cancel("a"));
+    expect(result.current.selectedEntryId).toBe("a");
+    await act(async () => fireEvent.click(popup));
+    expect(result.current.selectedEntryId).toBeNull();
+    expect(markRead).not.toHaveBeenCalled();
+  } finally { popup.remove(); }
 });
