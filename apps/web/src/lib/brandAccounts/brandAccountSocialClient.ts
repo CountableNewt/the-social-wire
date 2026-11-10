@@ -1,6 +1,7 @@
 import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import { compilePostText, resolvePostText } from "@/lib/composePostText";
-import { AppBskyFeedPost, ComAtprotoRepoStrongRef, type AppBskyFeedDefs } from "@atproto/api";
+import { ComAtprotoRepoStrongRef, type AppBskyFeedDefs } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { createOAuthAgent } from "@/lib/atprotoClient";
 import { createAuthenticatedAppViewAgent } from "@/lib/blueskySocialClient";
@@ -15,7 +16,7 @@ export async function publishBrandPost(args: { session: OAuthSession; text: stri
   let reply;
   if (args.parent) {
     const parent = { uri: args.parent.uri, cid: args.parent.cid };
-    const record = AppBskyFeedPost.validateRecord(args.parent.record);
+    const record = validateSocialPostRecord(args.parent.record);
     if (!record.success || !ComAtprotoRepoStrongRef.validateMain(parent).success) throw new Error("The Reply Target Is Unavailable.");
     reply = { parent, root: record.value.reply?.root ?? parent };
     if (!ComAtprotoRepoStrongRef.validateMain(reply.root).success) throw new Error("The Reply Thread Is Invalid.");

@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Editing from "@/lib/profileEditing";
 import * as Auth from "@/hooks/useAuth";
+import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import * as Profile from "@/hooks/useViewerProfile";
 import * as FeedSettings from "@/components/Account/FeedSettingsSection";
 import * as ImportSettings from "@/components/Account/OpmlImportSection";
@@ -28,6 +29,7 @@ const setRemoveSilences = mock(async () => {});
 
 beforeEach(() => {
   cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
   window.history.replaceState(null, "", "/me");
   const mediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) });

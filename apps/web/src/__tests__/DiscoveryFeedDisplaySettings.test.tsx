@@ -19,7 +19,7 @@ afterEach(() => {
 describe("discovery feed display settings", () => {
   it("shows visibility switches and preserves each explicit choice", () => {
     const onVisibilityChange = mock(() => undefined);
-    render(<DiscoveryFeedDisplaySettings preferences={{ showWire: true, showCircle: true, showFinance: true, showSports: true, showSocial: true, showPodcasts: false }} isPending={false} onVisibilityChange={onVisibilityChange} />);
+    render(<DiscoveryFeedDisplaySettings preferences={{ showSocial: true, showPodcasts: false }} isPending={false} onVisibilityChange={onVisibilityChange} />);
     expect(screen.queryByText("Always Visible")).toBeNull();
     expect(screen.queryByRole("switch", { name: "Show The Wire" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Show Your Circle" })).toBeNull();
@@ -34,7 +34,7 @@ describe("discovery feed display settings", () => {
 
   it("hides Podcasts settings when the Podcasts feature is disabled", () => {
     spyOn(PodcastPlayback, "podcastsEnabled").mockReturnValue(false);
-    render(<DiscoveryFeedDisplaySettings preferences={{ showWire: true, showCircle: true, showFinance: true, showSports: true, showSocial: true, showPodcasts: true }} isPending={false} onVisibilityChange={mock(() => undefined)} />);
+    render(<DiscoveryFeedDisplaySettings preferences={{ showSocial: true, showPodcasts: true }} isPending={false} onVisibilityChange={mock(() => undefined)} />);
     expect(screen.queryByRole("switch", { name: "Show Podcasts" })).toBeNull();
     expect(screen.queryByText("Podcasts")).toBeNull();
     expect(screen.getByRole("switch", { name: "Show Social" })).toBeDefined();
@@ -43,7 +43,7 @@ describe("discovery feed display settings", () => {
 
   it("disables every active discovery control while preferences are saving", () => {
     const onVisibilityChange = mock(() => undefined);
-    render(<DiscoveryFeedDisplaySettings preferences={{ showWire: true, showCircle: true, showFinance: true, showSports: true, showSocial: true, showPodcasts: true }} isPending={true} onVisibilityChange={onVisibilityChange} />);
+    render(<DiscoveryFeedDisplaySettings preferences={{ showSocial: true, showPodcasts: true }} isPending={true} onVisibilityChange={onVisibilityChange} />);
     for (const label of ["Social", "Podcasts"]) {
       const control = screen.getByRole("switch", { name: `Show ${label}` });
       expect(control.getAttribute("aria-disabled")).toBe("true");
