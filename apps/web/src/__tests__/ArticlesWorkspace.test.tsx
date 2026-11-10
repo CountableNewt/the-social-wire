@@ -543,11 +543,38 @@ describe("article publishing workspace", () => {
     expect(persist).toHaveBeenCalledWith({ requireRemote: true });
     expect(publish).not.toHaveBeenCalled();
   });
-  it("keeps an uncertain publication protected when no matching publication is found", async () => {
+  it.each([
+    [{ url: "https://actual.test/articles/canonical" }, "https://actual.test/articles/canonical"],
+    [{ path: "/articles/published-path" }, "https://first.test/articles/published-path"],
+  ])("opens a recovered article at its published site URL (%j)", async (record, url) => {
     seed.publishingRecordKey = "stable-key"; seed.publicationClaimId = "own-claim";
-    publishedRows.push({ uri: `at://${did}/site.standard.document/stable-key`, cid: "different", record: { $type: "site.standard.document", site: publications[1]!.uri, title: seed.title } });
+    const uri = `at://${did}/site.standard.document/stable-key`;
+    publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title, ...record } });
     const publish = publishingSpy();
     await show();
+    const link = await screen.findByRole("link", { name: "Open Article" });
+    expect(link.getAttribute("href")).toBe(url);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    fireEvent.click(link);
+    await waitFor(() => expect(storedDraft.publishedUri).toBe(uri));
+    expect(storedDraft.publishingRecordKey).toBeUndefined();
+    expect(publish).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Open Article" }).getAttribute("href")).toBe(url);
+  });
+  it("does not offer an unsafe published article URL", async () => {
+    seed.publishingRecordKey = "stable-key";
+    publishedRows.push({ uri: `at://${did}/site.standard.document/stable-key`, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, url: "javascript:alert(1)" } });
+    await show();
+    expect(screen.queryByRole("link", { name: "Open Article" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Check Publication" })).toBeTruthy();
+  });
+  it("keeps an uncertain publication protected when no matching publication is found", async () => {
+    seed.publishingRecordKey = "stable-key"; seed.publicationClaimId = "own-claim";
+    publishedRows.push({ uri: `at://${did}/site.standard.document/stable-key`, cid: "different", record: { $type: "site.standard.document", site: publications[1]!.uri, title: seed.title, url: "https://second.test/wrong-article" } });
+    const publish = publishingSpy();
+    await show();
+    expect(screen.queryByRole("link", { name: "Open Article" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Check Publication" }));
     await waitFor(() => expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Still Unconfirmed"))).toBe(true));
     expect(storedDraft.publishingRecordKey).toBe("stable-key");
@@ -619,14 +646,54 @@ describe("article publishing workspace", () => {
     expect(publish).not.toHaveBeenCalled();
     expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("Browser Storage Is Full"))).toBe(true);
   });
-  it("disables publication and article editing for an already published local draft", async () => {
+  it("excludes an already published local draft from Drafts", async () => {
     seed.publishedUri = `at://${did}/site.standard.document/existing`;
     const publish = publishingSpy();
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    expect(screen.queryByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeNull();
+    expect(screen.getByText("Create an article to start writing.")).toBeTruthy();
+    expect(storedDraft.publishedUri).toBe(seed.publishedUri);
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it("removes a newly published article from Drafts while keeping its editor locked", async () => {
+    const publish = publishingSpy();
     await show();
+    fireEvent.click(screen.getByRole("button", { name: "Publish Article" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Publish Now" }));
+    await waitFor(() => expect(storedDraft.publishedUri).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     for (const label of ["Article Title", "Article Publication", "Article Path", "Article Excerpt", "Article Tags"]) expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Publish Article" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Edit It From Published Articles/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Articles" }));
+    expect(await screen.findByText("Create an article to start writing.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeNull();
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+  it("excludes a confirmed lost-response publication from Drafts and shows it in Published", async () => {
+    seed.publishingRecordKey = "stable-key";
+    const uri = `at://${did}/site.standard.document/stable-key`;
+    publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title } });
+    const publish = publishingSpy();
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    expect(await screen.findByText("Create an article to start writing.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    expect(await screen.findByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeTruthy();
     expect(publish).not.toHaveBeenCalled();
+  });
+  it.each(["missing", "wrong-owner", "wrong-publication", "wrong-type"])("retains an uncertain publication in Drafts (%s)", async mismatch => {
+    seed.publishingRecordKey = "stable-key";
+    if (mismatch !== "missing") publishedRows.push({ uri: `at://${mismatch === "wrong-owner" ? "did:plc:other" : did}/site.standard.document/stable-key`, cid: "existing", record: { $type: mismatch === "wrong-type" ? "site.standard.entry" : "site.standard.document", site: mismatch === "wrong-publication" ? publications[1]!.uri : seed.publicationUri, title: seed.title } });
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    await waitFor(() => expect(client.isFetching({ queryKey: ["articles", did, "published"] })).toBe(0));
+    expect(screen.getByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeTruthy();
+    expect(screen.getByText(/Publishing Requested/)).toBeTruthy();
+    expect(storedDraft.publishingRecordKey).toBe("stable-key");
   });
 });
 
