@@ -1,9 +1,11 @@
+import { articleContentLabelFields } from "@/lib/articleContentLabels";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { socialWireXrpc } from "@/lib/socialWireXrpc";
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 import { parseAtUri } from "@/lib/atprotoClient";
 
 export interface StandardSiteEmbed {
+  contentLabels?: string[];
   documentUri: string;
   publicationUri: string;
   publicationName: string;
@@ -29,7 +31,8 @@ export function parseStandardSiteEmbed(value: unknown): StandardSiteEmbed | null
     } catch { return null; }
   }
   if (row.description !== undefined && typeof row.description !== "string") return null;
-  return row as unknown as StandardSiteEmbed;
+  const { contentLabels, ...metadata } = row;
+  return { ...metadata, ...articleContentLabelFields(contentLabels) } as unknown as StandardSiteEmbed;
 }
 
 export async function fetchStandardSiteEmbed(session: OAuthSession, url: string, signal?: AbortSignal): Promise<StandardSiteEmbed | null> {

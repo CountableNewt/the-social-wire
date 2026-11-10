@@ -1,5 +1,6 @@
 "use client";
 
+import { ArticleContentLabels } from "@/components/shared/ArticleContentLabels";
 import { memo, useMemo, useState } from "react";
 import { EntryCardActionMenu } from "@/components/EntryList/EntryCardActionMenu";
 import { EntryRowActions } from "@/components/EntryList/EntryRowActions";
@@ -183,6 +184,7 @@ export const EntryRow = memo(function EntryRow({
             ) : null}
             {publication && showPublishedDate ? <span aria-hidden>•</span> : null}
             {showPublishedDate ? <span>{formattedDate}</span> : null}
+            <ArticleContentLabels contentLabels={entry.contentLabels} />
             {entry.wireItem?.source.author?.trim() ? (
               <>
                 <span aria-hidden>•</span>

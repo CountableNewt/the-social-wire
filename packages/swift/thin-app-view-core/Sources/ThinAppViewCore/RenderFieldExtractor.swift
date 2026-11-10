@@ -42,7 +42,8 @@ public enum RenderFieldExtractor {
       publishedAt: publishedAt,
       summary: summary,
       thumbnailUrl: thumbnailUrl,
-      articleUrl: articleUrl(from: record)
+      articleUrl: articleUrl(from: record),
+      contentLabels: ContentLabels.fromRecord(record)
     )
   }
 

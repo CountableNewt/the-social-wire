@@ -18,7 +18,6 @@ src/components/AppSidebar/AssignFolderDialog.tsx
 src/components/AppSidebar/NewFolder/types.ts
 src/components/AppSidebar/PublicationTabButton.tsx
 src/components/EntryDetail/EntryArticleEmbedTypes.ts
-src/components/EntryDetail/EntryDetail.tsx
 src/components/EntryList/EntryListVirtualPane.types.ts
 src/components/SavedLinks/SavedLinkPublicationChip.tsx
 src/components/SavedLinks/SavedLinkRowActions.tsx

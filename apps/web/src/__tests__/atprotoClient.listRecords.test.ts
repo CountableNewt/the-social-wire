@@ -56,6 +56,7 @@ describe("listRecordsOnAuthorRepo via listEntries", () => {
                   value: {
                     $type: "site.standard.document",
                     title: "Newer",
+                    labels: { $type: "com.atproto.label.defs#selfLabels", values: [{ val: "ai-generated" }, { val: "sexual" }] },
                     publishedAt: "2025-06-01T00:00:00.000Z",
                   },
                 },
@@ -86,6 +87,8 @@ describe("listRecordsOnAuthorRepo via listEntries", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0].title).toBe("Newer");
     expect(entries[1].title).toBe("Older");
+    expect(entries[0].contentLabels).toEqual(["ai-generated", "sexual"]);
+    expect(entries[1]).not.toHaveProperty("contentLabels");
   });
 });
 

@@ -8,6 +8,7 @@ import * as Auth from "@/hooks/useAuth";
 import * as Catalog from "@/hooks/useBlueskySocialCatalog";
 import * as Profile from "@/hooks/useBlueskyProfile";
 import * as Timeline from "@/hooks/useBlueskyProfileTimeline";
+import * as Bio from "@/lib/profileBioFacets";
 import * as ProfileLinkClient from "@/lib/profileLinks";
 import * as Atproto from "@/lib/atprotoClient";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -46,6 +47,8 @@ beforeEach(() => {
   const search = spyOn(Navigation, "useSearchParams").mockImplementation(() => params as ReturnType<typeof Navigation.useSearchParams>);
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did }, getOAuthSession: () => ({ did }), oauthSessionReloadSeq: 0 } as unknown as ReturnType<typeof Auth.useAuth>);
   const catalog = spyOn(Catalog, "useBlueskySocialCatalog").mockImplementation(() => ({ data: { feeds: [], moderation }, isError: !!catalogError, error: catalogError, refetch: mock(async () => undefined) } as unknown as ReturnType<typeof Catalog.useBlueskySocialCatalog>));
+  const bio = spyOn(Bio, "resolveProfileBioFacets").mockResolvedValue([]);
+  restores.push(() => bio.mockRestore());
   const links = spyOn(ProfileLinkClient, "loadProfileLinks").mockImplementation(async actor => [{ uri: `at://${actor}/app.bsky.actor.link/site`, url: `https://${actor === did ? "viewer" : "other"}.example/`, title: actor === did ? "My Website" : "Other Website", domain: actor === did ? "viewer.example" : "other.example" }]);
   restores.push(() => links.mockRestore());
   const profile = spyOn(Profile, "useBlueskyProfile").mockImplementation(() => ({ data: profileValue, isError: false, isPending: false, refetch: mock(async () => undefined) } as unknown as ReturnType<typeof Profile.useBlueskyProfile>));
@@ -75,7 +78,14 @@ describe("other-user profile page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(replace).toHaveBeenCalledWith("/social?feed=original");
   });
+  it("renders native biography facets on another user's profile", () => {
+    profileValue.description = "Other bio #SocialWire https://example.com";
+    show();
+    expect(screen.getByRole("link", { name: "#SocialWire" }).getAttribute("href")).toBe("https://bsky.app/search?q=%23SocialWire");
+    expect(screen.getByRole("link", { name: "https://example.com" }).getAttribute("href")).toBe("https://example.com/");
+  });
   it("does not expose a blocked profile identity or its content tabs", () => {
+    profileValue.description = "Secret @alice.test #Hidden";
     profileValue.viewer = { blocking: "at://did:plc:viewer/app.bsky.graph.block/one" };
     show();
     expect(screen.getByText("Profile withheld by your moderation settings.")).toBeTruthy();
@@ -85,9 +95,11 @@ describe("other-user profile page", () => {
     expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
     expect(screen.queryByRole("list", { name: "Profile Links" })).toBeNull();
     expect(ProfileLinkClient.loadProfileLinks).not.toHaveBeenCalled();
+    expect(Bio.resolveProfileBioFacets).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /Follow/ })).toBeNull();
   });
   it.each(["displayName", "contentMedia"])("omits profile link cards when moderation withholds %s", context => {
+    profileValue.description = "Secret @alice.test #Hidden";
     const decision = spyOn(Moderation, "moderateProfile").mockReturnValue({
       ui: (kind: string) => ({ filter: false, blur: kind === context, noOverride: false }),
     } as unknown as ReturnType<typeof Moderation.moderateProfile>);
@@ -97,6 +109,7 @@ describe("other-user profile page", () => {
     expect(screen.getByRole("button", { name: "Posts" })).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Profile Links" })).toBeNull();
     expect(ProfileLinkClient.loadProfileLinks).not.toHaveBeenCalled();
+    if (context === "displayName") expect(Bio.resolveProfileBioFacets).not.toHaveBeenCalled();
   });
   it("follows from the full viewer and shares Following state with profile previews", async () => {
     const follow = mock(async () => ({ uri: `at://${did}/app.bsky.graph.follow/one`, cid: "cid" }));
@@ -122,11 +135,13 @@ describe("other-user profile page", () => {
     expect(screen.queryByRole("link", { name: "Open on Bluesky" })).toBeNull();
   });
   it("fails closed when the viewer moderation catalog fails", async () => {
+    profileValue.description = "Secret @alice.test #Hidden";
     catalogError = new Error(SCOPE_RECOVERY_MESSAGE);
     show();
     await waitFor(() => expect(screen.getByRole("button", { name: "Log In Again" })).toBeTruthy());
     expect(screen.queryByText("Other Person") === null).toBe(true);
     expect(screen.queryByText("he/they")).toBeNull();
+    expect(Bio.resolveProfileBioFacets).not.toHaveBeenCalled();
   });
   it("validates internal profile destinations and rejects external Back destinations", () => {
     expect(socialProfilePageHref("did:plc:other", "/social/explore?q=trees&type=people")).toContain("returnTo=%2Fsocial%2Fexplore%3Fq%3Dtrees%26type%3Dpeople");

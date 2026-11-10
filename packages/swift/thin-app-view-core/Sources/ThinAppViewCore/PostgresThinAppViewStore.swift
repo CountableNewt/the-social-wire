@@ -1876,7 +1876,8 @@ public init(pool: PostgresClient, logger: Logger) {
                ci.render_json->>'publishedAt',
                ci.render_json->>'summary',
                ci.render_json->>'thumbnailUrl',
-               ci.render_json->>'articleUrl'
+               ci.render_json->>'articleUrl',
+               ci.render_json->>'contentLabels'
         FROM content_items ci
         WHERE ci.author_did = ANY(\(authorDids))
           AND ci.expires_at > \(now)
@@ -1901,7 +1902,8 @@ public init(pool: PostgresClient, logger: Logger) {
                ci.render_json->>'publishedAt',
                ci.render_json->>'summary',
                ci.render_json->>'thumbnailUrl',
-               ci.render_json->>'articleUrl'
+               ci.render_json->>'articleUrl',
+               ci.render_json->>'contentLabels'
         FROM content_items ci
         WHERE ci.author_did = ANY(\(authorDids))
           AND ci.expires_at > \(now)
@@ -1927,9 +1929,10 @@ public init(pool: PostgresClient, logger: Logger) {
         publishedAt,
         summary,
         thumbnailUrl,
-        articleUrl
+        articleUrl,
+        contentLabelsJSON
       ) = try row.decode(
-        (String, String, String?, Date, String, String?, String?, String?, String?).self
+        (String, String, String?, Date, String, String?, String?, String?, String?, String?).self
       )
       fetched.append(
         AggregateFeedDatabaseRow(
@@ -1941,7 +1944,8 @@ public init(pool: PostgresClient, logger: Logger) {
           publishedAt: publishedAt,
           summary: summary,
           thumbnailUrl: thumbnailUrl,
-          articleUrl: articleUrl
+          articleUrl: articleUrl,
+          contentLabels: ContentLabels.decodeJSON(contentLabelsJSON)
         )
       )
     }

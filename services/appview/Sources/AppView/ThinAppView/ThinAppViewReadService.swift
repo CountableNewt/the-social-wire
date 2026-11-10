@@ -615,6 +615,9 @@ actor ThinAppViewReadService {
       render: render,
       summary: item.summary
     )
+    let contentLabels: [String]?
+    if let render { contentLabels = render.contentLabels }
+    else { contentLabels = item.contentLabels }
     return AppViewEntryDetailResponse(
       entryId: item.entryId,
       title: item.title,
@@ -623,7 +626,8 @@ actor ThinAppViewReadService {
       thumbnailUrl: item.thumbnailUrl,
       isRead: isRead,
       contentHtml: render?.contentHtml ?? render?.summary ?? item.summary,
-      originalUrl: originalUrl
+      originalUrl: originalUrl,
+      contentLabels: contentLabels
     )
   }
 
