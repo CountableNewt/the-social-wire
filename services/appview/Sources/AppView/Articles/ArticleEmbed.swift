@@ -9,4 +9,5 @@ struct ArticleEmbed: Codable, Sendable, Equatable {
   let title: String
   var description: String?
   let authorDid: String
+  var contentLabels: [String]? = nil
 }

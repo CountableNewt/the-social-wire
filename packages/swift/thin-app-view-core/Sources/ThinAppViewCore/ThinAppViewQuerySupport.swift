@@ -173,6 +173,7 @@ public enum ThinAppViewQuerySupport {
         publishedAt: publishedAt,
         thumbnailUrl: render.thumbnailUrl,
         thumbnailFallbackUrl: nil,
+        contentLabels: render.contentLabels,
         originalUrl: originalUrl,
         feedPositionAt: row.createdAt
       )

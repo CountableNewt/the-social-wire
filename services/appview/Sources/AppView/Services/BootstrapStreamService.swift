@@ -694,15 +694,16 @@ struct BootstrapStreamService {
     expiresAt: Date? = nil,
     writer: inout any ResponseBodyWriter
   ) async throws {
-    let payload = AppViewBootstrapEntriesPagePayload(
+    let event = BootstrapEntriesPageEvent(
       publicationId: publicationId,
-      entries: page.entries.map(Self.bootstrapEntry),
-      cursor: page.cursor,
+      page: page,
       source: source,
       cachedAt: cachedAt,
       expiresAt: expiresAt
     )
-    try await writeEvent(.entriesPage(payload), writer: &writer)
+    var buffer = ByteBuffer()
+    buffer.writeBytes(try event.encodedLine())
+    try await writer.write(buffer)
   }
 
   private func writeSidebarSections(
@@ -765,18 +766,6 @@ struct BootstrapStreamService {
         ]
       )
     }
-  }
-
-  private static func bootstrapEntry(_ item: AppViewEntryListItem) -> AppViewBootstrapEntryListItem {
-    AppViewBootstrapEntryListItem(
-      entryId: item.entryId,
-      title: item.title,
-      summary: item.summary,
-      publishedAt: item.publishedAt,
-      thumbnailUrl: item.thumbnailUrl,
-      thumbnailFallbackUrl: item.thumbnailFallbackUrl,
-      originalUrl: item.originalUrl
-    )
   }
 
   private struct ListsBootstrapEvent: Encodable {

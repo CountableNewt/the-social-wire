@@ -468,6 +468,15 @@ components:
         retryable:
           type: boolean
 
+    ArticleContentLabels:
+      type: array
+      description: Publisher-declared article self-labels for visual indicators only.
+      maxItems: 2
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ai-generated, sexual]
+
     EntryListItem:
       type: object
       required: [entryId, title, publishedAt, isRead]
@@ -494,6 +503,8 @@ components:
         publicationId:
           type: string
           description: Viewer-scoped canonical publication identity, present for aggregate feeds.
+        contentLabels:
+          $ref: '#/components/schemas/ArticleContentLabels'
         isRead:
           type: boolean
           default: false
@@ -514,6 +525,8 @@ components:
         thumbnailUrl:
           type: string
           format: uri
+        contentLabels:
+          $ref: '#/components/schemas/ArticleContentLabels'
         isRead:
           type: boolean
         contentHtml:
@@ -2216,6 +2229,7 @@ paths:
                   title: {type: string}
                   description: {type: string}
                   authorDid: {type: string}
+                  contentLabels: {$ref: '#/components/schemas/ArticleContentLabels'}
         '400': {description: Invalid HTTPS URL}
         '401': {description: Authentication Required}
         '404': {description: Verified Article Not Found}
@@ -3027,6 +3041,7 @@ paths:
         `{ publicationId, entries, cursor?, source, cachedAt?, expiresAt? }`, where `source` is
         `live_projection`, `projection_cache`, or `unavailable`. Cached pages always retain the
         original `cachedAt` and `expiresAt`; clients must reject cached payloads without both.
+        Entry objects retain optional publisher `contentLabels` for visual indicators.
         The `done.source` value is the least-current source emitted by the stream, so a cached or
         unavailable entries page cannot be reported as a wholly live bootstrap.
       tags: [AppView]

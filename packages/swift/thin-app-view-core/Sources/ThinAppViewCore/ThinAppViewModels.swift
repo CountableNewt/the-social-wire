@@ -9,6 +9,7 @@ public struct ContentRenderFields: Codable, Sendable, Equatable {
   public var contentHtml: String?
   /// Canonical article URL for RSS rows (used to collapse guid/link duplicate keys).
   public var articleUrl: String?
+  public var contentLabels: [String]?
 
   public init(
     title: String,
@@ -16,7 +17,8 @@ public struct ContentRenderFields: Codable, Sendable, Equatable {
     summary: String? = nil,
     thumbnailUrl: String? = nil,
     contentHtml: String? = nil,
-    articleUrl: String? = nil
+    articleUrl: String? = nil,
+    contentLabels: [String]? = nil
   ) {
     self.title = title
     self.publishedAt = publishedAt
@@ -24,6 +26,7 @@ public struct ContentRenderFields: Codable, Sendable, Equatable {
     self.thumbnailUrl = thumbnailUrl
     self.contentHtml = contentHtml
     self.articleUrl = articleUrl
+    self.contentLabels = contentLabels
   }
 }
 
@@ -176,6 +179,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
   public let publishedAt: Date
   public let thumbnailUrl: String?
   public let thumbnailFallbackUrl: String?
+  public let contentLabels: [String]?
   /// Canonical article HTTPS URL when indexed (RSS link, render `articleUrl`, etc.).
   public let originalUrl: String?
   /// Canonical viewer-scoped publication identity for aggregate-feed presentation.
@@ -192,6 +196,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
     publishedAt: Date,
     thumbnailUrl: String? = nil,
     thumbnailFallbackUrl: String? = nil,
+    contentLabels: [String]? = nil,
     originalUrl: String? = nil,
     publicationId: String? = nil,
     feedPositionAt: Date? = nil,
@@ -203,6 +208,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
     self.publishedAt = publishedAt
     self.thumbnailUrl = thumbnailUrl
     self.thumbnailFallbackUrl = thumbnailFallbackUrl
+    self.contentLabels = contentLabels
     self.originalUrl = originalUrl
     self.publicationId = publicationId
     self.feedPositionAt = feedPositionAt ?? publishedAt
@@ -217,6 +223,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
       publishedAt: publishedAt,
       thumbnailUrl: thumbnailUrl,
       thumbnailFallbackUrl: thumbnailFallbackUrl,
+      contentLabels: contentLabels,
       originalUrl: originalUrl,
       publicationId: publicationId,
       feedPositionAt: feedPositionAt,
@@ -232,6 +239,7 @@ public struct AppViewEntryListItem: Codable, Sendable {
       publishedAt: publishedAt,
       thumbnailUrl: thumbnailUrl,
       thumbnailFallbackUrl: thumbnailFallbackUrl,
+      contentLabels: contentLabels,
       originalUrl: originalUrl,
       publicationId: publicationId,
       feedPositionAt: feedPositionAt,

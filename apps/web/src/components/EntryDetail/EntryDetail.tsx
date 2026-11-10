@@ -1,5 +1,6 @@
 "use client";
 
+import { ArticleContentLabels } from "@/components/shared/ArticleContentLabels";
 import { useMemo } from "react";
 import { ExternalLink } from "lucide-react";
 import { ArticleContent } from "@/components/EntryDetail/ArticleContent";
@@ -80,6 +81,7 @@ export function EntryDetail({ entryId }: EntryDetailProps) {
           showEmbed && "flex-1"
         )}
       >
+        <ArticleContentLabels contentLabels={entry.contentLabels} />
         {canonicalArticleHref && !showEmbed ? (
           <div className="mt-3 flex flex-wrap sm:mt-4">
             <a

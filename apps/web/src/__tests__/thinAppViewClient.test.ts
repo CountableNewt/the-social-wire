@@ -170,6 +170,18 @@ describe("thinAppViewClient", () => {
     expect(fetchHandler).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["publication", "aggregate", "detail"] as const)("preserves recognized content labels through the %s mapping without changing legacy responses", async kind => {
+    const api = await import("@/lib/thinAppViewClient");
+    for (const contentLabels of [undefined, ["sexual", "ai-generated", "unknown", "sexual"]]) {
+      const row = { entryId: "at://did:plc:publisher/site.standard.document/one", title: "Visible Story", contentHtml: "<p>Visible</p>", publishedAt: "2026-11-09", isRead: false, ...(contentLabels ? { contentLabels } : {}) };
+      const oauthSession = gatewayOAuthSession(mock(async () => Response.json(kind === "detail" ? row : { entries: [row] })));
+      const entry = kind === "detail" ? await api.getEntryFromAppView(oauthSession, row.entryId) : (kind === "aggregate" ? await api.listAggregateFeedFromAppView({ feed: { kind: "subscribed" }, oauthSession }) : await api.listEntriesFromAppView({ publicationKey: "publisher", appViewScope: { authorDid: "did:plc:publisher", publicationAtUri: null, publicationScopeAtUris: [], publicationSiteUrls: [] }, oauthSession })).entries[0];
+      expect(entry?.title).toBe("Visible Story");
+      if (contentLabels) expect(entry?.contentLabels).toEqual(["ai-generated", "sexual"]);
+      else expect(entry).not.toHaveProperty("contentLabels");
+    }
+  });
+
   it("writeThroughReadMark posts subjectUri and readAt", async () => {
     const fetchHandler = mock(async (url: string, init?: RequestInit) => {
       expect(url).toBe(
