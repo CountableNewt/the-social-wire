@@ -30,6 +30,7 @@ jobs:
       appview: ${{ steps.filter.outputs.appview }}
       reuse_web: ${{ steps.reuse.outputs.reuse_web }}
       reuse_appview: ${{ steps.reuse.outputs.reuse_appview }}
+      cache_run_id: ${{ steps.reuse.outputs.cache_run_id }}
     permissions:
       contents: read
       pull-requests: read
@@ -100,6 +101,20 @@ jobs:
         env:
           CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
+      # PR caches live under refs/pull/*/merge. Carry the verified cache to the
+      # eventual base-branch push instead of compiling the same tree again.
+      - name: Publish verified web build layers
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-cache-web
+          path: ${{ runner.temp }}/docker-cache
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
+
   appview:
     name: SQLite AppView
     needs: changes
@@ -124,6 +139,62 @@ jobs:
         run: bash scripts/ci/verify-runtime-images.sh appview
         env:
           CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
+
+      # PR caches live under refs/pull/*/merge. Carry the verified cache to the
+      # eventual base-branch push instead of compiling the same tree again.
+      - name: Publish verified appview build layers
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-cache-appview
+          path: ${{ runner.temp }}/docker-cache
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
+
+  warm_base_cache:
+    name: Warm Base Cache (${{ matrix.kind }})
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && (needs.changes.outputs.reuse_web == 'true' || needs.changes.outputs.reuse_appview == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Cache availability must never authorize or block required verification.
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: web
+            reuse: ${{ needs.changes.outputs.reuse_web }}
+          - kind: appview
+            reuse: ${{ needs.changes.outputs.reuse_appview }}
+    steps:
+      - uses: actions/checkout@v6
+        if: matrix.reuse == 'true'
+        with:
+          persist-credentials: false
+      - name: Download exact verified PR build layers
+        id: download
+        if: matrix.reuse == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: docker-cache-${{ matrix.kind }}
+          path: ${{ runner.temp }}/docker-cache
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.changes.outputs.cache_run_id }}
+      - name: Save verified layers in base-branch cache scope
+        if: matrix.reuse == 'true' && steps.download.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-${{ matrix.kind }}-v1-${{ matrix.kind == 'web' && hashFiles('apps/web/Dockerfile', 'bun.lock') || hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
 
   required:
     name: CI — Required

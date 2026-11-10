@@ -12,7 +12,7 @@ const backendImage = readFileSync(join(repositoryRoot, "services/appview/Dockerf
 
 describe("standalone reader CI", () => {
   it("requires only the two packaged runtime targets and path detection", () => {
-    expect(Object.keys(parsed.jobs)).toEqual(["changes", "web", "appview", "required"]);
+    expect(Object.keys(parsed.jobs)).toEqual(expect.arrayContaining(["changes", "web", "appview", "required", "warm_base_cache"]));
     expect(parsed.jobs.required.name).toBe("CI — Required");
     expect(parsed.jobs.required.needs).toEqual(["changes", "web", "appview"]);
     expect(parsed.jobs.required.if).toBe("always()");
@@ -45,6 +45,32 @@ describe("standalone reader CI", () => {
     }
   });
 
+  it("warms shared base-branch caches from exact PR proof without becoming a required gate", () => {
+    const warmer = parsed.jobs.warm_base_cache;
+    expect(warmer.needs).toBe("changes");
+    expect(warmer.if).toContain("github.event_name == 'push'");
+    expect(warmer.if).toContain("needs.changes.outputs.cache_run_id != ''");
+    expect(warmer["continue-on-error"]).toBe(true);
+    expect(warmer.permissions).toEqual({ contents: "read", actions: "read" });
+    expect(parsed.jobs.required.needs).not.toContain("warm_base_cache");
+    const download = warmer.steps.find((step: any) => step.uses === "actions/download-artifact@v8");
+    expect(download.with["run-id"]).toBe("${{ needs.changes.outputs.cache_run_id }}");
+    expect(download.with.repository).toBe("${{ github.repository }}");
+    const save = warmer.steps.find((step: any) => step.uses === "actions/cache/save@v5");
+    expect(save.if).toContain("steps.download.outcome == 'success'");
+    expect(save.with.path).toBe(download.with.path);
+    for (const kind of ["web", "appview"]) {
+      const steps = parsed.jobs[kind].steps;
+      const verify = steps.findIndex((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${kind}`);
+      const publish = steps.findIndex((step: any) => step.uses === "actions/upload-artifact@v7");
+      expect(publish).toBeGreaterThan(verify);
+      expect(steps[publish].with.name).toBe(`docker-cache-${kind}`);
+      expect(steps[publish].with.path).toBe(download.with.path);
+      expect(steps[publish].with["compression-level"]).toBe(0);
+      expect(steps[publish].with["retention-days"]).toBe(7);
+    }
+  });
+
   it("preserves read-only merge verification and Development-first promotion", () => {
     expect(parsed.permissions).toEqual({ contents: "read" });
     expect(parsed.on).toHaveProperty("pull_request");
@@ -74,10 +100,17 @@ describe("standalone reader CI", () => {
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
     expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
-    expect(backendImage).toContain("FROM builder AS backend-tests");
+    expect(backendImage).toContain("FROM test-dependencies AS backend-tests");
+    expect(backendImage).toContain("COPY --from=builder /out/bin/AppView /tmp/production-AppView");
     expect(backendImage).toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
     expect(backendImage).toContain("swift test --package-path services/appview -c release --force-resolved-versions");
-    expect(backendImage).toContain("swift test --package-path packages/swift/thin-app-view-core");
+    expect(backendImage).not.toContain("swift test --package-path packages/swift/thin-app-view-core");
+    expect(backendImage).toContain("python3 scripts/ci/prepare-swift-tests.py /src");
+    expect(backendImage).toContain("swift build --package-path services/appview -c release --build-tests");
+    expect(backendImage).toContain("RUN rm -rf services/appview/Sources");
+    expect(backendImage.indexOf("AS swift-dependencies")).toBeLessThan(backendImage.indexOf("COPY services/appview/Sources"));
+    expect(backendImage.indexOf("AS test-dependencies")).toBeLessThan(backendImage.indexOf("COPY services/appview/Tests"));
+    expect(backendImage).not.toContain("-enable-testing");
     expect(backendImage).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
     expect(backendImage).toContain("BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite");
     expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/readyz', '503')");
