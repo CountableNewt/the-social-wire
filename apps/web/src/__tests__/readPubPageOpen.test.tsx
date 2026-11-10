@@ -159,6 +159,7 @@ const renderEntryList = ({
     isEntryRead,
     markEntryRead,
     markEntryUnread,
+    selectedEntryId,
   }: {
     onSelectEntry: (entryId: string, entry?: EntryListItem) => void;
     resolvingEntryId?: string | null;
@@ -168,10 +169,13 @@ const renderEntryList = ({
     isEntryRead?: (entryId: string) => boolean;
     markEntryRead?: (entryId: string) => void;
     markEntryUnread?: (entryId: string) => void;
+    selectedEntryId?: string | null;
   }) => (
     <button
       type="button"
       data-testid="entry-row"
+      data-entry-id={renderedEntry.entryId}
+      aria-pressed={selectedEntryId === renderedEntry.entryId}
       aria-busy={resolvingEntryId === renderedEntry.entryId || undefined}
       onClick={() => onSelectEntry(renderedEntry.entryId, renderedEntry)}
       ref={() => {
@@ -373,6 +377,7 @@ describe("deferred article read state", () => {
     try {
       const page = renderPage();
       act(() => screen.getByTestId("entry-row").click());
+      expect(screen.getByTestId("entry-row").getAttribute("aria-pressed")).toBe("true");
       act(() => { window.dispatchEvent(new window.Event("blur")); window.dispatchEvent(new window.Event("focus")); document.dispatchEvent(new window.Event("visibilitychange")); });
       expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
       act(() => screen.getByTestId("entry-row").click());
@@ -381,6 +386,20 @@ describe("deferred article read state", () => {
       act(() => screen.getByTestId("entry-row").click());
       expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(true);
       expect(renderedEntryListProps.isEntryRead!(second.entryId)).toBe(false);
+      page.unmount();
+    } finally { restore(); }
+  });
+  it("keeps the opened card highlighted until a click outside marks it read", async () => {
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      expect(screen.getByTestId("entry-row").getAttribute("aria-pressed")).toBe("true");
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+      await act(async () => document.body.click());
+      expect(screen.getByTestId("entry-row").getAttribute("aria-pressed")).toBe("false");
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(true);
       page.unmount();
     } finally { restore(); }
   });

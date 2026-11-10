@@ -47,15 +47,17 @@ beforeEach(() => {
   restores.push(...[auth, router, publications, get, save, sync].map(spy => () => spy.mockRestore()));
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-async function show() {
+async function show(ownerEntryId?: string) {
   let view!: ReturnType<typeof render>;
-  await act(async () => { view = render(<QueryClientProvider client={client}><SendArticleToDraftDialog url="https://publisher.test/article" close={closes} /></QueryClientProvider>); });
+  await act(async () => { view = render(<QueryClientProvider client={client}><SendArticleToDraftDialog url="https://publisher.test/article" close={closes} ownerEntryId={ownerEntryId} /></QueryClientProvider>); });
   await screen.findByRole("option", { name: "Second Publication" });
   return view;
 }
 describe("Send to Draft", () => {
   it("chooses a publication and opens a new private draft containing the article URL", async () => {
-    await show();
+    const sourceEntryId = "at://did:plc:author/site.standard.document/source";
+    await show(sourceEntryId);
+    expect(screen.getByRole("dialog").getAttribute("data-entry-owner")).toBe(sourceEntryId);
     expect(screen.getByRole("button", { name: "Create Draft" }).hasAttribute("disabled")).toBe(true);
     expect((screen.getByRole("option", { name: /pckt Blog/ }) as HTMLOptionElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Draft Publication"), { target: { value: second.uri } });

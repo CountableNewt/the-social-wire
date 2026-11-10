@@ -229,6 +229,7 @@ export function ArticleSocialToolbar({
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger> : null}
           <DropdownMenuContent
+            data-entry-owner={entry.entryId}
             align="end"
             className="min-w-64 [&_[data-slot=dropdown-menu-item]]:whitespace-nowrap"
           >
@@ -536,7 +537,7 @@ export function ArticleSocialToolbar({
 
       {entry.financeItem && hasLinkedPost && quoteMutation ? <Button type="button" size="sm" variant="outline" onClick={() => { handlePostOpenChange(true); setQuotePost(true); quoteMutation.reset(); }}>Quote</Button> : null}
       <Dialog open={repostOpen} onOpenChange={handleRepostOpenChange}>
-        <DialogContent showCloseButton className="sm:max-w-md">
+        <DialogContent data-entry-owner={entry.entryId} showCloseButton className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Repost This Article?</DialogTitle>
             <DialogDescription>
@@ -571,7 +572,7 @@ export function ArticleSocialToolbar({
       </Dialog>
 
       <Dialog open={replyOpen} onOpenChange={handleReplyOpenChange}>
-        <DialogContent showCloseButton className="sm:max-w-lg">
+        <DialogContent data-entry-owner={entry.entryId} showCloseButton className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Reply</DialogTitle>
             <DialogDescription>
@@ -616,7 +617,7 @@ export function ArticleSocialToolbar({
       </Dialog>
 
       <Dialog open={postOpen} onOpenChange={handlePostOpenChange}>
-        <DialogContent showCloseButton className="sm:max-w-lg">
+        <DialogContent data-entry-owner={entry.entryId} showCloseButton className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{quotePost ? "Quote" : "Post"}</DialogTitle>
             <DialogDescription>
@@ -663,7 +664,7 @@ export function ArticleSocialToolbar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {draftOpen && canonUrl && session ? <SendArticleToDraftDialog key={session.did} url={canonUrl} close={() => setDraftOpen(false)} /> : null}
+      {draftOpen && canonUrl && session ? <SendArticleToDraftDialog key={session.did} url={canonUrl} ownerEntryId={entry.entryId} close={() => setDraftOpen(false)} /> : null}
     </>
   );
 }
