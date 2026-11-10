@@ -1,12 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import { RssArticleReaderDialog } from "@/components/EntryDetail/RssArticleReaderDialog";
 import { DevRecordKindBadge } from "@/components/shared/DevRecordKindBadge";
 import { useReadRoute } from "@/contexts/ReadRouteContext";
-import { OUTBOUND_WINDOW_FEATURES } from "@/lib/outboundLinks";
 import { recordKindFromPubId } from "@/lib/recordKindDebug";
 import { entryOpenTarget, type EntryOpenTarget } from "@/lib/entryOpenTarget";
 import { resolveEntryOpenUrlFromPds } from "@/lib/resolveEntryOpenUrl";
@@ -14,6 +13,7 @@ import type { EntryListItem } from "@/lib/atprotoClient";
 import type { AggregateAppViewFeed } from "@/lib/thinAppViewClient";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeferredArticleRead } from "@/hooks/useDeferredArticleRead";
 import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
 import { cn } from "@/lib/utils";
 
@@ -57,18 +57,31 @@ export default function ReadPubPage({
 }) {
   const wireNewsEditionEnabled = wireFeed && isWireNewsEditionEnabled();
   const editorialFeed = wireFeed || circleFeed;
-  const [rssReaderEntry, setRssReaderEntry] = useState<{
+  const [rssReaderSelection, setRssReaderEntry] = useState<{
     entryId: string;
     title: string;
     url: string;
+    viewerKey: string;
+    scope: string;
   } | null>(null);
-  const [resolvingEntryId, setResolvingEntryId] = useState<string | null>(null);
+  const [resolvingSelection, setResolvingSelection] = useState<{ entryId: string; viewerKey: string; scope: string } | null>(null);
   const [openFailureMessage, setOpenFailureMessage] = useState<string | null>(
     null,
   );
   const publicationKind = pubId ? recordKindFromPubId(pubId) : null;
   const { preferences } = useFeedDisplayPreferences();
-  const { getOAuthSession } = useAuth();
+  const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
+  const viewerKey = `${session?.did ?? "public"}:${oauthSessionReloadSeq ?? 0}`;
+  const scope = JSON.stringify([pubId, aggregateFeed, wireFeed, circleFeed]);
+  const rssReaderEntry = rssReaderSelection?.viewerKey === viewerKey && rssReaderSelection.scope === scope ? rssReaderSelection : null;
+  const resolvingEntryId = resolvingSelection?.viewerKey === viewerKey && resolvingSelection.scope === scope ? resolvingSelection.entryId : null;
+  const setResolvingEntryId = useCallback((entryId: string | null) => setResolvingSelection(entryId ? { entryId, viewerKey, scope } : null), [scope, viewerKey]);
+  const openContext = useRef({ viewerKey, scope, intent: 0, mounted: true });
+  useLayoutEffect(() => { openContext.current = { viewerKey, scope, intent: openContext.current.intent + 1, mounted: true }; }, [viewerKey, scope]);
+  useEffect(() => {
+    openContext.current.mounted = true;
+    return () => { openContext.current.mounted = false; openContext.current.intent++; };
+  }, []);
   const {
     markEntryRead,
     markEntryUnread,
@@ -86,10 +99,19 @@ export default function ReadPubPage({
     (entryId: string) => markEntryRead(entryId, markOptions),
     [markEntryRead, markOptions]
   );
+  const { open: deferRead, finish: finishReading, cancel: cancelDeferredRead } = useDeferredArticleRead({ scope, viewerKey, markRead: markEntryReadForPub });
+  const deferEntryRead = useCallback((entryId: string) => {
+    const oauth = getOAuthSession();
+    deferRead(entryId, () => getOAuthSession() === oauth);
+  }, [deferRead, getOAuthSession]);
+  const markEntryReadExplicitly = useCallback((entryId: string) => {
+    cancelDeferredRead(entryId);
+    markEntryReadForPub(entryId);
+  }, [cancelDeferredRead, markEntryReadForPub]);
 
   const markEntryUnreadForPub = useCallback(
-    (entryId: string) => markEntryUnread(entryId, markOptions),
-    [markEntryUnread, markOptions]
+    (entryId: string) => { cancelDeferredRead(entryId); markEntryUnread(entryId, markOptions); },
+    [cancelDeferredRead, markEntryUnread, markOptions]
   );
 
   const openEntryTarget = useCallback(
@@ -101,38 +123,33 @@ export default function ReadPubPage({
     ) => {
       if (target.kind === "rssReader") {
         pendingTab?.close();
-        if (
-          !editorialFeed &&
-          articleListFilter === "unread" &&
-          rssReaderEntry &&
-          rssReaderEntry.entryId !== entryId
-        ) {
-          markEntryReadForPub(rssReaderEntry.entryId);
-        }
+        if (!editorialFeed) deferEntryRead(entryId);
         setRssReaderEntry({
           entryId,
           title: entry.title ?? "RSS Article",
           url: target.url,
+          viewerKey,
+          scope,
         });
-        if (!editorialFeed && articleListFilter !== "unread") {
-          markEntryReadForPub(entryId);
-        }
         return;
       }
 
-      if (!editorialFeed) markEntryReadForPub(entryId);
-      if (pendingTab) {
-        pendingTab.location.href = target.url;
-        return;
-      }
-      window.open(target.url, "_blank", OUTBOUND_WINDOW_FEATURES);
+      const tab = pendingTab === undefined ? window.open("", "_blank") : pendingTab;
+      if (!tab || tab.closed) { setOpenFailureMessage("Allow Pop-Ups to Open This Article."); return; }
+      tab.opener = null;
+      tab.location.href = target.url;
+      if (!editorialFeed) deferEntryRead(entryId);
     },
-    [articleListFilter, editorialFeed, markEntryReadForPub, rssReaderEntry],
+    [deferEntryRead, editorialFeed, scope, viewerKey],
   );
 
   const handleSelectEntry = useCallback(
     (entryId: string, entry?: EntryListItem) => {
       if (!entry) return;
+      const context = openContext.current;
+      const intent = ++context.intent;
+      const oauth = getOAuthSession();
+      setResolvingEntryId(null);
       setOpenFailureMessage(null);
       const target = entryOpenTarget(entry, preferences.rssArticleOpenMode);
       if (target) {
@@ -153,11 +170,13 @@ export default function ReadPubPage({
         try {
           resolvedUrl = await resolveEntryOpenUrlFromPds(
             entryId,
-            getOAuthSession() ?? undefined,
+            oauth ?? undefined,
           );
         } finally {
-          setResolvingEntryId(null);
+          if (openContext.current === context && context.mounted && context.intent === intent) setResolvingEntryId(null);
         }
+
+        if (openContext.current !== context || !context.mounted || context.intent !== intent || getOAuthSession() !== oauth) { pendingTab?.close(); return; }
 
         const resolvedTarget = resolvedUrl
           ? entryOpenTarget(
@@ -177,15 +196,14 @@ export default function ReadPubPage({
       getOAuthSession,
       openEntryTarget,
       preferences.rssArticleOpenMode,
+      setResolvingEntryId,
     ],
   );
 
   const closeRssReader = useCallback(() => {
-    if (!editorialFeed && articleListFilter === "unread" && rssReaderEntry) {
-      markEntryReadForPub(rssReaderEntry.entryId);
-    }
+    if (!editorialFeed) finishReading();
     setRssReaderEntry(null);
-  }, [articleListFilter, editorialFeed, markEntryReadForPub, rssReaderEntry]);
+  }, [editorialFeed, finishReading]);
 
   return (
     <>
@@ -238,7 +256,7 @@ export default function ReadPubPage({
               readIndicatorsEnabled={!editorialFeed}
               articleFilter={editorialFeed ? "all" : articleListFilter}
               markEntryRead={
-                editorialFeed ? ignoreTheWireReadState : markEntryReadForPub
+                editorialFeed ? ignoreTheWireReadState : markEntryReadExplicitly
               }
               markEntryUnread={
                 editorialFeed ? ignoreTheWireReadState : markEntryUnreadForPub

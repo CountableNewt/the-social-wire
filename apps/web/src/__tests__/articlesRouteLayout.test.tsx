@@ -37,8 +37,18 @@ beforeEach(() => {
   restores.push(...[auth, router, publications, read, sidebar, workspace].map(spy => () => spy.mockRestore()));
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
-async function show() { await act(async () => { render(<ArticlesLayout><ArticlesPage /></ArticlesLayout>); }); }
+async function show(draft?: string | string[]) { const page = await ArticlesPage({ searchParams: Promise.resolve({ draft }) }); await act(async () => { render(<ArticlesLayout>{page}</ArticlesLayout>); }); }
 describe("Articles route", () => {
+  it("passes a requested draft to the article editor", async () => {
+    const workspace = spyOn(Workspace, "ArticlesWorkspace").mockImplementation(({ initialDraftId } = {}) => <section aria-label="Article Workspace">{initialDraftId}</section>); restores.push(() => workspace.mockRestore());
+    await show("new-draft-id");
+    expect(screen.getByRole("region", { name: "Article Workspace" }).textContent).toBe("new-draft-id");
+  });
+  it("ignores ambiguous repeated draft parameters", async () => {
+    const workspace = spyOn(Workspace, "ArticlesWorkspace").mockImplementation(({ initialDraftId } = {}) => <section aria-label="Article Workspace">{initialDraftId || "No Requested Draft"}</section>); restores.push(() => workspace.mockRestore());
+    await show(["first", "second"]);
+    expect(screen.getByText("No Requested Draft")).toBeTruthy();
+  });
   it("waits for auth hydration before showing private drafts or redirecting", async () => {
     loading = true; signedIn = false;
     await show();

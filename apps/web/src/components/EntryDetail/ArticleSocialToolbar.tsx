@@ -7,6 +7,7 @@ import {
   BookmarkPlus,
   Check,
   Heart,
+  FilePenLine,
   Link2,
   MoreHorizontal,
   Reply,
@@ -46,6 +47,7 @@ import { outboundLinkProps } from "@/lib/outboundLinks";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { financeCashtags, insertFinanceCashtag, recordFinanceComposition } from "@/lib/financeFeedClient";
+import { SendArticleToDraftDialog } from "@/components/Articles/SendArticleToDraftDialog";
 
 function shareArticleUrl(entry: EntryDetail): string {
   const canon = canonicalArticleHttpsUrl(entry);
@@ -104,9 +106,10 @@ export function ArticleSocialToolbar({
   const [quotePost, setQuotePost] = useState(false);
   const [postText, setPostText] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [draftOpen, setDraftOpen] = useState(false);
   const mountedRef = useRef(false);
   const selectedTagsRef = useRef(new Set<string>());
-  const { getOAuthSession } = useAuth();
+  const { session, getOAuthSession } = useAuth();
   const recordComposition = (event: "impression"|"selection"|"removal"|"published") => { const oauth = getOAuthSession(); const count = financeCashtags(entry?.financeItem).length; if (oauth && count) void recordFinanceComposition(oauth, event, count).catch(() => undefined); };
 
   useEffect(() => {
@@ -266,6 +269,7 @@ export function ArticleSocialToolbar({
                 Post
               </DropdownMenuItem>
             ) : null}
+            {canonUrl && session ? <DropdownMenuItem onClick={() => setDraftOpen(true)}><FilePenLine />Send to Draft</DropdownMenuItem> : null}
             {standardSiteRecommendation.applicable ? (
               <DropdownMenuItem
                 disabled={
@@ -659,6 +663,7 @@ export function ArticleSocialToolbar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {draftOpen && canonUrl && session ? <SendArticleToDraftDialog key={session.did} url={canonUrl} close={() => setDraftOpen(false)} /> : null}
     </>
   );
 }

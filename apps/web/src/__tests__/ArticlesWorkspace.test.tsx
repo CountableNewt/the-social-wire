@@ -30,6 +30,7 @@ let publishedRows: PublishedArticle[];
 const scheduleArticle = mock(async (_input: unknown, _time: string): Promise<unknown> => { void _input; void _time; return {}; });
 const persist = mock(async () => {});
 const createDraft = mock(async (_publicationUri?: string) => { void _publicationUri; return storedDraft; });
+const selectDraft = mock(async (_id: string) => { void _id; });
 const restores: (() => void)[] = [];
 const originalRAF = Object.getOwnPropertyDescriptor(globalThis, "requestAnimationFrame");
 const originalCancelRAF = Object.getOwnPropertyDescriptor(globalThis, "cancelAnimationFrame");
@@ -53,6 +54,7 @@ beforeEach(() => {
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storedDraft = seed;
   createDraft.mockClear();
+  selectDraft.mockClear();
   storageError = undefined; persist.mockReset(); persist.mockResolvedValue(undefined);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const research = spyOn(Semble, "useSembleCollections").mockReturnValue({ collections: [], isPending: false, error: null, hasNextPage: false } as unknown as ReturnType<typeof Semble.useSembleCollections>); restores.push(() => research.mockRestore());
@@ -60,7 +62,7 @@ beforeEach(() => {
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(() => { storedDraft = seed; return seed; });
     const [syncing, setSyncing] = useState(false);
-    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: async () => {}, create: createDraft, remove: async () => {} };
+    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: selectDraft, create: createDraft, remove: async () => {} };
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
   const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => storedDraft); restores.push(() => stored.mockRestore());
@@ -81,6 +83,26 @@ function publishingSpy() {
   return publish;
 }
 describe("article publishing workspace", () => {
+  it("opens a requested private draft directly without creating or publishing another article", async () => {
+    const publish = publishingSpy();
+    await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace initialDraftId={seed.id} /></SidebarProvider></QueryClientProvider>); });
+    expect(await screen.findByLabelText("Article Title")).toBeTruthy();
+    expect(selectDraft).toHaveBeenCalledWith(seed.id);
+    expect(selectDraft).toHaveBeenCalledTimes(1);
+    expect(createDraft).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Article Title") as HTMLInputElement).value).toBe(seed.title);
+  });
+  it("retries opening a requested draft after a transient selection failure", async () => {
+    selectDraft.mockRejectedValueOnce(new Error("Draft Storage Is Temporarily Unavailable"));
+    await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace initialDraftId={seed.id} /></SidebarProvider></QueryClientProvider>); });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByLabelText("Article Title")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByLabelText("Article Title")).toBeTruthy();
+    expect(selectDraft).toHaveBeenCalledTimes(2);
+    expect(createDraft).not.toHaveBeenCalled();
+  });
   it("keeps pckt visible but disabled and creates drafts for the first supported blog", async () => {
     const pckt = { ...publications[0]!, uri: `at://${did}/site.standard.publication/pckt`, name: "My pckt Blog", host: "pckt" as const, url: "https://mine.pckt.blog" };
     const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue([pckt, ...publications]); restores.push(() => pubs.mockRestore());
