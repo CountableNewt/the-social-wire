@@ -24,7 +24,8 @@ struct ThinAppViewEntryDetailTests {
   private func indexDocument(
     into store: SQLiteThinAppViewStore,
     entryId: String,
-    articleUrl: String?
+    articleUrl: String?,
+    contentLabels: [String]? = nil
   ) async throws {
     let now = Date()
     try await store.upsertContentItem(
@@ -39,7 +40,8 @@ struct ThinAppViewEntryDetailTests {
         render: ContentRenderFields(
           title: "Standard site article",
           publishedAt: ISO8601DateFormatter().string(from: now),
-          articleUrl: articleUrl
+          articleUrl: articleUrl,
+          contentLabels: contentLabels
         ),
         expiresAt: now.addingTimeInterval(3600)
       )
@@ -69,7 +71,8 @@ struct ThinAppViewEntryDetailTests {
     try await indexDocument(
       into: store,
       entryId: entryId,
-      articleUrl: "https://example.com/posts/hello"
+      articleUrl: "https://example.com/posts/hello",
+      contentLabels: ["ai-generated", "sexual"]
     )
 
     let detail = try await service.entryDetail(
@@ -82,6 +85,7 @@ struct ThinAppViewEntryDetailTests {
     )
 
     #expect(detail.entryId == entryId)
+    #expect(detail.contentLabels == ["ai-generated", "sexual"])
     #expect(detail.originalUrl == "https://example.com/posts/hello")
   }
 

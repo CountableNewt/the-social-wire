@@ -230,3 +230,36 @@ test("does not submit an article after the account changes during preparation", 
 let previousSchedulingFlag: string | undefined;
 beforeEach(() => { previousSchedulingFlag = process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true"; });
 afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING; else process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = previousSchedulingFlag; });
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("blocks brand scheduling while preserving personal scheduling when brands are disabled", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  const create = spyOn(Client, "createSkejSchedule").mockResolvedValue({} as Client.SkejScheduleSummary); restores.push(() => create.mockRestore());
+  const { result, rerender } = renderHook(({ actor }) => useSkejScheduling(owner, actor, { includeSchedules: false }), { initialProps: { actor: brand }, wrapper });
+  expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
+  expect(Sessions.restoreBrandAccount).not.toHaveBeenCalled();
+  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Brand Accounts Are Not Available"); });
+  expect(create).not.toHaveBeenCalled();
+  rerender({ actor: owner });
+  await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
+  await act(async () => { await result.current.schedule("Personal", "2099-01-01T12:00:00Z"); });
+  expect(create.mock.calls[0][0].session.did).toBe(owner);
+  expect(Sessions.restoreBrandAccount).not.toHaveBeenCalled();
+});
+test("revokes captured brand scheduling guards when the feature is disabled", async () => {
+  const { result, rerender } = renderHook(() => useSkejScheduling(owner, brand, { includeSchedules: false }), { wrapper });
+  await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
+  const actor = (Client.getSkejSchedulingReadiness as typeof Client.getSkejSchedulingReadiness & { mock: { calls: [Parameters<typeof Client.getSkejSchedulingReadiness>[0]][] } }).mock.calls[0][0];
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  expect(() => actor.assertCurrentActor()).toThrow("Brand Accounts Are Not Available");
+  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Brand Accounts Are Not Available"); });
+  rerender();
+  expect(result.current.readiness.data).toBeUndefined();
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+  rerender();
+  expect(() => actor.assertCurrentActor()).toThrow("Your Account Changed");
+});

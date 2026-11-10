@@ -8,6 +8,7 @@ import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 import { getAtprotoNetwork } from "@/lib/atprotoNetwork";
+import { documentContentLabels } from "@/lib/articleContentLabels";
 import { normalizeAppViewPublishedAt } from "@/lib/appViewPublishedAt";
 
 import {
@@ -65,6 +66,8 @@ export interface DiscoveredPublication {
 }
 
 export interface EntryListItem {
+  /** Recognized publisher self-labels; presentation only, never a content filter. */
+  contentLabels?: string[];
   sportsItem?: import("@/lib/sportsFeedClient").SportsItem;
   financeItem?: import("@/lib/financeFeedClient").FinanceItem;
   /** AT-URI of the entry record. */
@@ -143,6 +146,8 @@ export interface EntryListItem {
 }
 
 export interface EntryDetail {
+  /** Recognized publisher self-labels; presentation only, never a content filter. */
+  contentLabels?: string[];
   sportsItem?: import("@/lib/sportsFeedClient").SportsItem;
   financeItem?: import("@/lib/financeFeedClient").FinanceItem;
   entryId: string;
@@ -629,6 +634,7 @@ function slugFromPath(path: string): string | undefined {
  * Supports `site.standard.document`, `site.standard.entry`, and related shapes.
  */
 export function parseEntryValue(value: Record<string, unknown>): {
+  contentLabels?: string[];
   title: string;
   publishedAt: string;
   contentHtml: string;
@@ -638,9 +644,11 @@ export function parseEntryValue(value: Record<string, unknown>): {
   const str = (v: unknown): string | undefined =>
     typeof v === "string" ? v : undefined;
 
+  const contentLabels = documentContentLabels(value);
   const pathTitle = str(value.path) ? slugFromPath(str(value.path)!) : undefined;
 
   return {
+    ...(contentLabels ? { contentLabels } : {}),
     title:
       str(value.title) ??
       str(value.name) ??
@@ -1133,6 +1141,7 @@ async function recordsToListItems(
       return {
         entryId: record.uri,
         title: parsed.title,
+        ...(parsed.contentLabels ? { contentLabels: parsed.contentLabels } : {}),
         summary: parsed.summary,
         publishedAt: parsed.publishedAt,
         thumbnailUrl: thumbnails.thumbnailUrl,
@@ -1749,6 +1758,7 @@ export async function getEntry(
   return {
     entryId: normalizedEntryId,
     title: fields.title,
+    ...(fields.contentLabels ? { contentLabels: fields.contentLabels } : {}),
     publishedAt: fields.publishedAt,
     contentHtml: fields.contentHtml,
     originalUrl: fields.originalUrl

@@ -5,7 +5,7 @@ import { toolsEnabled } from "@/lib/toolsEnabled";
 import { config, proxy } from "@/proxy";
 
 const env: Record<string, string | undefined> = process.env;
-const keys = ["NEXT_PUBLIC_TOOLS_ENABLED", "NEXT_PUBLIC_APP_ENV", "APP_ENV", "NODE_ENV", "NEXT_PUBLIC_ENABLE_POST_SCHEDULING"] as const;
+const keys = ["NEXT_PUBLIC_TOOLS_ENABLED", "NEXT_PUBLIC_APP_ENV", "APP_ENV", "NODE_ENV", "NEXT_PUBLIC_ENABLE_POST_SCHEDULING", "NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED"] as const;
 const original = Object.fromEntries(keys.map(key => [key, env[key]]));
 afterEach(() => { for (const key of keys) { if (original[key] === undefined) delete env[key]; else env[key] = original[key]; } });
 
@@ -59,13 +59,15 @@ test("Production Tools requests return an uncached 404 while Development passes 
   expect(proxy(new NextRequest("https://thesocialwire.app/live-post")).status).toBe(404);
 });
 
-for (const path of ["/articles", "/articles/", "/articles/new", "/articles/draft/example", "/articles?_rsc=transition"]) test(`Articles bypasses the broad Tools flag at ${path}`, () => {
-  environment("prod");
-  process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
-  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
-  const response = proxy(new NextRequest("https://thesocialwire.app" + path));
-  expect(response.headers.get("x-middleware-next")).toBe("1");
-});
+for (const section of ["articles", "analytics"]) {
+  for (const suffix of ["", "/", "/new", "/draft/example", "?_rsc=transition"]) test(`${section} bypasses the broad Tools flag at /${section}${suffix}`, () => {
+    environment("prod");
+    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
+    delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+    const response = proxy(new NextRequest(`https://thesocialwire.app/${section}${suffix}`));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+}
 for (const section of ["content-calendar", "scheduling"]) test(`${section} requires both scheduling and Tools availability for direct and nested requests`, () => {
   for (const suffix of ["", "/", "/nested", "?_rsc=transition"]) {
     const request = new NextRequest(`https://thesocialwire.app/${section}${suffix}`);
@@ -83,11 +85,30 @@ for (const section of ["content-calendar", "scheduling"]) test(`${section} requi
     expect(proxy(request).status).toBe(404);
   }
 });
-for (const section of ["live-post", "livestream", "brand-accounts", "analytics"]) test(`${section} retains the deployment Tools gate`, () => {
+for (const section of ["live-post", "livestream"]) test(`${section} retains the deployment Tools gate`, () => {
   const request = new NextRequest(`https://thesocialwire.app/${section}/nested`);
   environment("prod");
   process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true";
   expect(proxy(request).status).toBe(404);
   process.env.NEXT_PUBLIC_TOOLS_ENABLED = "true";
   expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
+});
+
+
+test("Brand Accounts stays unavailable unless both its flag and Tools are enabled", () => {
+  environment("dev");
+  for (const suffix of ["", "/", "/nested", "?_rsc=transition"]) {
+    const request = new NextRequest(`https://thesocialwire.app/brand-accounts${suffix}`);
+    for (const flag of [undefined, "false", "", "TRUE", "1"]) {
+      if (flag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+      else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = flag;
+      const response = proxy(request);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    }
+    process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+    expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
+  }
+  process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
+  expect(proxy(new NextRequest("https://thesocialwire.app/brand-accounts")).status).toBe(404);
 });

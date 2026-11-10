@@ -8,13 +8,20 @@ import * as Mobile from "@/hooks/use-mobile";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AnalyticsPage from "@/app/analytics/page";
 import AnalyticsLayout from "@/app/analytics/layout";
-import type { AnalyticsSummary } from "@/lib/analytics/creatorAnalyticsClient";
+import type { BlueskyAnalyticsSummary } from "@/lib/analytics/blueskyAnalyticsClient";
 
 const restores: (() => void)[] = [];
 let brands: string[];
 let auth: ReturnType<typeof Auth.useAuth>;
 let state: ReturnType<typeof Analytics.useCreatorAnalytics>;
-const summary: AnalyticsSummary = { items: [], totals: { engagement: null, tracking: { impressions: 4, views: 2, outboundClicks: 1, ctr: 25 } }, series: [], coverage: { snapshotStart: null, inventoryComplete: false, trackingScope: "social-wire", platformImpressions: null, sampledAt: "2026-10-11T12:00:00Z", engagementKnownItems: 0, totalItems: 1, excludesSelf: true } };
+const report: BlueskyAnalyticsSummary = {
+  sampledAt: "2026-11-09T12:00:00Z", days: 30,
+  profile: { followers: 42, following: 5, posts: 10 },
+  activity: { posts: 3, replies: 1, postsPerDay: 0.1 },
+  topPosts: [{ uri: "at://did:plc:alice/app.bsky.feed.post/abc", title: "My Post", url: "https://bsky.app/post", publishedAt: "2026-11-08T12:00:00Z", engagement: { likes: 3, replies: 2, reposts: 1, quotes: 0 } }],
+  shares: [],
+  coverage: { feedComplete: true, feedAvailable: true, sharesComplete: false, sharesAvailable: true, articlesSearched: 0, feedPostsExamined: 4 },
+};
 beforeEach(() => {
   brands = [];
   const brandSpy = spyOn(Brands, "useBrandAccounts").mockImplementation(() => brands); restores.push(() => brandSpy.mockRestore());
@@ -24,51 +31,54 @@ beforeEach(() => {
   const media = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) });
   restores.push(() => { if (media) Object.defineProperty(window, "matchMedia", media); else Reflect.deleteProperty(window, "matchMedia"); });
-  state = { summary, items: [], query: { isPending: false, isFetching: false, error: null, hasNextPage: false, refetch: mock(async () => {}), fetchNextPage: mock(async () => {}) }, refresh: { error: null, isPending: false }, collect: mock(async () => {}) } as unknown as ReturnType<typeof Analytics.useCreatorAnalytics>;
+  state = { blueskyQuery: { data: report, isPending: false, isFetching: false, error: null, refetch: mock(async () => {}) }, refresh: { error: null, isPending: false }, collect: mock(async () => {}) } as unknown as ReturnType<typeof Analytics.useCreatorAnalytics>;
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
 function hook() { const value = spyOn(Analytics, "useCreatorAnalytics").mockImplementation(() => state); restores.push(() => value.mockRestore()); return value; }
 async function mount() { const spy = hook(); await act(async () => { render(<SidebarProvider><AnalyticsPage /></SidebarProvider>); }); return spy; }
 
-test("distinguishes unavailable platform counters from period tracking, refreshes and changes range", async () => {
+test("shows current AppView metrics without unsupported traffic, historical graphs or duplicate reports", async () => {
+  await mount();
+  expect(screen.getByRole("region", { name: "Bluesky Analytics" })).toBeTruthy();
+  expect(screen.getByText("42")).toBeTruthy();
+  expect(screen.getByText("Followers")).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Top Bluesky Posts" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Discovered Article Shares" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "My Post" }).getAttribute("href")).toContain("/social/post?");
+  for (const label of ["Combined Totals", "Social Wire Activity", "Social Wire Views", "Impressions", "Views", "Outbound Clicks", "Click-Through Rate", "CTR", "Content Performance", "Bluesky Like Snapshots", "Combined Social Wire Views"]) {
+    expect(screen.queryByText(label)).toBeNull();
+  }
+  expect(screen.queryByRole("img")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Show More" })).toBeNull();
+});
+
+test("refreshes the selected account and changes the AppView time range", async () => {
   const spy = await mount();
-  expect(screen.getByText(/These Are Not Gains During the Selected Period/)).toBeTruthy();
-  expect(screen.getAllByText("25.0%")).toHaveLength(2);
-  expect(screen.getAllByText("—")).toHaveLength(8);
-  expect(screen.getByText(/No Content Indexed Yet/)).toBeTruthy();
   fireEvent.change(screen.getByRole("combobox", { name: "Analytics Time Range" }), { target: { value: "7" } });
-  expect(spy.mock.calls.at(-1)?.[0]).toBe(7);
+  expect(spy.mock.calls.at(-1)).toEqual([7, "did:plc:alice"]);
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
   await waitFor(() => expect(state.collect).toHaveBeenCalledTimes(1));
 });
-test("opens posts internally, suppresses unsafe article links and pages content", async () => {
-  state = { ...state, items: [{ uri: "at://did:plc:alice/app.bsky.feed.post/abc", kind: "post", title: "My Post", url: "https://bsky.app/post", publishedAt: "2026-10-11T12:00:00Z", engagement: { likes: 3, replies: 2, reposts: 1, quotes: 0 }, tracking: summary.totals.tracking, refreshedAt: null }, { uri: "at://did:plc:alice/site.standard.document/abc", kind: "article", title: "Unsafe Article", url: "javascript:alert(1)", publishedAt: "", engagement: null, tracking: summary.totals.tracking, refreshedAt: null }], query: { ...state.query, hasNextPage: true } };
-  await mount();
-  expect(screen.getByRole("link", { name: "My Post" }).getAttribute("href")).toContain("/social/post?");
-  expect(screen.queryByRole("link", { name: "Unsafe Article" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Show More" }));
-  expect(state.query.fetchNextPage).toHaveBeenCalledTimes(1);
-});
-test("keeps coverage concise and initially limits content performance to ten rows", async () => {
-  state = { ...state, items: Array.from({ length: 15 }, (_, index) => ({ uri: `at://did:plc:alice/app.bsky.feed.post/${index}`, kind: "post" as const, title: `Post ${index}`, url: "", publishedAt: "", engagement: null, tracking: summary.totals.tracking, refreshedAt: null })) };
-  await mount();
-  expect(screen.getByRole("region", { name: "Analytics Coverage" }).textContent).toContain("Updated");
-  expect(screen.queryByText(/Outbound clicks require/)).toBeNull();
-  expect(screen.getAllByRole("link", { name: /^Post / })).toHaveLength(10);
-  fireEvent.click(screen.getByRole("button", { name: "Show More" }));
-  expect(screen.getAllByRole("link", { name: /^Post / })).toHaveLength(15);
-});
-test("displays loading, recoverable error and retry without fabricating an empty report", async () => {
-  state = { ...state, summary: undefined, query: { ...state.query, isPending: true } } as unknown as typeof state; hook();
+
+test("displays AppView loading and recoverable errors without inventing a report", async () => {
+  state = { ...state, blueskyQuery: { ...state.blueskyQuery, data: undefined, isPending: true } } as unknown as typeof state; hook();
   const view = render(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
-  expect(screen.getByRole("status").textContent).toBe("Loading Analytics…");
-  state = { ...state, query: { ...state.query, isPending: false, error: new Error("Provider Unavailable") } } as unknown as typeof state;
+  expect(screen.getByRole("status").textContent).toBe("Loading Bluesky Analytics…");
+  expect(screen.queryByText("Followers")).toBeNull();
+  state = { ...state, blueskyQuery: { ...state.blueskyQuery, isPending: false, error: new Error("Provider Unavailable") } } as unknown as typeof state;
   view.rerender(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
   expect(screen.getByRole("alert").textContent).toContain("Provider Unavailable");
-  fireEvent.click(screen.getByRole("button", { name: "Retry" })); expect(state.query.refetch).toHaveBeenCalledTimes(1);
-  expect(screen.queryByText("Social Wire Activity")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry Bluesky Analytics" })); expect(state.blueskyQuery.refetch).toHaveBeenCalledTimes(1);
 });
-test("the Analytics route waits for authentication and redirects signed-out viewers without rendering private children", async () => {
+
+test("keeps current AppView data visible if collecting article URLs fails", async () => {
+  state = { ...state, refresh: { ...state.refresh, error: new Error("Article Collection Unavailable") } } as unknown as typeof state;
+  await mount();
+  expect(screen.getByText("42")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("Article Collection Unavailable");
+});
+
+test("the Analytics route waits for authentication and redirects signed-out viewers without private children", async () => {
   const replace = mock<(path: string) => void>(() => {});
   const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace } as unknown as ReturnType<typeof Navigation.useRouter>); restores.push(() => router.mockRestore());
   auth = { ...auth, session: null, isLoading: true };
@@ -80,17 +90,32 @@ test("the Analytics route waits for authentication and redirects signed-out view
   render(<AnalyticsPage />); expect(screen.getByText("Log In to View Analytics.")).toBeTruthy();
 });
 
-test("selects brand accounts, shows per-account breakdowns and excludes deselected accounts from totals", async () => {
+test("selects brand account reports and removes deselected reports without combined totals", async () => {
   brands = ["did:plc:brand"];
   const spy = await mount();
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
   fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
-  await waitFor(() => expect(screen.getByText(/2 of 2 selected accounts loaded/)).toBeTruthy());
   expect(screen.getByRole("region", { name: "Analytics for did:plc:brand" })).toBeTruthy();
   expect(spy.mock.calls.some(args => args[1] === "did:plc:brand")).toBe(true);
   fireEvent.click(screen.getByRole("checkbox", { name: "Personal Account" }));
-  await waitFor(() => expect(screen.getByText(/1 of 1 selected accounts loaded/)).toBeTruthy());
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:alice" })).toBeNull();
+  expect(screen.queryByText("Combined Totals")).toBeNull();
   fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
   expect(screen.getByText("Select Accounts to View Analytics.")).toBeTruthy();
+});
+
+
+let previousBrandAccountsFlag: string | undefined;
+beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
+afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
+
+test("hides brand integrations and keeps personal Analytics when the flag is off", async () => {
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  brands = ["did:plc:brand"];
+  const spy = await mount();
+  expect(screen.queryByRole("link", { name: "Manage Brand Accounts" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Accounts" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Analytics for did:plc:alice" })).toBeTruthy();
+  expect(spy.mock.calls.every(([, did]) => did === "did:plc:alice")).toBe(true);
 });

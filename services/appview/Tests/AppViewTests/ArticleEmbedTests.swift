@@ -6,6 +6,17 @@ import Testing
 @testable import AppView
 
 @Suite struct ArticleEmbedTests {
+  @Test func retainsOnlyRecognizedDocumentLabelsWithoutHidingTheEmbed() async throws {
+    let reader = ArticleEmbedTestReader()
+    await reader.setLabels(["sexual", "unknown", "ai-generated", "sexual"])
+    let value = try await ArticleEmbedResolver(reader: reader).resolve("https://publisher.social/post")
+    #expect(value.title == "Article")
+    #expect(value.contentLabels == ["ai-generated", "sexual"])
+    #expect(try JSONDecoder().decode(ArticleEmbed.self, from: JSONEncoder().encode(value)).contentLabels == value.contentLabels)
+    let unlabelled = try await ArticleEmbedResolver(reader: ArticleEmbedTestReader()).resolve("https://publisher.social/post")
+    #expect(unlabelled.contentLabels == nil)
+  }
+
   @Test func headDiscoveryExcludesScriptsCommentsBodiesAndPublicationRecords() throws {
     let article = ArticleEmbedTestReader.article
     let publication = ArticleEmbedTestReader.publication

@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- Preserve publisher image formats. */
+import { ArticleContentLabels } from "@/components/shared/ArticleContentLabels";
 import type { ReactNode } from "react";
 import { BookOpen, Newspaper } from "lucide-react";
 import type { StandardSiteEmbed } from "@/lib/standardSiteEmbedClient";
@@ -12,6 +13,7 @@ export function StandardSiteArticleCard({ metadata, thumb, children, anchorUrl =
       {image ? <div data-social-feed-section={JSON.stringify([anchorUrl, "preview-image"])} className="relative h-48 w-full bg-muted sm:h-60"><img src={image} alt="" loading="lazy" referrerPolicy="no-referrer" className="absolute inset-0 h-full w-full object-contain" /></div> : null}
       <div data-social-feed-section={JSON.stringify([anchorUrl, "preview-body"])} className="space-y-2 p-3">
         <p className="text-sm font-semibold">{metadata.title}</p>
+        <ArticleContentLabels contentLabels={metadata.contentLabels} />
         {metadata.description ? <p className="line-clamp-3 text-sm text-muted-foreground">{metadata.description}</p> : null}
       </div>
     </a>

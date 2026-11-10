@@ -12,6 +12,20 @@ import ThinAppViewCore
 
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["ANALYTICS_TEST_DATABASE_URL"] != nil))
 struct AnalyticsPostgresTests {
+  @Test func articleInventoryIsOwnedFilteredAndNewestFirst() async throws {
+    try await fixture { store in
+      let now = Date()
+      let author = "did:plc:article-inventory-" + UUID().uuidString.lowercased()
+      let old = AnalyticsItem(uri: "at://\(author)/site.standard.document/old", kind: "article", title: "Old", url: "https://publisher.example/old", publishedAt: "2026-10-01T12:00:00Z", refreshedAt: now)
+      let recent = AnalyticsItem(uri: "at://\(author)/site.standard.document/recent", kind: "article", title: "Recent", url: "https://publisher.example/recent", publishedAt: "2026-11-01T12:00:00Z", refreshedAt: now)
+      let post = AnalyticsItem(uri: "at://\(author)/app.bsky.feed.post/post", kind: "post", title: "Post", url: "", publishedAt: "2026-11-09T12:00:00Z", refreshedAt: now)
+      try await store.save(author: author, items: [old, post, recent], complete: true, at: now)
+      let rows = try await store.articles(author: author)
+      #expect(rows.map(\.uri) == [recent.uri, old.uri])
+      #expect(try await store.articles(author: "did:plc:foreign").isEmpty)
+    }
+  }
+
   @Test func durableObservationBudgetAndDailyPseudonymRotation() async throws {
     try await fixture { store in
       let author = "did:plc:budget-" + UUID().uuidString.lowercased()

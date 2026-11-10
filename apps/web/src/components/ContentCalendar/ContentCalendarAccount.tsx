@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useSkejScheduling } from "@/hooks/useSkejScheduling";
 import type { SkejScheduleSummary } from "@/lib/skej/skejSchedulingClient";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,10 @@ import { localCalendarDate } from "./calendarDates";
 import { RescheduleDialog } from "./RescheduleDialog";
 
 export function ContentCalendarAccount({ ownerDid, actorDid }: { ownerDid: string; actorDid: string }) {
+  return actorDid === ownerDid || brandAccountsEnabled() ? <AvailableCalendarAccount key={`${ownerDid}:${actorDid}`} ownerDid={ownerDid} actorDid={actorDid} /> : null;
+}
+
+function AvailableCalendarAccount({ ownerDid, actorDid }: { ownerDid: string; actorDid: string }) {
   const scheduler = useSkejScheduling(ownerDid, actorDid);
   const [month, setMonth] = useState(() => new Date());
   const [day, setDay] = useState(() => localCalendarDate(new Date()));

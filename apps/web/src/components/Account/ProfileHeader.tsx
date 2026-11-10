@@ -7,8 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ViewerProfileSlice } from "@/hooks/useViewerProfile";
 import { socialHttpsUrl } from "@/components/Social/socialUrls";
 import type { ReactNode } from "react";
+import { ProfileLinks } from "./ProfileLinks";
+import { ProfileBio } from "./ProfileBio";
 
-export function ProfileHeader({ viewer, loading = false, onRetry, actions }: { viewer?: ViewerProfileSlice | null; loading?: boolean; onRetry: () => void; actions?: ReactNode }) {
+export function ProfileHeader({ viewer, loading = false, onRetry, actions, showLinks = true }: { viewer?: ViewerProfileSlice | null; loading?: boolean; onRetry: () => void; actions?: ReactNode; showLinks?: boolean }) {
   const name = viewer?.displayName?.trim() || viewer?.handle || "Your Profile";
   const banner = socialHttpsUrl(viewer?.banner);
   const counts = [
@@ -32,8 +34,9 @@ export function ProfileHeader({ viewer, loading = false, onRetry, actions }: { v
           <h2 id="profile-heading" className="break-words text-2xl font-bold"><ProfileDisplayName name={name} pronouns={viewer.pronouns} subject={viewer.handle ? viewer : undefined} wrap /></h2>
           {viewer.handle ? <p className="break-all text-sm text-muted-foreground">{viewer.handle.startsWith("did:") ? viewer.handle : `@${viewer.handle}`}</p> : null}
         </div>
-        {actions ? <div className="flex max-w-xl flex-col items-center gap-2 px-4">{actions}</div> : null}
-        {viewer.description ? <p className="max-w-xl whitespace-pre-line break-words px-4 text-sm leading-6">{viewer.description}</p> : null}
+        {actions ? <div className="flex w-full max-w-xl flex-col items-center justify-center gap-2 px-4 sm:flex-row sm:flex-wrap">{actions}</div> : null}
+        {viewer.description ? <ProfileBio did={viewer.did} text={viewer.description} /> : null}
+        {showLinks ? <ProfileLinks did={viewer.did} /> : null}
         <dl className="flex flex-wrap justify-center gap-x-6 gap-y-2 px-4 text-sm">
           {counts.filter(count => count.value !== undefined).map(count => <div key={count.label} className="flex gap-1.5">
             <dt className="order-2 text-muted-foreground">{count.label}</dt><dd className="order-1 font-semibold">{count.value?.toLocaleString()}</dd>

@@ -1,9 +1,10 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const canonical = 'https://github.com/Stygian-Tech/the-social-wire';
+const canonical = 'https://github.com/CountableNewt/the-social-wire';
 const shaPattern = /^[a-f0-9]{40}$/;
 const credentials = ['RAILWAY_TOKEN', 'RAILWAY_API_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN'];
 
@@ -43,14 +44,38 @@ export function run(command, args, { environment = process.env, capture = false,
 
 function git(args) { return execFileSync('git', args, { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 }).trim(); }
 
-function build(context, kind, target) {
+export function build(context, kind, target, { execute = run, environment = process.env } = {}) {
   const reference = imageReference(context.sha, kind);
-  const args = ['build', '--platform', 'linux/amd64', '--file', kind === 'appview' ? 'services/appview/Dockerfile.standalone' : 'apps/web/Dockerfile', '--tag', target ? `${reference}-verify` : reference,
+  const cacheRoot = environment.CI_DOCKER_CACHE_DIR ? resolve(environment.CI_DOCKER_CACHE_DIR) : undefined;
+  if (cacheRoot && /[,\r\n]/.test(cacheRoot)) throw new Error('Docker cache directory cannot contain commas or newlines.');
+  const cache = cacheRoot && resolve(cacheRoot, kind);
+  const nextCache = cacheRoot && resolve(cacheRoot, `${kind}-next`);
+  // Export once per image kind, retaining intermediate compilation layers without
+  // accumulating the unreferenced blobs in BuildKit's previous local exports.
+  const exportCache = cacheRoot && ((kind === 'appview' && target === 'backend-tests') || (kind === 'web' && !target));
+  const args = [...(cacheRoot ? ['buildx', 'build', '--load', '--progress', 'plain'] : ['build']), '--platform', 'linux/amd64', '--file', kind === 'appview' ? 'services/appview/Dockerfile.standalone' : 'apps/web/Dockerfile', '--tag', target ? `${reference}-verify` : reference,
     '--label', `org.opencontainers.image.revision=${context.sha}`, '--label', `org.opencontainers.image.source=${canonical}`];
   if (kind === 'web') args.push(...webBuildArguments(context.appEnvironment));
   if (target) args.push('--target', target);
+  if (cacheRoot) {
+    mkdirSync(cacheRoot, { recursive: true });
+    if (existsSync(resolve(cache, 'index.json'))) args.push('--cache-from', `type=local,src=${cache}`);
+    if (exportCache) {
+      rmSync(nextCache, { recursive: true, force: true });
+      args.push('--cache-to', `type=local,dest=${nextCache},mode=max`);
+    }
+  }
   args.push('.');
-  run('docker', args);
+  try {
+    execute('docker', args, { environment });
+    if (exportCache) {
+      if (!existsSync(resolve(nextCache, 'index.json'))) throw new Error('Docker build did not export its requested cache.');
+      rmSync(cache, { recursive: true, force: true });
+      renameSync(nextCache, cache);
+    }
+  } finally {
+    if (exportCache) rmSync(nextCache, { recursive: true, force: true });
+  }
   return target ? `${reference}-verify` : reference;
 }
 
@@ -177,31 +202,32 @@ export function webVerificationCommand() {
   return `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
 }
 
-async function verify(context, selection = 'all') {
+async function verify(context, selection = 'all', environment = process.env) {
+  const buildImage = (kind, target) => build(context, kind, target, { environment });
   if (!['all', 'web', 'appview'].includes(selection)) throw new Error('Verification target must be all, web or appview.');
   run('node', ['--test', 'scripts/ci/verify-runtime-images.test.mjs', 'scripts/ci/development-parity.test.mjs']);
   for (const kind of ['appview', 'web']) {
     if (selection !== 'all' && selection !== kind) continue;
     if (kind === 'appview') {
-      build(context, kind, 'backend-tests');
-      build(context, kind, 'media-tests');
-      const image = build(context, kind);
+      buildImage(kind, 'backend-tests');
+      buildImage(kind, 'media-tests');
+      const image = buildImage(kind);
       await runtimeVolumeGuardSmoke(image);
       await runtimeSmoke(image);
       continue;
     }
     // Contract tests read pinned upstream source fixtures in clean checkouts.
-    run('python3', ['scripts/go/check-out-swift-contracts.py']);
-    const image = build(context, kind, 'builder');
+    run('python3', ['scripts/ci/check-out-swift-contracts.py']);
+    const image = buildImage(kind, 'builder');
     run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', webVerificationCommand()]);
-    await webRuntimeSmoke(build(context, kind));
+    await webRuntimeSmoke(buildImage(kind));
   }
 }
 
 export async function main(args, environment = process.env) {
   if (args.length > 1 || (args[0] && !['all', 'web', 'appview'].includes(args[0]))) throw new Error('Usage: verify-runtime-images.mjs [all|web|appview]');
   const context = verificationContext(environment, git(['rev-parse', 'HEAD']));
-  await verify(context, args[0] ?? 'all');
+  await verify(context, args[0] ?? 'all', environment);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

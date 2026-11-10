@@ -54,6 +54,15 @@
             },
             "authorDid": {
               "type": "string"
+            },
+            "contentLabels": {
+              "type": "array",
+              "description": "Publisher-declared article self-labels for visual indicators only.",
+              "maxLength": 2,
+              "items": {
+                "type": "string",
+                "knownValues": ["ai-generated", "sexual"]
+              }
             }
           }
         }

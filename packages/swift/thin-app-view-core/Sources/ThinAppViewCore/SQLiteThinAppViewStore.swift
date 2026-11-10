@@ -2241,7 +2241,8 @@ public init(path dbPath: String, logger: Logger) throws {
                json_extract(ci.render_json, '$.publishedAt') AS published_at,
                json_extract(ci.render_json, '$.summary') AS summary,
                json_extract(ci.render_json, '$.thumbnailUrl') AS thumbnail_url,
-               json_extract(ci.render_json, '$.articleUrl') AS article_url
+               json_extract(ci.render_json, '$.articleUrl') AS article_url,
+               json_extract(ci.render_json, '$.contentLabels') AS content_labels
         FROM content_items ci
         WHERE ci.author_did IN (\(authorDids.map { _ in "?" }.joined(separator: ", ")))
           AND ci.expires_at > ?
@@ -2289,7 +2290,8 @@ public init(path dbPath: String, logger: Logger) throws {
           publishedAt: row["published_at"],
           summary: row["summary"],
           thumbnailUrl: row["thumbnail_url"],
-          articleUrl: row["article_url"]
+          articleUrl: row["article_url"],
+          contentLabels: ContentLabels.decodeJSON(row["content_labels"])
         )
       }
     }

@@ -19,6 +19,7 @@ import Testing
     let router = Router(context: GatewayRequestContext.self)
     router.add(middleware: SocialDraftTestAuth(owner: "did:plc:free-viewer"))
     router.add(middleware: StandaloneAdmissionMiddleware(runtime: runtime))
+    router.get("/v1/analytics/bluesky") { _, _ in Response(status: .ok) }
     router.get("/v1/analytics/summary") { _, _ in Response(status: .ok) }
     router.post("/v1/analytics/refresh") { _, _ in Response(status: .ok) }
     router.post("/v1/analytics/events") { _, _ in Response(status: .accepted) }
@@ -26,6 +27,7 @@ import Testing
       let summary = try await client.execute(uri: "/v1/analytics/summary", method: .get)
       let refresh = try await client.execute(uri: "/v1/analytics/refresh", method: .post)
       let events = try await client.execute(uri: "/v1/analytics/events", method: .post)
+      #expect(try await client.execute(uri: "/v1/analytics/bluesky", method: .get).status == .forbidden)
       #expect(summary.status == .forbidden)
       #expect(refresh.status == .forbidden)
       #expect(events.status == .accepted)

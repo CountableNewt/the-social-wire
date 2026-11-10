@@ -29,6 +29,22 @@ describe("standalone reader CI", () => {
     expect(workflow).not.toContain("DATABASE_URL");
   });
 
+  it("restores per-runtime build caches before verification and saves fresh commit layers", () => {
+    for (const kind of ["web", "appview"]) {
+      const steps = parsed.jobs[kind].steps;
+      const setup = steps.findIndex((step: any) => step.uses === "docker/setup-buildx-action@v3");
+      const cache = steps.findIndex((step: any) => step.uses === "actions/cache@v5");
+      const verify = steps.findIndex((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${kind}`);
+      expect(setup).toBeGreaterThan(-1);
+      expect(cache).toBeGreaterThan(setup);
+      expect(verify).toBeGreaterThan(cache);
+      expect(steps[cache].with.key).toContain(`docker-${kind}-v1-`);
+      expect(steps[cache].with.key).toEndWith("${{ github.sha }}");
+      expect(steps[cache].with["restore-keys"]).toContain(`docker-${kind}-v1-`);
+      expect(steps[cache].with.path).toBe(steps[verify].env.CI_DOCKER_CACHE_DIR);
+    }
+  });
+
   it("preserves read-only merge verification and Development-first promotion", () => {
     expect(parsed.permissions).toEqual({ contents: "read" });
     expect(parsed.on).toHaveProperty("pull_request");
@@ -53,11 +69,11 @@ describe("standalone reader CI", () => {
   });
 
   it("checks real release images, SQLite migrations, and the bundled processor", () => {
-    expect(verifier).toContain("build(context, kind, 'backend-tests')");
-    expect(verifier).toContain("build(context, kind, 'media-tests')");
+    expect(verifier).toContain("buildImage(kind, 'backend-tests')");
+    expect(verifier).toContain("buildImage(kind, 'media-tests')");
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
-    expect(verifier).toContain("await webRuntimeSmoke(build(context, kind))");
+    expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
     expect(backendImage).toContain("FROM builder AS backend-tests");
     expect(backendImage).toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
     expect(backendImage).toContain("swift test --package-path services/appview -c release --force-resolved-versions");
@@ -74,23 +90,55 @@ describe("standalone reader CI", () => {
     }
     expect(verifier).toContain('coverage_status=$?');
     expect(verifier).toContain('exit "$coverage_status"');
-    expect(verifier.indexOf("run('python3', ['scripts/go/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = build(context, kind, 'builder')"));
+    expect(verifier.indexOf("run('python3', ['scripts/ci/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
   });
 
+  function runRequiredGate(overrides: Record<string, string | undefined> = {}) {
+    const gate = parsed.jobs.required.steps.find((step: any) => step.name === "Verify path-filtered checks");
+    const baseline = {
+      CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped",
+      REUSE_WEB: "false", REUSE_APPVIEW: "false", GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/123/merge",
+    };
+    return spawnSync("bash", ["-c", gate.run], { cwd: repositoryRoot, env: { ...process.env, ...baseline, ...overrides }, encoding: "utf8" });
+  }
+
   it("fails the aggregate gate for every selected check that does not succeed", () => {
-    const gate = parsed.jobs.required.steps.find((step: any) => step.run);
-    const baseline = { CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped" };
     for (const flag of ["WEB", "APPVIEW"]) {
       for (const result of ["failure", "cancelled", "skipped", "success"]) {
-        const run = spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }, encoding: "utf8" });
-        expect(run.status).toBe(result === "success" ? 0 : 1);
+        expect(runRequiredGate({ [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }).status).toBe(result === "success" ? 0 : 1);
       }
     }
     for (const result of ["failure", "cancelled", "skipped"]) {
-      expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline, CHANGES_RESULT: result } }).status).toBe(1);
+      expect(runRequiredGate({ CHANGES_RESULT: result }).status).toBe(1);
     }
-    expect(spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...baseline } }).status).toBe(0);
+    expect(runRequiredGate().status).toBe(0);
   });
+
+  it("accepts proven target skips only on dev and main pushes", () => {
+    for (const target of ["WEB", "APPVIEW"]) {
+      const proof = { [`${target}_FLAG`]: "true", [`${target}_RESULT`]: "skipped", [`REUSE_${target}`]: "true" };
+      for (const branch of ["dev", "main"]) {
+        expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${branch}` }).status).toBe(0);
+        for (const result of ["failure", "cancelled", "success"]) {
+          expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${branch}`, [`${target}_RESULT`]: result }).status).toBe(1);
+        }
+      }
+      for (const event of ["pull_request", "merge_group", "workflow_dispatch"]) {
+        expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: event, GITHUB_REF: "refs/heads/dev" }).status).toBe(1);
+      }
+      expect(runRequiredGate({ ...proof, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature/unproven" }).status).toBe(1);
+    }
+  });
+
+  it("fails closed when path or proof outputs are missing or malformed", () => {
+    for (const target of ["WEB", "APPVIEW"]) {
+      for (const output of [`${target}_FLAG`, `REUSE_${target}`]) {
+        for (const value of [undefined, "", "TRUE"]) expect(runRequiredGate({ [output]: value }).status).toBe(1);
+      }
+      expect(runRequiredGate({ [`REUSE_${target}`]: "true", GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/dev" }).status).toBe(1);
+    }
+  });
+
 });
 
 describe("extracted Swift reference fixtures", () => {
@@ -105,7 +153,7 @@ describe("extracted Swift reference fixtures", () => {
     const destination = join(root, "packages/swift/FixtureCore");
     const manifest = join(root, "manifest.json");
     const run = (...args: string[]) => spawnSync("python3", [
-      join(repositoryRoot, "scripts/go/check-out-swift-contracts.py"),
+      join(repositoryRoot, "scripts/ci/check-out-swift-contracts.py"),
       "--root", root, "--manifest", manifest, ...args,
     ], { encoding: "utf8" });
     try {

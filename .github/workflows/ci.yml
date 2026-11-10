@@ -28,6 +28,13 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       appview: ${{ steps.filter.outputs.appview }}
+      reuse_web: ${{ steps.reuse.outputs.reuse_web }}
+      reuse_appview: ${{ steps.reuse.outputs.reuse_appview }}
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,6 +46,8 @@ jobs:
         run: node scripts/ci/validated-merge.mjs --receipt
       - name: Test validated merge evidence
         run: node --test scripts/ci/validated-merge.test.mjs
+      - name: Test PR verification reuse and required gate
+        run: node --test scripts/ci/reuse-pr-verification.test.mjs scripts/ci/required-checks.test.mjs scripts/ci/reuse-workflow.test.mjs
       - name: Test bounded dependency installation
         run: node --test scripts/ci/install-bun.test.mjs
       - name: Test Development-first promotion guard
@@ -58,11 +67,18 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           GITHUB_EVENT_PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash scripts/ci-detect-changes.sh
+      - name: Reuse exact successful PR verification
+        id: reuse
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_WEB: ${{ steps.filter.outputs.web }}
+          INPUT_APPVIEW: ${{ steps.filter.outputs.appview }}
+        run: node scripts/ci/reuse-pr-verification.mjs
 
   web:
     name: Web
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.web == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.web == 'true' && needs.changes.outputs.reuse_web != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -70,13 +86,24 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-
       - name: Verify Web image, coverage, and shared contracts
         run: bash scripts/ci/verify-runtime-images.sh web
+        env:
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
   appview:
     name: SQLite AppView
     needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.appview == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.appview == 'true' && needs.changes.outputs.reuse_appview != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -84,8 +111,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build layers
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-
+            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-
       - name: Verify SQLite backend, bundled media processor, migrations, and runtime
         run: bash scripts/ci/verify-runtime-images.sh appview
+        env:
+          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
 
   required:
     name: CI — Required
@@ -93,6 +131,12 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
       - name: Verify path-filtered checks
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -100,23 +144,6 @@ jobs:
           APPVIEW_FLAG: ${{ needs.changes.outputs.appview }}
           WEB_RESULT: ${{ needs.web.result }}
           APPVIEW_RESULT: ${{ needs.appview.result }}
-        run: |
-          set -euo pipefail
-          fail() {
-            echo "::error::$1"
-            exit 1
-          }
-          if [[ "$CHANGES_RESULT" != "success" ]]; then
-            fail "Path detection failed ($CHANGES_RESULT)"
-          fi
-          check() {
-            local flag="$1" result="$2" name="$3"
-            if [[ "$flag" == "true" && "$result" != "success" ]]; then
-              fail "$name must pass when its paths change (got $result)"
-            fi
-            if [[ "$flag" != "true" && "$result" != "success" && "$result" != "skipped" ]]; then
-              fail "$name ended with $result"
-            fi
-          }
-          check "$WEB_FLAG" "$WEB_RESULT" "Web"
-          check "$APPVIEW_FLAG" "$APPVIEW_RESULT" "SQLite AppView"
+          REUSE_WEB: ${{ needs.changes.outputs.reuse_web }}
+          REUSE_APPVIEW: ${{ needs.changes.outputs.reuse_appview }}
+        run: node scripts/ci/required-checks.mjs

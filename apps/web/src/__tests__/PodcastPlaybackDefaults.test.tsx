@@ -23,7 +23,9 @@ it("edits existing global preferences before playback and resets to 1x with sile
   const { player, changeState, setRemoveSilences } = environment();
   render(<PodcastPlaybackDefaults player={player} />);
   fireEvent.click(screen.getByRole("button", { name: "Playback Defaults" }));
-  await waitFor(() => expect(screen.getByRole("dialog", { name: "Playback Defaults" })).toBeTruthy());
+  const dialog = await screen.findByRole("dialog", { name: "Playback Defaults" });
+  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
+  expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
   expect((screen.getByRole("combobox", { name: "Default Speed" }) as HTMLSelectElement).value).toBe("1");
   expect((screen.getByRole("checkbox", { name: "Remove Silences by Default" }) as HTMLInputElement).checked).toBe(false);
   expect(screen.getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(["0.75", "1", "1.25", "1.5", "1.75", "2"]);
@@ -33,4 +35,22 @@ it("edits existing global preferences before playback and resets to 1x with sile
   expect(setRemoveSilences).toHaveBeenCalledWith(true);
   fireEvent.click(screen.getByRole("button", { name: "Reset Defaults" }));
   expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1, removeSilences: false });
+});
+
+it.each(["close", "Escape"])("dismisses the defaults modal with %s and returns focus to its trigger", async (method) => {
+  const { player } = environment();
+  render(<PodcastPlaybackDefaults player={player} />);
+  const trigger = screen.getByRole("button", { name: "Playback Defaults" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole("dialog", { name: "Playback Defaults" });
+  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  if (method === "close") {
+    fireEvent.click(screen.getByRole("button", { name: "Close Playback Defaults" }));
+  } else {
+    fireEvent.keyDown(document.activeElement ?? dialog, { key: "Escape", code: "Escape" });
+  }
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback Defaults" })).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
 });

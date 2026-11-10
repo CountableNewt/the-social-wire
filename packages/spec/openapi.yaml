@@ -247,6 +247,63 @@ components:
         engagement: {$ref: '#/components/schemas/CreatorEngagement'}
         tracking: {$ref: '#/components/schemas/CreatorTracking'}
         refreshedAt: {type: string, format: date-time}
+    BlueskyAnalyticsPost:
+      type: object
+      required: [uri, title, url, publishedAt, engagement]
+      properties:
+        uri: {type: string}
+        title: {type: string}
+        url: {type: string, format: uri}
+        publishedAt: {type: string, format: date-time}
+        engagement: {$ref: '#/components/schemas/CreatorEngagement'}
+    BlueskyAnalyticsSummary:
+      type: object
+      required: [sampledAt, days, profile, activity, topPosts, shares, coverage]
+      properties:
+        sampledAt: {type: string, format: date-time}
+        days: {type: integer, enum: [7, 30, 90]}
+        profile:
+          type: object
+          required: [followers, following, posts]
+          properties:
+            followers: {type: [integer, 'null'], minimum: 0}
+            following: {type: [integer, 'null'], minimum: 0}
+            posts: {type: [integer, 'null'], minimum: 0}
+        activity:
+          type: [object, 'null']
+          description: Observed authored posts and replies published during the selected period; excludes reposts. Null when the author feed is unavailable.
+          required: [posts, replies, postsPerDay]
+          properties:
+            posts: {type: integer, minimum: 0}
+            replies: {type: integer, minimum: 0}
+            postsPerDay: {type: number, minimum: 0}
+        topPosts:
+          type: array
+          maxItems: 10
+          description: Observed authored posts published during the selected period, ranked by current cumulative likes plus replies plus reposts plus quotes. These counts are not interactions gained during the selected period.
+          items: {$ref: '#/components/schemas/BlueskyAnalyticsPost'}
+        shares:
+          type: array
+          description: Bounded AppView search results linking to cached viewer-owned article URLs. Search results and totals do not establish complete sharing coverage.
+          maxItems: 5
+          items:
+            type: object
+            required: [articleUri, articleTitle, articleUrl, posts]
+            properties:
+              articleUri: {type: string}
+              articleTitle: {type: string}
+              articleUrl: {type: string, format: uri}
+              posts: {type: array, items: {$ref: '#/components/schemas/BlueskyAnalyticsPost'}}
+        coverage:
+          type: object
+          required: [feedComplete, feedAvailable, sharesAvailable, sharesComplete, articlesSearched, feedPostsExamined]
+          properties:
+            feedComplete: {type: boolean, description: Whether the bounded feed scan exhausted available feed results.}
+            feedAvailable: {type: boolean}
+            sharesAvailable: {type: boolean}
+            sharesComplete: {type: boolean, const: false}
+            articlesSearched: {type: integer, minimum: 0, maximum: 5}
+            feedPostsExamined: {type: integer, minimum: 0}
     CreatorAnalyticsSummary:
       type: object
       required: [items, totals, series, coverage]
@@ -413,6 +470,15 @@ components:
         retryable:
           type: boolean
 
+    ArticleContentLabels:
+      type: array
+      description: Publisher-declared article self-labels for visual indicators only.
+      maxItems: 2
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ai-generated, sexual]
+
     EntryListItem:
       type: object
       required: [entryId, title, publishedAt, isRead]
@@ -439,6 +505,8 @@ components:
         publicationId:
           type: string
           description: Viewer-scoped canonical publication identity, present for aggregate feeds.
+        contentLabels:
+          $ref: '#/components/schemas/ArticleContentLabels'
         isRead:
           type: boolean
           default: false
@@ -459,6 +527,8 @@ components:
         thumbnailUrl:
           type: string
           format: uri
+        contentLabels:
+          $ref: '#/components/schemas/ArticleContentLabels'
         isRead:
           type: boolean
         contentHtml:
@@ -2161,6 +2231,7 @@ paths:
                   title: {type: string}
                   description: {type: string}
                   authorDid: {type: string}
+                  contentLabels: {$ref: '#/components/schemas/ArticleContentLabels'}
         '400': {description: Invalid HTTPS URL}
         '401': {description: Authentication Required}
         '404': {description: Verified Article Not Found}
@@ -2972,6 +3043,7 @@ paths:
         `{ publicationId, entries, cursor?, source, cachedAt?, expiresAt? }`, where `source` is
         `live_projection`, `projection_cache`, or `unavailable`. Cached pages always retain the
         original `cachedAt` and `expiresAt`; clients must reject cached payloads without both.
+        Entry objects retain optional publisher `contentLabels` for visual indicators.
         The `done.source` value is the least-current source emitted by the stream, so a cached or
         unavailable entries page cannot be reported as a wholly live bootstrap.
       tags: [AppView]
@@ -3567,6 +3639,22 @@ paths:
                   plan: {type: string, enum: [free, pro]}
         '401': {$ref: '#/components/responses/Unauthorized'}
 
+  /v1/analytics/bluesky:
+    get:
+      operationId: getBlueskyAnalytics
+      summary: Read Viewer-Owned Bluesky Account And Article Sharing Analysis
+      tags: [Analytics]
+      security: [{ATProtoOAuthDPoP: []}]
+      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Reads current profile counts and a bounded author-feed sample from the Bluesky AppView. Ranks posts published during the selected period by current cumulative engagement, not engagement gained during that period. Searches up to five cached viewer-owned article URLs for recently published shares. Search is incomplete by definition; no network totals, impressions, reach, clicks, follower history, or background collection are inferred. Partial provider failures are represented with nullable metrics and availability flags. Refresh Creator Analytics first to populate article URL inventory.
+      parameters:
+        - {in: query, name: days, schema: {type: integer, enum: [7, 30, 90], default: 30}}
+      responses:
+        '200': {description: Bounded Bluesky Analysis With Explicit Coverage, content: {application/json: {schema: {$ref: '#/components/schemas/BlueskyAnalyticsSummary'}}}}
+        '400': {description: Invalid Period}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
+        '429': {description: Request Limit Reached}
+        '503': {description: Analytics Unavailable}
   /v1/analytics/summary:
     get:
       operationId: getCreatorAnalytics

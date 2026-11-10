@@ -73,6 +73,16 @@ describe("Articles route", () => {
 });
 
 describe("Tools route access", () => {
+  it("keeps Analytics authentication when its deployment gate is bypassed", async () => {
+    signedIn = false;
+    const workspace = mock(() => <p>Private Analytics</p>);
+    function AnalyticsContent() { return workspace(); }
+    await act(async () => { render(<AnalyticsLayout><AnalyticsContent /></AnalyticsLayout>); });
+    expect(replace).toHaveBeenCalledWith("/login");
+    expect(screen.queryByText("Private Analytics")).toBeNull();
+    expect(workspace).not.toHaveBeenCalled();
+  });
+
   for (const [path, Layout] of [
     ["/articles", ArticlesLayout],
     ["/live-post", LivePostLayout],
@@ -82,12 +92,17 @@ describe("Tools route access", () => {
     ["/analytics", AnalyticsLayout],
   ] as const) {
     it(`denies direct ${path} access to Free viewers before mounting the workspace`, async () => {
+      if (path === "/brand-accounts") {
+        const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+        process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";
+        restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });
+      }
       isPro = false;
       const workspace = mock(() => <p>Protected Workspace</p>);
       function ProtectedContent() { return workspace(); }
       await act(async () => { render(<Layout><ProtectedContent /></Layout>); });
       expect(screen.getByRole("heading", { name: "Social Wire Pro" })).toBeTruthy();
-      expect(screen.getByText("Tools and multi-account support are available with Pro. Subscriptions are coming soon.")).toBeTruthy();
+      expect(screen.getByText(path === "/brand-accounts" ? "Tools and multi-account support are available with Pro. Subscriptions are coming soon." : "Tools are available with Pro. Subscriptions are coming soon.")).toBeTruthy();
       expect(screen.queryByText("Protected Workspace")).toBeNull();
       expect(workspace).not.toHaveBeenCalled();
       expect(replace).not.toHaveBeenCalled();

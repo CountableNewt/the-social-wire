@@ -95,7 +95,8 @@ enum AppViewRouterBuilder {
     if config.toolsEnabled, let analyticsStore {
       let reader = AnalyticsHTTPReader(repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient,
         plcURL: config.core.atprotoPLCURL, logger: logger), http: httpClient)
-      AnalyticsRoutes(store: analyticsStore, provider: AnalyticsValidatedContent(base: AnalyticsProvider(reader: reader)))
+      AnalyticsRoutes(store: analyticsStore, provider: AnalyticsValidatedContent(base: AnalyticsProvider(reader: reader)),
+        bluesky: BlueskyAnalyticsProvider(reader: BlueskyAnalyticsHTTPReader(http: httpClient)))
         .register(on: protected)
     }
 
