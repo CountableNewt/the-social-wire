@@ -73,6 +73,16 @@ describe("Articles route", () => {
 });
 
 describe("Tools route access", () => {
+  it("keeps Analytics authentication when its deployment gate is bypassed", async () => {
+    signedIn = false;
+    const workspace = mock(() => <p>Private Analytics</p>);
+    function AnalyticsContent() { return workspace(); }
+    await act(async () => { render(<AnalyticsLayout><AnalyticsContent /></AnalyticsLayout>); });
+    expect(replace).toHaveBeenCalledWith("/login");
+    expect(screen.queryByText("Private Analytics")).toBeNull();
+    expect(workspace).not.toHaveBeenCalled();
+  });
+
   for (const [path, Layout] of [
     ["/articles", ArticlesLayout],
     ["/live-post", LivePostLayout],
