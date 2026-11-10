@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const canonical = 'https://github.com/Stygian-Tech/the-social-wire';
+const canonical = 'https://github.com/CountableNewt/the-social-wire';
 const shaPattern = /^[a-f0-9]{40}$/;
 const credentials = ['RAILWAY_TOKEN', 'RAILWAY_API_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN'];
 
@@ -217,7 +217,7 @@ async function verify(context, selection = 'all', environment = process.env) {
       continue;
     }
     // Contract tests read pinned upstream source fixtures in clean checkouts.
-    run('python3', ['scripts/go/check-out-swift-contracts.py']);
+    run('python3', ['scripts/ci/check-out-swift-contracts.py']);
     const image = buildImage(kind, 'builder');
     run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', webVerificationCommand()]);
     await webRuntimeSmoke(buildImage(kind));
