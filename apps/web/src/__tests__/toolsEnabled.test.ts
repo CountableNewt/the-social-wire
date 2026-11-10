@@ -59,13 +59,15 @@ test("Production Tools requests return an uncached 404 while Development passes 
   expect(proxy(new NextRequest("https://thesocialwire.app/live-post")).status).toBe(404);
 });
 
-for (const path of ["/articles", "/articles/", "/articles/new", "/articles/draft/example", "/articles?_rsc=transition"]) test(`Articles bypasses the broad Tools flag at ${path}`, () => {
-  environment("prod");
-  process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
-  delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
-  const response = proxy(new NextRequest("https://thesocialwire.app" + path));
-  expect(response.headers.get("x-middleware-next")).toBe("1");
-});
+for (const section of ["articles", "analytics"]) {
+  for (const suffix of ["", "/", "/new", "/draft/example", "?_rsc=transition"]) test(`${section} bypasses the broad Tools flag at /${section}${suffix}`, () => {
+    environment("prod");
+    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
+    delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
+    const response = proxy(new NextRequest(`https://thesocialwire.app/${section}${suffix}`));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+}
 for (const section of ["content-calendar", "scheduling"]) test(`${section} requires both scheduling and Tools availability for direct and nested requests`, () => {
   for (const suffix of ["", "/", "/nested", "?_rsc=transition"]) {
     const request = new NextRequest(`https://thesocialwire.app/${section}${suffix}`);
@@ -83,7 +85,7 @@ for (const section of ["content-calendar", "scheduling"]) test(`${section} requi
     expect(proxy(request).status).toBe(404);
   }
 });
-for (const section of ["live-post", "livestream", "analytics"]) test(`${section} retains the deployment Tools gate`, () => {
+for (const section of ["live-post", "livestream"]) test(`${section} retains the deployment Tools gate`, () => {
   const request = new NextRequest(`https://thesocialwire.app/${section}/nested`);
   environment("prod");
   process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "true";
