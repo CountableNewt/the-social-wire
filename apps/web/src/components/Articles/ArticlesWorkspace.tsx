@@ -21,12 +21,13 @@ import { articlePublicationDisabledReason, assertArticlePublicationEditable, PCK
 import { sameArticleDraftContent } from "@/lib/articles/articleDraftPublicationGuard";
 import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
 import type { ArticleImageAsset, PublishedArticle } from "@/lib/articles/articlePublishingTypes";
+import { publishedArticleUrl } from "@/lib/articles/publishedArticleUrl";
 import { socialErrorMessage } from "@/lib/blueskySocialClient";
 import { SCOPE_RECOVERY_MESSAGE } from "@/lib/oauthScopeRecovery";
 import { SocialPermissionRecovery } from "@/components/Social/SocialPermissionRecovery";
 import { floatingGlassClasses } from "@/components/shared/floatingChromeStyles";
 import { FeedHeader } from "@/components/FeedHeader/FeedHeader";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ArticleImageInput, articleImageDimensions } from "./ArticleImageInput";
@@ -82,7 +83,9 @@ function ArticlesViewer({ did }: { did: string }) {
   const [publishedUrl, setPublishedUrl] = useState<string>();
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
-  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published", retry: false });
+  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published" || (editorOpen && !!draft?.publishingRecordKey) || (tab === "drafts" && local.drafts.some(item => !!item.publishingRecordKey)), retry: false });
+  const pendingArticle = draft?.publishingRecordKey ? history.data?.find(article => article.uri === `at://${did}/site.standard.document/${draft.publishingRecordKey}` && article.record.$type === "site.standard.document" && article.record.site === draft.publicationUri) : undefined;
+  const pendingArticleUrl = pendingArticle ? publishedArticleUrl(pendingArticle, publications.data ?? []) : undefined;
   const publication = publications.data?.find(value => value.uri === draft?.publicationUri);
   const publishedPublication = publications.data?.find(value => value.uri === publishedArticle?.record.site);
   const publishedEditCapability = publishedArticle ? articleEditCapability(publishedArticle, publishedPublication) : "none";
@@ -183,6 +186,7 @@ function ArticlesViewer({ did }: { did: string }) {
       const found = !published?.error && published?.data?.find(article => article.uri === expectedUri && article.record.$type === "site.standard.document" && article.record.site === active.publicationUri);
       if (!found) throw new Error("Publication Is Still Unconfirmed. The Draft Remains Protected. Try Checking Again Later.");
       local.update({ publishedUri: found.uri, publishingRecordKey: undefined });
+      setPublishedUrl(publishedArticleUrl(found, publications.data ?? []));
     } else {
       const matches = schedules?.data?.filter(isSkejArticleSchedule).filter(item => item.did === did && item.record.publishRkey === active.scheduleRecordKey && item.record.shadowRecord.site === active.publicationUri);
       if (schedules?.error || matches?.length !== 1) throw new Error("The Schedule Is Still Unconfirmed. The Draft Remains Protected. Try Checking Again Later.");
@@ -320,7 +324,7 @@ function ArticlesViewer({ did }: { did: string }) {
           <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={editingDisabled} onClick={() => { if (!publicationDisabledReason) void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button>{isPostSchedulingEnabled() ? <Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button> : null}</div>
           {isPostSchedulingEnabled() && !isPro ? <p className="mb-3 text-xs text-muted-foreground">Article Scheduling Requires Social Wire Pro.</p> : isPostSchedulingEnabled() && !scheduler.readiness.data?.connected ? <p className="mb-3 text-xs text-muted-foreground">Open Scheduled to Connect Skej.</p> : null}
           {draft.publishingRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">Publication May Have Completed. Check Published Articles Before Taking Further Action.</p> : null}
-          {draft.publishingRecordKey ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("publish")); }}>Check Publication</Button> : null}
+          {draft.publishingRecordKey ? <div className="mb-4">{pendingArticleUrl ? <a href={pendingArticleUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline", className: "h-auto px-4 py-2" })} onClick={() => { void perform(() => checkPendingResult("publish")); }}>Open Article</a> : <Button variant="outline" disabled={busy} className="h-auto px-4 py-2" onClick={() => { void perform(() => checkPendingResult("publish")); }}>Check Publication</Button>}</div> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && !draft.scheduleUri ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("schedule")); }}>Check Schedule</Button> : null}
           {draft.scheduleRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">{isPostSchedulingEnabled() ? "Scheduling Was Requested. This Draft Is Locked to Prevent Duplicate Publication. Review or Cancel Its Schedule in Scheduled. If the Request Failed, Refresh Schedules Before Taking Further Action." : "Scheduling Was Requested. This Draft Remains Locked While Post Scheduling Is Disabled."}</p> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && confirmedCanceled ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(async () => { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined, publicationClaimId: undefined }); await local.persist(); }); }}>Unlock Canceled Draft</Button> : null}
