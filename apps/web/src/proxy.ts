@@ -6,8 +6,8 @@ import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 /** Cover direct requests, nested routes, and client navigation to Tools. */
 export function proxy(request: NextRequest) {
   const section = request.nextUrl.pathname.split("/")[1];
-  // Articles has its own authenticated layout and entitlement checks.
-  if (section === "articles") return NextResponse.next();
+  // Articles and Analytics have their own authenticated layouts and entitlement checks.
+  if (section === "articles" || section === "analytics") return NextResponse.next();
   const scheduling = section === "content-calendar" || section === "scheduling";
   if (!toolsEnabled() || (section === "brand-accounts" && !brandAccountsEnabled()) || (scheduling && !isPostSchedulingEnabled())) {
     return new NextResponse("Not Found", {

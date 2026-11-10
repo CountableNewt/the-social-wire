@@ -33,17 +33,24 @@ it("marks every Tools destination as locked for Free viewers while keeping its g
   expect(onNavigate).toHaveBeenCalledWith("/analytics");
 });
 
-it("keeps Articles visible in Production without launching other gated tools", async () => {
+it.each([false, true])("keeps Articles and Analytics reachable in Production with Tools disabled (Pro: %p)", async isPro => {
   const originalEnv = process.env.NEXT_PUBLIC_APP_ENV;
   const originalTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
   try {
     process.env.NEXT_PUBLIC_APP_ENV = "prod";
-    delete process.env.NEXT_PUBLIC_TOOLS_ENABLED;
+    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
     delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
-    const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: false } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
-    render(<SidebarProvider><SidebarToolsSection pathname="/articles" onNavigate={() => {}} /></SidebarProvider>);
-    expect(screen.getByRole("button", { name: "Articles" }).querySelector("svg.lucide-lock-keyhole")).toBeTruthy();
-    for (const name of ["Live Post", "Livestream", "Brand Accounts", "Content Calendar", "Analytics"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
+    const onNavigate = mock(() => {});
+    render(<SidebarProvider><SidebarToolsSection pathname="/analytics/report" onNavigate={onNavigate} /></SidebarProvider>);
+    for (const name of ["Articles", "Analytics"]) {
+      const destination = screen.getByRole("button", { name });
+      expect(!!destination.querySelector("svg.lucide-lock-keyhole")).toBe(!isPro);
+    }
+    expect(screen.getByRole("button", { name: "Analytics" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    expect(onNavigate).toHaveBeenCalledWith("/analytics");
+    for (const name of ["Live Post", "Livestream", "Brand Accounts", "Content Calendar"]) expect(screen.queryByRole("button", { name })).toBeNull();
   } finally {
     if (originalEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = originalEnv;
     if (originalTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED; else process.env.NEXT_PUBLIC_TOOLS_ENABLED = originalTools;
