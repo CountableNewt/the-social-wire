@@ -17,28 +17,54 @@ RUN bun install --filter @thesocialwire/podcast-worker --frozen-lockfile --ignor
 FROM media-builder AS media-tests
 RUN bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test
 
-FROM swift:6.4.2-jammy AS builder
+FROM swift:6.4.2-jammy AS swift-dependencies
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev pkg-config python3 sqlite3 \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-COPY packages/swift/thin-app-view-core /src/packages/swift/thin-app-view-core
+COPY packages/swift/thin-app-view-core/Package.swift packages/swift/thin-app-view-core/Package.resolved /src/packages/swift/thin-app-view-core/
+COPY packages/swift/thin-app-view-core/Sources /src/packages/swift/thin-app-view-core/Sources
+COPY packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources /src/packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources
 COPY services/appview/Package.swift services/appview/Package.resolved /src/services/appview/
+# Compile the unchanged dependency graph before copying frequently changing API
+# sources. Image-layer exports retain these artifacts across fresh CI builders.
+RUN mkdir -p services/appview/Sources/AppView services/appview/Tests/AppViewTests \
+      packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/Fixtures \
+      packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests/ReadStateCoreTests \
+  && printf 'print("Dependency build placeholder")\n' > services/appview/Sources/AppView/main.swift \
+  && printf 'import Testing\n@Test func dependencyPlaceholder() {}\n' > services/appview/Tests/AppViewTests/DependencyTests.swift \
+  && swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4
+
+FROM swift-dependencies AS test-dependencies
+# SwiftPM testability changes compiler flags, so keep a separate dependency plan.
+RUN swift build --package-path services/appview -c release --build-tests --force-resolved-versions -j 2
+
+FROM swift-dependencies AS builder
+RUN rm -rf services/appview/Sources
 COPY services/appview/Sources /src/services/appview/Sources
-COPY services/appview/Tests /src/services/appview/Tests
-# Keep build state in image layers: Railway cache mounts require literal service IDs.
 RUN swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4 \
   && mkdir -p /out/lib /out/bin \
   && cp services/appview/.build/release/AppView /out/bin/AppView \
   && cp -a /usr/lib/swift/linux/*.so* /out/lib/ \
   && find -L services/appview/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
 
-FROM builder AS backend-tests
+FROM test-dependencies AS backend-tests
+# Require the optimized production build as well as the testable build.
+COPY --from=builder /out/bin/AppView /tmp/production-AppView
+RUN rm -rf services/appview/Sources services/appview/Tests
+COPY services/appview/Sources /src/services/appview/Sources
+COPY services/appview/Tests /src/services/appview/Tests
+COPY packages/swift/thin-app-view-core/Tests /src/packages/swift/thin-app-view-core/Tests
+COPY packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests /src/packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests
+COPY packages/swift/thin-app-view-core/TestSupport /src/packages/swift/thin-app-view-core/TestSupport
+COPY packages/swift/thin-app-view-core/read-state /src/packages/swift/thin-app-view-core/read-state
+COPY scripts/ci/prepare-swift-tests.py scripts/ci/appview-test-targets.swift scripts/ci/test_prepare_swift_tests.py /src/scripts/ci/
+RUN PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/ci -p test_prepare_swift_tests.py \
+  && python3 scripts/ci/prepare-swift-tests.py /src
 COPY scripts/migrations /src/scripts/migrations
 COPY services/appview/bin/sqlite-backup /src/services/appview/bin/sqlite-backup
 RUN PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/migrations -p 'test_*.py' \
-  && swift test --package-path services/appview -c release --force-resolved-versions -j 2 \
-  && swift test --package-path packages/swift/thin-app-view-core --scratch-path /src/services/appview/.build -c release --force-resolved-versions -j 2
+  && swift test --package-path services/appview -c release --force-resolved-versions -j 2
 
 FROM ubuntu:22.04
 RUN apt-get update \
