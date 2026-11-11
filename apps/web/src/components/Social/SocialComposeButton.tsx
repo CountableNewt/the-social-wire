@@ -99,6 +99,9 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
   }, [posted]);
   const busy = useRef(false);
   const closing = useRef(false);
+  const closeAttempt = useRef(0);
+  const [closingDraft, setClosingDraft] = useState(false);
+  const [closeSaveFailed, setCloseSaveFailed] = useState(false);
   const publishedRef = useRef(false);
   const [published, setPublished] = useState(false);
   const currentDid = useRef(session?.did);
@@ -112,19 +115,39 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
   async function changeOpen(value: boolean) {
     if (busy.current || closing.current) return;
     if (value) {
+      closeAttempt.current++;
+      setClosingDraft(false); setCloseSaveFailed(false); setError(undefined);
       setSelectedActor(session?.did); setScheduled(false); setPosted(false);
       setOpen(true);
       return;
     }
     closing.current = true;
+    const attempt = ++closeAttempt.current;
+    setClosingDraft(true); setCloseSaveFailed(false);
     try {
       if (draft.loaded) await draft.close();
+      if (attempt !== closeAttempt.current) return;
       setOpen(false);
       if (!publication.current?.segments.some(item => item.attempted)) resetDraft();
       onClose?.();
     } catch (failure) {
+      if (attempt !== closeAttempt.current) return;
+      setCloseSaveFailed(true);
       setError(failure instanceof Error ? failure.message : "Your Draft Could Not Be Saved. Retry Before Closing.");
-    } finally { closing.current = false; }
+    } finally {
+      if (attempt === closeAttempt.current) { closing.current = false; setClosingDraft(false); }
+    }
+  }
+
+  function closeWithoutSaving() {
+    if (busy.current) return;
+    draft.closeWithoutSaving();
+    closeAttempt.current++;
+    closing.current = false;
+    setClosingDraft(false); setCloseSaveFailed(false); setError(undefined);
+    setOpen(false);
+    if (!publication.current?.segments.some(item => item.attempted)) resetDraft();
+    onClose?.();
   }
 
   async function retryDraftSync() {
@@ -143,7 +166,7 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
   }
 
   async function publish(allowMissingAlt = false) {
-    if (busy.current || publishedRef.current || !valid || !session || !draft.loaded) return;
+    if (busy.current || closing.current || publishedRef.current || !valid || !session || !draft.loaded) return;
     if (mode === "schedule" && !isPostSchedulingEnabled()) { setError("Post Scheduling Is Not Enabled."); return; }
     if (mode === "schedule" && segments.some(segment => segment.media)) { setError("Attachments Are Not Yet Supported For Scheduled Posts. Choose Post Now."); return; }
     if (!allowMissingAlt && !publication.current?.segments.some(item => item.attempted) && segments.some(segment => missingMediaAlt(segment.media))) { setAltWarning(true); return; }
@@ -212,19 +235,26 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!pending}>
         <DialogTitle>{initialDraft ? segments.length > 1 ? "Edit Thread Draft" : "Edit Post Draft" : segments.length > 1 ? "New Thread" : "New Post"}</DialogTitle>
         <DialogDescription>{actorDid === session.did ? "Posts and Threads Autosave Privately Across Your Devices." : "Share a Post on Bluesky"}</DialogDescription>
-        {brandsAvailable ? <SocialComposeAccountPicker ownerDid={session.did} accounts={accounts} actorDid={actorDid!} disabled={pending || locked} onChange={did => { setSelectedActor(did); setError(undefined); }} /> : null}
+        {closingDraft || closeSaveFailed ? <div role="alert" className="rounded-xl border p-3 text-sm">
+          <p>{closingDraft ? "The Draft Is Still Saving." : "The Draft Could Not Be Saved."} Close Without Saving? Your Latest Edits May Be Lost.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" variant="destructive" disabled={pending} onClick={closeWithoutSaving}>Close Without Saving</Button>
+            {!closingDraft ? <Button type="button" variant="outline" onClick={() => setCloseSaveFailed(false)}>Keep Editing</Button> : null}
+          </div>
+        </div> : null}
+        {brandsAvailable ? <SocialComposeAccountPicker ownerDid={session.did} accounts={accounts} actorDid={actorDid!} disabled={pending || closingDraft || locked} onChange={did => { setSelectedActor(did); setError(undefined); }} /> : null}
         {actorDid !== session.did ? <SocialBrandComposeContent key={`${session.did}:${actorDid}`} ownerDid={session.did} actorDid={actorDid!} onPendingChange={value => { busy.current = value; setPending(value); }} close={() => { void changeOpen(false); }} onPublished={wasScheduled => { setOpen(false); setScheduled(wasScheduled); setPosted(true); }} /> : <form key={session.did} className="flex min-w-0 flex-col gap-3" onKeyDown={handlePostComposerShortcut} onSubmit={event => { event.preventDefault(); void publish(); }}>
-          {segments.map((segment, index) => <SocialThreadSegment key={segment.id} savedPreview={segment.linkPreview} text={segment.text} index={index} total={segments.length} disabled={pending || locked || !draft.loaded} mediaDisabled={mode === "schedule"} media={segment.media} updateMedia={change => setSegments(previous => previous.map(item => item.id === segment.id ? replaceSocialDraftMedia(item, change(item.media)) : item))} session={getOAuthSession()} open={open} onChange={value => setSegments(previous => previous.map(item => item.id === segment.id ? { ...item, text: value } : item))} onMove={direction => moveSegment(index, direction)} onDelete={() => setSegments(previous => previous.filter(item => item.id !== segment.id))} removedUrl={removedPreviews[segment.id] ?? segment.removedLinkUrl} rememberRemovedUrl={url => { setRemovedPreviews(previous => ({ ...previous, [segment.id]: url })); setSegments(previous => previous.map(item => item.id === segment.id ? { ...item, removedLinkUrl: url } : item)); }} registerPreview={resolve => { if (resolve) previewResolvers.current.set(segment.id, resolve); else previewResolvers.current.delete(segment.id); }} />)}
-          <Button type="button" variant="outline" disabled={pending || locked || !draft.loaded || mode === "schedule"} onClick={() => setSegments(previous => [...previous, { id: crypto.randomUUID(), text: "" }])}>Add Post</Button>
+          {segments.map((segment, index) => <SocialThreadSegment key={segment.id} savedPreview={segment.linkPreview} text={segment.text} index={index} total={segments.length} disabled={pending || closingDraft || locked || !draft.loaded} mediaDisabled={mode === "schedule"} media={segment.media} updateMedia={change => setSegments(previous => previous.map(item => item.id === segment.id ? replaceSocialDraftMedia(item, change(item.media)) : item))} session={getOAuthSession()} open={open} onChange={value => setSegments(previous => previous.map(item => item.id === segment.id ? { ...item, text: value } : item))} onMove={direction => moveSegment(index, direction)} onDelete={() => setSegments(previous => previous.filter(item => item.id !== segment.id))} removedUrl={removedPreviews[segment.id] ?? segment.removedLinkUrl} rememberRemovedUrl={url => { setRemovedPreviews(previous => ({ ...previous, [segment.id]: url })); setSegments(previous => previous.map(item => item.id === segment.id ? { ...item, removedLinkUrl: url } : item)); }} registerPreview={resolve => { if (resolve) previewResolvers.current.set(segment.id, resolve); else previewResolvers.current.delete(segment.id); }} />)}
+          <Button type="button" variant="outline" disabled={pending || closingDraft || locked || !draft.loaded || mode === "schedule"} onClick={() => setSegments(previous => [...previous, { id: crypto.randomUUID(), text: "" }])}>Add Post</Button>
           {segments.length > 1 ? <p className="text-xs text-muted-foreground">Threads Publish in Order. Each Post Replies to the Previous Post.</p> : null}
           {locked ? <p role="status" className="text-sm text-muted-foreground">{completed} of {segments.length} Posts Published. Retry Continues This Thread.</p> : null}
           {locked && !pending ? discardRequested ? <div className="rounded-xl border p-3 text-sm"><p>Discard the Remaining Draft? Published Posts Will Stay on Bluesky. A Post With an Unconfirmed Result May Also Have Published.</p><div className="mt-2 flex gap-2"><Button type="button" variant="destructive" onClick={() => { void draft.clear().then(() => { resetDraft(); setError(undefined); }).catch(() => setError("Draft Could Not Be Cleared")); }}>Discard Remaining Draft</Button><Button type="button" variant="outline" onClick={() => setDiscardRequested(false)}>Keep Draft</Button></div></div> : <Button type="button" variant="outline" onClick={() => setDiscardRequested(true)}>{segments.length > 1 ? "Start a New Thread" : "Start A New Post"}</Button> : null}
-          {isPostSchedulingEnabled() && isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && toolsAvailable && (brandsAvailable || isPostSchedulingEnabled()) ? <p className="text-xs text-muted-foreground">{brandsAvailable ? isPostSchedulingEnabled() ? "Multi-account support and scheduling require Pro." : "Multi-account support requires Pro." : "Scheduling requires Pro."}</p> : null}
+          {isPostSchedulingEnabled() && isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || closingDraft || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && toolsAvailable && (brandsAvailable || isPostSchedulingEnabled()) ? <p className="text-xs text-muted-foreground">{brandsAvailable ? isPostSchedulingEnabled() ? "Multi-account support and scheduling require Pro." : "Multi-account support requires Pro." : "Scheduling requires Pro."}</p> : null}
           {(isPostSchedulingEnabled() && isPro && mode === "schedule") ? <SchedulingReadiness connected={scheduler.readiness.data?.connected} pending={scheduler.readiness.isPending} failed={scheduler.readiness.isError} connectUrl={scheduler.connectUrl} retry={() => { void scheduler.readiness.refetch(); }} /> : null}
           {!draft.loaded ? <p role="status">Restoring Draft…</p> : <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{draft.saving ? "Saving Draft…" : draft.status}</p>}
           {draft.pendingCleanups ? <div role="status" className="text-sm text-muted-foreground">Post Published. Draft Cleanup Will Retry.<Button type="button" variant="outline" disabled={pending} onClick={() => { void draft.retryCleanups().catch(() => {}); }}>Retry Draft Cleanup</Button></div> : null}
           {draft.completed || published ? <Button type="button" variant="outline" disabled={pending || draft.saving} onClick={() => { void retryDraftSync(); }}>Finish Draft Cleanup</Button> : null}
-          {draft.hasUnavailableMedia ? <div role="alert" className="space-y-2 rounded-xl border p-3 text-sm"><p>Some Attachments Are Unavailable. Retry Loading Private Photos, Reattach Them on the Original Device, or Remove Them Here.</p><Button type="button" variant="outline" disabled={pending || locked} onClick={removeUnavailableAttachments}>Remove Unavailable Attachments</Button></div> : null}
+          {draft.hasUnavailableMedia ? <div role="alert" className="space-y-2 rounded-xl border p-3 text-sm"><p>Some Attachments Are Unavailable. Retry Loading Private Photos, Reattach Them on the Original Device, or Remove Them Here.</p><Button type="button" variant="outline" disabled={pending || closingDraft || locked} onClick={removeUnavailableAttachments}>Remove Unavailable Attachments</Button></div> : null}
           {unsupportedDraftSettings ? <p role="alert" className="text-sm text-muted-foreground">This Draft Has Quote, Language, Content Label, or Audience Settings That This Composer Cannot Publish Yet. Continue in the Original App to Keep Those Settings.</p> : null}
           {draft.syncError ? <div role="alert" className="space-y-2 text-sm text-destructive"><p>{draft.syncError}</p><Button type="button" variant="outline" disabled={draft.saving} onClick={() => { void retryDraftSync(); }}>Retry Draft Sync</Button>{(isMissingOAuthScope(new Error(draft.syncError)) || draft.syncError === SCOPE_RECOVERY_MESSAGE) ? <SocialPermissionRecovery /> : null}</div> : null}
           {draft.hasConflict ? <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={pending || draft.saving || locked} onClick={() => { void draft.forkLocal().catch(() => {}); }}>Keep Local As Separate Draft</Button><Button type="button" variant="outline" disabled={pending || draft.saving || locked} onClick={() => { void draft.openRemote().catch(() => {}); }}>Open Remote Version</Button></div> : null}
@@ -233,7 +263,7 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
           {altWarning ? <div role="alert" className="rounded-xl border p-3 text-sm"><p>Some Attachments Have No Alt Text. Add Descriptions Before Posting.</p><Button type="button" variant="outline" onClick={() => setAltWarning(false)}>Add Descriptions</Button><Button type="button" onClick={() => void publish(true)}>Post Without Descriptions</Button></div> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : null}
-          <DialogFooter><DialogClose disabled={pending} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button type="submit" disabled={pending || !draft.loaded || !valid || (isPro && mode === "schedule") && (!scheduledInstant(scheduledAt) || !scheduler.readiness.data?.connected || segments.some(segment => segment.media))}>{pending ? (isPro && mode === "schedule") ? "Scheduling…" : segments.length > 1 ? `Publishing ${completed + 1} of ${segments.length}…` : "Publishing…" : (isPro && mode === "schedule") ? "Schedule Post" : segments.length > 1 ? locked ? "Retry Remaining Posts" : "Post Thread" : "Post"}</Button></DialogFooter>
+          <DialogFooter><DialogClose disabled={pending} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button type="submit" disabled={pending || closingDraft || !draft.loaded || !valid || (isPro && mode === "schedule") && (!scheduledInstant(scheduledAt) || !scheduler.readiness.data?.connected || segments.some(segment => segment.media))}>{pending ? (isPro && mode === "schedule") ? "Scheduling…" : segments.length > 1 ? `Publishing ${completed + 1} of ${segments.length}…` : "Publishing…" : (isPro && mode === "schedule") ? "Schedule Post" : segments.length > 1 ? locked ? "Retry Remaining Posts" : "Post Thread" : "Post"}</Button></DialogFooter>
         </form>}
       </DialogContent>
     </Dialog>

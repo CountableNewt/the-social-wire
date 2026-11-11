@@ -105,6 +105,83 @@ it("saves locally before network, skips empty creates, and starts a new composit
     expect(hook.result.current.cloudId).toBeUndefined();
   });
 });
+it("closes without saving after storage failure and preserves the last durable recovery", async () => {
+  const hook = harness();
+  await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments([{ id: "one", text: "Last saved recovery" }]));
+  await act(async () => hook.result.current.checkpoint());
+  const saved = await Storage.loadComposerDraft(did, "new-post");
+  const write = spyOn(Storage, "saveComposerDraft").mockRejectedValue(new Error("Storage full")); restores.push(() => write.mockRestore());
+  act(() => hook.result.current.setSegments([{ id: "one", text: "Unsaved newer text" }]));
+  await act(async () => { await expect(hook.result.current.close()).rejects.toThrow("Storage full"); });
+  const writesBeforeOverride = write.mock.calls.length;
+  act(() => hook.result.current.closeWithoutSaving());
+  expect(hook.result.current.loaded).toBe(false);
+  expect(hook.result.current.saving).toBe(false);
+  expect(write.mock.calls.length).toBe(writesBeforeOverride);
+  expect(await Storage.loadComposerDraft(did, "new-post")).toEqual(saved);
+  expect(Transport.deleteSocialDraft).not.toHaveBeenCalled();
+  write.mockRestore();
+  hook.rerender({ enabled: false, actor: session });
+  hook.rerender({ enabled: true, actor: session });
+  await waitFor(() => {
+    expect(hook.result.current.loaded).toBe(true);
+    expect(hook.result.current.segments[0].text).toBe("Last saved recovery");
+  });
+});
+it("overrides a stalled close, releases editor ownership, and fences late cloud replies after reopening", async () => {
+  const reply = deferred<{ id: string }>();
+  const started = deferred<void>();
+  let sent!: AppBskyDraftDefs.Draft;
+  const create = spyOn(Transport, "createSocialDraft").mockImplementation(async ({ draft }) => {
+    sent = structuredClone(draft);
+    started.resolve();
+    return reply.promise;
+  }); restores.push(() => create.mockRestore());
+  const hook = harness();
+  await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments([{ id: "one", text: "Recover a pending create" }]));
+  let closing!: Promise<string | undefined>;
+  await act(async () => {
+    closing = hook.result.current.close().then(() => undefined, error => (error as Error).message);
+    await started.promise;
+  });
+  const before = await Storage.loadComposerDraft(did, "new-post");
+  expect(before?.cloud?.createIntent).toBeTruthy();
+  act(() => hook.result.current.closeWithoutSaving());
+  expect(hook.result.current.loaded).toBe(false);
+  expect(await Storage.loadComposerDraft(did, "new-post")).toEqual(before);
+  hook.rerender({ enabled: false, actor: session });
+  hook.rerender({ enabled: true, actor: session });
+  await waitFor(() => {
+    expect(hook.result.current.loaded).toBe(true);
+    expect(hook.result.current.segments[0].text).toBe("Recover a pending create");
+  });
+  await act(async () => {
+    remote.push(view("late-create", sent));
+    reply.resolve({ id: "late-create" });
+    expect(await closing).toContain("Account Changed");
+  });
+  // The retired request cannot assign its result into this editor or erase the
+  // pending identity. A fresh explicit retry must reconcile the existing draft.
+  expect(hook.result.current.cloudId).toBeUndefined();
+  expect((await Storage.loadComposerDraft(did, "new-post"))?.cloud?.createIntent).toEqual(before?.cloud?.createIntent);
+  await act(async () => hook.result.current.retry());
+  expect(hook.result.current.cloudId).toBe("late-create");
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(Transport.deleteSocialDraft).not.toHaveBeenCalled();
+});
+it("refuses the save override while publication owns the composition", async () => {
+  const hook = harness();
+  await waitFor(() => expect(hook.result.current.loaded).toBe(true));
+  act(() => hook.result.current.setSegments([{ id: "one", text: "Publishing" }]));
+  await act(async () => hook.result.current.beginPublication());
+  expect(() => hook.result.current.closeWithoutSaving()).toThrow("Wait For Publishing To Finish");
+  expect(hook.result.current.loaded).toBe(true);
+  act(() => hook.result.current.endPublication());
+  act(() => hook.result.current.closeWithoutSaving());
+  expect(hook.result.current.loaded).toBe(false);
+});
 it("coalesces edits while create is pending and updates only after its ID is durable", async () => {
   const gate = deferred<{ id: string }>();
   const create = spyOn(Transport, "createSocialDraft").mockReturnValue(gate.promise); restores.push(() => create.mockRestore());
