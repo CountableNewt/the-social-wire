@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import { RssArticleReaderDialog } from "@/components/EntryDetail/RssArticleReaderDialog";
@@ -13,7 +14,7 @@ import type { EntryListItem } from "@/lib/atprotoClient";
 import type { AggregateAppViewFeed } from "@/lib/thinAppViewClient";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
 import { useAuth } from "@/hooks/useAuth";
-import { useDeferredArticleRead } from "@/hooks/useDeferredArticleRead";
+import { readEntryMutationRevision } from "@/lib/feedRefreshCoordinator";
 import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
 import { cn } from "@/lib/utils";
 
@@ -69,8 +70,14 @@ export default function ReadPubPage({
     null,
   );
   const publicationKind = pubId ? recordKindFromPubId(pubId) : null;
-  const { preferences } = useFeedDisplayPreferences();
+  const { preferences, automaticReadReady } = useFeedDisplayPreferences();
+  const automaticReadEnabled = useRef(preferences.automaticallyMarkAsRead !== false && automaticReadReady !== false);
+  useLayoutEffect(() => {
+    automaticReadEnabled.current = preferences.automaticallyMarkAsRead !== false && automaticReadReady !== false;
+  }, [automaticReadReady, preferences.automaticallyMarkAsRead]);
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
+  const queryClient = useQueryClient();
+  const explicitReadVersions = useRef(new Map<string, number>());
   const viewerKey = `${session?.did ?? "public"}:${oauthSessionReloadSeq ?? 0}`;
   const scope = JSON.stringify([pubId, aggregateFeed, wireFeed, circleFeed]);
   const rssReaderEntry = rssReaderSelection?.viewerKey === viewerKey && rssReaderSelection.scope === scope ? rssReaderSelection : null;
@@ -96,22 +103,19 @@ export default function ReadPubPage({
   );
 
   const markEntryReadForPub = useCallback(
-    (entryId: string) => markEntryRead(entryId, markOptions),
+    (entryId: string) => {
+      explicitReadVersions.current.set(entryId, (explicitReadVersions.current.get(entryId) ?? 0) + 1);
+      markEntryRead(entryId, markOptions);
+    },
     [markEntryRead, markOptions]
   );
-  const { open: deferRead, finish: finishReading, cancel: cancelDeferredRead, selectedEntryId } = useDeferredArticleRead({ scope, viewerKey, markRead: markEntryReadForPub });
-  const deferEntryRead = useCallback((entryId: string) => {
-    const oauth = getOAuthSession();
-    deferRead(entryId, () => getOAuthSession() === oauth);
-  }, [deferRead, getOAuthSession]);
-  const markEntryReadExplicitly = useCallback((entryId: string) => {
-    cancelDeferredRead(entryId);
-    markEntryReadForPub(entryId);
-  }, [cancelDeferredRead, markEntryReadForPub]);
 
   const markEntryUnreadForPub = useCallback(
-    (entryId: string) => { cancelDeferredRead(entryId); markEntryUnread(entryId, markOptions); },
-    [cancelDeferredRead, markEntryUnread, markOptions]
+    (entryId: string) => {
+      explicitReadVersions.current.set(entryId, (explicitReadVersions.current.get(entryId) ?? 0) + 1);
+      markEntryUnread(entryId, markOptions);
+    },
+    [markEntryUnread, markOptions]
   );
 
   const openEntryTarget = useCallback(
@@ -119,11 +123,12 @@ export default function ReadPubPage({
       entryId: string,
       entry: EntryListItem,
       target: EntryOpenTarget,
+      markAutomaticRead: () => void,
       pendingTab?: Window | null,
     ) => {
       if (target.kind === "rssReader") {
         pendingTab?.close();
-        if (!editorialFeed) deferEntryRead(entryId);
+        if (!editorialFeed) markAutomaticRead();
         setRssReaderEntry({
           entryId,
           title: entry.title ?? "RSS Article",
@@ -138,9 +143,9 @@ export default function ReadPubPage({
       if (!tab || tab.closed) { setOpenFailureMessage("Allow Pop-Ups to Open This Article."); return; }
       tab.opener = null;
       tab.location.href = target.url;
-      if (!editorialFeed) deferEntryRead(entryId);
+      if (!editorialFeed) markAutomaticRead();
     },
-    [deferEntryRead, editorialFeed, scope, viewerKey],
+    [editorialFeed, scope, viewerKey],
   );
 
   const handleSelectEntry = useCallback(
@@ -149,11 +154,20 @@ export default function ReadPubPage({
       const context = openContext.current;
       const intent = ++context.intent;
       const oauth = getOAuthSession();
+      if (oauth && oauth.did !== session?.did) return;
+      const explicitVersion = explicitReadVersions.current.get(entryId) ?? 0;
+      const mutationRevision = oauth ? readEntryMutationRevision(queryClient, oauth, entryId) : 0;
+      const markAutomaticRead = () => {
+        if (!automaticReadEnabled.current || getOAuthSession() !== oauth ||
+          (explicitReadVersions.current.get(entryId) ?? 0) !== explicitVersion ||
+          (oauth && readEntryMutationRevision(queryClient, oauth, entryId) !== mutationRevision)) return;
+        markEntryRead(entryId, markOptions);
+      };
       setResolvingEntryId(null);
       setOpenFailureMessage(null);
       const target = entryOpenTarget(entry, preferences.rssArticleOpenMode);
       if (target) {
-        openEntryTarget(entryId, entry, target);
+        openEntryTarget(entryId, entry, target, markAutomaticRead);
         return;
       }
 
@@ -189,7 +203,7 @@ export default function ReadPubPage({
           setOpenFailureMessage("Couldn't Find A Link For This Article.");
           return;
         }
-        openEntryTarget(entryId, entry, resolvedTarget, pendingTab);
+        openEntryTarget(entryId, entry, resolvedTarget, markAutomaticRead, pendingTab);
       })();
     },
     [
@@ -197,13 +211,16 @@ export default function ReadPubPage({
       openEntryTarget,
       preferences.rssArticleOpenMode,
       setResolvingEntryId,
+      session?.did,
+      queryClient,
+      markEntryRead,
+      markOptions,
     ],
   );
 
   const closeRssReader = useCallback(() => {
-    if (!editorialFeed) finishReading();
     setRssReaderEntry(null);
-  }, [editorialFeed, finishReading]);
+  }, []);
 
   return (
     <>
@@ -248,7 +265,7 @@ export default function ReadPubPage({
               pubId={pubId}
               aggregateFeed={aggregateFeed}
               wireFeed={wireFeed}
-              selectedEntryId={selectedEntryId ?? rssReaderEntry?.entryId ?? null}
+              selectedEntryId={rssReaderEntry?.entryId ?? null}
               resolvingEntryId={resolvingEntryId}
               onSelectEntry={handleSelectEntry}
               isEntryRead={editorialFeed ? theWireEntryIsUnread : isEntryRead}
@@ -256,7 +273,7 @@ export default function ReadPubPage({
               readIndicatorsEnabled={!editorialFeed}
               articleFilter={editorialFeed ? "all" : articleListFilter}
               markEntryRead={
-                editorialFeed ? ignoreTheWireReadState : markEntryReadExplicitly
+                editorialFeed ? ignoreTheWireReadState : markEntryReadForPub
               }
               markEntryUnread={
                 editorialFeed ? ignoreTheWireReadState : markEntryUnreadForPub

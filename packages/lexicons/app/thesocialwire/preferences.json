@@ -101,6 +101,10 @@
               ]
             }
           },
+          "automaticallyMarkAsRead": {
+            "type": "boolean",
+            "description": "Whether opening an article automatically marks it as read. Defaults to true when absent; false keeps read state under explicit user control."
+          },
           "rssArticleOpenMode": {
             "type": "string",
             "maxLength": 16,

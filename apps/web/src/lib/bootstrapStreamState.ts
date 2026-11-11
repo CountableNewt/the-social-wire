@@ -39,7 +39,8 @@ function countForPublicationId(
 ): number | undefined {
   const exact = counts[publicationId];
   if (exact != null) return exact;
-  return counts[normalizedPublicationId(publicationId)];
+  const target = normalizedPublicationId(publicationId);
+  return Object.entries(counts).find(([id]) => normalizedPublicationId(id) === target)?.[1];
 }
 
 function countAccuracyRank(accuracy: UnreadCountsAccuracy | undefined): number {
@@ -49,25 +50,26 @@ function countAccuracyRank(accuracy: UnreadCountsAccuracy | undefined): number {
 }
 
 function shouldApplyUnreadCountsEvent(
-  projection: PublicationSidebarProjection,
-  options: UnreadCountsEventOptions | undefined
+  current: UnreadCountsEventOptions | undefined,
+  incoming: UnreadCountsEventOptions | undefined
 ): boolean {
-  const incomingGeneration = options?.generation;
-  if (incomingGeneration == null) return true;
+  if (incoming?.generation == null || current?.generation == null) return true;
+  if (incoming.generation !== current.generation) return incoming.generation > current.generation;
+  return countAccuracyRank(incoming.accuracy) >= countAccuracyRank(current.accuracy);
+}
 
-  const currentGeneration = projection.unreadCountsGeneration;
-  if (currentGeneration != null && incomingGeneration < currentGeneration) {
-    return false;
+function countFreshness(projection: PublicationSidebarProjection) {
+  const freshness = { ...projection.unreadCountsFreshnessByPublicationId };
+  // Persisted projections from before scoped freshness still protect known counts.
+  for (const id of Object.keys(projection.unreadCountsByPublicationId ?? {})) {
+    const key = normalizedPublicationId(id);
+    freshness[key] ??= {
+      generation: projection.unreadCountsGeneration,
+      accuracy: projection.unreadCountsAccuracy,
+      countedAt: projection.unreadCountsCountedAt,
+    };
   }
-
-  if (currentGeneration === incomingGeneration) {
-    return (
-      countAccuracyRank(options?.accuracy) >=
-      countAccuracyRank(projection.unreadCountsAccuracy)
-    );
-  }
-
-  return true;
+  return freshness;
 }
 
 export function applySidebarPriorityEvent(
@@ -97,7 +99,7 @@ export function applySidebarPriorityEvent(
     return {
       ...row,
       ...priority,
-      unreadCount: priority.unreadCount ?? row.unreadCount,
+      unreadCount: countForPublicationId(countProjection.unreadCountsByPublicationId ?? {}, row.publicationId) ?? priority.unreadCount ?? row.unreadCount,
     };
   };
 
@@ -110,7 +112,7 @@ export function applySidebarPriorityEvent(
       const key = normalizeAtRepoParam(row.publicationId);
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push(row);
+      merged.push(mergeRow(row));
     }
     return merged;
   };
@@ -127,18 +129,18 @@ export function applySidebarPriorityEvent(
       const key = normalizeAtRepoParam(row.publicationId);
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push(row);
+      merged.push(mergeRow(row));
     }
     return merged;
   };
 
-  const unreadCountsByPublicationId = {
-    ...(current.unreadCountsByPublicationId ?? {}),
-    ...(payload.unreadCountsByPublicationId ?? {}),
-  };
+  const countProjection = applyUnreadCountsEvent(current, payload.unreadCountsByPublicationId ?? {}, {
+    generation: payload.unreadCountsGeneration, accuracy: payload.unreadCountsAccuracy, countedAt: payload.unreadCountsCountedAt,
+  });
+  const unreadCountsByPublicationId = countProjection.unreadCountsByPublicationId;
 
   return {
-    ...current,
+    ...countProjection,
     refreshedAt: payload.refreshedAt,
     allPublicationRows: appendNewPriorityRows(current.allPublicationRows),
     myPublications: mergeList(current.myPublications, payload.myPublications),
@@ -166,24 +168,38 @@ export function applyUnreadCountsEvent(
   counts: Record<string, number>,
   options?: UnreadCountsEventOptions
 ): PublicationSidebarProjection {
-  if (!shouldApplyUnreadCountsEvent(projection, options)) {
-    return projection;
+  const freshness = countFreshness(projection);
+  const acceptedIds = new Set(
+    [...Object.keys(counts), ...(options?.replacePublicationIds ?? [])]
+      .map(normalizedPublicationId)
+      .filter(id => shouldApplyUnreadCountsEvent(freshness[id], options))
+  );
+  if (!acceptedIds.size) return projection;
+  const unreadCountsByPublicationId = { ...(projection.unreadCountsByPublicationId ?? {}) };
+  for (const [id, count] of Object.entries(counts)) {
+    if (acceptedIds.has(normalizedPublicationId(id))) unreadCountsByPublicationId[id] = count;
   }
-
-  const unreadCountsByPublicationId = {
-    ...(projection.unreadCountsByPublicationId ?? {}),
-    ...counts,
-  };
-
-  const replacePublicationIds = options?.replacePublicationIds ?? [];
+  const replacePublicationIds = (options?.replacePublicationIds ?? [])
+    .filter(id => acceptedIds.has(normalizedPublicationId(id)));
   const replaceSet = new Set(replacePublicationIds.map(normalizedPublicationId));
-
-  if (replacePublicationIds.length) {
-    for (const publicationId of replacePublicationIds) {
-      const fresh = countForPublicationId(counts, publicationId) ?? 0;
-      unreadCountsByPublicationId[publicationId] = Math.max(0, fresh);
-    }
+  for (const id of replacePublicationIds) {
+    unreadCountsByPublicationId[id] = Math.max(0, countForPublicationId(counts, id) ?? 0);
   }
+  // Existing encoded aliases must not retain an older competing value.
+  for (const id of Object.keys(unreadCountsByPublicationId)) {
+    const key = normalizedPublicationId(id);
+    if (!acceptedIds.has(key)) continue;
+    const count = countForPublicationId(counts, id);
+    if (count != null || replaceSet.has(key)) unreadCountsByPublicationId[id] = Math.max(0, count ?? 0);
+  }
+  for (const id of acceptedIds) {
+    freshness[id] = { generation: options?.generation ?? freshness[id]?.generation,
+      accuracy: options?.accuracy ?? freshness[id]?.accuracy,
+      countedAt: options?.countedAt ?? freshness[id]?.countedAt };
+  }
+  const updateSummary = shouldApplyUnreadCountsEvent({
+    generation: projection.unreadCountsGeneration, accuracy: projection.unreadCountsAccuracy,
+  }, options);
 
   const applyRow = (
     row: PublicationSidebarProjection["allPublicationRows"][number]
@@ -193,7 +209,8 @@ export function applyUnreadCountsEvent(
       const unreadCount = count > 0 ? count : 0;
       return row.unreadCount === unreadCount ? row : { ...row, unreadCount };
     }
-    const count = countForPublicationId(counts, row.publicationId);
+    const count = acceptedIds.has(normalizedPublicationId(row.publicationId))
+      ? countForPublicationId(counts, row.publicationId) : undefined;
     if (count == null) return row;
     return row.unreadCount === count ? row : { ...row, unreadCount: count };
   };
@@ -210,12 +227,13 @@ export function applyUnreadCountsEvent(
 
   return {
     ...projection,
+    unreadCountsFreshnessByPublicationId: freshness,
     unreadCountsGeneration:
-      options?.generation ?? projection.unreadCountsGeneration,
+      updateSummary ? options?.generation ?? projection.unreadCountsGeneration : projection.unreadCountsGeneration,
     unreadCountsAccuracy:
-      options?.accuracy ?? projection.unreadCountsAccuracy,
+      updateSummary ? options?.accuracy ?? projection.unreadCountsAccuracy : projection.unreadCountsAccuracy,
     unreadCountsCountedAt:
-      options?.countedAt ?? projection.unreadCountsCountedAt,
+      updateSummary ? options?.countedAt ?? projection.unreadCountsCountedAt : projection.unreadCountsCountedAt,
     unreadCountsByPublicationId,
     allPublicationRows: applyRows(projection.allPublicationRows),
     myPublications: applyRows(projection.myPublications),

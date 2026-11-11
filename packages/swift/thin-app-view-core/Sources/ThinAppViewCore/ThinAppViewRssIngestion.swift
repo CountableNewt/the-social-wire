@@ -74,8 +74,7 @@ public struct ThinAppViewRssIngestion: Sendable {
     } catch {
       await recordFetchFailure(
         normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata,
-        polledAt: polledAt
+        previous: metadata
       )
       return 0
     }
@@ -87,7 +86,6 @@ public struct ThinAppViewRssIngestion: Sendable {
       await recordFetchSuccess(
         normalizedFeedUrl: normalizedFeedUrl,
         previous: metadata,
-        polledAt: polledAt,
         etag: responseEtag,
         lastModified: responseLastModified
       )
@@ -97,8 +95,7 @@ public struct ThinAppViewRssIngestion: Sendable {
     guard [200, 403, 406, 415].contains(response.status.code) else {
       await recordFetchFailure(
         normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata,
-        polledAt: polledAt
+        previous: metadata
       )
       return 0
     }
@@ -109,8 +106,7 @@ public struct ThinAppViewRssIngestion: Sendable {
     } catch {
       await recordFetchFailure(
         normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata,
-        polledAt: polledAt
+        previous: metadata
       )
       return 0
     }
@@ -173,7 +169,6 @@ public struct ThinAppViewRssIngestion: Sendable {
     await recordFetchSuccess(
       normalizedFeedUrl: normalizedFeedUrl,
       previous: metadata,
-      polledAt: polledAt,
       etag: responseEtag,
       lastModified: responseLastModified
     )
@@ -238,15 +233,15 @@ public struct ThinAppViewRssIngestion: Sendable {
   private func recordFetchSuccess(
     normalizedFeedUrl: String,
     previous: RssFeedFetchMetadata?,
-    polledAt: Date,
     etag: String?,
     lastModified: String?
   ) async {
+    let completedAt = Date()
     let metadata = RssFeedFetchMetadata(
       normalizedFeedUrl: normalizedFeedUrl,
       etag: etag ?? previous?.etag,
       lastModified: lastModified ?? previous?.lastModified,
-      lastPollAt: polledAt,
+      lastPollAt: completedAt,
       backoffUntil: nil,
       consecutiveErrorCount: 0
     )
@@ -255,16 +250,16 @@ public struct ThinAppViewRssIngestion: Sendable {
 
   private func recordFetchFailure(
     normalizedFeedUrl: String,
-    previous: RssFeedFetchMetadata?,
-    polledAt: Date
+    previous: RssFeedFetchMetadata?
   ) async {
+    let completedAt = Date()
     let errorCount = min((previous?.consecutiveErrorCount ?? 0) + 1, 8)
-    let backoffUntil = polledAt.addingTimeInterval(Self.backoffSeconds(errorCount: errorCount))
+    let backoffUntil = completedAt.addingTimeInterval(Self.backoffSeconds(errorCount: errorCount))
     let metadata = RssFeedFetchMetadata(
       normalizedFeedUrl: normalizedFeedUrl,
       etag: previous?.etag,
       lastModified: previous?.lastModified,
-      lastPollAt: polledAt,
+      lastPollAt: completedAt,
       backoffUntil: backoffUntil,
       consecutiveErrorCount: errorCount
     )

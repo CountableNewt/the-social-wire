@@ -545,6 +545,7 @@ function PublicationSidebarProviderInner({
           const readChanged = readFeedRefreshRevision(qc, oauth) !== readRevision;
           if (readChanged) {
             projection.unreadCountsByPublicationId = previous?.unreadCountsByPublicationId;
+            projection.unreadCountsFreshnessByPublicationId = previous?.unreadCountsFreshnessByPublicationId;
             projection.unreadCountsGeneration = previous?.unreadCountsGeneration;
             projection.unreadCountsAccuracy = previous?.unreadCountsAccuracy;
             projection.unreadCountsCountedAt = previous?.unreadCountsCountedAt;

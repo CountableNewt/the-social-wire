@@ -253,6 +253,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: prev?.showTopLevelFeedUnreadCounts,
             feedsWithUnreadCounts: prev?.feedsWithUnreadCounts,
             rssArticleOpenMode: prev?.rssArticleOpenMode,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )
@@ -280,6 +281,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: !preferences.feedsWithUnreadCounts.isEmpty,
             feedsWithUnreadCounts: preferences.feedsWithUnreadCounts.map(\.preferenceKey),
             rssArticleOpenMode: preferences.articleOpenMode.rawValue,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )
@@ -311,6 +313,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: prev?.showTopLevelFeedUnreadCounts,
             feedsWithUnreadCounts: prev?.feedsWithUnreadCounts,
             rssArticleOpenMode: mode.rawValue,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )
