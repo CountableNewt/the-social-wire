@@ -20,6 +20,7 @@ import Testing
     router.add(middleware: SocialDraftTestAuth(owner: "did:plc:free-viewer"))
     router.add(middleware: StandaloneAdmissionMiddleware(runtime: runtime))
     router.get("/v1/analytics/bluesky") { _, _ in Response(status: .ok) }
+    router.get("/v1/analytics/publications") { _, _ in Response(status: .ok) }
     router.get("/v1/analytics/summary") { _, _ in Response(status: .ok) }
     router.post("/v1/analytics/refresh") { _, _ in Response(status: .ok) }
     router.post("/v1/analytics/events") { _, _ in Response(status: .accepted) }
@@ -28,6 +29,9 @@ import Testing
       let refresh = try await client.execute(uri: "/v1/analytics/refresh", method: .post)
       let events = try await client.execute(uri: "/v1/analytics/events", method: .post)
       #expect(try await client.execute(uri: "/v1/analytics/bluesky", method: .get).status == .forbidden)
+      let publications = try await client.execute(uri: "/v1/analytics/publications", method: .get)
+      #expect(publications.status == .forbidden)
+      #expect(publications.headers[.cacheControl] == "private, no-store")
       #expect(summary.status == .forbidden)
       #expect(refresh.status == .forbidden)
       #expect(events.status == .accepted)

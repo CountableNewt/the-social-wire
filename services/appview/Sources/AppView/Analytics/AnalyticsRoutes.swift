@@ -8,11 +8,13 @@ struct AnalyticsRoutes: Sendable {
   let store: any AnalyticsStoring
   let provider: any AnalyticsContentProviding
   var bluesky: BlueskyAnalyticsProvider? = nil
+  var publications: PublicationAnalyticsProvider? = nil
   let limits = AnalyticsLimits()
   var now: @Sendable () -> Date = { Date() }
 
   func register(on group: RouterGroup<GatewayRequestContext>) {
     group.get("/v1/analytics/bluesky") { request, context in try await handle(request, context: context) }
+    group.get("/v1/analytics/publications") { request, context in try await handle(request, context: context) }
     group.get("/v1/analytics/summary") { request, context in try await handle(request, context: context) }
     group.post("/v1/analytics/refresh") { request, context in try await handle(request, context: context) }
     group.post("/v1/analytics/events") { request, context in try await handle(request, context: context) }
@@ -42,7 +44,13 @@ struct AnalyticsRoutes: Sendable {
       author != GatewayInternalTrustAuthMiddleware.anonymousDiscoveryDID else { return try Self.failure(.unauthorized, "Authentication Required") }
     let at = now()
     let path = request.uri.path
-    guard await limits.allow(key: author + "\0" + path, at: at, maximum: path == "/v1/analytics/refresh" ? 1 : (path == "/v1/analytics/bluesky" ? 10 : 120)) else {
+    let maximum: Int
+    switch path {
+    case "/v1/analytics/refresh": maximum = 1
+    case "/v1/analytics/bluesky", "/v1/analytics/publications": maximum = 10
+    default: maximum = 120
+    }
+    guard await limits.allow(key: author + "\0" + path, at: at, maximum: maximum) else {
       return try Self.failure(.tooManyRequests, "Analytics Request Limit Reached")
     }
     if path == "/v1/analytics/events" {
@@ -64,6 +72,11 @@ struct AnalyticsRoutes: Sendable {
       catch AnalyticsError.rateLimit { return try Self.failure(.tooManyRequests, "Analytics Observation Limit Reached") }
       catch { return try Self.failure(.serviceUnavailable, "Analytics Unavailable") }
       return Response(status: .accepted)
+    }
+    if path == "/v1/analytics/publications" {
+      guard let publications else { return try Self.failure(.serviceUnavailable, "Analytics Unavailable") }
+      do { return try Self.json(await publications.summary(author: author, at: at)) }
+      catch { return try Self.failure(.badGateway, "Publication Analytics Provider Unavailable") }
     }
     let query = request.uri.queryParameters
     let days = query.get("days").flatMap(Int.init) ?? (query.get("days") == nil ? 30 : 0)
