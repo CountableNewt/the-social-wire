@@ -4,13 +4,6 @@
   "entries": [
     {
       "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.teapot",
-      "classification": "first-party-xrpc",
-      "xrpcNsid": "app.thesocialwire.teapot"
-    },
-    {
-      "surface": "openapi",
       "method": "POST",
       "path": "/v1/media/project",
       "classification": "first-party-rest"
@@ -38,6 +31,13 @@
       "method": "GET",
       "path": "/freshness",
       "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/app.thesocialwire.teapot",
+      "classification": "first-party-xrpc",
+      "xrpcNsid": "app.thesocialwire.teapot"
     },
     {
       "surface": "openapi",
