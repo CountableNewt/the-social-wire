@@ -43,11 +43,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); if (originalIDB) Object.defineProperty(globalThis, "indexedDB", originalIDB); else Reflect.deleteProperty(globalThis, "indexedDB"); });
 it("shows a cloud save failure reason, retains local edits, and clears the alert after retry", async () => {
-  const one = spyOn(Sync, "syncArticleDraft").mockRejectedValue(new Cloud.ArticleDraftRequestError("Saving the private draft failed: Private article draft quota exceeded (HTTP 413 · Quota). Reduce the draft or attachment size before retrying.", 413, "Quota")); restores.push(() => one.mockRestore());
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
   await waitFor(() => expect((screen.getByRole("button", { name: "New Article" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "New Article" }));
   const title = await screen.findByLabelText("Article Title");
+  // Let the initial draft sync settle before failing the edited save, so an
+  // older sync cannot supply the alert or overwrite the status under test.
+  await screen.findByRole("status", { name: "Synced Privately" });
+  const one = spyOn(Sync, "syncArticleDraft").mockRejectedValue(new Cloud.ArticleDraftRequestError("Saving the private draft failed: Private article draft quota exceeded (HTTP 413 · Quota). Reduce the draft or attachment size before retrying.", 413, "Quota")); restores.push(() => one.mockRestore());
   fireEvent.change(title, { target: { value: "Retained After Failed Sync" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("HTTP 413 · Quota"));
