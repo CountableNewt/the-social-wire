@@ -22,7 +22,7 @@ export function AnalyticsAccountSelection({ ownerDid }: { ownerDid: string }) {
     </FeedHeader>
     <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5"><div className="mx-auto max-w-6xl space-y-6">
       {brandsAvailable ? <fieldset className="space-y-3 rounded-2xl border p-4"><legend className="px-2 font-semibold">Accounts</legend><div className="flex flex-wrap gap-3">{accounts.map(did => <label key={did} className="flex max-w-full cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={active.includes(did)} onChange={event => setSelected(previous => event.target.checked ? [...new Set([...previous, did])] : previous.filter(value => value !== did))} /><AnalyticsAccountIdentity did={did} personal={did === ownerDid} /></label>)}</div><Link className="text-xs text-primary hover:underline" href="/brand-accounts">Manage Brand Accounts</Link></fieldset> : null}
-      <SelectedAnalytics key={JSON.stringify([ownerDid, days, active])} accounts={active} ownerDid={ownerDid} days={days} />
+      <SelectedAnalytics accounts={active} ownerDid={ownerDid} days={days} />
     </div></div>
   </div>;
 }

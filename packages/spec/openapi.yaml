@@ -302,6 +302,24 @@ components:
             sharesComplete: {type: boolean, const: false}
             articlesSearched: {type: integer, minimum: 0, maximum: 5}
             feedPostsExamined: {type: integer, minimum: 0}
+    PublicationAnalytics:
+      type: object
+      required: [uri, name, url, documents, subscribers, recommendations, recommendationCoverageComplete]
+      properties:
+        uri: {type: string, format: uri, description: Canonical site.standard.publication AT URI.}
+        name: {type: string}
+        url: {type: string, description: Public URL from the publication record.}
+        documents: {type: integer, minimum: 0, description: Documents observed in the authenticated account's bounded public PDS inventory that reference this publication.}
+        subscribers: {type: [integer, 'null'], minimum: 0, description: Distinct public subscriber accounts observed by the backlink index. Null if the count is unavailable.}
+        recommendations: {type: [integer, 'null'], minimum: 0, description: Sum of distinct public recommender accounts per scanned document as observed by the backlink index. Null if the count is unavailable.}
+        recommendationCoverageComplete: {type: boolean, description: Whether recommendation counts cover the full owned document inventory for this publication. The public backlink index determines which records can be observed.}
+    PublicationAnalyticsSummary:
+      type: object
+      required: [sampledAt, publications, inventoryComplete]
+      properties:
+        sampledAt: {type: string, format: date-time}
+        publications: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/PublicationAnalytics'}}
+        inventoryComplete: {type: boolean, description: Whether the response covers the account's full public publication inventory and all associated owned documents.}
     CreatorAnalyticsSummary:
       type: object
       required: [items, totals, series, coverage]
@@ -3652,6 +3670,20 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
         '429': {description: Request Limit Reached}
+        '503': {description: Analytics Unavailable}
+  /v1/analytics/publications:
+    get:
+      operationId: getPublicationAnalytics
+      summary: Read Viewer-Owned Standard.site Publication Analytics
+      tags: [Analytics]
+      security: [{ATProtoOAuthDPoP: []}]
+      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Reads viewer-owned Standard.site publications and a bounded public document inventory. Counts distinct public subscribers per publication and sums distinct public recommenders per document. Counts are current observations from the public backlink index and are independent of the Bluesky date range.
+      responses:
+        '200': {description: Publication Analytics With Explicit Coverage, content: {application/json: {schema: {$ref: '#/components/schemas/PublicationAnalyticsSummary'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
+        '429': {description: Request Limit Reached}
+        '502': {description: Publication Analytics Provider Unavailable}
         '503': {description: Analytics Unavailable}
   /v1/analytics/summary:
     get:

@@ -173,6 +173,12 @@
     {
       "surface": "openapi",
       "method": "GET",
+      "path": "/v1/analytics/publications",
+      "classification": "first-party-rest"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
       "path": "/v1/analytics/summary",
       "classification": "first-party-rest"
     },
