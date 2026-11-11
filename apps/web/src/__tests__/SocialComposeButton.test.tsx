@@ -267,6 +267,55 @@ it("preserves content on failure and allows retry", async () => {
   expect(screen.getByRole("button", { name: "Post" }).hasAttribute("disabled")).toBe(false);
 });
 
+it("allows leaving after a cloud draft save fails without deleting saved recovery", async () => {
+  const field = await open();
+  const create = spyOn(cloudDrafts, "createSocialDraft").mockRejectedValue(new Error("Draft service unavailable")); restores.push(() => create.mockRestore());
+  fireEvent.change(field, { target: { value: "Recover this local text" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await screen.findByRole("button", { name: "Keep Editing" });
+  expect(screen.getByText(/Your Latest Edits May Be Lost/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Keep Editing" }));
+  expect((await loadedField()).value).toBe("Recover this local text");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await screen.findByRole("button", { name: "Keep Editing" });
+  fireEvent.click(screen.getByRole("button", { name: "Close Without Saving" }));
+  await waitForDialogClosed();
+  expect(localDrafts.get(`${oauth.did}:new-post`)?.segments[0].text).toBe("Recover this local text");
+  expect(remoteDrafts.size).toBe(0);
+  fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
+  expect((await loadedField()).value).toBe("Recover this local text");
+});
+
+it("can override a stalled close and ignores its late result after reopening", async () => {
+  const field = await open();
+  let started!: () => void, finish!: (value: { id: string }) => void;
+  const saving = new Promise<void>(resolve => { started = resolve; });
+  const reply = new Promise<{ id: string }>(resolve => { finish = resolve; });
+  const create = spyOn(cloudDrafts, "createSocialDraft").mockImplementation(async () => { started(); return reply; }); restores.push(() => create.mockRestore());
+  fireEvent.change(field, { target: { value: "Keep uncertain save identity" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await saving;
+  fireEvent.click(await screen.findByRole("button", { name: "Close Without Saving" }));
+  await waitForDialogClosed();
+  fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
+  expect((await loadedField()).value).toBe("Keep uncertain save identity");
+  await act(async () => { finish({ id: "late-cloud-id" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(screen.queryByRole("dialog") !== null).toBe(true);
+  expect((await loadedField()).value).toBe("Keep uncertain save identity");
+});
+
+it("can close when local draft storage is unavailable without deleting earlier recovery", async () => {
+  const field = await open();
+  const before = clone(localDrafts.get(`${oauth.did}:new-post`));
+  const save = spyOn(draftStorage, "saveComposerDraft").mockRejectedValue(new Error("Storage quota exceeded")); restores.push(() => save.mockRestore());
+  fireEvent.change(field, { target: { value: "Unsaved latest edits" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await screen.findByRole("button", { name: "Keep Editing" });
+  fireEvent.click(screen.getByRole("button", { name: "Close Without Saving" }));
+  await waitForDialogClosed();
+  expect(localDrafts.get(`${oauth.did}:new-post`)).toEqual(before);
+});
+
 it("prevents duplicate submission and closing while a post is pending", async () => {
   let resolve!: (value: { uri: string; cid: string }) => void;
   const publish = spyOn(compose, "createBlueskyPost").mockReturnValue(new Promise(complete => { resolve = complete; }));

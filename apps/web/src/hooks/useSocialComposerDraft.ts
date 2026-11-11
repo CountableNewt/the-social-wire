@@ -461,6 +461,19 @@ export function useSocialComposerDraft(options: Options) {
     return promise;
   }
 
+  function releaseComposition(run: Composition) {
+    run.stopped = true;
+    run.controller.abort();
+    run.release?.();
+    run.release = undefined;
+    if (run.lockDone) {
+      const released = run.lockDone;
+      releasingEditors.set(run.ownerDid, released);
+      void released.finally(() => { if (releasingEditors.get(run.ownerDid) === released) releasingEditors.delete(run.ownerDid); });
+    }
+    if (current.current === run) current.current = undefined;
+  }
+
   useEffect(() => {
     if (!options.enabled) return;
     const run: Composition = { ownerDid: options.ownerDid, session: options.session, context: options.initialDraft ? `social-draft:${options.initialDraft.id}` : "new-post", cloud: { deviceId: "", updatedAt: Date.now() }, controller: new AbortController(), loaded: false, stopped: false };
@@ -529,15 +542,7 @@ export function useSocialComposerDraft(options: Options) {
     })().catch(error => {
       if (current.current === run && !run.controller.signal.aborted) { setStorageError(error instanceof Error ? error.message : "Draft Could Not Be Restored."); setStatus("Draft Recovery Failed"); }
     });
-    return () => {
-      run.controller.abort(); run.release?.();
-      if (run.lockDone) {
-        const released = run.lockDone;
-        releasingEditors.set(run.ownerDid, released);
-        void released.finally(() => { if (releasingEditors.get(run.ownerDid) === released) releasingEditors.delete(run.ownerDid); });
-      }
-      if (current.current === run) current.current = undefined;
-    };
+    return () => releaseComposition(run);
     // The remote ID identifies an editing session; list object refreshes cannot reset it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.enabled, options.ownerDid, options.session, options.initialDraft?.id]);
@@ -699,6 +704,18 @@ export function useSocialComposerDraft(options: Options) {
       latest.current.restore(segments.current);
     } else throw new Error("Draft Has Unsynced Changes. Keep The Composer Open And Retry.");
   }
+  function closeWithoutSaving() {
+    const run = current.current;
+    if (run?.publishing) throw new Error("Wait For Publishing To Finish Before Closing.");
+    if (run) {
+      guard(run);
+      // Keep the durable recovery and uncertain request identities. Aborting
+      // fences late replies without waiting for the failing save to settle.
+      releaseComposition(run);
+    }
+    setLoaded(false);
+    setSaving(false);
+  }
   async function retryWork() {
     const run = active();
     if (run.cloud.completed) {
@@ -787,5 +804,5 @@ export function useSocialComposerDraft(options: Options) {
     } catch (error) { report(run, error); throw error; }
     finally { run.resolving = false; if (current.current === run) setSaving(false); }
   }
-  return { loaded: options.enabled && loaded, saving, status, storageError, syncError, cloudId, completed, cleanupPending, hasConflict, unsupportedPublishSettings, checkpoint, flush, beginPublication, endPublication, complete, pendingCleanups, retryCleanups, clear, close, retry, forkLocal, openRemote, hasUnavailableMedia: options.segments.some(segment => !!segment.unavailableDraftMedia || segment.media?.kind === "gif" && !!segment.media.unavailable) };
+  return { loaded: options.enabled && loaded, saving, status, storageError, syncError, cloudId, completed, cleanupPending, hasConflict, unsupportedPublishSettings, checkpoint, flush, beginPublication, endPublication, complete, pendingCleanups, retryCleanups, clear, close, closeWithoutSaving, retry, forkLocal, openRemote, hasUnavailableMedia: options.segments.some(segment => !!segment.unavailableDraftMedia || segment.media?.kind === "gif" && !!segment.media.unavailable) };
 }
