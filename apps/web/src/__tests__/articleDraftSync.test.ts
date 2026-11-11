@@ -68,6 +68,15 @@ it("rebases the newer local edit after CAS conflict with a distinct durable muta
   expect(inputs[1].mutationId).not.toBe(inputs[0].mutationId);
   expect(inputs[1].draft.title).toBe("Newest Local");
 });
+it("keeps upload-pending failures and the durable local mutation available for retry", async () => {
+  const saved = await Storage.saveArticleDraft(did, draft());
+  const failure = new Cloud.ArticleDraftRequestError("Attachment upload pending", 409, "UploadPending");
+  const put = spyOn(Cloud, "putCloudArticleDraft").mockRejectedValue(failure); restores.push(() => put.mockRestore());
+  await expect(syncArticleDraft(actor, id)).rejects.toBe(failure);
+  expect(put).toHaveBeenCalledTimes(1);
+  expect(await Storage.getArticleDraft(did, id)).toEqual(saved);
+  expect((await Storage.getArticleDraftSyncState(did, id))?.pending?.kind).toBe("put");
+});
 it("retries a delayed older cloud read without downgrading another tab's server revision", async () => {
   await Storage.saveArticleDraft(did, draft("Latest Local", "2026-11-09T00:00:00Z"));
   remote = document(draft("Earlier Server", "2026-11-02T00:00:00Z"), 1);

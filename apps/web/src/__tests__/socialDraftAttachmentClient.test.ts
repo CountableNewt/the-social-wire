@@ -120,3 +120,16 @@ it("distinguishes retired asset responses from ordinary CAS conflicts without ch
   await expect(uploadDraftAttachment(actor, asset, file())).rejects.toMatchObject({ status: 409, error: "Conflict" });
   expect((await describeDraftAttachment(file(), "p.jpg", asset)).assetId).toBe(asset.assetId);
 });
+it("identifies the failed attachment upload and preserves storage error details", async () => {
+  const asset = await describeDraftAttachment(file(), "p.jpg");
+  transport(async path => path.endsWith("reserveAttachment")
+    ? Response.json({ attachment: asset })
+    : Response.json({ error: "Unavailable", message: "Private draft storage unavailable" }, { status: 503 }));
+  await expect(uploadDraftAttachment(actor, asset, file())).rejects.toMatchObject({
+    status: 503, error: "Unavailable", message: expect.stringContaining("Uploading the draft attachment failed: Private draft storage unavailable (HTTP 503 · Unavailable)"),
+  });
+});
+it("explains pending uploads without claiming another device edited the draft", async () => {
+  transport(async () => Response.json({ error: "UploadPending", message: "Attachment upload pending" }, { status: 409 }));
+  await expect(putDraftAttachmentManifest(actor, "draft", 2, [])).rejects.toThrow("Wait for the attachment upload to finish");
+});

@@ -42,6 +42,23 @@ beforeEach(() => {
   const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue([]); restores.push(() => history.mockRestore());
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); if (originalIDB) Object.defineProperty(globalThis, "indexedDB", originalIDB); else Reflect.deleteProperty(globalThis, "indexedDB"); });
+it("shows a cloud save failure reason, retains local edits, and clears the alert after retry", async () => {
+  const one = spyOn(Sync, "syncArticleDraft").mockRejectedValue(new Cloud.ArticleDraftRequestError("Saving the private draft failed: Private article draft quota exceeded (HTTP 413 · Quota). Reduce the draft or attachment size before retrying.", 413, "Quota")); restores.push(() => one.mockRestore());
+  await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
+  await waitFor(() => expect((screen.getByRole("button", { name: "New Article" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "New Article" }));
+  const title = await screen.findByLabelText("Article Title");
+  fireEvent.change(title, { target: { value: "Retained After Failed Sync" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("HTTP 413 · Quota"));
+  expect(screen.getByRole("status", { name: "Saved Locally · Sync Pending" })).toBeTruthy();
+  expect((await listArticleDrafts(did))[0].title).toBe("Retained After Failed Sync");
+  expect((title as HTMLInputElement).value).toBe("Retained After Failed Sync");
+  one.mockImplementation(async (actor, id) => getArticleDraft(actor.viewerDid, id));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Save Draft" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.queryByRole("alert")?.textContent ?? "").toBe(""));
+});
 it("keeps a newly entered title through immediate mode changes, body edits, Save Draft, and Article Viewer", async () => {
   await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
   await waitFor(() => expect((screen.getByRole("button", { name: "New Article" }) as HTMLButtonElement).disabled).toBe(false));
