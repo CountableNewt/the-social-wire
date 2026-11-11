@@ -1,0 +1,21 @@
+meta {
+  name: Get Publication Analytics
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/v1/analytics/publications
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+docs {
+  Shows the authenticated account's Standard.site publications and their observed documents, distinct public subscribers, and distinct public recommenders summed across documents. The same conditional Pro gate as Creator Analytics applies. Counts reflect the current public index, and inventory and recommendation coverage are explicit. An unavailable count is null.
+}

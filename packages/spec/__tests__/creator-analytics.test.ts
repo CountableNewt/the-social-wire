@@ -7,7 +7,7 @@ const spec = Bun.YAML.parse(readFileSync(join(import.meta.dir, "../openapi.yaml"
   components: { schemas: Record<string, { properties: Record<string, any>; required: string[] }> };
 };
 it("documents authenticated creator APIs with scoped nullable metrics and matching Bruno requests", () => {
-  for (const [method, name, file] of [["get", "bluesky", "Get Bluesky Analytics"], ["get", "summary", "Get Creator Analytics"], ["post", "refresh", "Refresh Creator Analytics"], ["post", "events", "Record Creator Observation"]]) {
+  for (const [method, name, file] of [["get", "bluesky", "Get Bluesky Analytics"], ["get", "publications", "Get Publication Analytics"], ["get", "summary", "Get Creator Analytics"], ["post", "refresh", "Refresh Creator Analytics"], ["post", "events", "Record Creator Observation"]]) {
     const operation = spec.paths[`/v1/analytics/${name}`][method];
     expect(operation.security).toEqual([{ ATProtoOAuthDPoP: [] }]);
     expect(operation.responses["401"]).toBeDefined();
@@ -26,6 +26,22 @@ it("documents authenticated creator APIs with scoped nullable metrics and matchi
   expect(schemas.CreatorAnalyticsSummary.properties.coverage.properties.platformImpressions.type).toBe("null");
 });
 
+it("defines Standard.site publication analytics with nullable counts and explicit coverage", () => {
+  const operation = spec.paths["/v1/analytics/publications"].get;
+  for (const status of ["200", "401", "403", "429", "502", "503"]) {
+    expect(operation.responses[status]).toBeDefined();
+  }
+  const schemas = spec.components.schemas;
+  expect(schemas.PublicationAnalyticsSummary.required).toEqual(["sampledAt", "publications", "inventoryComplete"]);
+  expect(schemas.PublicationAnalyticsSummary.properties.publications.maxItems).toBe(20);
+  expect(schemas.PublicationAnalyticsSummary.properties.inventoryComplete.type).toBe("boolean");
+  const publication = schemas.PublicationAnalytics;
+  expect(publication.required).toEqual(["uri", "name", "url", "documents", "subscribers", "recommendations", "recommendationCoverageComplete"]);
+  expect(publication.properties.documents.type).toBe("integer");
+  expect(publication.properties.subscribers.type).toEqual(["integer", "null"]);
+  expect(publication.properties.recommendations.type).toEqual(["integer", "null"]);
+  expect(publication.properties.recommendationCoverageComplete.type).toBe("boolean");
+});
 
 it("defines bounded Bluesky analysis with unknown metrics and explicit incomplete search coverage", () => {
   const operation = spec.paths["/v1/analytics/bluesky"].get;

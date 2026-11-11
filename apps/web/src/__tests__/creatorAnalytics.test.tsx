@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Gateway from "@/lib/socialWireGatewayClient";
 import { analyticsCalendarDay, getCreatorAnalytics, metricLabel, safeAnalyticsUrl, uniqueAnalyticsItems, type AnalyticsSummary } from "@/lib/analytics/creatorAnalyticsClient";
+import { getPublicationAnalytics } from "@/lib/analytics/publicationAnalyticsClient";
 import { AnalyticsTrend } from "@/components/Analytics/AnalyticsTrend";
 
 export function analyticsFixture(): AnalyticsSummary {
@@ -23,6 +24,22 @@ describe("creator analytics", () => {
       expect(fetch.mock.calls[1]![2]?.body).toBeUndefined();
       fetch.mockResolvedValue(new Response("secret backend text", { status: 401 }));
       await expect(getCreatorAnalytics(session, { days: 30 })).rejects.toThrow("Log in again");
+    } finally { fetch.mockRestore(); }
+  });
+  it("uses the authenticated publication snapshot route and keeps upstream errors private", async () => {
+    const data = { sampledAt: "2026-11-09T12:00:00Z", publications: [], inventoryComplete: true };
+    const fetch = spyOn(Gateway, "gatewayFetch").mockResolvedValue(Response.json(data));
+    try {
+      const session = { did: "did:plc:alice" } as unknown as OAuthSession;
+      const signal = new AbortController().signal;
+      expect(await getPublicationAnalytics(session, { signal })).toEqual(data);
+      expect(fetch).toHaveBeenCalledWith(session, "/v1/analytics/publications", { signal });
+      fetch.mockResolvedValue(new Response("private upstream details", { status: 401 }));
+      await expect(getPublicationAnalytics(session)).rejects.toThrow("Log in again");
+      fetch.mockResolvedValue(new Response("private upstream details", { status: 403 }));
+      await expect(getPublicationAnalytics(session)).rejects.toThrow("requires Pro access");
+      fetch.mockResolvedValue(new Response("private upstream details", { status: 503 }));
+      await expect(getPublicationAnalytics(session)).rejects.toThrow("Publication analytics could not be loaded (503)");
     } finally { fetch.mockRestore(); }
   });
   it("keeps unavailable metrics distinct from real zeros and percentages", () => {
