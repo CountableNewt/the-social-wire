@@ -1,6 +1,7 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { gatewayFetch } from "./socialWireGatewayClient";
 import { awaitWithAbort } from "./awaitWithAbort";
+import { privateDraftRequestFailure } from "./privateDraftRequestFailure";
 
 export type DraftAttachmentActor = {
   session: OAuthSession; viewerDid: string; signal?: AbortSignal; assertCurrentActor?: () => void;
@@ -46,9 +47,10 @@ async function request<T>(actor: DraftAttachmentActor, method: string, init: Req
       const response = await gatewayFetch(actor.session, `${prefix}${method}`, { ...init, signal, cache: "no-store", redirect: "error" });
       assertDraftAttachmentActor(actor);
       if (!response.ok && !(acceptNotFound && response.status === 404)) {
-        const body = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
-        const error = typeof body?.error === "string" ? body.error : undefined;
-        throw Object.assign(new Error(error === "AssetRetired" ? "Private Draft Attachment Expired. Retry To Copy Your Local File." : response.status === 409 ? "Private Draft Attachments Changed On Another Device. Reopen The Remote Draft Or Save A Copy." : "Private Draft Attachment Sync Failed. Your Local Copy Is Safe. Retry."), { status: response.status, error });
+        const operation = ({ reserveAttachment: "Reserving the draft attachment", uploadAttachment: "Uploading the draft attachment", getAttachment: "Downloading the draft attachment", getGifFile: "Downloading the draft GIF", getManifest: "Loading draft attachments", putManifest: "Saving draft attachments", deleteManifest: "Deleting draft attachments" } as Record<string, string>)[method.split("?")[0]] ?? "Private attachment sync";
+        const failure = await privateDraftRequestFailure(response, operation);
+        assertDraftAttachmentActor(actor);
+        throw Object.assign(new Error(failure.message), { status: response.status, error: failure.code });
       }
       const result = await decode(response);
       assertDraftAttachmentActor(actor);
