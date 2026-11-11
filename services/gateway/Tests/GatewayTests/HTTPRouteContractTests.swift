@@ -71,6 +71,23 @@ struct HTTPRouteContractTests {
     }
   }
 
+  @Test("teapot is public and returns HTTP 418")
+  func teapotEndpoint() async throws {
+    try await withSingletonHTTPClient { client in
+      let dbPath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sw-teapot-\(UUID().uuidString).sqlite").path
+      defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+      let router = try gatewayRouter(client: client, dbPath: dbPath)
+      try await Application(router: router).test(.router) { client in
+        let teapot = try await client.execute(uri: "/xrpc/app.thesocialwire.teapot", method: .get)
+        #expect(teapot.status.code == 418)
+        #expect(teapot.headers[.contentType] == "application/json")
+        #expect(String(buffer: teapot.body) == #"{"error":"Teapot","message":"I'm a teapot"}"#)
+      }
+    }
+  }
+
   @Test("readiness remains fail-closed when a required dependency is unavailable")
   func readinessFailsClosed() async throws {
     try await withSingletonHTTPClient { client in
