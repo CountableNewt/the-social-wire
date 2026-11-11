@@ -1,5 +1,6 @@
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 import { awaitWithAbort } from "@/lib/awaitWithAbort";
+import { privateDraftRequestFailure } from "@/lib/privateDraftRequestFailure";
 import type { ArticleDraftActor, ArticleDraftDelete, ArticleDraftDocument, ArticleDraftPayload, ArticleDraftPut } from "./articleDraftCloudTypes";
 export type { ArticleDraftActor, ArticleDraftDocument, ArticleDraftPayload } from "./articleDraftCloudTypes";
 
@@ -48,9 +49,14 @@ async function request(actor: ArticleDraftActor, method: string, init: RequestIn
       const response = await gatewayFetch(actor.session, `${prefix}${method}`, { ...init, signal, cache: "no-store", redirect: "error" });
       assertArticleDraftActor(actor);
       if (missing && response.status === 404) return undefined;
+      if (!response.ok) {
+        const operation = ({ get: "Loading the private draft", list: "Loading private drafts", put: "Saving the private draft", delete: "Deleting the private draft" } as Record<string, string>)[method.split("?")[0]] ?? "Private draft sync";
+        const failure = await privateDraftRequestFailure(response, operation);
+        assertArticleDraftActor(actor);
+        throw new ArticleDraftRequestError(failure.message, response.status, failure.code);
+      }
       const value = await response.json();
       assertArticleDraftActor(actor);
-      if (!response.ok) throw new ArticleDraftRequestError(response.status === 409 ? "This Article Draft Changed on Another Device. Your Local Copy Is Safe." : "Private Article Draft Sync Failed. Your Local Copy Is Safe. Retry.", response.status, typeof value.error === "string" ? value.error : undefined);
       return value;
     })(), signal);
   } finally { clearTimeout(timer); assertArticleDraftActor(actor); }
