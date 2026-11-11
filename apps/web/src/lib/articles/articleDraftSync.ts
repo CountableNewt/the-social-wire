@@ -183,7 +183,7 @@ async function reconcile(actor: ArticleDraftActor, draftId: string): Promise<Art
       if (pending.kind === "put" && local?.revision === pending.localRevision) return local;
     } catch (error) {
       assertArticleDraftActor(actor);
-      if (!(error instanceof ArticleDraftRequestError) || error.status !== 409) throw error;
+      if (!(error instanceof ArticleDraftRequestError) || error.status !== 409 || error.code && error.code !== "Conflict") throw error;
       const remote = await getCloudArticleDraft(actor, draftId);
       if (!remote) throw new ArticleDraftConflictError(remote, local);
       local = await getArticleDraft(actor.viewerDid, draftId);

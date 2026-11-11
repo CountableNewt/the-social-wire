@@ -10,6 +10,7 @@ public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
     self.logger = logger
     var config = Configuration()
     config.label = "com.thesocialwire.appview-projection-cache"
+    config.busyMode = .timeout(5)
     self.db = try DatabasePool(path: dbPath, configuration: config)
     try db.write { db in
       try Self.migrate(db)

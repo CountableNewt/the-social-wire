@@ -42,6 +42,21 @@ it("exposes CAS conflicts without converting them into write retries", async () 
   expect(failure).toMatchObject({ status: 409, code: "Conflict" });
   expect(request).toHaveBeenCalledTimes(1);
 });
+it("preserves the save operation, server reason, status and code", async () => {
+  gateway({ error: "Quota", message: "Private article draft quota exceeded" }, 413);
+  await expect(putCloudArticleDraft(actor, input)).rejects.toMatchObject({
+    status: 413, code: "Quota", message: expect.stringContaining("Saving the private draft failed: Private article draft quota exceeded (HTTP 413 · Quota)"),
+  });
+});
+it.each([null, "<html>Bad Gateway</html>", "not json"])("preserves HTTP errors when a proxy sends an unstructured response: %s", async body => {
+  const request = gateway(null);
+  request.mockResolvedValue(new Response(body, { status: 502 }));
+  await expect(putCloudArticleDraft(actor, input)).rejects.toMatchObject({ status: 502, message: expect.stringContaining("HTTP 502") });
+});
+it("explains expired authentication and gateway-only errors", async () => {
+  gateway({ error: "Private draft access denied" }, 401);
+  await expect(putCloudArticleDraft(actor, input)).rejects.toThrow("Sign in again to restore draft access");
+});
 it("rejects mismatched acknowledgements and incomplete private asset bindings", async () => {
   const request = gateway({ ...document, mutationId: crypto.randomUUID() });
   await expect(putCloudArticleDraft(actor, input)).rejects.toThrow("Could Not Be Confirmed");
