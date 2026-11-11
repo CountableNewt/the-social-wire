@@ -6,7 +6,7 @@ import NIOCore
 /// Fetches RSS/Atom feeds and upserts Skyreader entries into `content_items`.
 public struct ThinAppViewRssIngestion: Sendable {
   private let store: any ThinAppViewStore
-  private let httpClient: HTTPClient
+  private let fetch: @Sendable (HTTPClientRequest) async throws -> HTTPClientResponse
   private let config: ThinAppViewConfig
   private let logger: Logger
   private let projectionCache: (any AppViewProjectionCacheStore)?
@@ -18,24 +18,47 @@ public struct ThinAppViewRssIngestion: Sendable {
     logger: Logger,
     projectionCache: (any AppViewProjectionCacheStore)? = nil
   ) {
+    self.init(store: store, config: config, logger: logger, projectionCache: projectionCache) {
+      try await httpClient.execute($0, timeout: .seconds(20))
+    }
+  }
+
+  init(
+    store: any ThinAppViewStore,
+    config: ThinAppViewConfig,
+    logger: Logger,
+    projectionCache: (any AppViewProjectionCacheStore)? = nil,
+    fetch: @escaping @Sendable (HTTPClientRequest) async throws -> HTTPClientResponse
+  ) {
     self.store = store
-    self.httpClient = httpClient
+    self.fetch = fetch
     self.config = config
     self.logger = logger
     self.projectionCache = projectionCache
   }
 
   public func ingestFeed(normalizedFeedUrl: String) async throws -> Int {
-    guard RssFeedIdentity.isFetchableFeedUrl(normalizedFeedUrl) else { return 0 }
+    let result = try await pollFeed(normalizedFeedUrl: normalizedFeedUrl, completionSince: nil)
+    if case .completed(let indexed, _) = result { return indexed }
+    return 0
+  }
+
+  /// Explicit refresh requires persisted poll evidence. After acquiring a lease,
+  /// reuse a completion that arrived while another poll owned the feed.
+  public func refreshFeed(normalizedFeedUrl: String, started: Date) async throws -> RssFeedPollResult {
+    try await pollFeed(normalizedFeedUrl: normalizedFeedUrl, completionSince: started)
+  }
+
+  private func pollFeed(normalizedFeedUrl: String, completionSince: Date?) async throws -> RssFeedPollResult {
+    try Task.checkCancellation()
+    guard RssFeedIdentity.isFetchableFeedUrl(normalizedFeedUrl) else { return .unfetchable }
 
     let lease = await projectionCache?.acquireRefreshLease(
       domain: "rss",
       resource: normalizedFeedUrl,
       ttl: 120
     )
-    if projectionCache != nil, lease == nil {
-      return 0
-    }
+    if projectionCache != nil, lease == nil { return .leaseBusy }
     let renewal = lease.map { lease in
       Task {
         while !Task.isCancelled {
@@ -45,18 +68,32 @@ public struct ThinAppViewRssIngestion: Sendable {
         }
       }
     }
-    defer {
-      renewal?.cancel()
-      if let lease, let projectionCache {
-        Task { await projectionCache.releaseRefreshLease(lease) }
-      }
+    let result: Result<RssFeedPollResult, Error>
+    do {
+      result = .success(try await pollOwnedFeed(normalizedFeedUrl: normalizedFeedUrl, completionSince: completionSince))
+    } catch {
+      result = .failure(error)
     }
+    renewal?.cancel()
+    if let lease, let projectionCache { await projectionCache.releaseRefreshLease(lease) }
+    return try result.get()
+  }
 
-    let metadata = try? await store.fetchRssFeedMetadata(normalizedFeedUrl: normalizedFeedUrl)
-    let polledAt = Date()
-    if let backoffUntil = metadata?.backoffUntil, backoffUntil > polledAt {
-      return 0
+  private func pollOwnedFeed(normalizedFeedUrl: String, completionSince: Date?) async throws -> RssFeedPollResult {
+    let metadata: RssFeedFetchMetadata?
+    if completionSince != nil {
+      metadata = try await store.fetchRssFeedMetadata(normalizedFeedUrl: normalizedFeedUrl)
+    } else {
+      metadata = try? await store.fetchRssFeedMetadata(normalizedFeedUrl: normalizedFeedUrl)
     }
+    try Task.checkCancellation()
+    if let completionSince, let metadata, let completed = metadata.lastPollAt, completed >= completionSince {
+      return .completed(indexed: 0, metadata: metadata)
+    }
+    if let metadata, let backoffUntil = metadata.backoffUntil, backoffUntil > Date() {
+      return .backedOff(metadata)
+    }
+    let requirePersistence = completionSince != nil
 
     var request = HTTPClientRequest(url: normalizedFeedUrl)
     request.headers.add(name: "Accept", value: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*")
@@ -70,45 +107,40 @@ public struct ThinAppViewRssIngestion: Sendable {
 
     let response: HTTPClientResponse
     do {
-      response = try await httpClient.execute(request, timeout: .seconds(20))
+      response = try await fetch(request)
+    } catch let cancellation as CancellationError {
+      throw cancellation
     } catch {
-      await recordFetchFailure(
-        normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata
-      )
-      return 0
+      let failure = try await recordFetchFailure(normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata, requirePersistence: requirePersistence)
+      return .completed(indexed: 0, metadata: failure)
     }
 
     let responseEtag = sanitizedHeader(response.headers.first(name: "ETag"))
     let responseLastModified = sanitizedHeader(response.headers.first(name: "Last-Modified"))
 
     if response.status.code == 304 {
-      await recordFetchSuccess(
-        normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata,
-        etag: responseEtag,
-        lastModified: responseLastModified
-      )
-      return 0
+      let completion = try await recordFetchSuccess(normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata, etag: responseEtag, lastModified: responseLastModified,
+        requirePersistence: requirePersistence)
+      return .completed(indexed: 0, metadata: completion)
     }
 
     guard [200, 403, 406, 415].contains(response.status.code) else {
-      await recordFetchFailure(
-        normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata
-      )
-      return 0
+      let failure = try await recordFetchFailure(normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata, requirePersistence: requirePersistence)
+      return .completed(indexed: 0, metadata: failure)
     }
 
     let body: ByteBuffer
     do {
       body = try await response.body.collect(upTo: 2 * 1024 * 1024)
+    } catch let cancellation as CancellationError {
+      throw cancellation
     } catch {
-      await recordFetchFailure(
-        normalizedFeedUrl: normalizedFeedUrl,
-        previous: metadata
-      )
-      return 0
+      let failure = try await recordFetchFailure(normalizedFeedUrl: normalizedFeedUrl,
+        previous: metadata, requirePersistence: requirePersistence)
+      return .completed(indexed: 0, metadata: failure)
     }
     let feed = RssFeedParser(data: Data(buffer: body), feedURL: normalizedFeedUrl).parse()
     let capped = Array(feed.items.prefix(config.maxRssItemsPerFeed))
@@ -117,6 +149,7 @@ public struct ThinAppViewRssIngestion: Sendable {
     var identityToURI: [String: String] = [:]
 
     for item in capped {
+      try Task.checkCancellation()
       let stableKey = RssFeedIdentity.stableItemKey(from: item)
       let uri = RssFeedIdentity.rssEntryId(normalizedFeedUrl: normalizedFeedUrl, stableItemKey: stableKey)
       let identityKeys = RssFeedIdentity.dedupeIdentityKeys(
@@ -165,13 +198,11 @@ public struct ThinAppViewRssIngestion: Sendable {
       indexed += 1
     }
 
+    try Task.checkCancellation()
     try await cleanupDuplicatePublicationSiteRows(normalizedFeedUrl: normalizedFeedUrl)
-    await recordFetchSuccess(
-      normalizedFeedUrl: normalizedFeedUrl,
-      previous: metadata,
-      etag: responseEtag,
-      lastModified: responseLastModified
-    )
+    let completion = try await recordFetchSuccess(normalizedFeedUrl: normalizedFeedUrl,
+      previous: metadata, etag: responseEtag, lastModified: responseLastModified,
+      requirePersistence: requirePersistence)
 
     if indexed > 0 {
       logger.info(
@@ -181,7 +212,7 @@ public struct ThinAppViewRssIngestion: Sendable {
         ]
       )
     }
-    return indexed
+    return .completed(indexed: indexed, metadata: completion)
   }
 
   public func ingestFeeds(_ feedUrls: [String]) async throws -> Int {
@@ -234,8 +265,9 @@ public struct ThinAppViewRssIngestion: Sendable {
     normalizedFeedUrl: String,
     previous: RssFeedFetchMetadata?,
     etag: String?,
-    lastModified: String?
-  ) async {
+    lastModified: String?,
+    requirePersistence: Bool
+  ) async throws -> RssFeedFetchMetadata {
     let completedAt = Date()
     let metadata = RssFeedFetchMetadata(
       normalizedFeedUrl: normalizedFeedUrl,
@@ -245,13 +277,14 @@ public struct ThinAppViewRssIngestion: Sendable {
       backoffUntil: nil,
       consecutiveErrorCount: 0
     )
-    try? await store.storeRssFeedMetadata(metadata)
+    return try await persist(metadata, required: requirePersistence)
   }
 
   private func recordFetchFailure(
     normalizedFeedUrl: String,
-    previous: RssFeedFetchMetadata?
-  ) async {
+    previous: RssFeedFetchMetadata?,
+    requirePersistence: Bool
+  ) async throws -> RssFeedFetchMetadata {
     let completedAt = Date()
     let errorCount = min((previous?.consecutiveErrorCount ?? 0) + 1, 8)
     let backoffUntil = completedAt.addingTimeInterval(Self.backoffSeconds(errorCount: errorCount))
@@ -263,7 +296,17 @@ public struct ThinAppViewRssIngestion: Sendable {
       backoffUntil: backoffUntil,
       consecutiveErrorCount: errorCount
     )
-    try? await store.storeRssFeedMetadata(metadata)
+    return try await persist(metadata, required: requirePersistence)
+  }
+
+  private func persist(_ metadata: RssFeedFetchMetadata, required: Bool) async throws -> RssFeedFetchMetadata {
+    try Task.checkCancellation()
+    if required {
+      try await store.storeRssFeedMetadata(metadata)
+    } else {
+      try? await store.storeRssFeedMetadata(metadata)
+    }
+    return metadata
   }
 
   private static func backoffSeconds(errorCount: Int) -> TimeInterval {

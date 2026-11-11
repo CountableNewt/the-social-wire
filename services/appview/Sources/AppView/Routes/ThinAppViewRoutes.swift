@@ -286,14 +286,16 @@ struct ThinAppViewRoutes {
             explicitRSSRefresh: true
           )
           try await projectionService.reconcileEnrollmentCounters(auth: auth)
-          await projectionService.invalidateViewerCaches(viewerDid: auth.did)
           return try AppViewEnrollResponse(indexed: indexed).response(from: request, context: context)
         } catch let partial as AppViewEnrollmentPartialFailure {
           try Task.checkCancellation()
           try await projectionService.reconcileEnrollmentCounters(auth: auth)
-          await projectionService.invalidateViewerCaches(viewerDid: auth.did)
           try Task.checkCancellation()
           return try AppViewEnrollmentError(partial).response(from: request, context: context)
+        } catch is AppViewRSSRefreshJoinTimeout {
+          // Later feeds may have completed even though one poll stayed busy.
+          try await projectionService.reconcileEnrollmentCounters(auth: auth)
+          throw HTTPError(.serviceUnavailable, message: "RSS refresh completion unavailable")
         }
       }
     }
