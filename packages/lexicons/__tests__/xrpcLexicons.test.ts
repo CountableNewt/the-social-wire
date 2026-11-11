@@ -28,7 +28,10 @@ describe("Social Wire XRPC lexicons", () => {
   });
 
   it("loads through the AT Protocol Lexicon validator", () => {
-    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids].map((nsid) =>
+    const nativeNsids = manifest.entries
+      .filter((entry) => entry.classification === "first-party-xrpc")
+      .map((entry) => entry.xrpcNsid!);
+    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids, ...nativeNsids].map((nsid) =>
       JSON.parse(readFileSync(fileForNsid(nsid), "utf8"))
     );
     expect(() => new Lexicons(documents)).not.toThrow();
