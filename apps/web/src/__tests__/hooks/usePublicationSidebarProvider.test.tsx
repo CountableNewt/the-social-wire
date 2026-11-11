@@ -156,6 +156,45 @@ describe("PublicationSidebarProvider", () => {
     });
   }
 
+  it("explains a count timeout without discarding the publisher failure", async () => {
+    const { result, sources, unread } = mountProvider();
+    await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
+    const warning = new PublicationSourceRefreshError(["publisher.test"]);
+    const timeout = new DOMException("signal timed out", "TimeoutError");
+    sources.mockImplementation(async ({ onBatch }) => { await onBatch(); throw warning; });
+    unread.mockRejectedValue(timeout);
+    let error: unknown;
+    await act(async () => { error = await result.current.refresh.mutateAsync().catch(error => error); });
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("Unread counts also took too long");
+    expect((error as Error).message).toContain("publisher.test");
+    expect((error as Error).cause).toMatchObject({ errors: [warning, timeout] });
+    expect(result.current.refreshMessage).not.toBe("Refresh Complete");
+  });
+
+  it("keeps folder sources and independent count freshness on a membership-only refresh", async () => {
+    const mounted = mountProvider();
+    const { result, post, sources, unread, queryClient, did } = mounted;
+    await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
+    const flat = sourceRow("did:plc:flat"), folded = sourceRow("did:plc:folded");
+    const projection = {
+      ...cacheActiveSources(mounted, [flat]),
+      allPublicationRows: [flat, folded],
+      folderSections: [{ folderRkey: "folder", folderUri: "at://folder", publications: [folded] }],
+    };
+    const key = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
+    const counts = { [flat.publicationId]: 3, [folded.publicationId]: 77 };
+    const freshness = { [flat.publicationId]: { generation: 200 }, [folded.publicationId]: { generation: 100 } };
+    queryClient.setQueryData(key, { ...projection, unreadCountsByPublicationId: counts,
+      unreadCountsGeneration: 200, unreadCountsFreshnessByPublicationId: freshness });
+    post.mockResolvedValue(projection);
+    await act(async () => { await result.current.refresh.mutateAsync(); });
+    expect(sources.mock.calls.map(([args]) => args.rows)).toEqual([[flat, folded]]);
+    expect(unread.mock.calls[0]?.[0].publicationIds).toEqual([flat.publicationId, folded.publicationId]);
+    expect(queryClient.getQueryData(key)).toMatchObject({ unreadCountsByPublicationId: counts,
+      unreadCountsFreshnessByPublicationId: freshness });
+  });
+
   for (const action of ["markEntryUnread", "markEntriesUnread"] as const) {
     it(`rejects a delayed bootstrap seed for an absent publication after aggregate ${action}`, async () => {
       const env = process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;

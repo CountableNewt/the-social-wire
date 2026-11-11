@@ -72,6 +72,40 @@ describe("refreshReaderFeeds", () => {
     expect(client.getQueryState(unrelated)?.isInvalidated).toBe(false);
   });
 
+  it("retries a transient warming response without discarding cached history", async () => {
+    const key = aggregate();
+    seed(key, [page("old"), page("tail")]);
+    activate(key);
+    fetchPage.mockRejectedValueOnce(new appView.AppViewRequestError({ message: "warming", status: 503, retryable: true })).mockResolvedValueOnce(page("new"));
+    expect(await refresh()).toEqual({ newArticleCount: 1 });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(client.getQueryData<InfiniteData<EntriesPage>>(key)?.pages[1]).toEqual(page("tail"));
+  });
+
+  it("does not retry terminal feed errors", async () => {
+    const key = aggregate();
+    const original = seed(key);
+    activate(key);
+    fetchPage.mockRejectedValue(new appView.AppViewRequestError({ message: "unavailable", status: 404 }));
+    await expect(refresh()).rejects.toThrow("unavailable");
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData<InfiniteData<EntriesPage>>(key)).toEqual(original);
+  });
+
+  it("cancels a warming retry when the refresh is aborted", async () => {
+    const key = aggregate();
+    const original = seed(key);
+    activate(key);
+    const controller = new AbortController();
+    fetchPage.mockImplementation(async () => {
+      queueMicrotask(() => controller.abort());
+      throw new appView.AppViewRequestError({ message: "warming", status: 503, retryable: true });
+    });
+    await expect(refresh(controller.signal)).rejects.toThrow();
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData<InfiniteData<EntriesPage>>(key)).toEqual(original);
+  });
+
   it("replaces unread history and deduplicates new articles across overlapping active feeds", async () => {
     const all = aggregate();
     const unread = aggregate("subscribed", "", "unread");

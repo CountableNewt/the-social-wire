@@ -587,3 +587,52 @@ it("rejects streamed entries after the same OAuth session changes read state", (
   expect(client.getQueryData([...ENTRIES_QUERY_KEY(session.did, publicationId), "all"])).toBeUndefined();
   client.clear();
 });
+
+
+describe("publication-scoped unread freshness", () => {
+  it("accepts older disjoint snapshots while rejecting older overlapping counts", () => {
+    const first = applyUnreadCountsEvent(minimalProjection({ unreadCountsByPublicationId: {} }), { A: 3 }, { generation: 200, accuracy: "exact", replacePublicationIds: ["A"] });
+    const second = applyUnreadCountsEvent(first, { A: 99, B: 77 }, { generation: 100, accuracy: "estimated", replacePublicationIds: ["A", "B", "C"] });
+    expect(second.unreadCountsByPublicationId).toEqual({ A: 3, B: 77, C: 0 });
+    expect(second.unreadCountsGeneration).toBe(200);
+    expect(applyUnreadCountsEvent(second, { B: 88 }, { generation: 90 }).unreadCountsByPublicationId?.B).toBe(77);
+  });
+  it("compares accuracy only for overlapping publications at the same generation", () => {
+    const first = applyUnreadCountsEvent(minimalProjection({ unreadCountsByPublicationId: {} }), { A: 3 }, { generation: 200, accuracy: "exact" });
+    const second = applyUnreadCountsEvent(first, { A: 99, B: 77 }, { generation: 200, accuracy: "estimated" });
+    expect(second.unreadCountsByPublicationId).toEqual({ A: 3, B: 77 });
+  });
+  it("retains fresh counts through a stale sidebarPriority layout update", () => {
+    const id = "rss:https://example.com/feed.xml";
+    const current = applyUnreadCountsEvent(minimalProjection(), { [id]: 3 }, { generation: 200, accuracy: "exact" });
+    const merged = applySidebarPriorityEvent(current, minimalProjection({ unreadCountsByPublicationId: { [id]: 99 }, unreadCountsGeneration: 100 }));
+    expect(merged.unreadCountsByPublicationId?.[id]).toBe(3);
+    expect(merged.subscribedUnfoldered[0]?.unreadCount).toBe(3);
+    expect(merged.unreadCountsFreshnessByPublicationId?.[id]?.generation).toBe(200);
+  });
+});
+
+
+it("shares count freshness and values across encoded publication aliases", () => {
+  const id = "at://did:plc:author/site.standard.publication/main";
+  const encoded = encodeURIComponent(id);
+  const first = applyUnreadCountsEvent(minimalProjection({ unreadCountsByPublicationId: {} }), { [encoded]: 3 }, { generation: 200 });
+  const stale = applyUnreadCountsEvent(first, { [id]: 99 }, { generation: 100 });
+  expect(stale.unreadCountsByPublicationId?.[encoded]).toBe(3);
+  const fresh = applyUnreadCountsEvent(stale, { [id]: 4 }, { generation: 300 });
+  expect(fresh.unreadCountsByPublicationId?.[encoded]).toBe(4);
+  expect(fresh.unreadCountsByPublicationId?.[id]).toBe(4);
+});
+
+
+it("uses accepted counts for priority rows newly added to a list", () => {
+  const id = "rss:https://example.com/feed.xml";
+  const current = applyUnreadCountsEvent(minimalProjection({ allPublicationRows: [], subscribedUnfoldered: [], unreadCountsByPublicationId: {} }), { [id]: 3 }, { generation: 200, accuracy: "exact" });
+  const payload = minimalProjection({ unreadCountsByPublicationId: { [id]: 99 }, unreadCountsGeneration: 100 });
+  payload.allPublicationRows = payload.subscribedUnfoldered;
+  payload.subscribedUnfoldered = payload.subscribedUnfoldered.map(row => ({ ...row, unreadCount: 99 }));
+  const merged = applySidebarPriorityEvent(current, payload);
+  expect(merged.allPublicationRows[0]?.unreadCount).toBe(3);
+  expect(merged.subscribedUnfoldered[0]?.unreadCount).toBe(3);
+  expect(merged.unreadCountsByPublicationId?.[id]).toBe(3);
+});

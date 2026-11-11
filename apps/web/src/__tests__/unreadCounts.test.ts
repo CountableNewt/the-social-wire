@@ -184,6 +184,19 @@ describe("effectivePublicationUnreadCount", () => {
     ).toBe(4);
   });
 
+  it("does not subtract acknowledged server reads from a partial-cache baseline", () => {
+    const queryClient = mockQueryClientWithEntries("pub", [{ ...makeEntry("read"), isRead: true }, makeEntry("unread")]);
+    expect(effectivePublicationUnreadCount(10, queryClient, viewerDid, "pub", id => id === "read", { capRaiseToServerCount: true })).toBe(10);
+  });
+  it("still subtracts pending reads after optimistic cache patching", () => {
+    const queryClient = mockQueryClientWithEntries("pub", [{ ...makeEntry("read"), isRead: true }, makeEntry("unread")]);
+    expect(effectivePublicationUnreadCount(10, queryClient, viewerDid, "pub", id => id === "read", { pendingEntryReadState: id => id === "read" ? true : undefined })).toBe(9);
+  });
+  it("does not subtract a local read superseded by a pending unread action", () => {
+    const queryClient = mockQueryClientWithEntries("pub", [makeEntry("read"), makeEntry("unread")]);
+    expect(effectivePublicationUnreadCount(10, queryClient, viewerDid, "pub", id => id === "read", { pendingEntryReadState: id => id === "read" ? false : undefined })).toBe(10);
+  });
+
   it("raises count when cache shows unread but server reports zero", () => {
     const publicationId =
       "at://did:plc:author/site.standard.publication/main";

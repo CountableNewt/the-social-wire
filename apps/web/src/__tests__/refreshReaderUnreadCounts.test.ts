@@ -53,3 +53,22 @@ it("preserves badge optimism when a read gesture supersedes a pending count snap
   expect(client.getQueryData<PublicationSidebarProjection>(key)?.unreadCountsByPublicationId).toEqual({ a: 0 });
   client.clear();
 });
+
+
+it("applies later count batches with older disjoint publication generations", async () => {
+  const client = new QueryClient();
+  const key = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY("viewer");
+  client.setQueryData(key, projection("viewer"));
+  const ids = Array.from({ length: 51 }, (_, i) => `publication-${i}`);
+  const fetch = spyOn(appview, "fetchAppViewUnreadCounts")
+    .mockResolvedValueOnce({ counts: { "publication-0": 3 }, generation: 200, accuracy: "exact" })
+    .mockResolvedValueOnce({ counts: { "publication-50": 77 }, generation: 100, accuracy: "estimated" });
+  restore = () => fetch.mockRestore();
+  await refreshReaderUnreadCounts({ queryClient: client, viewerDid: "viewer", oauthSession: {} as OAuthSession, publicationIds: ids, signal: new AbortController().signal });
+  const counts = client.getQueryData<PublicationSidebarProjection>(key)?.unreadCountsByPublicationId;
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(counts?.["publication-0"]).toBe(3);
+  expect(counts?.["publication-49"]).toBe(0);
+  expect(counts?.["publication-50"]).toBe(77);
+  client.clear();
+});

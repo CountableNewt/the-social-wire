@@ -13,27 +13,24 @@ struct PublicationRoutes {
     ] as [RouterPath] {
       group.get(path) { request, context async throws -> PublicationSidebarResponse in
         guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-        let phase =
-          request.uri.queryParameters.get("phase")
-          .flatMap(SidebarBuildPhase.init(rawValue:)) ?? .full
+        let phase: SidebarBuildPhase
+        switch request.uri.queryParameters.get("phase") {
+        case "priority": phase = .priority
+        case "folderPublications": phase = .folderPublications
+        default: phase = .full
+        }
         return try await projectionService.sidebar(auth: auth, phase: phase)
       }
     }
 
-    // Returns the priority tier and pushes full follow-graph discovery into the background. The
-    // synchronous `.full` rebuild this replaced walked every followed author's PDS on the request
-    // path and routinely exceeded the Gateway's 60s proxy timeout.
-    //
-    // The response therefore carries folder sections without their publications; clients merge it
-    // into their existing projection and let the bootstrap stream fill the folder tier.
+    // Refresh the subscribed folder contents now and update Following in the background.
     for path in [
       "/v1/publications/refresh",
       "/xrpc/app.thesocialwire.publication.refreshSidebar",
     ] as [RouterPath] {
       group.post(path) { _, context async throws -> PublicationSidebarResponse in
         guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-        await projectionService.invalidateViewerCaches(viewerDid: auth.did)
-        let response = try await projectionService.refreshPrioritySidebar(auth: auth)
+        let response = try await projectionService.refreshSidebar(auth: auth)
         Task { await projectionService.refreshFullDiscoveryAndPersist(auth: auth) }
         return response
       }
