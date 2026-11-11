@@ -3894,7 +3894,7 @@ public init(path dbPath: String, logger: Logger) throws {
           metadata.normalizedFeedUrl,
           metadata.etag,
           metadata.lastModified,
-          metadata.lastPollAt.map { Self.isoString(from: $0) },
+          metadata.lastPollAt.map { ThinAppViewCursor.timestamp($0) },
           metadata.backoffUntil.map { Self.isoString(from: $0) },
           metadata.consecutiveErrorCount,
         ]

@@ -8,6 +8,7 @@ import { advanceFeedRefreshRevision, getFeedRefreshRevision, readFeedRefreshRevi
 import { mergeFeedRefreshForFilter } from "@/lib/feedCacheMerge";
 import {
   listAggregateFeedFromAppView,
+  shouldRetryAppViewRequest,
   type AggregateAppViewFeed,
 } from "@/lib/thinAppViewClient";
 
@@ -98,11 +99,20 @@ export async function refreshReaderFeeds({
       if (revision === undefined || getFeedRefreshRevision(queryClient, query.queryKey) !== revision ||
         queryClient.getQueryCache().find({ queryKey: query.queryKey, exact: true }) !== query) continue;
       try {
-        const freshPage = await awaitWithAbort(listAggregateFeedFromAppView({
-          ...scope,
-          oauthSession,
-          signal,
-        }), signal);
+        let freshPage: EntriesPage;
+        for (let failureCount = 0; ; failureCount += 1) {
+          assertSession();
+          try {
+            freshPage = await awaitWithAbort(listAggregateFeedFromAppView({
+              ...scope, oauthSession, signal,
+            }), signal);
+            break;
+          } catch (error) {
+            if (!shouldRetryAppViewRequest(failureCount, error)) throw error;
+            // Match the mounted query's single retry for transient projection warming.
+            await awaitWithAbort(new Promise(resolve => setTimeout(resolve, 1_000)), signal);
+          }
+        }
         assertSession();
         // Read gestures own their flags; a response from before a gesture or a
         // newer manual refresh cannot replace the current cache.

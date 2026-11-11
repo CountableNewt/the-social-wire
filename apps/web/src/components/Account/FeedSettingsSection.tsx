@@ -20,6 +20,8 @@ export function FeedSettingsSection() {
     setDiscoveryFeedVisible,
     setFeedUnreadCountVisible,
     setRssArticleOpenInReader,
+    setAutomaticallyMarkAsRead,
+    automaticReadReady,
     isPending,
     error,
   } = useFeedDisplayPreferences();
@@ -50,6 +52,24 @@ export function FeedSettingsSection() {
         <AppearanceSettingsSection />
         <ReadLaterSettingsSection />
         <PDSReadStateSettingsSection />
+        <section className="rounded-2xl border bg-card p-4 shadow-[var(--soft-elevation)]">
+          <h2 className="text-sm font-bold">Article Read State</h2>
+          <div className="mt-3 flex min-h-12 items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Automatically Mark As Read</p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                Mark articles as read when you open them. Turn this off to use only the mark-as-read buttons.
+              </p>
+            </div>
+            <Switch
+              className="shrink-0"
+              checked={preferences.automaticallyMarkAsRead}
+              disabled={isPending || automaticReadReady === false}
+              onCheckedChange={setAutomaticallyMarkAsRead}
+              aria-label="Automatically Mark As Read"
+            />
+          </div>
+        </section>
         <section className="rounded-2xl border bg-card p-4 shadow-[var(--soft-elevation)]">
           <h2 className="text-sm font-bold">RSS Articles</h2>
           <div className="mt-3 flex min-h-12 items-center justify-between gap-4">

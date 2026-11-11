@@ -10,7 +10,8 @@ import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import { findReadLaterService } from "@/lib/readLaterServices";
 import * as PodcastPlayback from "@/lib/podcasts/playback";
 
-const setRssArticleOpenInReader = mock((_visible: boolean) => undefined);
+const setAutomaticallyMarkAsRead = mock((enabled: boolean) => { void enabled; });
+const setRssArticleOpenInReader = mock((visible: boolean) => { void visible; });
 const setFeedVisible = mock(() => undefined);
 const setFeedUnreadCountVisible = mock(() => undefined);
 
@@ -22,6 +23,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   setRssArticleOpenInReader.mockClear();
+  setAutomaticallyMarkAsRead.mockClear();
   spyOn(PodcastPlayback, "podcastsEnabled").mockReturnValue(true);
   setFeedVisible.mockClear();
   setFeedUnreadCountVisible.mockClear();
@@ -42,6 +44,8 @@ beforeEach(() => {
     setFeedVisible, setFeedUnreadCountVisible,
     setDiscoveryFeedVisible: () => undefined,
     setRssArticleOpenInReader,
+    setAutomaticallyMarkAsRead,
+    automaticReadReady: true,
     setHideSportsScores: () => undefined,
     setHideFinanceCrypto: () => undefined,
     setHideFinancePerformance: () => undefined,
@@ -90,4 +94,33 @@ test("retired Finance options are absent while RSS reader preferences remain ava
   fireEvent.click(screen.getByRole("switch", { name: "Open RSS Articles in Reader" }));
   expect(setRssArticleOpenInReader).toHaveBeenCalledTimes(1);
   expect(setRssArticleOpenInReader.mock.calls[0]?.[0]).toBe(false);
+});
+
+
+test("automatic read marking defaults on and can be explicitly disabled", () => {
+  render(<FeedSettingsSection />);
+  const control = screen.getByRole("switch", { name: "Automatically Mark As Read" });
+  expect(control.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(control);
+  expect(setAutomaticallyMarkAsRead).toHaveBeenCalledTimes(1);
+  expect(setAutomaticallyMarkAsRead.mock.calls[0]?.[0]).toBe(false);
+});
+
+test("the automatic read switch reflects a saved off value and can re-enable it", () => {
+  const current = FeedPreferences.useFeedDisplayPreferences();
+  spyOn(FeedPreferences, "useFeedDisplayPreferences").mockReturnValue({ ...current, preferences: { ...current.preferences, automaticallyMarkAsRead: false } });
+  render(<FeedSettingsSection />);
+  const control = screen.getByRole("switch", { name: "Automatically Mark As Read" });
+  expect(control.getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(control);
+  expect(setAutomaticallyMarkAsRead.mock.calls[0]?.[0]).toBe(true);
+});
+
+test("the automatic read switch stays disabled while the account policy is unknown", () => {
+  const current = FeedPreferences.useFeedDisplayPreferences();
+  spyOn(FeedPreferences, "useFeedDisplayPreferences").mockReturnValue({ ...current, automaticReadReady: false });
+  render(<FeedSettingsSection />);
+  const control = screen.getByRole("switch", { name: "Automatically Mark As Read" });
+  fireEvent.click(control);
+  expect(setAutomaticallyMarkAsRead).not.toHaveBeenCalled();
 });

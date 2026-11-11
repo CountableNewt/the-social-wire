@@ -14,7 +14,7 @@ import type { ArticleDraft } from "@/lib/articles/articleDraftTypes";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 
-export function SendArticleToDraftDialog({ url, close, ownerEntryId }: { url: string; close: () => void; ownerEntryId?: string }) {
+export function SendArticleToDraftDialog({ url, close }: { url: string; close: () => void }) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const router = useRouter();
   const [viewer] = useState(() => ({ did: session?.did, epoch: oauthSessionReloadSeq }));
@@ -60,7 +60,7 @@ export function SendArticleToDraftDialog({ url, close, ownerEntryId }: { url: st
       if (mounted.current) setError(failure instanceof Error ? failure.message : "The Draft Could Not Be Created.");
     } finally { lock.current = false; if (mounted.current) setPending(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open && !pending) close(); }}><DialogContent data-entry-owner={ownerEntryId} showCloseButton={!pending}>
+  return <Dialog open onOpenChange={open => { if (!open && !pending) close(); }}><DialogContent showCloseButton={!pending}>
     <DialogTitle>Send to Draft</DialogTitle>
     <DialogDescription>Start a New Blog Post With This Article’s Link. Choose the Publication for Your Private Draft.</DialogDescription>
     <label className="block space-y-2 text-sm"><span>Publication</span><div className="relative"><select aria-label="Draft Publication" value={publicationUri} disabled={pending || !!saved || accountChanged} onChange={event => setPublicationUri(event.target.value)} className="w-full appearance-none rounded-md border bg-background py-2 pl-3 pr-9"><option value="">Select a Publication</option>{publications.data?.map(publication => <option key={publication.uri} value={publication.uri} disabled={!!articlePublicationDisabledReason(publication)}>{publication.name}{articlePublicationDisabledReason(publication) ? ` — ${PCKT_EXTERNAL_EDITORS_MESSAGE}` : ""}</option>)}</select><ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" aria-hidden="true" /></div></label>

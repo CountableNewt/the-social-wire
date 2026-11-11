@@ -25,6 +25,7 @@ describe("syncPreferencesClient", () => {
         record: {
           $type: "app.thesocialwire.preferences",
           readLaterService: "semble",
+          automaticallyMarkAsRead: false,
           readLaterConnections: {
             semble: {
               collectionUri:
@@ -44,6 +45,7 @@ describe("syncPreferencesClient", () => {
 
     expect(result?.cid).toBe("bafy-semble");
     expect(result?.value.readLaterService).toBe("semble");
+    expect(result?.value.automaticallyMarkAsRead).toBe(false);
     expect(result?.value.readLaterConnections?.semble?.collectionName).toBe(
       "Read Later",
     );

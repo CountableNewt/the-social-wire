@@ -49,6 +49,8 @@ export type PublicationSidebarProjection = {
   enrollAuthorDids: string[];
   refreshedAt: string;
   unreadCountsByPublicationId?: Record<string, number>;
+  /** Client freshness evidence is scoped because server snapshots cover independent batches. */
+  unreadCountsFreshnessByPublicationId?: Record<string, { generation?: number; accuracy?: UnreadCountsAccuracy; countedAt?: string }>;
   unreadCountsGeneration?: number;
   unreadCountsAccuracy?: UnreadCountsAccuracy;
   unreadCountsCountedAt?: string;

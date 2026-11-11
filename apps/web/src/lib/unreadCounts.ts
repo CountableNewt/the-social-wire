@@ -42,18 +42,23 @@ export function countUnreadCachedEntries(
 }
 
 /**
- * Counts distinct entries already marked read in the local read map.
+ * Counts distinct local read transitions not yet acknowledged by cached server rows.
+ * Pending intents remain optimistic until their complete manifest is confirmed.
  */
 export function countCachedReadEntries(
   entries: EntryListItem[],
-  isEntryRead: (entryId: string) => boolean
+  isEntryRead: (entryId: string) => boolean,
+  pendingEntryReadState?: (entryId: string) => boolean | undefined
 ): number {
   const seen = new Set<string>();
   let count = 0;
   for (const entry of entries) {
     if (seen.has(entry.entryId)) continue;
     seen.add(entry.entryId);
-    if (isEntryRead(entry.entryId)) count += 1;
+    const pending = pendingEntryReadState?.(entry.entryId);
+    // Pending reads may already have optimistically patched entry.isRead.
+    // Acknowledged server reads are already excluded from the count baseline.
+    if (pending === true || (pending !== false && entry.isRead !== true && isEntryRead(entry.entryId))) count += 1;
   }
   return count;
 }
@@ -82,7 +87,7 @@ export function effectivePublicationUnreadCount(
   if (cached.length === 0) return serverCount;
 
   const cachedUnread = countUnreadCachedEntries(cached, isEntryRead, options?.pendingEntryReadState);
-  const cachedRead = countCachedReadEntries(cached, isEntryRead);
+  const cachedRead = countCachedReadEntries(cached, isEntryRead, options?.pendingEntryReadState);
   const reconciled = Math.max(cachedUnread, serverCount - cachedRead);
   if (options?.capRaiseToServerCount && serverCount > 0) {
     return Math.min(reconciled, serverCount);

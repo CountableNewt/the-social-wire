@@ -80,11 +80,6 @@ import { SidebarListsSection } from "./SidebarListsSection";
 import { useStandardReaderList, useStandardReaderLists } from "@/hooks/useStandardReaderLists";
 import type { StandardReaderList } from "@/lib/standardReaderListsClient";
 import { AppSidebarBrandHeader } from "./AppSidebarBrandHeader";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
-import { useDeferredFeedCatalogs } from "@/hooks/useDeferredFeedCatalogs";
-import { useFinanceCatalog } from "@/hooks/useFinanceCatalog";
-import { topicNavigationIsVisible } from "@/lib/topicNavigationVisibility";
-import { useSportsCatalog } from "@/hooks/useSportsCatalog";
 import { saveReaderFeedSelection } from "@/lib/readerFeedSelectionStorage";
 import { readLaterSidebarButtonClassName } from "./readLaterSidebarButtonStyles";
 import { navigateReaderFeed } from "@/lib/readerFeedNavigation";
@@ -185,11 +180,6 @@ export function AppSidebar({
     { enabled: sidebarDependentDataEnabled && usingSemble },
   );
   const { preferences: feedPreferences } = useFeedDisplayPreferences();
-  const dummyCatalogs = isDummyReaderDataEnabled();
-  const deferredCatalogsReady = useDeferredFeedCatalogs(!dummyCatalogs) || dummyCatalogs;
-  const selectedEditorialFeed = pathname.startsWith("/read") ? searchParams.get("feed") : null;
-  const sportsCatalog = useSportsCatalog({ enabled: deferredCatalogsReady || selectedEditorialFeed === "sports" });
-  const financeCatalog = useFinanceCatalog({ enabled: deferredCatalogsReady || selectedEditorialFeed === "finance" });
   const savedSidebarRows = useMemo(
     () =>
       publicationSidebarProjection
@@ -446,8 +436,6 @@ export function AppSidebar({
       : DEFAULT_FEED_DISPLAY_PREFERENCES.visibleFeeds).filter(feed => !isRetiredReaderFeed(feed)),
   );
   const displayPreferences = clientHydrated ? feedPreferences : DEFAULT_FEED_DISPLAY_PREFERENCES;
-  if (topicNavigationIsVisible(displayPreferences.showSports, sportsCatalog.confirmedEnabled)) visible.add("sports");
-  if (topicNavigationIsVisible(displayPreferences.showFinance, financeCatalog.data?.enabled)) visible.add("finance");
 
   if (displayPreferences.showPodcasts && podcastsEnabled()) visible.add("podcasts");
   if (displayPreferences.showSocial) { visible.add("social"); visible.add("shortVideos"); visible.add("photos"); }

@@ -63,37 +63,24 @@ describe("MobileFeedNavigation", () => {
     fireEvent.click(podcasts);
     expect(onSelect).toHaveBeenCalledWith("podcasts");
   });
-  it("shows Finance with its feed icon and Beta badge when available", () => {
+  it.each(["finance", "sports"] as const)("keeps retired %s hidden despite an enabled visibility cache", feed => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="finance" visibleFeeds={new Set(["finance", "subscribed"])} onSelect={onSelect} />);
-    const finance = screen.getByRole("button", { name: "Finance, Beta" });
-    expect(finance.querySelector("svg")?.classList.contains("lucide-chart-no-axes-combined")).toBe(true);
-    expect(finance.textContent).toContain("Beta");
-    expect(finance.getAttribute("aria-current")).toBe("page");
-    fireEvent.click(finance);
-    expect(onSelect).toHaveBeenCalledWith("finance");
-  });
-  it("keeps Sports Beta in a primary mobile slot", () => {
-    const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="sports" visibleFeeds={new Set(["sports"])} onSelect={onSelect} />);
-    const sports = screen.getByRole("button", { name: "Sports, Beta" });
-    expect(sports.textContent).toContain("Beta");
-    expect(sports.getAttribute("aria-current")).toBe("page");
-    fireEvent.click(sports);
-    expect(onSelect).toHaveBeenCalledWith("sports");
+    render(<MobileFeedNavigation currentFeed={feed} visibleFeeds={new Set([feed, "subscribed"])} onSelect={onSelect} />);
+    expect(screen.queryByRole("button", { name: /Finance|Sports/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Subscribed" })).toBeDefined();
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("keeps retired feeds out of primary slots and More despite stale enabled visibility", async () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="sports" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "podcasts", "finance", "sports"])} onSelect={onSelect} />);
-    for (const label of ["The Wire", "Your Circle"]) expect(screen.queryByRole("button", { name: label })).toBeNull();
+    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "podcasts", "finance", "sports", "readLater", "archive"])} onSelect={onSelect} />);
+    for (const label of ["The Wire", "Your Circle", "Finance, Beta", "Sports, Beta"]) expect(screen.queryByRole("button", { name: label })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
-    for (const label of ["The Wire", "Your Circle"]) expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    for (const label of ["The Wire", "Your Circle", "Finance, Beta", "Sports, Beta"]) expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
     expect(screen.getByRole("button", { name: "Podcasts, Beta" }).textContent).toContain("Beta");
-    for (const label of ["Finance", "Sports"]) expect((await screen.findByRole("menuitem", { name: `${label}, Beta` })).textContent).toContain("Beta");
-    const sports = screen.getByRole("menuitem", { name: "Sports, Beta" });
-    expect(sports.getAttribute("aria-current")).toBe("page"); fireEvent.click(sports);
-    expect(onSelect).toHaveBeenCalledWith("sports");
+    const archive = await screen.findByRole("menuitem", { name: "Archive" });
+    expect(archive.getAttribute("aria-current")).toBe("page"); fireEvent.click(archive);
+    expect(onSelect).toHaveBeenCalledWith("archive");
   });
 
   it("shows visible feeds and preserves the active feed", () => {
@@ -132,15 +119,15 @@ describe("MobileFeedNavigation", () => {
     expect(onSelect).toHaveBeenCalledWith("following");
   });
   it("hides navigation when only retired feeds remain in the cached visibility set", () => {
-    render(<MobileFeedNavigation currentFeed="wire" visibleFeeds={new Set(["wire", "circle"])} onSelect={() => undefined} />);
+    render(<MobileFeedNavigation currentFeed="wire" visibleFeeds={new Set(["wire", "circle", "finance", "sports"])} onSelect={() => undefined} />);
     expect(screen.queryByRole("navigation", { name: "Feed Navigation" })).toBeNull();
   });
   it("keeps four active primary slots and places remaining destinations in More", async () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "finance", "readLater", "archive", "subscribed", "following"])} onSelect={onSelect} />);
+    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "finance", "podcasts", "readLater", "archive", "subscribed", "following"])} onSelect={onSelect} />);
     const navigation = screen.getByRole("navigation", { name: "Feed Navigation" });
     expect(within(navigation).getAllByRole("button").length).toBe(5);
-    expect(screen.getByRole("button", { name: "Finance, Beta" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Podcasts, Beta" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Saved" })).toBeDefined();
     const more = screen.getByRole("button", { name: "More Feeds" });
     expect(more.getAttribute("aria-current")).toBe("page"); fireEvent.click(more);
@@ -151,7 +138,7 @@ describe("MobileFeedNavigation", () => {
   });
 
   it("uses available destinations to fill empty primary slots without a needless More menu", () => {
-    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["finance", "readLater", "archive", "subscribed"])} onSelect={() => undefined} readLaterLabel="Read Later" />);
+    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["finance", "following", "readLater", "archive", "subscribed"])} onSelect={() => undefined} readLaterLabel="Read Later" />);
     expect(screen.getAllByRole("button").length).toBe(4);
     expect(screen.queryByRole("button", { name: "More Feeds" })).toBeNull();
     expect(screen.getByRole("button", { name: "Read Later" })).toBeDefined();
