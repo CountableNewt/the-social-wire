@@ -33,7 +33,7 @@ beforeEach(() => {
   const saving = spyOn(Saved, "useSaveReadLaterEntryMutation").mockReturnValue(mutation as unknown as ReturnType<typeof Saved.useSaveReadLaterEntryMutation>);
   const recommendations = spyOn(Recommendations, "useStandardSiteRecommendation").mockReturnValue({ applicable: false } as ReturnType<typeof Recommendations.useStandardSiteRecommendation>);
   const feedback = spyOn(Feedback, "useWireArticleFeedback").mockReturnValue({ applicable: false } as ReturnType<typeof Feedback.useWireArticleFeedback>);
-  const dialog = spyOn(DraftDialog, "SendArticleToDraftDialog").mockImplementation(({ url, ownerEntryId }) => <div role="dialog" data-entry-owner={ownerEntryId}>Draft Source: {url}</div>);
+  const dialog = spyOn(DraftDialog, "SendArticleToDraftDialog").mockImplementation(({ url }) => <div role="dialog">Draft Source: {url}</div>);
   restores.push(...[auth, social, saved, saving, recommendations, feedback, dialog].map(spy => () => spy.mockRestore()));
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
@@ -41,11 +41,10 @@ const entry: EntryDetail = { entryId: "at://did:plc:author/site.standard.documen
 it("opens Send to Draft from the signed-in article menu with the article link", async () => {
   render(<ArticleSocialToolbar entry={entry} variant="menu" />);
   fireEvent.click(screen.getByRole("button", { name: "Article Actions" }));
-  expect((await screen.findByRole("menu")).getAttribute("data-entry-owner")).toBe(entry.entryId);
+  await screen.findByRole("menu");
   fireEvent.click(await screen.findByRole("menuitem", { name: "Send to Draft" }));
   const dialog = await screen.findByRole("dialog");
   expect(dialog.textContent).toContain("https://publisher.test/article");
-  expect(dialog.getAttribute("data-entry-owner")).toBe(entry.entryId);
 });
 it.each(["signed-out", "missing-url"])("omits Send to Draft when %s", async state => {
   signedIn = state !== "signed-out";

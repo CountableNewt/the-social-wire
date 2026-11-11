@@ -1,6 +1,4 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import { getAppEnv } from "@/lib/appEnv";
-import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 
 export const USAGE_TABS = ["home", "explore", "notifications", "messages", "bookmarks", "lists", "feeds", "saved", "archive", "wire", "circle", "finance", "sports", "subscribed", "following", "podcasts", "articles", "live-post", "livestream", "brand-accounts", "analytics", "profile", "content-calendar"] as const;
 export type UsageTab = typeof USAGE_TABS[number];
@@ -18,11 +16,13 @@ export function canonicalUsageTab(pathname: string, feed?: string | null): Usage
   return root?.[1] as UsageTab | undefined;
 }
 
+/** The standalone edge accepts feed-performance samples, not tab-usage events.
+ * Keep tab analytics dormant until a supported ingestion contract is deployed.
+ * Sending these events as feed metrics would both fail validation and mislabel usage.
+ */
 export function recordTabUsage(session: OAuthSession, sample: TabUsageSample): Promise<Response> {
-  const environment = getAppEnv();
-  return gatewayFetch(session, "/v1/telemetry/client-performance", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
-    body: JSON.stringify({ event: sample.event, tab: sample.tab, durationMs: Math.max(0, Math.min(60_000, sample.durationMs)), environment: environment === "prod" ? "production" : environment }),
-  });
+  void session; void sample;
+  return Promise.resolve(new Response(null, { status: 204 }));
 }
 
 /** Only visible elapsed time is counted; no session or identity is retained here. */

@@ -45,7 +45,7 @@ function setup(service: "latr-link" | "semble", fail = false) {
     upsertPreferences: async (value: unknown) => {
       writes.push(value);
       if (fail) throw new Error("Could not save preferences.");
-      return { value };
+      return { uri: "at://did:plc:viewer/app.thesocialwire.preferences/self", cid: "saved", value };
     },
   } as unknown as ReturnType<typeof PDS.usePDSClient>);
   const preferences = spyOn(
@@ -75,12 +75,13 @@ function setup(service: "latr-link" | "semble", fail = false) {
       (spy) => () => spy.mockRestore(),
     ),
   );
+  const cache = new QueryClient();
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={cache}>
       <ReadLaterSettingsSection />
     </QueryClientProvider>,
   );
-  return { writes, collection };
+  return { writes, collection, cache };
 }
 describe("Read Later provider collection disclosure", () => {
   it("hides Semble choices for L@tr and reveals them without changing preferences", () => {
@@ -100,7 +101,7 @@ describe("Read Later provider collection disclosure", () => {
     expect(writes).toHaveLength(0);
   });
   it("commits Semble only after an explicit valid collection selection", async () => {
-    const { writes, collection } = setup("latr-link");
+    const { writes, collection, cache } = setup("latr-link");
     fireEvent.click(screen.getByRole("button", { name: "Use Semble" }));
     fireEvent.change(
       screen.getByRole("combobox", { name: "Semble Collection" }),
@@ -110,6 +111,8 @@ describe("Read Later provider collection disclosure", () => {
     expect((writes[0] as { readLaterService: string }).readLaterService).toBe(
       "semble",
     );
+    await waitFor(() => expect(cache.getQueryData(Preferences.accountPreferencesQueryKey("did:plc:viewer"))).toBeDefined());
+    expect(cache.getQueryData(Preferences.ACCOUNT_PREFERENCES_QUERY_KEY)).toBeUndefined();
   });
   it("keeps the configured Semble picker visible and restores it if switching fails", async () => {
     const { writes } = setup("semble", true);

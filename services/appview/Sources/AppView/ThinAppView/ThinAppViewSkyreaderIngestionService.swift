@@ -32,13 +32,9 @@ actor ThinAppViewSkyreaderIngestionService {
       let previous = try await store.fetchRssFeedMetadata(normalizedFeedUrl: url)
       let started = Date()
       try AppViewRSSRefreshEvidence.checkBackoff(previous, feedUrl: url, at: started)
-      let indexed = try await rssIngestion.ingestFeed(normalizedFeedUrl: url)
-      try Task.checkCancellation()
-      let current = try await store.fetchRssFeedMetadata(normalizedFeedUrl: url)
-      // The shared background ingester intentionally suppresses fetch/metadata
-      // errors. Explicit refresh requires persisted evidence of a completed poll.
-      try AppViewRSSRefreshEvidence.checkCompletion(current, feedUrl: url, started: started)
-      return indexed
+      return try await AppViewRSSRefreshEvidence.refresh(feedUrl: url, started: started,
+        ingest: { try await rssIngestion.ingestFeed(normalizedFeedUrl: url) },
+        metadata: { try await store.fetchRssFeedMetadata(normalizedFeedUrl: url) })
     }
     self.logger = logger
   }

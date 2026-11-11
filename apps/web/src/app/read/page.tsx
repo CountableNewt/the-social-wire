@@ -2,11 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import dynamic from "next/dynamic";
-const SportsExperience = dynamic(() => import("@/components/SportsExperience"));
-const FinanceExperience = dynamic(() => import("@/components/FinanceExperience"));
 import { useEffect, useState } from "react";
-import { navigateTopicFeed } from "@/lib/topicFeedNavigation";
 import ReadPubPage from "./[...pubId]/ReadPubPage";
 import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 import {
@@ -66,8 +62,6 @@ function ReadIndexContent() {
       />
     );
   }
-  if (feed === "sports") return <SportsExperience key="sports" feedID={params.get("sportsFeed") || "sports"} onFeedChange={id => navigateTopicFeed("sports", id, params)} />;
-  if (feed === "finance") return <FinanceExperience key="finance" feedID={params.get("financeFeed") || "finance"} onFeedChange={id => navigateTopicFeed("finance", id, params)} />;
   if (feed && !isReaderFeedSelection(feed)) {
     return (
       <div className="flex h-full flex-1 items-center justify-center p-8 text-sm text-muted-foreground">

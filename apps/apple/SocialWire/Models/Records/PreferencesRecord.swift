@@ -17,6 +17,7 @@ struct PreferencesRecord: Codable, Equatable, Sendable {
     var showTopLevelFeedUnreadCounts: Bool?
     var feedsWithUnreadCounts: [String]?
     var rssArticleOpenMode: String?
+    var automaticallyMarkAsRead: Bool? = nil
     var createdAt: String
     var updatedAt: String
 
@@ -37,6 +38,7 @@ struct PreferencesRecord: Codable, Equatable, Sendable {
         case showTopLevelFeedUnreadCounts
         case feedsWithUnreadCounts
         case rssArticleOpenMode
+        case automaticallyMarkAsRead
         case createdAt
         case updatedAt
     }
