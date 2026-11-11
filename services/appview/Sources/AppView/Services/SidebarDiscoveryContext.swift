@@ -1,9 +1,10 @@
 import Foundation
 import GatewayCore
 
-enum SidebarBuildPhase: String, Sendable {
+enum SidebarBuildPhase: Sendable {
   case full
   case priority
+  case manualRefresh
   case folderPublications
 }
 
@@ -14,7 +15,7 @@ struct SidebarDiscoveryContext: Sendable {
   let subscribed: [ProjectionDiscoveredRow]
   let myPublications: [ProjectionDiscoveredRow]
   let unfoldered: [ProjectionDiscoveredRow]
-  let following: [ProjectionDiscoveredRow]
+  var following: [ProjectionDiscoveredRow]
   let uniqueRows: [ProjectionDiscoveredRow]
   let enrollAuthorDids: [String]
   let prefsByPublicationId: [String: PublicationPrefsRecordDTO]

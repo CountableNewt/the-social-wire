@@ -124,10 +124,10 @@ export async function refreshPublicationSources(args: {
       for (const request of requests) {
         args.signal.throwIfAborted();
         try {
-          // Preserve the former 30-second allowance per four sources without
-          // letting one large request wait indefinitely. Caller abort stays independent.
-          const sourceCount = request.authorDids.length + request.feedUrls.length;
-          const deadlineMs = Math.min(300_000, 30_000 * Math.ceil(sourceCount / 4));
+          // RSS polls run serially. Allow up to 25 seconds to join a poll and
+          // 20 seconds to fetch if its lease opens without a completed result.
+          const authorBudgetMs = 30_000 * Math.max(1, Math.ceil(request.authorDids.length / 4));
+          const deadlineMs = Math.min(300_000, authorBudgetMs + 45_000 * request.feedUrls.length);
           const signal = AbortSignal.any([args.signal, AbortSignal.timeout(deadlineMs)]);
           await awaitWithAbort(enrollAuthorsInAppView(args.oauthSession, request.authorDids, request.feedUrls, signal), signal);
         } catch (error) {

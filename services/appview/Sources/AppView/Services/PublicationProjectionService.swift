@@ -47,27 +47,6 @@ actor PublicationProjectionService {
     self.repo = ATProtoAuthenticatedRepoClient(httpClient: httpClient, plcURL: plcURL, logger: logger)
   }
 
-  /// Drops exactly the caches a viewer-initiated refresh needs rebuilt.
-  ///
-  /// Scoped deliberately. Unread counts and cached first pages are *not* cleared: the sidebar
-  /// response carries neither, so dropping them did nothing for this request and cold-started the
-  /// viewer's next feed load. `appViewScopeCache` is keyed by publication rather than by viewer,
-  /// so only the entries this viewer is known to reference are evicted. `discoveryCacheByViewer`
-  /// is left intact so the Following tab survives until the background full-discovery pass
-  /// replaces it — see `refreshPrioritySidebar`.
-  func invalidateViewerCaches(viewerDid: String) async {
-    if let rows = sidebarRowCacheByViewer[viewerDid] {
-      for key in rows.keys {
-        appViewScopeCache.removeValue(
-          forKey: PublicationProjectionLogic.normalizeAtRepoParam(key)
-        )
-      }
-    }
-    sidebarRowCacheByViewer.removeValue(forKey: viewerDid)
-    guard let projectionCache else { return }
-    try? await projectionCache.invalidateSidebarProjection(viewerDid: viewerDid)
-  }
-
   /// Unlike background badge warming, explicit enrollment must surface a failed
   /// recount before claiming that healthy-source results are ready to reconcile.
   func reconcileEnrollmentCounters(auth: AuthContext) async throws {
@@ -107,6 +86,8 @@ actor PublicationProjectionService {
         phase: .priority,
         refreshedAt: Date()
       )
+    case .manualRefresh:
+      return try await refreshSidebar(auth: auth)
     case .folderPublications:
       let context: SidebarDiscoveryContext
       if let cached = discoveryCacheByViewer[auth.did], cached.expiresAt > Date() {
@@ -394,26 +375,65 @@ actor PublicationProjectionService {
     )
   }
 
-  /// Viewer-initiated refresh, sized for a request path.
-  ///
-  /// Rebuilds folders, prefs, subscriptions and RSS rows live while skipping the follow-graph
-  /// discovery fan-out, which walks up to 500 authors' PDSes and is what pushed this endpoint past
-  /// the Gateway's 60s proxy timeout. The Following tab is carried over from the discovery cache
-  /// (see the `includeFollowDiscovery == false` fallback in `discoverContext`) and is refreshed out
-  /// of band by `refreshFullDiscoveryAndPersist`.
-  ///
-  /// Returns the priority tier, so folder sections come back without their publications. Callers
-  /// must merge this into an existing projection rather than replacing one.
-  func refreshPrioritySidebar(auth: AuthContext) async throws -> PublicationSidebarResponse {
-    let context = try await discoverContext(auth: auth, includeFollowDiscovery: false)
-    cacheDiscovery(context, viewerDid: auth.did)
-    return try await buildSidebarResponse(
+  /// Refresh the complete Subscribed sidebar from the viewer's records.
+  /// Following retains already hydrated rows until background discovery updates it.
+  func refreshSidebar(auth: AuthContext) async throws -> PublicationSidebarResponse {
+    var context = try await discoverContext(auth: auth, includeFollowDiscovery: false)
+    for row in context.subscribed {
+      let key = PublicationProjectionLogic.normalizeAtRepoParam(row.publicationId)
+      appViewScopeCache.removeValue(forKey: key)
+    }
+    let response = try await buildSidebarResponse(
       context: context,
       auth: auth,
-      phase: .priority,
-      refreshedAt: Date(),
-      includeUnreadCounts: false
+      phase: .manualRefresh,
+      refreshedAt: Date()
     )
+    context.following = response.followingTabPublications.map { row in
+      ProjectionDiscoveredRow(
+        publicationId: row.publicationId,
+        subscriptionPublicationId: row.subscriptionPublicationId,
+        authorDid: row.authorDid,
+        authorHandle: row.authorHandle,
+        title: row.title,
+        iconUrl: row.iconUrl,
+        avatarUrl: row.avatarUrl,
+        discoveredAt: row.discoveredAt
+      )
+    }
+    cacheDiscovery(context, viewerDid: auth.did)
+    return response
+  }
+
+  private func retainedFollowingRows(context: SidebarDiscoveryContext) async -> [SidebarPublicationRow] {
+    let viewerDid = context.viewerDid
+    let cachedDiscovery = discoveryCacheByViewer[viewerDid]
+    let candidates: [SidebarPublicationRow]
+    if let cachedDiscovery, cachedDiscovery.expiresAt > Date() {
+      let hydrated = context.following.map { sidebarRow(for: viewerDid, publicationId: $0.publicationId) }
+      if hydrated.allSatisfy({ $0 != nil }) {
+        candidates = hydrated.compactMap { $0 }
+      } else {
+        let durable = await cachedSidebarResponse(viewerDid: viewerDid)?.followingTabPublications ?? []
+        let durableById = Dictionary(durable.map { ($0.publicationId, $0) }, uniquingKeysWith: { _, latest in latest })
+        candidates = zip(context.following, hydrated).compactMap { discovery, row in
+          row ?? durableById[discovery.publicationId]
+        }
+      }
+    } else {
+      candidates = await cachedSidebarResponse(viewerDid: viewerDid)?.followingTabPublications ?? []
+    }
+
+    // The live viewer records can remove cached Following rows from view before
+    // the next full follow-graph discovery.
+    let hiddenIds = context.prefsByPublicationId.values.compactMap { pref in
+      pref.value["hidden"]?.value as? Bool == true ? pref.publicationId : nil
+    }
+    let excludedIds = context.subscribed.map(\.publicationId) + hiddenIds
+    let excludedKeys = Set(excludedIds.flatMap(PublicationProjectionLogic.publicationIdLookupKeys))
+    return candidates.filter { row in
+      excludedKeys.isDisjoint(with: PublicationProjectionLogic.publicationIdLookupKeys(for: row.publicationId))
+    }
   }
 
   /// Full follow-graph discovery plus a durable projection-cache write, for running off the
@@ -728,24 +748,23 @@ actor PublicationProjectionService {
     }
   }
 
-  private func buildSidebarResponse(
+  func buildSidebarResponse(
     context: SidebarDiscoveryContext,
     auth: AuthContext,
     phase: SidebarBuildPhase,
     refreshedAt: Date,
     includeUnreadCounts: Bool = false
   ) async throws -> PublicationSidebarResponse {
-    let priorityRows = priorityDiscoveredRows(from: context)
-    let folderRows = folderDiscoveredRows(from: context)
-
     let rowsToBuild: [ProjectionDiscoveredRow]
     switch phase {
     case .full:
       rowsToBuild = context.uniqueRows
     case .priority:
-      rowsToBuild = priorityRows
+      rowsToBuild = priorityDiscoveredRows(from: context)
+    case .manualRefresh:
+      rowsToBuild = context.subscribed
     case .folderPublications:
-      rowsToBuild = folderRows
+      rowsToBuild = folderDiscoveredRows(from: context)
     }
 
     let sidebarRowById = try await buildSidebarRowMap(
@@ -756,6 +775,13 @@ actor PublicationProjectionService {
     )
     mergeSidebarRows(viewerDid: context.viewerDid, rows: sidebarRowById)
 
+    let retainedFollowing = phase == .manualRefresh ? await retainedFollowingRows(context: context) : []
+    if !retainedFollowing.isEmpty {
+      mergeSidebarRows(
+        viewerDid: context.viewerDid,
+        rows: Dictionary(retainedFollowing.map { ($0.publicationId, $0) }, uniquingKeysWith: { _, latest in latest })
+      )
+    }
     let rowCache = sidebarRowCacheByViewer[context.viewerDid] ?? sidebarRowById
 
     let response: PublicationSidebarResponse
@@ -784,7 +810,7 @@ actor PublicationProjectionService {
       let myRows = context.myPublications.compactMap { rowCache[$0.publicationId] }
       let unfolderedRows = context.unfoldered.compactMap { rowCache[$0.publicationId] }
       let followingRows = context.following.compactMap { rowCache[$0.publicationId] }
-      let prioritySidebarRows = priorityRows.compactMap { rowCache[$0.publicationId] }
+      let prioritySidebarRows = rowsToBuild.compactMap { rowCache[$0.publicationId] }
       let folderSections = buildFolderSections(
         context: context,
         sidebarRowById: rowCache,
@@ -806,11 +832,13 @@ actor PublicationProjectionService {
         totalUnreadCount: totalUnread,
         refreshedAt: refreshedAt
       )
-    case .full:
-      let sidebarRows = context.uniqueRows.compactMap { rowCache[$0.publicationId] }
+    case .full, .manualRefresh:
+      let sidebarRows = rowsToBuild.compactMap { rowCache[$0.publicationId] } + retainedFollowing
       let myRows = context.myPublications.compactMap { rowCache[$0.publicationId] }
       let unfolderedRows = context.unfoldered.compactMap { rowCache[$0.publicationId] }
-      let followingRows = context.following.compactMap { rowCache[$0.publicationId] }
+      let followingRows = phase == .manualRefresh
+        ? retainedFollowing
+        : context.following.compactMap { rowCache[$0.publicationId] }
       let folderSections = buildFolderSections(
         context: context,
         sidebarRowById: rowCache,
@@ -830,6 +858,8 @@ actor PublicationProjectionService {
         refreshedAt: refreshedAt
       )
     }
+    // The manual phase knows live subscriptions but can have a partial cached
+    // Following view. The full discovery phase owns replacing all memberships.
     try? await storePublicationScopes(from: response, replaceAll: phase == .full)
     return response
   }

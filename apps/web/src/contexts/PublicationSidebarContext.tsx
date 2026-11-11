@@ -517,7 +517,7 @@ function PublicationSidebarProviderInner({
         });
         let seed: Promise<{ error: unknown }> | undefined;
         try {
-          const sidebarSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
+          const sidebarSignal = AbortSignal.any([signal, AbortSignal.timeout(MANUAL_SIDEBAR_REFRESH_TIMEOUT_MS)]);
           // Queue authority first: seed enrollment shares the Gateway nonce lane
           // and can otherwise consume the POST's deadline before it starts.
           const sidebarRequest = awaitWithAbort(refreshPublicationSidebar(oauth, sidebarSignal), sidebarSignal);
@@ -543,20 +543,16 @@ function PublicationSidebarProviderInner({
           for (const row of following.values()) if (!allRows.has(row.publicationId)) allRows.set(row.publicationId, row);
           const projection = { ...response, followingTabPublications: [...following.values()], allPublicationRows: [...allRows.values()] };
           const readChanged = readFeedRefreshRevision(qc, oauth) !== readRevision;
-          if (readChanged) {
+          if (readChanged || projection.unreadCountsByPublicationId == null) {
+            // The membership response does not recount. Preserve the count map
+            // and its per-publication evidence as one snapshot.
             projection.unreadCountsByPublicationId = previous?.unreadCountsByPublicationId;
             projection.unreadCountsFreshnessByPublicationId = previous?.unreadCountsFreshnessByPublicationId;
             projection.unreadCountsGeneration = previous?.unreadCountsGeneration;
             projection.unreadCountsAccuracy = previous?.unreadCountsAccuracy;
             projection.unreadCountsCountedAt = previous?.unreadCountsCountedAt;
           }
-          qc.setQueryData(queryKey, previous?.unreadCountsByPublicationId && !projection.unreadCountsByPublicationId
-            ? applyUnreadCountsEvent(projection, previous.unreadCountsByPublicationId ?? {}, {
-                generation: previous.unreadCountsGeneration,
-                accuracy: previous.unreadCountsAccuracy,
-                countedAt: previous.unreadCountsCountedAt,
-              })
-            : projection);
+          qc.setQueryData(queryKey, projection);
           setStreamProjection(undefined);
           setProjectionError(null);
           setSidebarFetching(false);
@@ -590,7 +586,18 @@ function PublicationSidebarProviderInner({
           }
           assertSession();
           setRefreshMessage("Updating Unread Counts…");
-          await refreshReaderUnreadCounts({ queryClient: qc, viewerDid: did, oauthSession: oauth, publicationIds: currentRows().map(row => row.publicationId), signal, isCurrentSession: () => getOAuthSession() === oauth });
+          try {
+            await refreshReaderUnreadCounts({ queryClient: qc, viewerDid: did, oauthSession: oauth, publicationIds: currentRows().map(row => row.publicationId), signal, isCurrentSession: () => getOAuthSession() === oauth });
+          } catch (error) {
+            assertSession();
+            if (error instanceof DOMException && error.name === "TimeoutError") {
+              const message = sourceFailure instanceof Error
+                ? `Unread counts also took too long to update. ${sourceFailure.message}`
+                : "Unread counts took too long to update. Try Refresh again.";
+              throw new Error(message, { cause: sourceFailure ? new AggregateError([sourceFailure, error]) : error });
+            }
+            throw error;
+          }
           assertSession();
           if (sourceFailure) throw sourceFailure;
           const newArticleCount = newArticleIds.size;

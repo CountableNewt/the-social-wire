@@ -29,11 +29,9 @@ actor ThinAppViewSkyreaderIngestionService {
     self.ingestFeed = { try await rssIngestion.ingestFeed(normalizedFeedUrl: $0) }
     self.refreshFeed = { url in
       try Task.checkCancellation()
-      let previous = try await store.fetchRssFeedMetadata(normalizedFeedUrl: url)
       let started = Date()
-      try AppViewRSSRefreshEvidence.checkBackoff(previous, feedUrl: url, at: started)
       return try await AppViewRSSRefreshEvidence.refresh(feedUrl: url, started: started,
-        ingest: { try await rssIngestion.ingestFeed(normalizedFeedUrl: url) },
+        ingest: { try await rssIngestion.refreshFeed(normalizedFeedUrl: url, started: started) },
         metadata: { try await store.fetchRssFeedMetadata(normalizedFeedUrl: url) })
     }
     self.logger = logger
@@ -68,14 +66,20 @@ actor ThinAppViewSkyreaderIngestionService {
     })
     var indexed = 0
     var failures: [AppViewRSSRefreshFailure] = []
+    var joinTimedOut = false
     for url in subscribed where requested.contains(url) {
       try Task.checkCancellation()
       do {
         indexed += try await refreshFeed(url)
       } catch let failure as AppViewRSSRefreshFailure {
         failures.append(AppViewRSSRefreshFailure(feedUrl: url, category: failure.category))
+      } catch is AppViewRSSRefreshJoinTimeout {
+        joinTimedOut = true
       }
       try Task.checkCancellation()
+    }
+    if joinTimedOut {
+      throw AppViewRSSRefreshJoinTimeout()
     }
     if !failures.isEmpty {
       throw AppViewEnrollmentPartialFailure(indexed: indexed, failures: failures)

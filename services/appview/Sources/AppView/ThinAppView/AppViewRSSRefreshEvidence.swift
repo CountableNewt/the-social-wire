@@ -5,28 +5,41 @@ import ThinAppViewCore
 /// Persisted polling evidence is required because background ingestion suppresses
 /// transport and metadata errors. Missing/stale evidence cannot imply success.
 enum AppViewRSSRefreshEvidence {
-  /// A lease held by a background poll is unfinished work, not a failed poll.
-  /// Join its persisted result without starting another fetch or accepting stale evidence.
+  /// Only a held lease can join another poll. A freed lease can be acquired
+  /// on the next attempt if its prior owner left no completion evidence.
   static func refresh(
     feedUrl: String,
     started: Date,
-    ingest: @Sendable () async throws -> Int,
+    ingest: @Sendable () async throws -> RssFeedPollResult,
     metadata: @Sendable () async throws -> RssFeedFetchMetadata?,
     maxWaits: Int = 100,
     wait: @Sendable () async throws -> Void = { try await Task.sleep(for: .milliseconds(250)) }
   ) async throws -> Int {
-    let indexed = try await ingest()
     for attempt in 0...maxWaits {
       try Task.checkCancellation()
-      let current = try await metadata()
-      if let completed = current?.lastPollAt, completed >= started {
-        try checkCompletion(current, feedUrl: feedUrl, started: started)
+      let result = try await ingest()
+      try Task.checkCancellation()
+      switch result {
+      case .completed(let indexed, let evidence):
+        try checkCompletion(evidence, feedUrl: feedUrl, started: started)
         return indexed
+      case .backedOff(let evidence):
+        try checkBackoff(evidence, feedUrl: feedUrl, at: started)
+        throw HTTPError(.serviceUnavailable, message: "RSS refresh completion unavailable")
+      case .unfetchable:
+        throw AppViewRSSRefreshFailure(feedUrl: feedUrl, category: "rss_fetch")
+      case .leaseBusy:
+        let current = try await metadata()
+        try Task.checkCancellation()
+        if let completed = current?.lastPollAt, completed >= started {
+          try checkCompletion(current, feedUrl: feedUrl, started: started)
+          return 0
+        }
       }
       guard attempt < maxWaits else { break }
       try await wait()
     }
-    throw HTTPError(.serviceUnavailable, message: "RSS refresh completion unavailable")
+    throw AppViewRSSRefreshJoinTimeout()
   }
 
   static func checkBackoff(_ metadata: RssFeedFetchMetadata?, feedUrl: String, at: Date) throws {
