@@ -13,7 +13,10 @@ struct StandaloneAdmissionMiddleware: RouterMiddleware {
     next: (Request, GatewayRequestContext) async throws -> Response
   ) async throws -> Response {
     let path = request.uri.path
-    if ["/v1/analytics/summary", "/v1/analytics/refresh", "/v1/analytics/bluesky"].contains(path),
+    if [
+      "/v1/analytics/summary", "/v1/analytics/refresh", "/v1/analytics/bluesky",
+      "/v1/analytics/publications",
+    ].contains(path),
       runtime.configuration.entitlements.gatingEnabled,
       !runtime.configuration.entitlements.hasPro(did: context.authContext?.did ?? "")
     {

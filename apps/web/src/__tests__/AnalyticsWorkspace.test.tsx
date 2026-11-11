@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import * as Navigation from "next/navigation";
 import * as Auth from "@/hooks/useAuth";
 import * as Brands from "@/hooks/useBrandAccounts";
@@ -9,6 +9,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AnalyticsPage from "@/app/analytics/page";
 import AnalyticsLayout from "@/app/analytics/layout";
 import type { BlueskyAnalyticsSummary } from "@/lib/analytics/blueskyAnalyticsClient";
+import type { PublicationAnalyticsSummary } from "@/lib/analytics/publicationAnalyticsClient";
 
 const restores: (() => void)[] = [];
 let brands: string[];
@@ -22,6 +23,19 @@ const report: BlueskyAnalyticsSummary = {
   shares: [],
   coverage: { feedComplete: true, feedAvailable: true, sharesComplete: false, sharesAvailable: true, articlesSearched: 0, feedPostsExamined: 4 },
 };
+const publicationReport: PublicationAnalyticsSummary = {
+  sampledAt: report.sampledAt,
+  inventoryComplete: true,
+  publications: [{
+    uri: "at://did:plc:alice/site.standard.publication/news",
+    name: "My Publication",
+    url: "https://example.com/news",
+    documents: 12,
+    subscribers: 7,
+    recommendations: 0,
+    recommendationCoverageComplete: true,
+  }],
+};
 beforeEach(() => {
   brands = [];
   const brandSpy = spyOn(Brands, "useBrandAccounts").mockImplementation(() => brands); restores.push(() => brandSpy.mockRestore());
@@ -31,7 +45,12 @@ beforeEach(() => {
   const media = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) });
   restores.push(() => { if (media) Object.defineProperty(window, "matchMedia", media); else Reflect.deleteProperty(window, "matchMedia"); });
-  state = { blueskyQuery: { data: report, isPending: false, isFetching: false, error: null, refetch: mock(async () => {}) }, refresh: { error: null, isPending: false }, collect: mock(async () => {}) } as unknown as ReturnType<typeof Analytics.useCreatorAnalytics>;
+  state = {
+    blueskyQuery: { data: report, isPending: false, isFetching: false, error: null, refetch: mock(async () => {}) },
+    publicationQuery: { data: publicationReport, isPending: false, isFetching: false, error: null, refetch: mock(async () => {}) },
+    refresh: { error: null, isPending: false },
+    collect: mock(async () => {}),
+  } as unknown as ReturnType<typeof Analytics.useCreatorAnalytics>;
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
 function hook() { const value = spyOn(Analytics, "useCreatorAnalytics").mockImplementation(() => state); restores.push(() => value.mockRestore()); return value; }
@@ -58,6 +77,61 @@ test("refreshes the selected account and changes the AppView time range", async 
   expect(spy.mock.calls.at(-1)).toEqual([7, "did:plc:alice"]);
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
   await waitFor(() => expect(state.collect).toHaveBeenCalledTimes(1));
+});
+
+test("shows each publication's current counts and safe website link", async () => {
+  await mount();
+  const section = within(screen.getByRole("region", { name: "Publication Analytics" }));
+  expect(section.getByRole("link", { name: "My Publication" }).getAttribute("href")).toBe("https://example.com/news");
+  expect(section.getByText(/Current Public Counts/)).toBeTruthy();
+  expect(section.getAllByRole("term").map(term => term.textContent)).toEqual(["Documents", "Subscribers", "Recommendations"]);
+  expect(section.getAllByRole("definition").map(value => value.textContent)).toEqual(["12", "7", "0"]);
+});
+
+test("labels incomplete and unavailable publication counts and blocks unsafe URLs", async () => {
+  state = {
+    ...state,
+    publicationQuery: {
+      ...state.publicationQuery,
+      data: {
+        ...publicationReport,
+        inventoryComplete: false,
+        publications: [{
+          ...publicationReport.publications[0],
+          url: "javascript:alert(1)",
+          subscribers: null,
+          recommendations: 3,
+          recommendationCoverageComplete: false,
+        }],
+      },
+    },
+  } as typeof state;
+  await mount();
+  const section = within(screen.getByRole("region", { name: "Publication Analytics" }));
+  expect(section.getByText(/publication inventory is incomplete/)).toBeTruthy();
+  expect(section.getByRole("heading", { name: "My Publication" })).toBeTruthy();
+  expect(section.queryByRole("link")).toBeNull();
+  expect(section.getAllByRole("definition").map(value => value.textContent)).toEqual(["At least 12", "Unavailable", "At least 3"]);
+});
+
+test("loads and retries publication analytics independently of Bluesky", () => {
+  state = { ...state, publicationQuery: { ...state.publicationQuery, data: undefined, isPending: true } } as typeof state;
+  hook();
+  const view = render(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
+  const section = within(screen.getByRole("region", { name: "Publication Analytics" }));
+  expect(section.getByRole("status").textContent).toBe("Loading Publication Analytics…");
+  expect(screen.getByText("Followers")).toBeTruthy();
+
+  state = { ...state, publicationQuery: { ...state.publicationQuery, isPending: false, error: new Error("Publication Provider Unavailable") } } as typeof state;
+  view.rerender(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
+  expect(section.getByRole("alert").textContent).toContain("Publication Provider Unavailable");
+  fireEvent.click(section.getByRole("button", { name: "Retry Publication Analytics" }));
+  expect(state.publicationQuery.refetch).toHaveBeenCalledTimes(1);
+  expect(state.blueskyQuery.refetch).not.toHaveBeenCalled();
+
+  state = { ...state, publicationQuery: { ...state.publicationQuery, error: null, data: { ...publicationReport, publications: [] } } } as typeof state;
+  view.rerender(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
+  expect(section.getByText("No standard.site publications found for this account.")).toBeTruthy();
 });
 
 test("displays AppView loading and recoverable errors without inventing a report", async () => {
