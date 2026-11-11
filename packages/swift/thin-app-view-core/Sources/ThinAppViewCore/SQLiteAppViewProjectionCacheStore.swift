@@ -1,10 +1,12 @@
 @preconcurrency import GRDB
 import Foundation
 import Logging
+import SocialWireRedis
 
 public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
   private let db: DatabasePool
   private let logger: Logger
+  private var rssRefreshLeases: [String: (owner: String, expiresAt: ContinuousClock.Instant)] = [:]
 
   public init(path dbPath: String, logger: Logger) throws {
     self.logger = logger
@@ -23,6 +25,39 @@ public actor SQLiteAppViewProjectionCacheStore: AppViewProjectionCacheStore {
     try db.write { db in
       try Self.migrate(db)
     }
+  }
+
+  public func acquireRefreshLease(
+    domain: String,
+    resource: String,
+    ttl: TimeInterval
+  ) async -> AppViewProjectionRefreshLease? {
+    let ttlMilliseconds = max(1, Int(ttl * 1_000))
+    let owner = UUID().uuidString.lowercased()
+    // Only RSS polling needs coordination in the single-replica SQLite service.
+    guard domain == "rss" else {
+      return AppViewProjectionRefreshLease(key: "local:\(domain)", owner: owner,
+        ttlMilliseconds: ttlMilliseconds)
+    }
+    let key = "local:rss:\(RedisKeyNamespace.digest(resource))"
+    let now = ContinuousClock.now
+    if let held = rssRefreshLeases[key], held.expiresAt > now { return nil }
+    rssRefreshLeases[key] = (owner, now.advanced(by: .milliseconds(ttlMilliseconds)))
+    return AppViewProjectionRefreshLease(key: key, owner: owner, ttlMilliseconds: ttlMilliseconds)
+  }
+
+  public func renewRefreshLease(_ lease: AppViewProjectionRefreshLease) async -> Bool {
+    guard lease.key.hasPrefix("local:rss:") else { return true }
+    let now = ContinuousClock.now
+    guard let held = rssRefreshLeases[lease.key], held.owner == lease.owner,
+      held.expiresAt > now else { return false }
+    rssRefreshLeases[lease.key] = (lease.owner, now.advanced(by: .milliseconds(lease.ttlMilliseconds)))
+    return true
+  }
+
+  public func releaseRefreshLease(_ lease: AppViewProjectionRefreshLease) async {
+    guard rssRefreshLeases[lease.key]?.owner == lease.owner else { return }
+    rssRefreshLeases.removeValue(forKey: lease.key)
   }
 
   private static func migrate(_ db: Database) throws {
