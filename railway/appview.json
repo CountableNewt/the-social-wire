@@ -5,6 +5,7 @@
     "dockerfilePath": "/services/appview/Dockerfile",
     "watchPatterns": [
       "/services/appview/**",
+      "/packages/swift/skej-backend/**",
       "/database/migrations/**",
       "/railway/appview.json",
       "/tools/schema-ready/**",

@@ -1,0 +1,23 @@
+meta {
+  name: Cancel schedule
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/xrpc/at.skej.schedule.cancel
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{accessToken}}
+  DPoP: {{dpopProof}}
+}
+
+body:json {
+  {
+    "accountDid": "{{accountDid}}",
+    "rkey": "{{scheduleRkey}}"
+  }
+}

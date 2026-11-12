@@ -81,6 +81,7 @@ describe("standalone CI path detection", () => {
     "services/appview/bin/backend-supervisor",
     "services/podcast-worker/src/index.ts",
     "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
+  "packages/swift/skej-backend/Sources/SkejBackend/EmbeddedSkejBackend.swift",
     "scripts/migrations/postgres_to_sqlite.py",
     "database/migrations/20990101000000_example.sql",
     "railway/appview-standalone.json",

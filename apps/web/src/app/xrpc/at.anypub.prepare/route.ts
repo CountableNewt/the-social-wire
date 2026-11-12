@@ -1,5 +1,5 @@
-import { createPreparationProxy } from "@/lib/anypub/preparationProxy";
+import { handlePreparationRequest } from "@/lib/anypub/preparationRequest";
 
-export async function POST(request: Request) {
-  return createPreparationProxy({ upstream: process.env.ANYPUB_API_URL })(request);
+export function POST(request: Request): Promise<Response> {
+  return handlePreparationRequest(request);
 }

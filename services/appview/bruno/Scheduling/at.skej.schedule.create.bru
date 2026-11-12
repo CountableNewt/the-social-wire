@@ -1,0 +1,42 @@
+meta {
+  name: Create schedule
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/xrpc/at.skej.schedule.create
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{accessToken}}
+  DPoP: {{dpopProof}}
+}
+
+body:json {
+  {
+    "accountDid": "{{accountDid}}",
+    "record": {
+      "$type": "at.skej.schedule",
+      "recordType": "app.bsky.feed.post",
+      "status": "scheduled",
+      "scheduledAt": "{{scheduledAt}}",
+      "createdAt": "{{createdAt}}",
+      "updatedAt": "{{createdAt}}",
+      "timezonePolicy": "absolute_utc",
+      "publishRkey": "{{publishRkey}}",
+      "retry": {
+        "attemptCount": 0,
+        "maxAttempts": 8
+      },
+      "posts": [
+        {
+          "text": "Scheduling contract test",
+          "publishRkey": "{{publishRkey}}"
+        }
+      ]
+    }
+  }
+}

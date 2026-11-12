@@ -1,0 +1,60 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.team.group",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A Skej team permission bundle.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "teamUri",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "teamUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "name": {
+            "type": "string",
+            "maxGraphemes": 80,
+            "maxLength": 320
+          },
+          "memberDids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "did"
+            },
+            "maxLength": 200
+          },
+          "brandGrantUris": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "maxLength": 200
+          },
+          "status": {
+            "type": "string",
+            "knownValues": ["active", "archived"],
+            "description": "Missing on legacy records means active."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

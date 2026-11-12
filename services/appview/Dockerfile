@@ -14,6 +14,7 @@ RUN swift build --package-path tools/schema-ready -c release --product schema-re
 COPY database/migrations /src/database/migrations
 RUN /out/bin/schema-ready --generate-manifest /src/database/migrations > /out/required-migrations.txt
 COPY packages/swift/thin-app-view-core /src/packages/swift/thin-app-view-core
+COPY packages/swift/skej-backend /src/packages/swift/skej-backend
 COPY services/appview/Package.swift services/appview/Package.resolved /src/services/appview/
 COPY services/appview/Sources /src/services/appview/Sources
 COPY services/appview/Tests /src/services/appview/Tests

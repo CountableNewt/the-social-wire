@@ -1,10 +1,8 @@
-FROM golang:1.26.6-bookworm AS go-tools
 FROM oven/bun:1.3.14 AS builder
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates python3 procps \
   && rm -rf /var/lib/apt/lists/*
-COPY --from=go-tools /usr/local/go /usr/local/go
-ENV PATH=/usr/local/go/bin:$PATH NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY . .
 RUN bun install --frozen-lockfile
@@ -19,6 +17,7 @@ ARG NEXT_PUBLIC_TOOLS_ENABLED
 ARG NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED=false
 ARG NEXT_PUBLIC_PRO_GATING_ENABLED=false
 ARG NEXT_PUBLIC_ENABLE_POST_SCHEDULING=false
+ARG NEXT_PUBLIC_USE_EMBEDDED_SCHEDULING=false
 ARG NEXT_PUBLIC_FINANCE_TICKER_ENABLED=false
 ARG NEXT_PUBLIC_FINANCE_WIDGETS_ENABLED=false
 ARG NEXT_PUBLIC_WIRE_NEWS_EDITION_ENABLED=true

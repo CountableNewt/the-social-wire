@@ -14,10 +14,14 @@ if ! mountpoint -q /data; then
 fi
 if [ "$(id -u)" = 0 ]; then
   install -d -m 0700 -o appuser -g appuser /data
-  for suffix in '' -wal -shm; do
-    file="/data/social-wire.sqlite${suffix}"
-    if [ -L "$file" ]; then echo 'Refusing a symlinked database file.' >&2; exit 1; fi
-    if [ -e "$file" ]; then chown appuser:appuser "$file"; chmod 0600 "$file"; fi
+  databases="social-wire.sqlite"
+  if [ "${EMBEDDED_SCHEDULING_ENABLED:-}" = true ]; then databases="$databases scheduling.sqlite"; fi
+  for database in $databases; do
+    for suffix in '' -wal -shm; do
+      file="/data/${database}${suffix}"
+      if [ -L "$file" ]; then echo 'Refusing a symlinked database file.' >&2; exit 1; fi
+      if [ -e "$file" ]; then chown appuser:appuser "$file"; chmod 0600 "$file"; fi
+    done
   done
   exec runuser -u appuser -- "$0" "$@"
 fi

@@ -1,0 +1,340 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.defs",
+  "defs": {
+    "ok": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    },
+    "viewer": {
+      "type": "object",
+      "required": [
+        "did"
+      ],
+      "properties": {
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "handle": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "displayName": {
+          "type": "string",
+          "maxGraphemes": 640
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri"
+        },
+        "defaultAccountDid": {
+          "type": "string",
+          "format": "did"
+        },
+        "proFeaturesEnabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "managedAccount": {
+      "type": "object",
+      "required": [
+        "did",
+        "status",
+        "isDefault"
+      ],
+      "properties": {
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "handle": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "displayName": {
+          "type": "string",
+          "maxGraphemes": 640
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri"
+        },
+        "pdsEndpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "status": {
+          "type": "string",
+          "knownValues": [
+            "active",
+            "needs_reauth",
+            "disabled"
+          ],
+          "maxLength": 8192
+        },
+        "isDefault": {
+          "type": "boolean"
+        }
+      }
+    },
+    "scheduleSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "did",
+        "scheduleUri",
+        "scheduledAt",
+        "status",
+        "record",
+        "attempts"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "scheduleUri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "scheduledAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "status": {
+          "type": "string",
+          "knownValues": [
+            "draft",
+            "scheduled",
+            "publishing",
+            "published",
+            "blocked",
+            "failed",
+            "canceled"
+          ],
+          "maxLength": 8192
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.schedule"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastError": {
+          "type": "unknown"
+        },
+        "nextAttemptAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "publishedUri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "publishedCid": {
+          "type": "string",
+          "format": "cid"
+        }
+      }
+    },
+    "teamSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "record"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.team"
+        }
+      }
+    },
+    "memberSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "record"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.team.member"
+        }
+      }
+    },
+    "groupSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "record"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.team.group"
+        }
+      }
+    },
+    "grantSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "record"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.team.brandGrant"
+        }
+      }
+    },
+    "brandSummary": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "record"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "record": {
+          "type": "ref",
+          "ref": "at.skej.brand"
+        }
+      }
+    },
+    "brandProfile": {
+      "type": "object",
+      "required": [
+        "did"
+      ],
+      "properties": {
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "handle": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "calendarEvent": {
+      "type": "object",
+      "required": ["accountDid", "rkey", "uri", "record"],
+      "properties": {
+        "accountDid": { "type": "string", "format": "did" },
+        "rkey": { "type": "string", "maxLength": 8192 },
+        "uri": { "type": "string", "format": "at-uri" },
+        "cid": { "type": "string", "format": "cid" },
+        "record": { "type": "ref", "ref": "community.lexicon.calendar.event" }
+      }
+    },
+    "auditEvent": {
+      "type": "object",
+      "required": [
+        "id",
+        "did",
+        "action",
+        "message",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "scheduleRkey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.brand",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Designates an ATProto DID as a Skej brand account.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "teamUri",
+          "ownerAdminDid",
+          "brandDid",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "teamUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "ownerAdminDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "brandDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "needs_reauth",
+              "disabled"
+            ],
+            "maxLength": 8192
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
