@@ -1,4 +1,3 @@
-import Crypto
 import Foundation
 import Hummingbird
 import HummingbirdTesting
@@ -20,7 +19,7 @@ private let issuer = "https://pds.example.com"
     let backend = EmbeddedSkejBackend(config: config, store: store, pdsClient: pds,
         oauthClient: MockSchedulingOAuth(), readLegacyQueue: nil,
         worker: ScheduleWorker(store: store, pdsClient: pds, logger: logger),
-        submissionKey: SymmetricKey(size: .bits256), logger: logger)
+        submissionKeyBytes: Data(repeating: 9, count: 32), logger: logger)
     let router = Router(context: BasicRequestContext.self)
     backend.registerOAuth(on: router) { $0 == selectedDID }
     backend.registerScheduling(on: router.group()) { _ in selectedDID }

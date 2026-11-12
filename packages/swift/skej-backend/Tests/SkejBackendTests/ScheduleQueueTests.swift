@@ -1,4 +1,3 @@
-import Crypto
 import Foundation
 import Logging
 import SkejKit
@@ -53,7 +52,7 @@ private let other = "did:plc:other"
     let backend = EmbeddedSkejBackend(config: config, store: store, pdsClient: pds,
         oauthClient: ATProtoOAuthClient(config: config), readLegacyQueue: nil,
         worker: ScheduleWorker(store: store, pdsClient: pds, logger: logger),
-        submissionKey: SymmetricKey(size: .bits256), logger: logger)
+        submissionKeyBytes: Data(repeating: 9, count: 32), logger: logger)
     let future = Timestamp.iso8601(Date().addingTimeInterval(600))
     let input = SkejScheduleRecord(scheduledAt: future, createdAt: future, updatedAt: future,
         status: .scheduled, publishRkey: "client-submission", posts: [PostPlan(text: "Hello")])

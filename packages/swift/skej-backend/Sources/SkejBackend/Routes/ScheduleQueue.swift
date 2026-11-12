@@ -56,7 +56,7 @@ extension EmbeddedSkejBackend {
               case .string(let originalKey) = record.unknownFields["socialWireSubmissionKey"],
               case .string(let proof) = record.unknownFields["socialWireSubmissionProof"],
               let data = Data(base64Encoded: proof),
-              HMAC<SHA256>.isValidAuthenticationCode(data, authenticating: submissionData(did: did, rkey: rkey, originalKey: originalKey), using: submissionKey),
+              HMAC<SHA256>.isValidAuthenticationCode(data, authenticating: submissionData(did: did, rkey: rkey, originalKey: originalKey), using: SymmetricKey(data: submissionKeyBytes)),
               var job = legacyJob(did: did, rkey: rkey, record: record)
         else { return }
         if (try? validateContent(record)) == nil && record.status == .scheduled {
@@ -107,7 +107,7 @@ extension EmbeddedSkejBackend {
         let now = Timestamp.iso8601()
         var record = input
         prepare(&record, did: did, now: now, existing: nil)
-        let proof = HMAC<SHA256>.authenticationCode(for: submissionData(did: did, rkey: rkey, originalKey: input.publishRkey), using: submissionKey)
+        let proof = HMAC<SHA256>.authenticationCode(for: submissionData(did: did, rkey: rkey, originalKey: input.publishRkey), using: SymmetricKey(data: submissionKeyBytes))
         record.unknownFields["socialWireSubmissionProof"] = .string(Data(proof).base64EncodedString())
         try await store.rememberScheduleSubmission(did: did, rkey: rkey, now: now)
         record = try await writeCalendar(did: did, rkey: rkey, record: record)

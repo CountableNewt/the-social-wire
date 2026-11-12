@@ -13,7 +13,7 @@ public struct EmbeddedSkejBackend: Sendable {
     let oauthClient: any OAuthClient
     let readLegacyQueue: (@Sendable (String) async throws -> [String: SkejScheduleRecord])?
     let worker: ScheduleWorker
-    let submissionKey: SymmetricKey
+    let submissionKeyBytes: Data
     let logger: Logger
     let createAdmission = ScheduleCreateAdmission()
 
@@ -46,7 +46,7 @@ public struct EmbeddedSkejBackend: Sendable {
             readLegacyQueue: queueReader,
             worker: ScheduleWorker(store: store, pdsClient: pds, logger: logger, linkPreviewHydrator: linkPreview,
                 allowSchedulesWithoutCalendar: true),
-            submissionKey: SymmetricKey(data: SHA256.hash(data: Data(("schedule-submissions:" + authEncryptionSecret).utf8))),
+            submissionKeyBytes: Data(SHA256.hash(data: Data(("schedule-submissions:" + authEncryptionSecret).utf8))),
             logger: logger
         )
     }
