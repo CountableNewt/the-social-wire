@@ -30,6 +30,7 @@ FROM swift-toolchain AS swift-dependencies
 COPY packages/swift/thin-app-view-core/Package.swift packages/swift/thin-app-view-core/Package.resolved /src/packages/swift/thin-app-view-core/
 COPY packages/swift/thin-app-view-core/Sources /src/packages/swift/thin-app-view-core/Sources
 COPY packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources /src/packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources
+COPY packages/swift/skej-backend /src/packages/swift/skej-backend
 COPY services/appview/Package.swift services/appview/Package.resolved /src/services/appview/
 # Compile the unchanged dependency graph before copying frequently changing API
 # sources. Image-layer exports retain these artifacts across fresh CI builders.

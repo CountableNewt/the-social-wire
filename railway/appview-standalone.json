@@ -5,6 +5,7 @@
     "dockerfilePath": "/services/appview/Dockerfile.standalone",
     "watchPatterns": [
       "/services/appview/**",
+      "/packages/swift/skej-backend/**",
       "/packages/swift/thin-app-view-core/**",
       "/services/podcast-worker/**",
       "/scripts/migrations/**",

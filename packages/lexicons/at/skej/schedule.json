@@ -1,0 +1,391 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.schedule",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A public, user-owned scheduled ATProto record retained as operational history after Skej publishes it.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "scheduledAt",
+          "timezonePolicy",
+          "createdAt",
+          "updatedAt",
+          "status",
+          "recordType",
+          "publishRkey",
+          "retry",
+          "posts"
+        ],
+        "properties": {
+          "scheduledAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "UTC instant when Skej should publish the record."
+          },
+          "title": {
+            "type": "string",
+            "maxGraphemes": 120,
+            "maxLength": 512,
+            "description": "User-facing title for identifying this scheduled content in calendars, lists, and operational views."
+          },
+          "teamUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Optional Skej team that governs review and permissions for this schedule."
+          },
+          "createdByDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID that created or proposed the scheduled content."
+          },
+          "approvedByDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID that approved the draft for scheduling."
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the draft was approved for scheduling."
+          },
+          "scheduledFor": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Deprecated compatibility field; new records must use scheduledAt."
+          },
+          "timezonePolicy": {
+            "type": "string",
+            "enum": [
+              "absolute_utc",
+              "account_local",
+              "user_local"
+            ],
+            "maxLength": 8192
+          },
+          "userTimezone": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "scheduled",
+              "blocked",
+              "publishing",
+              "published",
+              "failed",
+              "canceled"
+            ],
+            "maxLength": 8192
+          },
+          "recordType": {
+            "type": "string",
+            "description": "ATProto collection to publish, e.g. app.bsky.feed.post.",
+            "maxLength": 8192
+          },
+          "shadowRecord": {
+            "type": "unknown",
+            "description": "Exact record payload to publish when provided."
+          },
+          "publishRkey": {
+            "type": "string",
+            "description": "Stable rkey used for idempotent publication.",
+            "maxLength": 8192
+          },
+          "publishedUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "publishedCid": {
+            "type": "string",
+            "maxLength": 8192
+          },
+          "calendarEventUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Authoritative community calendar event for this schedule."
+          },
+          "calendarEventCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the latest authoritative calendar event projection."
+          },
+          "publishedPosts": {
+            "type": "array",
+            "maxLength": 25,
+            "description": "Ordered published records for this schedule. Legacy single-post aliases remain available at the top level.",
+            "items": {
+              "type": "ref",
+              "ref": "#publishedPost"
+            }
+          },
+          "retry": {
+            "type": "ref",
+            "ref": "#retryState"
+          },
+          "lastError": {
+            "type": "ref",
+            "ref": "#scheduleError"
+          },
+          "dependency": {
+            "type": "ref",
+            "ref": "#dependency"
+          },
+          "posts": {
+            "type": "array",
+            "minLength": 0,
+            "maxLength": 25,
+            "items": {
+              "type": "ref",
+              "ref": "#postPlan"
+            }
+          }
+        }
+      }
+    },
+    "retryState": {
+      "type": "object",
+      "required": [
+        "attemptCount",
+        "maxAttempts"
+      ],
+      "properties": {
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastAttemptAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "nextAttemptAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "scheduleError": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "classification"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "transient_network",
+            "rate_limited",
+            "auth_invalid",
+            "record_invalid",
+            "parent_missing",
+            "parent_unavailable",
+            "unknown"
+          ],
+          "maxLength": 8192
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "transient_network",
+            "rate_limited",
+            "auth_invalid",
+            "record_invalid",
+            "parent_missing",
+            "parent_unavailable",
+            "unknown"
+          ],
+          "maxLength": 8192
+        },
+        "retryAfter": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "required": [
+        "dependsOnScheduleUri"
+      ],
+      "properties": {
+        "dependsOnScheduleUri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": [
+            "after",
+            "reply",
+            "quote"
+          ],
+          "description": "How this schedule relates to the dependency. Missing legacy values mean after.",
+          "maxLength": 32
+        },
+        "parentPublishedUri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "parentPublishedCid": {
+          "type": "string",
+          "format": "cid"
+        }
+      }
+    },
+    "publishedPost": {
+      "type": "object",
+      "required": [
+        "rkey",
+        "uri",
+        "cid"
+      ],
+      "properties": {
+        "rkey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "cid": {
+          "type": "string",
+          "format": "cid"
+        }
+      }
+    },
+    "postSource": {
+      "type": "object",
+      "required": [
+        "format",
+        "text"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "markdown"
+          ],
+          "maxLength": 32
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 30000,
+          "maxGraphemes": 3000
+        },
+        "mentions": {
+          "type": "array",
+          "maxLength": 32,
+          "items": {
+            "type": "ref",
+            "ref": "#resolvedMention"
+          },
+          "description": "Resolved mention handles and immutable DIDs used to build native mention facets."
+        }
+      }
+    },
+    "resolvedMention": {
+      "type": "object",
+      "required": [
+        "handle",
+        "did"
+      ],
+      "properties": {
+        "handle": {
+          "type": "string",
+          "format": "handle"
+        },
+        "did": {
+          "type": "string",
+          "format": "did"
+        }
+      }
+    },
+    "postPlan": {
+      "type": "object",
+      "description": "A draft app.bsky.feed.post payload. The worker sets createdAt at publish time unless shadowRecord is supplied.",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxGraphemes": 300,
+          "maxLength": 3000
+        },
+        "source": {
+          "type": "ref",
+          "ref": "#postSource",
+          "description": "Optional authoring source. text remains the required Bluesky-compatible projection."
+        },
+        "publishRkey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Stable record key reserved for this post in an ordered thread."
+        },
+        "facets": {
+          "type": "array",
+          "items": {
+            "type": "unknown"
+          }
+        },
+        "reply": {
+          "type": "unknown",
+          "description": "app.bsky.feed.post reply reference."
+        },
+        "embed": {
+          "type": "unknown",
+          "description": "Supported app.bsky.embed images, external, record, or recordWithMedia payload."
+        },
+        "langs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "maxLength": 3
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxLength": 16
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 640
+          },
+          "maxLength": 8
+        }
+      }
+    }
+  }
+}

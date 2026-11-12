@@ -2215,6 +2215,110 @@ security:
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
+  /xrpc/at.skej.actor.getSession:
+    get:
+      summary: Get scheduling connection
+      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      x-lexicon: "../lexicons/at/skej/actor/getSession.json"
+      responses:
+        "200": { description: The authenticated actor's scheduling connection. }
+        "401": { description: Authentication is required. }
+        "403": { description: Account mismatch or Pro access required. }
+        "409": { description: Scheduling connection or record state requires attention. }
+        "404": { description: Scheduling is unavailable or the record is missing. }
+
+  /xrpc/at.skej.schedule.list:
+    get:
+      summary: List schedules
+      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      x-lexicon: "../lexicons/at/skej/schedule/list.json"
+      parameters:
+        - in: query
+          name: accountDid
+          schema: { type: string }
+          description: When supplied, must match the authenticated actor.
+      responses:
+        "200": { description: The authenticated actor's schedules. }
+        "401": { description: Authentication is required. }
+        "403": { description: Account mismatch or Pro access required. }
+        "409": { description: Scheduling connection or record state requires attention. }
+        "404": { description: Scheduling is unavailable or the record is missing. }
+
+  /xrpc/at.skej.schedule.create:
+    post:
+      summary: Create schedule
+      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      x-lexicon: "../lexicons/at/skej/schedule/create.json"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201": { description: The created schedule and its canonical PDS record. }
+        "401": { description: Authentication is required. }
+        "403": { description: Account mismatch or Pro access required. }
+        "409": { description: Scheduling connection or record state requires attention. }
+        "404": { description: Scheduling is unavailable or the record is missing. }
+
+  /xrpc/at.skej.schedule.update:
+    post:
+      summary: Update schedule
+      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      x-lexicon: "../lexicons/at/skej/schedule/update.json"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: The updated schedule. }
+        "401": { description: Authentication is required. }
+        "403": { description: Account mismatch or Pro access required. }
+        "409": { description: Scheduling connection or record state requires attention. }
+        "404": { description: Scheduling is unavailable or the record is missing. }
+
+  /xrpc/at.skej.schedule.cancel:
+    post:
+      summary: Cancel schedule
+      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      x-lexicon: "../lexicons/at/skej/schedule/cancel.json"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: The canceled schedule. }
+        "401": { description: Authentication is required. }
+        "403": { description: Account mismatch or Pro access required. }
+        "409": { description: Scheduling connection or record state requires attention. }
+        "404": { description: Scheduling is unavailable or the record is missing. }
+
+  /oauth/scheduling/client-metadata.json:
+    get:
+      summary: Get scheduler OAuth client metadata
+      security: []
+      responses:
+        "200": { description: The dedicated OAuth client metadata. }
+        "404": { description: Embedded scheduling is unavailable. }
+
+  /oauth/scheduling/start:
+    get:
+      summary: Start scheduler OAuth connection
+      security: []
+      responses:
+        "302": { description: Redirects to the selected account's authorization server. }
+        "404": { description: Embedded scheduling is unavailable. }
+
+  /oauth/scheduling/callback:
+    get:
+      summary: Complete scheduler OAuth connection
+      security: []
+      responses:
+        "200": { description: Shows the result of connecting the account. }
+        "404": { description: Embedded scheduling is unavailable. }
+
   /xrpc/app.thesocialwire.teapot:
     get:
       operationId: teapot

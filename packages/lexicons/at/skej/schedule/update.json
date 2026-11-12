@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.schedule.update",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "rkey",
+            "record"
+          ],
+          "properties": {
+            "accountDid": {
+              "type": "string",
+              "format": "did"
+            },
+            "rkey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "record": {
+              "type": "ref",
+              "ref": "at.skej.schedule"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "at.skej.defs#scheduleSummary"
+        }
+      },
+      "errors": [
+        {
+          "name": "AuthRequired"
+        },
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "Forbidden"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "AccountNeedsReauth"
+        },
+        {
+          "name": "InvalidServiceAuth"
+        },
+        {
+          "name": "ActorMismatch"
+        },
+        {
+          "name": "account_needs_reauth"
+        },
+        {
+          "name": "ScheduleNotEditable"
+        }
+      ],
+      "description": "Procedure contract for at.skej.schedule.update. Supports account-bound Skej service authentication for the token issuer only."
+    }
+  }
+}

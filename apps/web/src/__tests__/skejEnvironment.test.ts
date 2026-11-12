@@ -32,3 +32,19 @@ test("personal and brand consent grant only the five Skej service methods with n
     expect(scopes).not.toContain("repo:at.skej");
   }
 });
+
+test("embedded scheduling uses the Social Wire edge and omits old Skej consent scopes", () => {
+  const keys = ["NEXT_PUBLIC_USE_EMBEDDED_SCHEDULING", "NEXT_PUBLIC_SOCIALWIRE_API_URL"] as const;
+  const original = keys.map(key => process.env[key]);
+  process.env.NEXT_PUBLIC_USE_EMBEDDED_SCHEDULING = "true";
+  process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL = "https://api.testing.thesocialwire.app";
+  try {
+    expect(getSkejEnvironment().connectUrl).toBe("https://api.testing.thesocialwire.app/oauth/scheduling/start");
+    expect(skejScopesForEnvironment(["atproto", ...SKEJ_SCHEDULING_SCOPES].join(" "))).toBe("atproto");
+  } finally {
+    keys.forEach((key, index) => {
+      if (original[index] === undefined) delete process.env[key];
+      else process.env[key] = original[index];
+    });
+  }
+});

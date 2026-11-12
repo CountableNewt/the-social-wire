@@ -69,6 +69,7 @@ describe("OpenAPI route drift", () => {
     const routerSources = [
       ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
+      ...collectRouterFiles(join(import.meta.dir, "../../../packages/swift/skej-backend/Sources/SkejBackend")),
     ]
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
@@ -92,6 +93,7 @@ describe("OpenAPI route drift", () => {
     const routeFiles = [
       ...collectRouterFiles(join(import.meta.dir, "../../../services/gateway/Sources")),
       ...collectRouterFiles(join(import.meta.dir, "../../../services/appview/Sources")),
+      ...collectRouterFiles(join(import.meta.dir, "../../../packages/swift/skej-backend/Sources/SkejBackend")),
     ];
     const directlyRegistered = routeFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");

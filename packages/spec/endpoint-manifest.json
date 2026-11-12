@@ -1006,6 +1006,59 @@
       "path": "/xrpc/app.thesocialwire.articleDraft.delete",
       "classification": "xrpc-migration",
       "xrpcNsid": "app.thesocialwire.articleDraft.delete"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/at.skej.actor.getSession",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "at.skej.actor.getSession"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/xrpc/at.skej.schedule.list",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "at.skej.schedule.list"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/at.skej.schedule.create",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "at.skej.schedule.create"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/at.skej.schedule.update",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "at.skej.schedule.update"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/at.skej.schedule.cancel",
+      "classification": "foreign-xrpc",
+      "xrpcNsid": "at.skej.schedule.cancel"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/oauth/scheduling/client-metadata.json",
+      "classification": "oauth-metadata"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/oauth/scheduling/start",
+      "classification": "oauth-metadata"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/oauth/scheduling/callback",
+      "classification": "oauth-metadata"
     }
   ]
 }

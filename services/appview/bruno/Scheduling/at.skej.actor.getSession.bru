@@ -1,0 +1,16 @@
+meta {
+  name: Get scheduling connection
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/xrpc/at.skej.actor.getSession
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{accessToken}}
+  DPoP: {{dpopProof}}
+}
