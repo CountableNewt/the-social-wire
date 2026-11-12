@@ -16,59 +16,41 @@ describe("standalone reader CI", () => {
     expect(parsed.jobs.required.name).toBe("CI — Required");
     expect(parsed.jobs.required.needs).toEqual(["changes", "web", "appview"]);
     expect(parsed.jobs.required.if).toBe("always()");
-    for (const [job, selection] of [["web", "web"], ["appview", "appview"]]) {
-      const value = parsed.jobs[job];
-      expect(value.needs).toBe("changes");
-      expect(value.if).toContain(`outputs.${selection} == 'true'`);
-      expect(value["timeout-minutes"]).toBeGreaterThanOrEqual(60);
-      expect(value.steps.some((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${selection}`)).toBe(true);
-      expect(value.services).toBeUndefined();
-    }
+    expect(parsed.jobs.web.needs).toBe("changes");
+    expect(parsed.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
+    expect(parsed.jobs.appview.name).toBe("SQLite AppView");
+    expect(parsed.jobs.appview.needs).toEqual(["changes", "appview_lanes"]);
+    expect(parsed.jobs.appview.if).toStartWith("always()");
+    expect(parsed.jobs.appview_lanes.needs).toBe("changes");
+    expect(parsed.jobs.appview_lanes.strategy.matrix.lane).toEqual(["tests", "release"]);
+    expect(parsed.jobs.appview_lanes["timeout-minutes"]).toBeGreaterThanOrEqual(60);
+    const verify = parsed.jobs.appview_lanes.steps.find((step: any) => step.name === "Verify AppView lane");
+    expect(verify.run).toContain('bash scripts/ci/benchmark-appview-swiftpm.sh "$LANE" initial');
     expect(workflow).not.toMatch(/runs-on: macos-|working-directory: services\/(?:gateway|indexing-worker)/);
     expect(workflow).not.toContain("REDIS_INTEGRATION_URL");
     expect(workflow).not.toContain("DATABASE_URL");
   });
 
-  it("restores per-runtime build caches before verification and saves fresh commit layers", () => {
-    for (const kind of ["web", "appview"]) {
-      const steps = parsed.jobs[kind].steps;
-      const setup = steps.findIndex((step: any) => step.uses === "docker/setup-buildx-action@v3");
-      const cache = steps.findIndex((step: any) => step.uses === "actions/cache@v5");
-      const verify = steps.findIndex((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${kind}`);
-      expect(setup).toBeGreaterThan(-1);
-      expect(cache).toBeGreaterThan(setup);
-      expect(verify).toBeGreaterThan(cache);
-      expect(steps[cache].with.key).toContain(`docker-${kind}-v1-`);
-      expect(steps[cache].with.key).toEndWith("${{ github.sha }}");
-      expect(steps[cache].with["restore-keys"]).toContain(`docker-${kind}-v1-`);
-      expect(steps[cache].with.path).toBe(steps[verify].env.CI_DOCKER_CACHE_DIR);
-    }
-  });
-
-  it("warms shared base-branch caches from exact PR proof without becoming a required gate", () => {
-    const warmer = parsed.jobs.warm_base_cache;
-    expect(warmer.needs).toBe("changes");
-    expect(warmer.if).toContain("github.event_name == 'push'");
-    expect(warmer.if).toContain("needs.changes.outputs.cache_run_id != ''");
+  it("restores separate SwiftPM caches and warms the base branch from exact PR proof", () => {
+    const lanes = parsed.jobs.appview_lanes.steps;
+    const restore = lanes.find((step: any) => step.uses === "actions/cache/restore@v5");
+    const verify = lanes.findIndex((step: any) => step.name === "Verify AppView lane");
+    const archive = lanes.findIndex((step: any) => step.name === "Archive verified SwiftPM state");
+    expect(lanes.indexOf(restore)).toBeLessThan(verify);
+    expect(archive).toBeGreaterThan(verify);
+    expect(restore.with.key).toContain("appview-swiftpm-v1-");
+    expect(restore.with.key).toContain("${{ matrix.lane }}");
+    expect(restore.with.key).toEndWith("${{ github.sha }}");
+    const warmer = parsed.jobs.warm_appview_cache;
+    expect(warmer.if).toContain("needs.changes.outputs.reuse_appview == 'true'");
     expect(warmer["continue-on-error"]).toBe(true);
-    expect(warmer.permissions).toEqual({ contents: "read", actions: "read" });
-    expect(parsed.jobs.required.needs).not.toContain("warm_base_cache");
+    expect(parsed.jobs.required.needs).not.toContain("warm_appview_cache");
     const download = warmer.steps.find((step: any) => step.uses === "actions/download-artifact@v8");
     expect(download.with["run-id"]).toBe("${{ needs.changes.outputs.cache_run_id }}");
-    expect(download.with.repository).toBe("${{ github.repository }}");
+    expect(download.with.name).toBe("appview-swiftpm-${{ matrix.lane }}");
     const save = warmer.steps.find((step: any) => step.uses === "actions/cache/save@v5");
-    expect(save.if).toContain("steps.download.outcome == 'success'");
-    expect(save.with.path).toBe(download.with.path);
-    for (const kind of ["web", "appview"]) {
-      const steps = parsed.jobs[kind].steps;
-      const verify = steps.findIndex((step: any) => step.run === `bash scripts/ci/verify-runtime-images.sh ${kind}`);
-      const publish = steps.findIndex((step: any) => step.uses === "actions/upload-artifact@v7");
-      expect(publish).toBeGreaterThan(verify);
-      expect(steps[publish].with.name).toBe(`docker-cache-${kind}`);
-      expect(steps[publish].with.path).toBe(download.with.path);
-      expect(steps[publish].with["compression-level"]).toBe(0);
-      expect(steps[publish].with["retention-days"]).toBe(7);
-    }
+    expect(save.with.key).toBe(restore.with.key);
+    expect(save.with.path).toBe(restore.with.path);
   });
 
   it("preserves read-only merge verification and Development-first promotion", () => {

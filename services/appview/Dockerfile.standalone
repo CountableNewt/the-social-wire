@@ -38,7 +38,7 @@ RUN mkdir -p services/appview/Sources/AppView services/appview/Tests/AppViewTest
       packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests/ReadStateCoreTests \
   && printf 'print("Dependency build placeholder")\n' > services/appview/Sources/AppView/main.swift \
   && printf 'import Testing\n@Test func dependencyPlaceholder() {}\n' > services/appview/Tests/AppViewTests/DependencyTests.swift \
-  && swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4
+  && swift build --package-path services/appview -c release --product AppView --build-system native --manifest-cache local --force-resolved-versions -Xswiftc -no-whole-module-optimization -Xswiftc -incremental -Xswiftc -enable-incremental-file-hashing -j 4
 
 FROM swift-dependencies AS test-dependencies
 # SwiftPM testability changes compiler flags, so keep a separate dependency plan.
@@ -47,7 +47,7 @@ RUN swift build --package-path services/appview -c release --build-tests --force
 FROM swift-dependencies AS builder
 RUN rm -rf services/appview/Sources
 COPY services/appview/Sources /src/services/appview/Sources
-RUN swift build --package-path services/appview -c release --product AppView --force-resolved-versions -j 4 \
+RUN swift build --package-path services/appview -c release --product AppView --build-system native --manifest-cache local --force-resolved-versions -Xswiftc -no-whole-module-optimization -Xswiftc -incremental -Xswiftc -enable-incremental-file-hashing -j 4 \
   && mkdir -p /out/lib /out/bin \
   && cp services/appview/.build/release/AppView /out/bin/AppView \
   && cp -a /usr/lib/swift/linux/*.so* /out/lib/ \

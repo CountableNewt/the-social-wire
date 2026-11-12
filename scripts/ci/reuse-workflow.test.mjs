@@ -22,7 +22,7 @@ test('changes exports path flags and only the proof runner can authorize target 
   for (const target of ['web', 'appview']) {
     assert.ok(changes.includes(`${target}: \${{ steps.filter.outputs.${target} }}`));
     assert.ok(changes.includes(`reuse_${target}: \${{ steps.reuse.outputs.reuse_${target} }}`));
-    const runtime = job(target);
+    const runtime = job(target === 'appview' ? 'appview_lanes' : target);
     assert.match(runtime, /^    needs: changes$/m);
     const expression = runtime.match(/^    if: (.+)$/m)?.[1];
     assert.equal(expression, `needs.changes.result == 'success' && needs.changes.outputs.${target} == 'true' && needs.changes.outputs.reuse_${target} != 'true'`);
@@ -108,44 +108,58 @@ for (const proven of ['web', 'appview']) test(`partial ${proven} proof can skip 
   assert.throws(() => verifyRequiredChecks({ ...environment, [`${other}_RESULT`]: 'skipped' }));
 });
 
-test('verified PR layers are exported after each successful runtime check without recompression', () => {
-  for (const target of ['web', 'appview']) {
-    const runtime = job(target);
-    const publish = step(runtime, `Publish verified ${target} build layers`);
-    assert.ok(runtime.indexOf('run: bash scripts/ci/verify-runtime-images.sh') < runtime.indexOf(`Publish verified ${target} build layers`));
-    assert.match(publish, /^        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository$/m);
-    assert.match(publish, /^        continue-on-error: true$/m);
-    assert.match(publish, /^        uses: actions\/upload-artifact@v7$/m);
-    assert.ok(publish.includes(`name: docker-cache-${target}`));
-    assert.ok(publish.includes('path: ${{ runner.temp }}/docker-cache'));
-    assert.match(publish, /^          compression-level: 0$/m);
-    assert.match(publish, /^          retention-days: 7$/m);
-    assert.match(publish, /^          overwrite: true$/m);
-    assert.match(publish, /^          if-no-files-found: error$/m);
-  }
+test('the AppView aggregate accepts only successful results from both matrix lanes', () => {
+  const lanes = job('appview_lanes'), aggregate = job('appview');
+  assert.match(lanes, /fail-fast: false\n      matrix:\n        lane: \[tests, release\]/);
+  assert.ok(lanes.includes('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'));
+  assert.ok(lanes.includes('bash scripts/ci/benchmark-appview-swiftpm.sh "$LANE" initial'));
+  assert.match(aggregate, /^    name: SQLite AppView$/m);
+  assert.match(aggregate, /^    needs: \[changes, appview_lanes\]$/m);
+  assert.match(aggregate, /^    if: always\(\) && /m);
+  assert.ok(aggregate.includes('LANES_RESULT: ${{ needs.appview_lanes.result }}'));
+  assert.ok(aggregate.includes('run: test "$LANES_RESULT" = success'));
 });
 
-test('base caches are warmed only from the exact successful proof run without rebuilding', () => {
-  const changes = job('changes'), warmer = job('warm_base_cache');
-  assert.ok(changes.includes('cache_run_id: ${{ steps.reuse.outputs.cache_run_id }}'));
-  assert.match(warmer, /^    needs: changes$/m);
-  assert.ok(warmer.includes("if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && (needs.changes.outputs.reuse_web == 'true' || needs.changes.outputs.reuse_appview == 'true')"));
-  assert.match(warmer, /^    continue-on-error: true$/m);
-  assert.match(warmer, /^    permissions:\n      contents: read\n      actions: read$/m);
-  assert.match(warmer, /^    timeout-minutes: 15$/m);
-  assert.doesNotMatch(warmer, /docker\/setup|verify-runtime-images|run:|workflow_run|pull_request_target/);
-  for (const target of ['web', 'appview']) {
-    assert.ok(warmer.includes(`- kind: ${target}\n            reuse: \${{ needs.changes.outputs.reuse_${target} }}`));
+test('only verified same-repository PR caches are published for post-merge use', () => {
+  const web = job('web'), lanes = job('appview_lanes');
+  for (const [runtime, verify, publishName, artifact] of [
+    [web, 'Verify Web image', 'Publish verified web build layers', 'docker-cache-web'],
+    [lanes, 'Verify AppView lane', 'Publish verified SwiftPM state', 'appview-swiftpm-${{ matrix.lane }}'],
+  ]) {
+    const publish = step(runtime, publishName);
+    assert.ok(runtime.indexOf(verify) < runtime.indexOf(publishName));
+    assert.ok(publish.includes(`name: ${artifact}`));
+    assert.match(publish, /^        continue-on-error: true$/m);
+    assert.match(publish, /^        uses: actions\/upload-artifact@v7$/m);
+    assert.match(publish, /^          compression-level: 0$/m);
   }
-  const download = step(warmer, 'Download exact verified PR build layers');
-  assert.match(download, /^        if: matrix.reuse == 'true'$/m);
-  assert.match(download, /^        continue-on-error: true$/m);
-  assert.match(download, /^        uses: actions\/download-artifact@v8$/m);
-  for (const line of ['name: docker-cache-${{ matrix.kind }}', 'path: ${{ runner.temp }}/docker-cache', 'repository: ${{ github.repository }}', 'run-id: ${{ needs.changes.outputs.cache_run_id }}', 'github-token: ${{ github.token }}']) assert.ok(download.includes(line));
-  const save = step(warmer, 'Save verified layers in base-branch cache scope');
-  assert.match(save, /^        if: matrix.reuse == 'true' && steps.download.outcome == 'success'$/m);
-  assert.match(save, /^        uses: actions\/cache\/save@v5$/m);
-  assert.ok(save.includes('path: ${{ runner.temp }}/docker-cache'));
-  assert.ok(save.includes("key: ${{ runner.os }}-${{ runner.arch }}-docker-${{ matrix.kind }}-v1-${{ matrix.kind == 'web' && hashFiles('apps/web/Dockerfile', 'bun.lock') || hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}"));
-  assert.ok(!job('required').includes('warm_base_cache'), 'Optional cache availability must never count as verification evidence.');
+  const trustedPR = /^        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository$/m;
+  assert.match(step(web, 'Publish verified web build layers'), trustedPR);
+  assert.match(step(lanes, 'Archive verified SwiftPM state'), trustedPR);
+  assert.match(step(lanes, 'Publish verified SwiftPM state'), /^        if: steps.archive.outcome == 'success'$/m);
+});
+
+test('base caches are warmed only from the exact successful proof run', () => {
+  const changes = job('changes'), required = job('required');
+  assert.ok(changes.includes('cache_run_id: ${{ steps.reuse.outputs.cache_run_id }}'));
+  for (const [name, target, downloadName] of [
+    ['warm_base_cache', 'web', 'Download exact verified PR build layers'],
+    ['warm_appview_cache', 'appview', 'Download verified SwiftPM state'],
+  ]) {
+    const warmer = job(name), download = step(warmer, downloadName);
+    assert.match(warmer, /^    needs: changes$/m);
+    assert.ok(warmer.includes(`if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && needs.changes.outputs.reuse_${target} == 'true'`));
+    assert.match(warmer, /^    continue-on-error: true$/m);
+    assert.match(warmer, /^    permissions:\n      contents: read\n      actions: read$/m);
+    assert.doesNotMatch(warmer, /docker\/setup|verify-runtime-images|workflow_run|pull_request_target/);
+    assert.match(download, /^        uses: actions\/download-artifact@v8$/m);
+    assert.ok(download.includes('repository: ${{ github.repository }}'));
+    assert.ok(download.includes('run-id: ${{ needs.changes.outputs.cache_run_id }}'));
+    assert.ok(!required.includes(name));
+  }
+  const lanes = job('appview_lanes'), warmer = job('warm_appview_cache');
+  const restoreKey = step(lanes, 'Restore SwiftPM state').match(/^          key: (.+)$/m)?.[1];
+  assert.ok(restoreKey);
+  assert.ok(step(warmer, 'Save SwiftPM state in base-branch cache scope').includes(`key: ${restoreKey}`));
+  assert.ok(step(warmer, 'Unpack verified SwiftPM state').includes('--no-same-owner --no-same-permissions'));
 });
