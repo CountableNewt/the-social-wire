@@ -115,52 +115,112 @@ jobs:
           overwrite: true
           if-no-files-found: error
 
-  appview:
-    name: SQLite AppView
+  appview_lanes:
+    name: AppView (${{ matrix.lane }})
     needs: changes
     if: needs.changes.result == 'success' && needs.changes.outputs.appview == 'true' && needs.changes.outputs.reuse_appview != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [tests, release]
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: docker/setup-buildx-action@v3
-      - name: Restore Docker build layers
-        uses: actions/cache@v5
+      - name: Restore SwiftPM state
+        id: swiftpm
+        uses: actions/cache/restore@v5
         with:
-          path: ${{ runner.temp }}/docker-cache
-          key: ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
+          path: ${{ runner.temp }}/appview-swiftpm
+          key: appview-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.lane }}-${{ hashFiles('services/appview/Dockerfile.standalone', '**/Package.swift', '**/Package.resolved', 'scripts/ci/appview-test-targets.swift', 'scripts/ci/prepare-swift-tests.py', 'scripts/ci/benchmark-appview-swiftpm.sh') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-${{ hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-
-            ${{ runner.os }}-${{ runner.arch }}-docker-appview-v1-
-      - name: Verify SQLite backend, bundled media processor, migrations, and runtime
-        run: bash scripts/ci/verify-runtime-images.sh appview
+            appview-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.lane }}-${{ hashFiles('services/appview/Dockerfile.standalone', '**/Package.swift', '**/Package.resolved', 'scripts/ci/appview-test-targets.swift', 'scripts/ci/prepare-swift-tests.py', 'scripts/ci/benchmark-appview-swiftpm.sh') }}-
+      - name: Verify AppView lane
         env:
-          CI_DOCKER_CACHE_DIR: ${{ runner.temp }}/docker-cache
-
-      # PR caches live under refs/pull/*/merge. Carry the verified cache to the
-      # eventual base-branch push instead of compiling the same tree again.
-      - name: Publish verified appview build layers
+          LANE: ${{ matrix.lane }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash scripts/ci/benchmark-appview-swiftpm.sh "$LANE" initial
+      - name: Save verified SwiftPM state
+        if: steps.swiftpm.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/appview-swiftpm
+          key: ${{ steps.swiftpm.outputs.cache-primary-key }}
+      # Archive before uploading to preserve SwiftPM symlinks and permissions.
+      - name: Archive verified SwiftPM state
+        id: archive
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: tar -C "$RUNNER_TEMP/appview-swiftpm" -I 'zstd -T0' -cf "$RUNNER_TEMP/appview-swiftpm.tar.zst" .
+      - name: Publish verified SwiftPM state
+        if: steps.archive.outcome == 'success'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: docker-cache-appview
-          path: ${{ runner.temp }}/docker-cache
+          name: appview-swiftpm-${{ matrix.lane }}
+          path: ${{ runner.temp }}/appview-swiftpm.tar.zst
           compression-level: 0
           retention-days: 7
           overwrite: true
           if-no-files-found: error
 
+  appview:
+    # Preserve the check name used by exact-tree post-merge verification.
+    name: SQLite AppView
+    needs: [changes, appview_lanes]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.appview == 'true' && needs.changes.outputs.reuse_appview != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both AppView lanes
+        env:
+          LANES_RESULT: ${{ needs.appview_lanes.result }}
+        run: test "$LANES_RESULT" = success
+
   warm_base_cache:
-    name: Warm Base Cache (${{ matrix.kind }})
+    name: Warm Web Cache
     needs: changes
-    if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && (needs.changes.outputs.reuse_web == 'true' || needs.changes.outputs.reuse_appview == 'true')
+    if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && needs.changes.outputs.reuse_web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Cache availability must never authorize or block required verification.
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download exact verified PR build layers
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: docker-cache-web
+          path: ${{ runner.temp }}/docker-cache
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.changes.outputs.cache_run_id }}
+      - name: Save verified layers in base-branch cache scope
+        if: steps.download.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/docker-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-docker-web-v1-${{ hashFiles('apps/web/Dockerfile', 'bun.lock') }}-${{ github.sha }}
+
+  warm_appview_cache:
+    name: Warm AppView Cache (${{ matrix.lane }})
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && needs.changes.outputs.reuse_appview == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     continue-on-error: true
     permissions:
       contents: read
@@ -168,33 +228,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - kind: web
-            reuse: ${{ needs.changes.outputs.reuse_web }}
-          - kind: appview
-            reuse: ${{ needs.changes.outputs.reuse_appview }}
+        lane: [tests, release]
     steps:
       - uses: actions/checkout@v6
-        if: matrix.reuse == 'true'
         with:
           persist-credentials: false
-      - name: Download exact verified PR build layers
+      - name: Download verified SwiftPM state
         id: download
-        if: matrix.reuse == 'true'
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: docker-cache-${{ matrix.kind }}
-          path: ${{ runner.temp }}/docker-cache
+          name: appview-swiftpm-${{ matrix.lane }}
+          path: ${{ runner.temp }}/appview-cache-archive
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ needs.changes.outputs.cache_run_id }}
-      - name: Save verified layers in base-branch cache scope
-        if: matrix.reuse == 'true' && steps.download.outcome == 'success'
+      - name: Unpack verified SwiftPM state
+        id: unpack
+        if: steps.download.outcome == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/appview-swiftpm"
+          tar --no-same-owner --no-same-permissions -C "$RUNNER_TEMP/appview-swiftpm" -I zstd -xf "$RUNNER_TEMP/appview-cache-archive/appview-swiftpm.tar.zst"
+      - name: Save SwiftPM state in base-branch cache scope
+        if: steps.unpack.outcome == 'success'
         uses: actions/cache/save@v5
         with:
-          path: ${{ runner.temp }}/docker-cache
-          key: ${{ runner.os }}-${{ runner.arch }}-docker-${{ matrix.kind }}-v1-${{ matrix.kind == 'web' && hashFiles('apps/web/Dockerfile', 'bun.lock') || hashFiles('services/appview/Dockerfile.standalone', 'services/appview/Package.resolved', 'packages/swift/thin-app-view-core/Package.resolved') }}-${{ github.sha }}
+          path: ${{ runner.temp }}/appview-swiftpm
+          key: appview-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.lane }}-${{ hashFiles('services/appview/Dockerfile.standalone', '**/Package.swift', '**/Package.resolved', 'scripts/ci/appview-test-targets.swift', 'scripts/ci/prepare-swift-tests.py', 'scripts/ci/benchmark-appview-swiftpm.sh') }}-${{ github.sha }}
 
   required:
     name: CI — Required

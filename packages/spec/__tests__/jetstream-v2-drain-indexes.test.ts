@@ -120,6 +120,6 @@ describe("Jetstream V2 rolling-drain query indexes", () => {
     );
     const active = Bun.YAML.parse(workflow) as any;
     expect(active.jobs["database-migrator"]).toBeUndefined();
-    expect(active.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
+    expect(active.jobs.appview_lanes.steps.some((step: any) => step.name === "Verify AppView lane" && step.run.includes("scripts/ci/benchmark-appview-swiftpm.sh"))).toBe(true);
   });
 });
