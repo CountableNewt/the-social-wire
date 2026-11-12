@@ -164,6 +164,25 @@ test("requires a publication for blog events and parses comma-separated hashtags
   await waitFor(() => expect(create).toHaveBeenCalledWith({ timestampFormat: "time-24", timeZone: localLiveTimeZone(), title: "New Launch", tags: ["Tech", "Launch"], destination: "both", publicationUri: "at://did:plc:alice/site.standard.publication/p" }));
 });
 
+test("keeps the expanded live event form in a viewport-bounded scroll container", async () => {
+  await act(async () => {
+    render(<LivePostNewEventDialog
+      open
+      onOpenChange={() => {}}
+      publications={[{ uri: "at://did:plc:alice/site.standard.publication/p", cid: "p", name: "My Blog", url: "https://blog.test", host: "unknown", record: {} }]}
+      publicationsLoading={false}
+      pending={false}
+      onCreate={async () => {}}
+    />);
+  });
+  fireEvent.click(screen.getByRole("radio", { name: "Both" }));
+  const dialog = screen.getByRole("dialog", { name: "New Live Event" });
+  expect(dialog.classList.contains("max-h-[calc(100dvh-2rem)]")).toBe(true);
+  expect(dialog.classList.contains("overflow-y-auto")).toBe(true);
+  expect(dialog.contains(screen.getByRole("combobox", { name: "Timestamp Format" }))).toBe(true);
+  expect(dialog.contains(screen.getByRole("button", { name: "Create Event" }))).toBe(true);
+});
+
 test("disables blog destinations without an eligible viewer publication", async () => {
   await act(async () => { render(<LivePostNewEventDialog open onOpenChange={() => {}} publications={[]} publicationsLoading={false} pending={false} onCreate={async () => {}} />); });
   expect((screen.getByRole("radio", { name: "Blog" }) as HTMLInputElement).disabled).toBe(true);

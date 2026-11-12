@@ -52,7 +52,7 @@ export function LivePostNewEventDialog({ open, onOpenChange, publications, publi
     if (next) { setSettings(liveTimestampSettings(initialEvent)); setTitle(initialEvent?.title ?? ""); setTags(initialEvent?.tags?.join(", ") ?? ""); setDestination("bluesky"); setPublicationUri(""); setError(undefined); }
     onOpenChange(next);
   }
-  return <Dialog open={open} onOpenChange={changeOpen}><DialogContent className="sm:max-w-lg">
+  return <Dialog open={open} onOpenChange={changeOpen}><DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto overscroll-contain sm:max-w-lg">
     <DialogTitle>New Live Event</DialogTitle>
     <DialogDescription>Choose where updates are published. The event title and tags apply to every update. Blog updates create a new article and append timestamped entries.</DialogDescription>
     <form className="flex flex-col gap-4" onSubmit={event => { event.preventDefault(); void create(); }}>
