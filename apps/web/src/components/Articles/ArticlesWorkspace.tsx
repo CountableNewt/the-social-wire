@@ -39,12 +39,12 @@ import { ArticleDraftSaveStatus } from "./ArticleDraftSaveStatus";
 import { ArticlePanelResizeHandle } from "./ArticlePanelResizeHandle";
 import { ArticleBodyViews, type ArticleBodyMode } from "./ArticleBodyViews";
 
-export function ArticlesWorkspace() {
+export function ArticlesWorkspace({ initialDraftId }: { initialDraftId?: string } = {}) {
   const { session } = useAuth();
-  return session ? <ArticlesViewer key={session.did} did={session.did} /> : <p className="p-6">Log In to Write Articles.</p>;
+  return session ? <ArticlesViewer key={session.did} did={session.did} initialDraftId={initialDraftId} /> : <p className="p-6">Log In to Write Articles.</p>;
 }
 
-function ArticlesViewer({ did }: { did: string }) {
+function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?: string }) {
   const { getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const authRef = useRef({ getOAuthSession, oauthSessionReloadSeq });
   useLayoutEffect(() => { authRef.current = { getOAuthSession, oauthSessionReloadSeq }; }, [getOAuthSession, oauthSessionReloadSeq]);
@@ -81,6 +81,25 @@ function ArticlesViewer({ did }: { did: string }) {
   const [draftDeletion, setDraftDeletion] = useState<ArticleDraft>();
   const [assetState, setAssetState] = useState<{ scope?: { urls: Record<string, string> }; urls: Record<string, string> }>({ urls: {} });
   const [publishedUrl, setPublishedUrl] = useState<string>();
+  const [requestedDraftFailure, setRequestedDraftFailure] = useState<string>();
+  const openedDraftRequest = useRef<string | undefined>(undefined);
+  const selectRequestedDraft = local.select;
+  const draftsLoading = local.loading;
+  const openRequestedDraft = useCallback(async (id: string) => {
+    const context = draftActor();
+    await selectRequestedDraft(id);
+    context.assertCurrentActor();
+    if (!mounted.current) return;
+    setPublishedUrl(undefined); setPublishedArticle(undefined); setMetadataVisible(true); setEditorOpen(true); setTab("drafts"); setRequestedDraftFailure(undefined);
+  }, [selectRequestedDraft, draftActor]);
+  useEffect(() => {
+    if (!initialDraftId || draftsLoading || openedDraftRequest.current === initialDraftId) return;
+    openedDraftRequest.current = initialDraftId;
+    void perform(async () => {
+      try { await openRequestedDraft(initialDraftId); }
+      catch (failure) { if (mounted.current) setRequestedDraftFailure(initialDraftId); throw failure; }
+    });
+  }, [initialDraftId, draftsLoading, openRequestedDraft]);
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
   const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published" || (editorOpen && !!draft?.publishingRecordKey) || (tab === "drafts" && local.drafts.some(item => !!item.publishingRecordKey)), retry: false });
@@ -308,7 +327,7 @@ function ArticlesViewer({ did }: { did: string }) {
       <Button size="sm" disabled={busy || local.loading || !canCreateDraft} onClick={() => { if (!canCreateDraft) return; void perform(async () => { await local.create(firstEditablePublication?.uri); setEditorOpen(true); setMetadataVisible(true); setPublishedArticle(undefined); setTab("drafts"); setPublishedUrl(undefined); }); }}><Plus className="size-4" />New Article</Button>
     </FeedHeader>
     {(editorOpen && publication && publicationDisabledReason) || (publishedArticle && publishedPublication && articlePublicationDisabledReason(publishedPublication)) ? <p className="border-b px-4 py-3 text-sm text-muted-foreground">{PCKT_EXTERNAL_EDITORS_MESSAGE} Its Blogs Are Disabled.</p> : null}
-    {error ? <div role="alert" className="border-b p-3 text-sm text-destructive">{error}{error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : <Button variant="outline" size="sm" className="ml-2" onClick={() => { void perform(async () => { await local.persist(); await publications.refetch(); }); }}>Retry</Button>}</div> : null}
+    {error ? <div role="alert" className="border-b p-3 text-sm text-destructive">{error}{error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : <Button variant="outline" size="sm" className="ml-2" onClick={() => { void perform(async () => { if (requestedDraftFailure) await openRequestedDraft(requestedDraftFailure); else { await local.persist(); await publications.refetch(); } }); }}>Retry</Button>}</div> : null}
     {!editorOpen && !publishedArticle ? <ArticleLibrary did={did} publications={publications.data ?? []} publicationsReady={!publications.isPending && !publications.error} tab={tab} onTabChange={setTab} drafts={local.drafts} loading={local.loading} busy={busy}
       onDeleteDraft={target => { setFailure(undefined); setDraftDeletion(target); }}
       onOpenDraft={id => { void perform(async () => { await local.select(id); setPublishedUrl(undefined); setPublishedArticle(undefined); setMetadataVisible(true); setEditorOpen(true); }); }}
