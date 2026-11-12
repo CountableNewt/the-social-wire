@@ -51,7 +51,17 @@ else
   benchmark_source=services/appview/Sources/AppView/Analytics/PublicationAnalyticsCountReader.swift
   cp -p "$benchmark_source" "$RUNNER_TEMP/appview-benchmark-source"
   trap 'mv "$RUNNER_TEMP/appview-benchmark-source" "$benchmark_source"' EXIT
-  printf '\n// SwiftPM incremental benchmark input.\n' >> "$benchmark_source"
+  python3 - "$benchmark_source" <<'PYEDIT'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+content = source.read_text()
+original = "timeout: .seconds(2)"
+if content.count(original) != 1:
+    raise SystemExit("Benchmark edit no longer matches its Swift source")
+source.write_text(content.replace(original, "timeout: .seconds(3)"))
+PYEDIT
 fi
 
 swift_options=(--package-path services/appview --scratch-path /swiftpm --build-system native
@@ -59,7 +69,9 @@ swift_options=(--package-path services/appview --scratch-path /swiftpm --build-s
   -Xswiftc -enable-incremental-file-hashing -j "$(getconf _NPROCESSORS_ONLN)")
 if [[ "$lane" == tests ]]; then
   timed compile swift_container swift build --build-tests "${swift_options[@]}"
-  timed tests swift_container swift test --skip-build "${swift_options[@]}"
+  # This Debug test binary combines all suites. Keep their short deadlines
+  # independent of scheduler contention from other suites.
+  timed tests swift_container swift test --skip-build --no-parallel "${swift_options[@]}"
   if [[ "$iteration" == initial ]]; then
     timed media docker buildx build --platform "$platform" --file "$dockerfile" --target media-tests .
   fi
