@@ -38,6 +38,10 @@ enum AppViewRouterBuilder {
         telemetry: telemetry))
     if config.standaloneEdge != nil { router.add(middleware: GatewayCORSPolicy.middleware(config: config.core)) }
     router.get("/health") { _, _ in ["status": "ok", "service": "appview"] }
+    router.get("/xrpc/app.thesocialwire.teapot") { _, _ in
+      Response(status: .init(code: 418, reasonPhrase: "I'm a teapot"), headers: [.contentType: "application/json"],
+        body: .init(byteBuffer: .init(string: #"{"error":"Teapot","message":"I'm a teapot"}"#)))
+    }
     router.get("/livez") { _, _ in ["status": "live", "service": "appview"] }
     router.get("/readyz") { _, _ async throws -> [String: String] in
       try await thinAppViewStore.ping()

@@ -1,0 +1,13 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.teapot",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Always returns HTTP 418.",
+      "errors": [
+        { "name": "Teapot", "description": "I'm a teapot" }
+      ]
+    }
+  }
+}
