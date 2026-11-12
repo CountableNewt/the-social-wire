@@ -30,6 +30,13 @@
     {
       "surface": "openapi",
       "method": "GET",
+      "path": "/xrpc/app.thesocialwire.teapot",
+      "classification": "first-party-xrpc",
+      "xrpcNsid": "app.thesocialwire.teapot"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
       "path": "/oauth-client-metadata.json",
       "classification": "oauth-metadata"
     },

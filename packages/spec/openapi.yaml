@@ -2217,6 +2217,22 @@ security:
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
+  /xrpc/app.thesocialwire.teapot:
+    get:
+      operationId: teapot
+      summary: Return HTTP 418
+      security: []
+      responses:
+        '418':
+          description: I'm a teapot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, message]
+                properties:
+                  error: { const: Teapot }
+                  message: { const: "I'm a teapot" }
   /xrpc/app.thesocialwire.articleDraft.list:
     get: {"operationId": "articleDraftList", "summary": "List Private Article Drafts", "description": "Owner-only encrypted server-private article drafts. Authentication required; owner comes only from the authenticated DID. Never publishes drafts or images to the PDS. Responses use private, no-store and nosniff. Storage unavailable returns Unavailable. Saves use expectedRevision CAS and durable mutationId idempotency; tombstones never resurrect. Explicit Publish/Schedule remain separate actions. UUID ascending keyset pagination includes deletion tombstones and uses an exclusive cursor. Clients resolve unlocked cross-device conflicts by payload.updatedAt (latest edit wins); ties, deletion tombstones, and publication/schedule claims prefer the server.", "tags": ["Article Drafts"], "security": [{"ATProtoOAuthDPoP": []}], "responses": {"200": {"description": "Private article draft snapshots", "headers": {"Cache-Control": {"schema": {"type": "string", "const": "private, no-store"}}, "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ArticleDraftListResult"}}}}, "400": {"description": "InvalidRequest"}, "401": {"description": "Unauthorized"}, "404": {"description": "NotFound"}, "409": {"description": "Conflict or UploadPending"}, "413": {"description": "Quota"}, "503": {"description": "Unavailable"}}, "parameters": [{"in": "query", "name": "cursor", "schema": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}, {"in": "query", "name": "limit", "schema": {"type": "integer", "minimum": 1, "maximum": 20, "default": 20}}]}
   /xrpc/app.thesocialwire.articleDraft.get:

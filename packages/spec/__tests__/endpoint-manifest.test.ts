@@ -13,6 +13,19 @@ const openapi = Bun.YAML.parse(readFileSync(join(SPEC_ROOT, "openapi.yaml"), "ut
 };
 
 describe("endpoint transport manifest", () => {
+  it("documents the public teapot query and its 418 response", () => {
+    const nsid = "app.thesocialwire.teapot";
+    const path = `/xrpc/${nsid}`;
+    expect(manifest.entries).toContainEqual({
+      surface: "openapi", method: "GET", path,
+      classification: "first-party-xrpc", xrpcNsid: nsid,
+    });
+    expect(openapi.paths[path]?.get).toMatchObject({
+      security: [],
+      responses: { "418": { description: "I'm a teapot" } },
+    });
+  });
+
   it("is linked from OpenAPI and classifies every OpenAPI operation exactly once", () => {
     expect(openapi["x-tsw-endpoint-manifest"]).toBe("./endpoint-manifest.json");
     const documented = Object.entries(openapi.paths).flatMap(([path, item]) =>

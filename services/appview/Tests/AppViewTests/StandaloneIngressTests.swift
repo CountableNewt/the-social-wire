@@ -37,6 +37,11 @@ import ThinAppViewCore
         config: config, httpClient: http,
         thinAppViewStore: store, projectionCache: nil, standaloneEdge: runtime, logger: logger)
       try await Application(router: router).test(.router) { client in
+        let teapot = try await client.execute(uri: "/xrpc/app.thesocialwire.teapot", method: .get)
+        #expect(teapot.status.code == 418)
+        #expect(teapot.headers[.contentType] == "application/json")
+        #expect(String(buffer: teapot.body) == #"{"error":"Teapot","message":"I'm a teapot"}"#)
+
         var headers: HTTPFields = [.authorization: "DPoP not-a-token"]
         for field in try GatewayInternalTrust.signedHeaders(
           secret: "stale-secret-from-the-former-distributed-backend",
