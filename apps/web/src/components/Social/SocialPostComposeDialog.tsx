@@ -23,12 +23,15 @@ import { SocialComposePreview } from "./SocialComposePreview";
 import { SocialPeopleTextField } from "./SocialPeopleTextField";
 import { SocialPermissionRecovery } from "./SocialPermissionRecovery";
 import { SocialPostCard } from "./SocialPostCard";
+import { AccountReplyContent } from "./AccountReplyContent";
+import { SocialComposeAccountPicker } from "./SocialComposeAccountPicker";
 import { handlePostComposerShortcut } from "@/lib/postComposerShortcut";
 
 type ComposeProps = {
   post: AppBskyFeedDefs.PostView;
   moderation: ModerationOpts;
   mode: "reply" | "quote";
+  replyAccounts?: string[];
   trigger: (openComposer: () => void, disabled: boolean) => ReactNode;
 };
 
@@ -37,12 +40,15 @@ export function SocialPostComposeDialog(props: ComposeProps) {
   return <SocialAccountPostComposeDialog key={`${session?.did ?? ""}:${props.post.uri}:${props.mode}`} {...props} />;
 }
 
-function SocialAccountPostComposeDialog({ post, moderation, mode, trigger }: ComposeProps) {
+function SocialAccountPostComposeDialog({ post, moderation, mode, trigger, replyAccounts }: ComposeProps) {
   const { session, getOAuthSession } = useAuth();
   const cache = useQueryClient();
   const fieldId = useId();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [selectedActor, setSelectedActor] = useState<string>();
+  const [delegatedPending, setDelegatedPending] = useState(false);
+  const [delegatedText, setDelegatedText] = useState("");
   const [media, setMedia] = useState<ComposerMedia>();
   const [removedLinkUrl, setRemovedLinkUrl] = useState<string>();
   const [locked, setLocked] = useState(false);
@@ -72,9 +78,12 @@ function SocialAccountPostComposeDialog({ post, moderation, mode, trigger }: Com
   const title = quote ? "Quote Post" : "Reply";
   const disabled = !session || moderation.userDid !== session.did || (quote ? post.viewer?.embeddingDisabled : post.viewer?.replyDisabled) || !validateSocialPostRecord(post.record).success;
 
+  const delegatedReply = mode === "reply" && selectedActor !== undefined && selectedActor !== session?.did;
+  const dialogPending = pending || delegatedPending;
+
   function changeOpen(value: boolean) {
-    if (busy.current) return;
-    if (value) { link.reset(); setError(undefined); setPublished(false); }
+    if (busy.current || delegatedPending) return;
+    if (value) { setSelectedActor(undefined); link.reset(); setError(undefined); setPublished(false); }
     setOpen(value);
   }
 
@@ -119,12 +128,19 @@ function SocialAccountPostComposeDialog({ post, moderation, mode, trigger }: Com
     <Dialog open={open} onOpenChange={changeOpen}>
       {trigger(() => {
         if (disabled || pending) return;
-        link.reset(); setError(undefined); setPublished(false); setOpen(true);
+        setSelectedActor(undefined); link.reset(); setError(undefined); setPublished(false); setOpen(true);
       }, !!disabled)}
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!pending}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!dialogPending}>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{quote ? "Quoting" : "Replying To"} {recipient}</DialogDescription>
-        <form className="flex min-w-0 flex-col gap-3" onDragOver={event => { if (!pending && !locked && event.dataTransfer.types.includes("Files")) event.preventDefault(); }} onDrop={event => { if (!pending && !locked && event.dataTransfer.files.length) { event.preventDefault(); intake.current?.(Array.from(event.dataTransfer.files)); } }} onPaste={event => { const files = Array.from(event.clipboardData.files); if (!pending && !locked && files.length) { event.preventDefault(); intake.current?.(files); } }} onKeyDown={handlePostComposerShortcut} onSubmit={event => { event.preventDefault(); void publish(); }}>
+        {mode === "reply" && session && (replyAccounts?.length || delegatedReply) ? <SocialComposeAccountPicker label="Reply As"
+          ownerDid={session.did} accounts={replyAccounts ?? []} actorDid={selectedActor ?? session.did}
+          disabled={dialogPending || locked || !draft.loaded} onChange={did => { if (!delegatedReply) setDelegatedText(text); else if (did === session.did) setText(delegatedText); setSelectedActor(did); setError(undefined); }} /> : null}
+        {delegatedReply && session ? (
+          replyAccounts?.includes(selectedActor) ? <AccountReplyContent key={selectedActor} ownerDid={session.did} actorDid={selectedActor}
+            parent={post} draft={{ text: delegatedText, setText: setDelegatedText }} pending={delegatedPending} setPending={setDelegatedPending}
+            close={() => { setOpen(false); setPublished(true); }} /> : <p role="alert">Choose a linked account to reply.</p>
+        ) : <form className="flex min-w-0 flex-col gap-3" onDragOver={event => { if (!pending && !locked && event.dataTransfer.types.includes("Files")) event.preventDefault(); }} onDrop={event => { if (!pending && !locked && event.dataTransfer.files.length) { event.preventDefault(); intake.current?.(Array.from(event.dataTransfer.files)); } }} onPaste={event => { const files = Array.from(event.clipboardData.files); if (!pending && !locked && files.length) { event.preventDefault(); intake.current?.(files); } }} onKeyDown={handlePostComposerShortcut} onSubmit={event => { event.preventDefault(); void publish(); }}>
           {quote ? <div className="max-h-48 overflow-y-auto rounded-xl border p-3"><SocialPostCard item={{ post }} moderation={moderation} embedded /></div> : null}
           <label htmlFor={fieldId} className="sr-only">{quote ? "Quote Text" : "Reply Text"}</label>
           <SocialPeopleTextField id={fieldId} autoFocus value={text} disabled={pending || locked || !draft.loaded} onValueChange={setText} rows={5} placeholder={quote ? "Add a Comment…" : "Write a Reply…"} className="w-full resize-y rounded-xl border bg-background p-3 text-base leading-relaxed" />
@@ -141,7 +157,7 @@ function SocialAccountPostComposeDialog({ post, moderation, mode, trigger }: Com
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {error === SCOPE_RECOVERY_MESSAGE ? <SocialPermissionRecovery /> : null}
           <DialogFooter><DialogClose disabled={pending} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button type="submit" disabled={pending || !draft.loaded || !valid || disabled}>{pending ? "Publishing…" : quote ? "Post Quote" : "Post Reply"}</Button></DialogFooter>
-        </form>
+        </form>}
       </DialogContent>
     </Dialog>
     {published ? <p role="status" className="mt-2 text-xs text-muted-foreground">{quote ? "Quote Post Published" : "Reply Published"}</p> : null}
