@@ -187,7 +187,7 @@ test("hides brand integrations and keeps personal Analytics when the flag is off
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   brands = ["did:plc:brand"];
   const spy = await mount();
-  expect(screen.queryByRole("link", { name: "Manage Brand Accounts" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Manage Delegated Accounts" })).toBeNull();
   expect(screen.queryByRole("group", { name: "Accounts" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
   expect(screen.getByRole("region", { name: "Analytics for did:plc:alice" })).toBeTruthy();

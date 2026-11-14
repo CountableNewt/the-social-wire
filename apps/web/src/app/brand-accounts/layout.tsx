@@ -16,7 +16,7 @@ export default function BrandAccountsLayout({ children }: { children: React.Reac
   const router = useRouter();
   useEffect(() => { if (brandAccountsEnabled() && !isLoading && !session) router.replace("/login"); }, [isLoading, session, router]);
   if (!brandAccountsEnabled()) return null;
-  if (isLoading) return <div className="flex min-h-svh items-center justify-center"><p role="status">Loading Brand Accounts…</p></div>;
+  if (isLoading) return <div className="flex min-h-svh items-center justify-center"><p role="status">Loading Delegated Accounts…</p></div>;
   if (!session) return null;
   return <SidebarProvider className={`${appViewportHeightClasses} overflow-hidden [--reader-shell-width:80rem]`}>
     <PublicationSidebarProvider><ReadRouteProvider>

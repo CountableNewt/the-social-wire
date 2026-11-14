@@ -22,7 +22,7 @@ export function assertBrandAccountAvailable(ownerDid: string, brandDid: string):
   readRegistry(ownerDid);
   for (let index = 0; index < window.localStorage.length; index++) {
     const key = window.localStorage.key(index);
-    if (key?.startsWith(REGISTRY_PREFIX) && key !== REGISTRY_PREFIX + ownerDid && readRegistry(key.slice(REGISTRY_PREFIX.length)).includes(brandDid)) throw new Error("This Brand Is Linked To Another Personal Account In This Browser. Unlink It There First.");
+    if (key?.startsWith(REGISTRY_PREFIX) && key !== REGISTRY_PREFIX + ownerDid && readRegistry(key.slice(REGISTRY_PREFIX.length)).includes(brandDid)) throw new Error("This Delegated Account Is Linked To Another Personal Account In This Browser. Unlink It There First.");
   }
 }
 export function notifyBrandAccountsChanged(): void { listeners.forEach(listener => listener()); }

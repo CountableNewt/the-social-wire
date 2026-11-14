@@ -6,7 +6,7 @@ struct NewsSidebarToolTests {
     @Test("Retained native tools preserve their names and order")
     func webToolOrder() {
         #expect(NewsSidebarTool.allCases.map(\.title) == [
-            "Articles", "Live Post", "Livestream", "Brand Accounts", "Content Calendar", "Analytics"
+            "Articles", "Live Post", "Livestream", "Delegated Accounts", "Content Calendar", "Analytics"
         ])
         #expect(Set(NewsSidebarTool.allCases.map(\.id)).count == 6)
     }
@@ -17,7 +17,7 @@ struct NewsSidebarToolTests {
         #expect(NewsSidebarTool.availableTools.isEmpty)
     }
 
-    @Test("Brand Accounts requires both its feature flag and the Pro release gate", arguments: [false, true])
+    @Test("Delegated Accounts requires both its feature flag and the Pro release gate", arguments: [false, true])
     func brandAccountsRequiresBothGates(brandAccountsEnabled: Bool) {
         #expect(NewsSidebarTool.availableTools(
             proFeaturesReleased: false,
@@ -33,7 +33,7 @@ struct NewsSidebarToolTests {
         ])
     }
 
-    @Test("Native Brand Accounts requires an explicit build flag")
+    @Test("Native Delegated Accounts requires an explicit build flag")
     func brandAccountsBuildFlag() {
         #if SOCIALWIRE_BRAND_ACCOUNTS_ENABLED
         #expect(SocialWireAPIEnvironment.brandAccountsEnabled)

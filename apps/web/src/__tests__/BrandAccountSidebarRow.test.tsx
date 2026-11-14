@@ -23,7 +23,7 @@ function mount(selected = true, disabled = false) {
 test("shows public avatar, name and handle with accessible DID and preserves selection/unlink", async () => {
   const profile = spyOn(Profiles, "getBrandAccountPublicProfile").mockResolvedValue({ did, displayName: "The Brand", handle: "brand.test", avatar: "https://images.example/avatar.png" }); restores.push(() => profile.mockRestore());
   const { onSelect, onUnlink } = mount();
-  const button = await screen.findByRole("button", { name: `Select Brand Account: The Brand @brand.test · ${did}` });
+  const button = await screen.findByRole("button", { name: `Select Delegated Account: The Brand @brand.test · ${did}` });
   expect(screen.getByText("The Brand")).toBeTruthy(); expect(screen.getByText("@brand.test")).toBeTruthy();
   expect(screen.getByRole("img", { name: "The Brand" }).getAttribute("src")).toBe("https://images.example/avatar.png");
   expect(button.getAttribute("aria-pressed")).toBe("true"); expect(button.getAttribute("title")).toBe(did);
@@ -34,8 +34,8 @@ test("shows public avatar, name and handle with accessible DID and preserves sel
 test("uses a readable fallback with identity retained when public metadata is unavailable", async () => {
   const profile = spyOn(Profiles, "getBrandAccountPublicProfile").mockRejectedValue(new Error("Unavailable")); restores.push(() => profile.mockRestore());
   mount(false, true);
-  expect(await screen.findByText("Profile Unavailable")).toBeTruthy(); expect(screen.getByText("Linked Brand Account")).toBeTruthy();
-  expect(screen.getByRole("button", { name: `Select Brand Account: ${did}` }).getAttribute("aria-pressed")).toBe("false");
+  expect(await screen.findByText("Profile Unavailable")).toBeTruthy(); expect(screen.getByText("Linked Delegated Account")).toBeTruthy();
+  expect(screen.getByRole("button", { name: `Select Delegated Account: ${did}` }).getAttribute("aria-pressed")).toBe("false");
   expect((screen.getByRole("button", { name: "Unlink Account" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole("img")).toBeNull(); expect(screen.queryByText(did)).toBeNull();
 });

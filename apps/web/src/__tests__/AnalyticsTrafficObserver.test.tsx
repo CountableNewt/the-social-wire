@@ -51,7 +51,7 @@ it("excludes a viewer's linked brand content from traffic measurements", async (
   act(() => emit(event)); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   expect(brands).toHaveBeenCalledWith("did:plc:alice");
 });
-it("does not consult linked-brand storage while Brand Accounts is disabled", async () => {
+it("does not consult linked-brand storage while Delegated Accounts is disabled", async () => {
   const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });

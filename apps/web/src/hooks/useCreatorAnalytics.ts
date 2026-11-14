@@ -27,8 +27,8 @@ export function useCreatorAnalytics(days: number, accountDid?: string) {
   useLayoutEffect(() => { identity.current = { owner, actor }; mounted.current = true; return () => { mounted.current = false; }; }, [owner, actor]);
   function assertIdentity(expectedOwner = owner, expectedActor = actor) {
     if (!mounted.current || !expectedOwner || !expectedActor || identity.current.owner !== expectedOwner || identity.current.actor !== expectedActor || getOAuthSession()?.did !== expectedOwner || getStoredOAuthDid() !== expectedOwner) throw new Error("Your account changed. Please reload Analytics.");
-    if (expectedActor !== expectedOwner && !brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available.");
-    if (expectedActor !== expectedOwner && !listBrandAccounts(expectedOwner).includes(expectedActor)) throw new Error("This brand account is no longer linked.");
+    if (expectedActor !== expectedOwner && !brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available.");
+    if (expectedActor !== expectedOwner && !listBrandAccounts(expectedOwner).includes(expectedActor)) throw new Error("This delegated account is no longer linked.");
   }
   function restoreAnalyticsBrand(expectedOwner: string, expectedActor: string) {
     const pending = brandRestore.current;

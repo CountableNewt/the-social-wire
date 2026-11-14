@@ -242,7 +242,7 @@ test("blocks brand scheduling while preserving personal scheduling when brands a
   const { result, rerender } = renderHook(({ actor }) => useSkejScheduling(owner, actor, { includeSchedules: false }), { initialProps: { actor: brand }, wrapper });
   expect(Client.getSkejSchedulingReadiness).not.toHaveBeenCalled();
   expect(Sessions.restoreBrandAccount).not.toHaveBeenCalled();
-  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Brand Accounts Are Not Available"); });
+  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Delegated Accounts Are Not Available"); });
   expect(create).not.toHaveBeenCalled();
   rerender({ actor: owner });
   await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
@@ -255,8 +255,8 @@ test("revokes captured brand scheduling guards when the feature is disabled", as
   await waitFor(() => expect(result.current.readiness.data?.connected).toBe(true));
   const actor = (Client.getSkejSchedulingReadiness as typeof Client.getSkejSchedulingReadiness & { mock: { calls: [Parameters<typeof Client.getSkejSchedulingReadiness>[0]][] } }).mock.calls[0][0];
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  expect(() => actor.assertCurrentActor()).toThrow("Brand Accounts Are Not Available");
-  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Brand Accounts Are Not Available"); });
+  expect(() => actor.assertCurrentActor()).toThrow("Delegated Accounts Are Not Available");
+  await act(async () => { await expect(result.current.schedule("Brand", "2099-01-01T12:00:00Z")).rejects.toThrow("Delegated Accounts Are Not Available"); });
   rerender();
   expect(result.current.readiness.data).toBeUndefined();
   process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true";

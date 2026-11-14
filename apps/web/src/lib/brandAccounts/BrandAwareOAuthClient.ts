@@ -21,14 +21,14 @@ export class BrandAwareOAuthClient extends BrowserOAuthClient {
     // the regular SDK callback replaces an existing session for the returned DID.
     await this.stateStore.del(stateKey!);
     const appState = stored.appState;
-    const assertAvailable = () => { if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment."); };
+    const assertAvailable = () => { if (!brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available In This Environment."); };
     const requireOwnerPro = async () => {
       assertAvailable();
       const intent = validateBrandLinkIntent(appState, this.primaryDid());
       const session = await OAuthClient.prototype.restore.call(this, intent.ownerDid);
       assertAvailable();
       validateBrandLinkIntent(appState, this.primaryDid());
-      if (session.did !== intent.ownerDid) throw new Error("Your Personal Account Changed. Reopen Brand Accounts.");
+      if (session.did !== intent.ownerDid) throw new Error("Your Personal Account Changed. Reopen Delegated Accounts.");
       await requirePro(session);
       assertAvailable();
       validateBrandLinkIntent(appState, this.primaryDid());

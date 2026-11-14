@@ -37,15 +37,15 @@ export function useBrandAccountSession(ownerDid: string, brandDid: string) {
       if (epoch.current.value !== generation) return;
       if (session.did !== brandDid) throw new Error("The Linked Account Identity Does Not Match.");
       setConnection({ scope, session });
-    }).catch(error => { if (epoch.current.value === generation) setConnection({ scope, error: error instanceof Error ? error.message : "This Brand Account Could Not Be Restored." }); });
+    }).catch(error => { if (epoch.current.value === generation) setConnection({ scope, error: error instanceof Error ? error.message : "This Delegated Account Could Not Be Restored." }); });
     return () => { state.value++; };
   }, [ownerDid, brandDid, scope, isPro]);
   useEffect(() => { if (enabled) return onBrandAccountsChanged(() => setRetry(value => value + 1)); }, [enabled]);
   const session = isPro && connection.scope === scope ? connection.session : undefined;
   function assertCurrentActor() {
-    if (!brandAccountsEnabled() || !access.current || !session || getStoredOAuthDid() !== ownerDid || current.current.ownerDid !== ownerDid || current.current.brandDid !== brandDid || !listBrandAccounts(ownerDid).includes(brandDid)) throw new Error("The Acting Account Changed. Reopen Brand Accounts.");
-    if (session.did !== brandDid || connection.scope !== scope) throw new Error("The Acting Account Changed. Reopen Brand Accounts.");
+    if (!brandAccountsEnabled() || !access.current || !session || getStoredOAuthDid() !== ownerDid || current.current.ownerDid !== ownerDid || current.current.brandDid !== brandDid || !listBrandAccounts(ownerDid).includes(brandDid)) throw new Error("The Acting Account Changed. Reopen Delegated Accounts.");
+    if (session.did !== brandDid || connection.scope !== scope) throw new Error("The Acting Account Changed. Reopen Delegated Accounts.");
   }
   const generation = epoch.current.value;
-  return { session, error: isPro && connection.scope === scope ? connection.error : undefined, retry: () => setRetry(value => value + 1), assertCurrentActor: () => { if (generation !== epoch.current.value) throw new Error("The Acting Account Changed. Reopen Brand Accounts."); assertCurrentActor(); }, generation: retry };
+  return { session, error: isPro && connection.scope === scope ? connection.error : undefined, retry: () => setRetry(value => value + 1), assertCurrentActor: () => { if (generation !== epoch.current.value) throw new Error("The Acting Account Changed. Reopen Delegated Accounts."); assertCurrentActor(); }, generation: retry };
 }
