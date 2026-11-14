@@ -41,8 +41,8 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
     if (!access.current) throw new Error("This Feature Requires Social Wire Pro.");
     const identity = current.current;
     if (linkage.current !== revision || identity.generation !== generation || !identity.mounted || identity.ownerDid !== ownerDid || identity.actorDid !== actorDid || session?.did !== ownerDid || getOAuthSession()?.did !== ownerDid || getStoredOAuthDid() !== ownerDid) throw new Error("Your Account Changed. Reopen the Content Calendar.");
-    if (actorDid !== ownerDid && !brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available.");
-    if (actorDid !== ownerDid && !listBrandAccounts(ownerDid).includes(actorDid)) throw new Error("This Brand Account Is No Longer Linked.");
+    if (actorDid !== ownerDid && !brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available.");
+    if (actorDid !== ownerDid && !listBrandAccounts(ownerDid).includes(actorDid)) throw new Error("This Delegated Account Is No Longer Linked.");
   }
   async function requireActor() {
     assertCurrentActor();

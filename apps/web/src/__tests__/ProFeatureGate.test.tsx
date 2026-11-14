@@ -33,7 +33,7 @@ it("unmounts protected content after downgrade and supports retry", () => {
 
 afterAll(() => access.mockRestore());
 
-it("advertises multi-account support only when Brand Accounts is enabled", () => {
+it("advertises multi-account support only when Delegated Accounts is enabled", () => {
   const previousBrand = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   const previousTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
   try {

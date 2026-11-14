@@ -20,15 +20,15 @@ export function useBrandAccountSocial(ownerDid: string, brandDid: string, thread
   async function read<T>(work: (session: NonNullable<typeof connection.session>) => Promise<T>): Promise<T> { connection.assertCurrentActor(); const result = await work(connection.session!); connection.assertCurrentActor(); return result; }
   const catalog = useQuery({ queryKey: [...key, "catalog"], enabled: !!connection.session, queryFn: ({ signal }) => read(session => getBlueskySocialCatalog(session, signal, { includeFeeds: false })), retry: false });
   const moderation = !!connection.session && !catalog.isError && catalog.data?.moderation.userDid === brandDid ? catalog.data.moderation : undefined;
-  const profile = useQuery({ queryKey: [...key, "profile"], enabled: !!connection.session && !!moderation, queryFn: ({ signal }) => read(async session => { const data = (await createAuthenticatedAppViewAgent(session).app.bsky.actor.getProfile({ actor: brandDid }, { signal })).data; if (data.did !== brandDid) throw new Error("The Brand Profile Identity Does Not Match."); return data; }), retry: false });
+  const profile = useQuery({ queryKey: [...key, "profile"], enabled: !!connection.session && !!moderation, queryFn: ({ signal }) => read(async session => { const data = (await createAuthenticatedAppViewAgent(session).app.bsky.actor.getProfile({ actor: brandDid }, { signal })).data; if (data.did !== brandDid) throw new Error("The Delegated Account Profile Does Not Match."); return data; }), retry: false });
   const posts = useInfiniteQuery({ queryKey: [...key, "posts"], enabled: options.includePosts !== false && !!moderation && !!connection.session, initialPageParam: undefined as string | undefined, queryFn: ({ pageParam, signal }) => read(session => getBlueskyProfilePage({ session, tab: "posts", moderation: moderation!, cursor: pageParam, signal })), getNextPageParam: (page, _pages, _last, params) => page.cursor && !params.includes(page.cursor) ? page.cursor : undefined, retry: false });
   const notifications = useInfiniteQuery({ queryKey: [...key, "notifications"], enabled: !!moderation && !!connection.session, initialPageParam: undefined as string | undefined, queryFn: ({ pageParam, signal }) => read(session => getSocialNotificationsPage({ session, moderation: moderation!, cursor: pageParam, signal })), getNextPageParam: (page, _pages, _last, params) => nextDiscoveryCursor(page, params), retry: false });
   const unread = useQuery({ queryKey: [...key, "unread"], enabled: !!moderation && !!connection.session, queryFn: ({ signal }) => read(session => getSocialNotificationUnread(session, signal)), retry: false });
   const thread = useQuery({ queryKey: [...key, "thread", threadUri], enabled: !!threadUri && !!moderation && !!connection.session, queryFn: ({ signal }) => read(session => getBlueskyPostThread({ session, uri: threadUri!, moderation: moderation!, signal })), retry: false });
   const mutation = useMutation({ mutationFn: async (action: { kind: "post"; text: string; linkPreview?: ComposeLinkPreview; parent?: AppBskyFeedDefs.PostView } | { kind: "seen"; seenAt?: string } | { kind: SocialEngagementKind; post: AppBskyFeedDefs.PostView }) => {
-    if (locked.current) throw new Error("Wait For the Current Brand Action.");
+    if (locked.current) throw new Error("Wait for the Current Action to Finish.");
     connection.assertCurrentActor();
-    if (!moderation) throw new Error("Brand Account Moderation Is Unavailable.");
+    if (!moderation) throw new Error("Delegated Account Moderation Is Unavailable.");
     locked.current = true;
     try {
     const session = connection.session!;

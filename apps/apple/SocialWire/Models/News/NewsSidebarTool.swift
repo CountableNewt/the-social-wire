@@ -28,7 +28,7 @@ enum NewsSidebarTool: String, CaseIterable, Identifiable {
         case .articles: "Articles"
         case .livePost: "Live Post"
         case .livestream: "Livestream"
-        case .brandAccounts: "Brand Accounts"
+        case .brandAccounts: "Delegated Accounts"
         case .contentCalendar: "Content Calendar"
         case .analytics: "Analytics"
         }

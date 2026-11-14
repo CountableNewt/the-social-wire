@@ -49,7 +49,7 @@ enum SocialWireAPIEnvironment {
     /// Enable deliberately when the native release is ready; no runtime preference can bypass this gate.
     static let proFeaturesReleased = false
 
-    /// Brand Accounts remains independently disabled when other Pro tools are released.
+    /// Delegated Accounts remains independently disabled when other Pro tools are released.
     static var brandAccountsEnabled: Bool {
         #if SOCIALWIRE_BRAND_ACCOUNTS_ENABLED
         return true

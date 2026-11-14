@@ -492,7 +492,7 @@ export async function handleCallback(): Promise<OAuthSession> {
           redirect_uri: redirectUri as Parameters<BrowserOAuthClient["initCallback"]>[1],
         });
         if (state?.startsWith(BRAND_LINK_STATE_PREFIX)) {
-          if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment.");
+          if (!brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available In This Environment.");
           callbackDestination = BRAND_ACCOUNTS_PATH;
           completeBrandLinkIntent(state, session.did, getStoredOAuthDid());
         } else {

@@ -60,6 +60,6 @@ it("publishes brand Markdown links as native label facets", async () => {
 it("blocks direct brand publishing while disabled without invoking actor or network actions", async () => {
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   let calls = 0;
-  await expect(publishBrandPost({ session: sessionFor(() => { calls++; return {}; }), text: "Brand post", assertCurrentActor: () => { calls++; } })).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(publishBrandPost({ session: sessionFor(() => { calls++; return {}; }), text: "Brand post", assertCurrentActor: () => { calls++; } })).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(calls).toBe(0);
 });

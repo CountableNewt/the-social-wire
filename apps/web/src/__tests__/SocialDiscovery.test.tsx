@@ -1,6 +1,5 @@
 import * as Tools from "@/lib/toolsEnabled";
 import * as Brands from "@/hooks/useBrandAccounts";
-import * as BrandNotifications from "@/components/Social/BrandNotificationSections";
 import { afterEach, beforeEach, expect, it, mock, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -342,11 +341,9 @@ it("updates cached notifications strictly before seenAt while preserving later a
 it("keeps personal notifications available without rendering linked-brand controls when Tools is disabled", async () => {
   restoreSpy(spyOn(Tools, "toolsEnabled").mockReturnValue(false));
   restoreSpy(spyOn(Brands, "useBrandAccounts").mockReturnValue(["did:plc:brand"]));
-  const brands = spyOn(BrandNotifications, "BrandNotificationSections").mockReturnValue(<p>Brand Tools</p>); restoreSpy(brands);
   restoreSpy(spyOn(Client, "getSocialNotificationsPage").mockResolvedValue({ notifications: [], posts: [] }));
   restoreSpy(spyOn(Client, "getSocialNotificationUnread").mockResolvedValue(0));
   render(<SocialNotifications />, { wrapper: Wrapper });
   await screen.findByText("No notifications to show.");
-  expect(brands).not.toHaveBeenCalled();
-  expect(screen.queryByText("Brand Tools")).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Include Delegated Accounts" })).toBeNull();
 });

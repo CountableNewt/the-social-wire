@@ -95,7 +95,7 @@ for (const section of ["live-post", "livestream"]) test(`${section} retains the 
 });
 
 
-test("Brand Accounts stays unavailable unless both its flag and Tools are enabled", () => {
+test("Delegated Accounts stays unavailable unless both its flag and Tools are enabled", () => {
   environment("dev");
   for (const suffix of ["", "/", "/nested", "?_rsc=transition"]) {
     const request = new NextRequest(`https://thesocialwire.app/brand-accounts${suffix}`);
