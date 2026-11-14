@@ -12,7 +12,7 @@ import { moderateSocialPost } from "./socialModeration";
 import { socialReplyMetadata } from "@/lib/socialReplyMetadata";
 import { isSocialInteractionHidden } from "@/lib/socialInteractionModeration";
 
-export function InteractiveSocialPost({ item, moderation, showReplyParentActions = true }: { item: AppBskyFeedDefs.FeedViewPost; moderation: ModerationOpts; showReplyParentActions?: boolean }) {
+export function InteractiveSocialPost({ item, moderation, showReplyParentActions = true, replyAccounts }: { item: AppBskyFeedDefs.FeedViewPost; moderation: ModerationOpts; showReplyParentActions?: boolean; replyAccounts?: string[] }) {
   const resolvedItem = { ...item, reply: socialReplyMetadata(item) };
   const navigation = useSocialPostNavigation();
   if (isSocialInteractionHidden(resolvedItem, moderation)) return null;
@@ -29,7 +29,7 @@ export function InteractiveSocialPost({ item, moderation, showReplyParentActions
       <span>Conversation</span>
     </p> : null}
     {showContext ? <SocialAuthorThreadIndicator item={resolvedItem} moderation={moderation} onOpen={navigation.openPost} /> : null}
-    {grouped && resolvedItem.reply ? <SocialReplyContext reply={resolvedItem.reply} postUri={item.post.uri} moderation={moderation} onOpenPost={openPost} onShowThread={() => navigation.openPost(threadUri)} parentActions={showReplyParentActions && parent ? <SocialPostActions post={parent} moderation={moderation} /> : undefined} /> : null}
-    <SocialPostCard embedded={grouped} item={resolvedItem} moderation={moderation} onOpen={() => openPost(item.post)} onOpenPost={openPost} actions={<SocialPostActions post={item.post} moderation={moderation} />} />
+    {grouped && resolvedItem.reply ? <SocialReplyContext reply={resolvedItem.reply} postUri={item.post.uri} moderation={moderation} onOpenPost={openPost} onShowThread={() => navigation.openPost(threadUri)} parentActions={showReplyParentActions && parent ? <SocialPostActions replyAccounts={replyAccounts} post={parent} moderation={moderation} /> : undefined} /> : null}
+    <SocialPostCard embedded={grouped} item={resolvedItem} moderation={moderation} onOpen={() => openPost(item.post)} onOpenPost={openPost} actions={<SocialPostActions replyAccounts={replyAccounts} post={item.post} moderation={moderation} />} />
   </div>;
 }

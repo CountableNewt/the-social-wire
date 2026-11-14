@@ -17,8 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { handlePostComposerShortcut } from "@/lib/postComposerShortcut";
 
-export function BrandPostComposer({ ownerDid, session, moderation, profile, parent, pending, publish, close, assertCurrentActor, inline = false, scheduling }: { scheduling?: { controls: ReactNode; submitLabel: string; pendingLabel: string; valid: boolean }; inline?: boolean; ownerDid: string; session: OAuthSession; moderation: ModerationOpts; profile: AppBskyActorDefs.ProfileViewDetailed | undefined; parent?: AppBskyFeedDefs.PostView; pending: boolean; publish: (text: string, linkPreview?: ComposeLinkPreview) => Promise<void>; close: () => void; assertCurrentActor: () => void }) {
-  const [text, setText] = useState("");
+export function BrandPostComposer({ ownerDid, session, moderation, profile, parent, pending, publish, close, assertCurrentActor, inline = false, scheduling, draft, showIdentity = true }: { draft?: { text: string; setText: (text: string) => void }; showIdentity?: boolean; scheduling?: { controls: ReactNode; submitLabel: string; pendingLabel: string; valid: boolean }; inline?: boolean; ownerDid: string; session: OAuthSession; moderation: ModerationOpts; profile: AppBskyActorDefs.ProfileViewDetailed | undefined; parent?: AppBskyFeedDefs.PostView; pending: boolean; publish: (text: string, linkPreview?: ComposeLinkPreview) => Promise<void>; close: () => void; assertCurrentActor: () => void }) {
+  const [localText, setLocalText] = useState("");
+  const text = draft?.text ?? localText;
+  const setText = draft?.setText ?? setLocalText;
   const link = useComposeLinkPreview(text, session);
   const [caret, setCaret] = useState(0);
   const [error, setError] = useState<string>();
@@ -35,7 +37,12 @@ export function BrandPostComposer({ ownerDid, session, moderation, profile, pare
     try { await publish(text, link.preview); close(); } catch (failure) { setError(failure instanceof Error ? failure.message : "This Post Could Not Be Published."); }
   }
   const content = <>
-    <div className="flex items-center gap-2"><Avatar src={avatarAllowed ? socialHttpsUrl(profile?.avatar) : undefined} alt="" size={32} /><p className="min-w-0 break-all text-xs">{nameAllowed && profile?.displayName || profile?.handle || session.did}<span className="block text-muted-foreground">{session.did}</span></p></div>
+    {showIdentity ? <div className="flex items-center gap-2">
+      <Avatar src={avatarAllowed ? socialHttpsUrl(profile?.avatar) : undefined} alt="" size={32} />
+      <p className="min-w-0 break-all text-xs">{nameAllowed && profile?.displayName || (profile?.handle ? `@${profile.handle}` : "Delegated Account")}
+        {nameAllowed && profile?.displayName && profile.handle ? <span className="block text-muted-foreground">@{profile.handle}</span> : null}
+      </p>
+    </div> : null}
     {parent ? <blockquote className="max-h-32 overflow-y-auto border-l-2 pl-3 text-sm"><span className="block text-xs text-muted-foreground">Replying to @{parent.author.handle}</span>{typeof (parent.record as { text?: unknown }).text === "string" ? String((parent.record as { text: string }).text) : "Post"}</blockquote> : null}
     <form className="space-y-3" onKeyDown={handlePostComposerShortcut} onSubmit={event => { event.preventDefault(); void submit(); }}><label className="sr-only" htmlFor="brand-post-text">Delegated Post Text</label><textarea id="brand-post-text" ref={ref} autoFocus rows={6} className="w-full rounded-xl border bg-background p-3" disabled={pending} value={text} onChange={event => { setText(event.target.value); setCaret(event.target.selectionStart); }} onSelect={event => setCaret(event.currentTarget.selectionStart)} placeholder="Write a Post…" />
       {mention ? <div role="listbox" aria-label="Mention Suggestions" className="max-h-40 overflow-y-auto rounded-xl border p-1">{people.data?.actors.filter(actor => { const decision = moderateProfile(actor, moderation).ui("profileList"); return !decision.filter && !decision.blur && !decision.noOverride; }).slice(0, 6).map(actor => <button type="button" role="option" aria-selected="false" key={actor.did} className="block w-full rounded-lg px-2 py-1 text-left text-sm hover:bg-accent" onClick={() => { const next = insertSocialMention(text, mention, actor.handle); setText(next.text); setCaret(next.caret); requestAnimationFrame(() => { ref.current?.focus(); ref.current?.setSelectionRange(next.caret, next.caret); }); }}>@{actor.handle}</button>)}{people.isPending ? <p role="status" className="p-2 text-xs">Loading People…</p> : people.isError ? <p className="p-2 text-xs">People Could Not Be Loaded</p> : !people.data?.actors.length ? <p className="p-2 text-xs">No Matching People</p> : null}</div> : null}
@@ -45,5 +52,5 @@ export function BrandPostComposer({ ownerDid, session, moderation, profile, pare
     </form>
   </>;
   if (inline) return content;
-  return <Dialog open onOpenChange={value => { if (!value && !pending) close(); }}><DialogContent showCloseButton={!pending} className="sm:max-w-xl"><DialogTitle>{parent ? "Reply as Delegated Account" : "Compose as Delegated Account"}</DialogTitle><DialogDescription>Publishing as {profile?.handle ? `@${profile.handle}` : session.did}</DialogDescription>{content}</DialogContent></Dialog>;
+  return <Dialog open onOpenChange={value => { if (!value && !pending) close(); }}><DialogContent showCloseButton={!pending} className="sm:max-w-xl"><DialogTitle>{parent ? "Reply as Delegated Account" : "Compose as Delegated Account"}</DialogTitle><DialogDescription>Publishing as {profile?.handle ? `@${profile.handle}` : "the delegated account"}</DialogDescription>{content}</DialogContent></Dialog>;
 }

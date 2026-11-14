@@ -17,8 +17,8 @@ export function useBrandAccounts(ownerDid: string) {
 }
 
 /** OAuth objects remain in memory, outside the persisted React Query cache. */
-export function useBrandAccountSession(ownerDid: string, brandDid: string) {
-  const enabled = brandAccountsEnabled();
+export function useBrandAccountSession(ownerDid: string, brandDid: string, active = true) {
+  const enabled = active && brandAccountsEnabled();
   const { isPro: proAccess } = useProEntitlements(enabled);
   const isPro = enabled && proAccess;
   const access = useRef(isPro);

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as OAuth from "@/lib/auth";
+import * as Compose from "@/lib/blueskyComposeClient";
+import * as Posts from "@/lib/blueskyPostClient";
+import * as Catalog from "@/lib/blueskySocialClient";
 import * as Auth from "@/hooks/useAuth";
 import * as Navigation from "next/navigation";
 import * as Mobile from "@/hooks/use-mobile";
@@ -48,12 +52,43 @@ test("shows the selected brand identity, immediate reply context and actor-speci
   fireEvent.click(screen.getByRole("button", { name: "Mark Notifications Read" }));
   expect(state.mutation.mutateAsync).toHaveBeenCalledWith({ kind: "seen" });
 });
-test("reply composer names the acting brand and publishes the selected immediate post", async () => {
-  await mount(); fireEvent.click(screen.getByRole("button", { name: "Reply as Delegated Account" }));
-  expect(screen.getByRole("dialog").textContent).toContain("Publishing as @brand.test");
-  fireEvent.change(screen.getByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "Brand Response" } });
+test("reply defaults to the recipient and can publish from another linked or personal account", async () => {
+  const other = "did:plc:other";
+  const personal = { did: owner } as unknown as OAuthSession;
+  const stored = spyOn(OAuth, "getStoredOAuthDid").mockReturnValue(owner);
+  const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did: owner }, getOAuthSession: () => personal } as ReturnType<typeof Auth.useAuth>);
+  const linked = spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand, other]);
+  const connection = spyOn(Accounts, "useBrandAccountSession").mockImplementation((_owner, did) => ({
+    session: { did } as OAuthSession, error: undefined, assertCurrentActor: () => {}, retry: () => {}, generation: 0,
+  }));
+  const catalog = spyOn(Catalog, "getBlueskySocialCatalog").mockImplementation(async session => ({ feeds: [], moderation: { ...state.moderation!, userDid: session.did } }));
+  const profiles = spyOn(PublicProfile, "getBrandAccountPublicProfile").mockImplementation(async did => ({
+    did, handle: did === owner ? "personal.test" : did === other ? "other.test" : "brand.test",
+  }));
+  const target = state.notifications.data!.pages[0].posts[1];
+  const thread = spyOn(Posts, "getBlueskyPostThread").mockResolvedValue({ thread: { $type: "app.bsky.feed.defs#threadViewPost", post: target } });
+  const publish = spyOn(Compose, "createBlueskyPost").mockResolvedValue({ uri: target.uri, cid });
+  for (const spy of [stored, auth, linked, connection, catalog, profiles, thread, publish]) restores.push(() => spy.mockRestore());
+
+  await mount();
+  fireEvent.click(screen.getByRole("button", { name: "Reply as Delegated Account" }));
+  const picker = screen.getByRole("combobox", { name: "Reply As" }) as HTMLSelectElement;
+  expect(picker.value).toBe(brand);
+  await screen.findByRole("option", { name: /@brand.test/ });
+  expect(screen.getByRole("dialog").textContent).not.toContain("did:plc:");
+  fireEvent.change(await screen.findByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "A reply" } });
+
+  fireEvent.change(picker, { target: { value: other } });
+  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
+  fireEvent.change(picker, { target: { value: owner } });
+  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
   fireEvent.click(screen.getByRole("button", { name: "Post Reply" }));
-  await waitFor(() => expect(state.mutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ kind: "post", text: "Brand Response", parent: expect.objectContaining({ uri: "at://did:plc:customer/app.bsky.feed.post/reply" }) })));
+  await waitFor(() => expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    session: personal, text: "A reply", replyTo: target,
+  })));
+  expect(thread).toHaveBeenCalledWith(expect.objectContaining({ session: personal, uri: target.uri, depth: 0, parentHeight: 0 }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(state.mutation.mutateAsync).not.toHaveBeenCalled();
 });
 test("opens posts inline in the brand workspace and returns with Back", async () => {
   state = { ...state, thread: { data: { thread: { $type: "app.bsky.feed.defs#threadViewPost", post, replies: [] } } } as unknown as typeof state.thread };

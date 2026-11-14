@@ -16,6 +16,7 @@ import { SocialPostCard } from "@/components/Social/SocialPostCard";
 import { SocialReplyContext } from "@/components/Social/SocialReplyContext";
 import { moderateSocialPost } from "@/components/Social/socialModeration";
 import { socialHttpsUrl } from "@/components/Social/socialUrls";
+import { AccountReplyDialog } from "@/components/Social/AccountReplyDialog";
 import { BrandPostComposer } from "./BrandPostComposer";
 import { useBrandAccountSocial } from "./useBrandAccountSocial";
 
@@ -98,10 +99,17 @@ export const BrandAccountViewer = memo(function BrandAccountViewer({ ownerDid, b
   });
   const ownPosts = new Map(brand.posts.data?.pages.flatMap(page => page.feed).map(item => [item.post.uri, item]) ?? []);
   const thread = AppBskyFeedDefs.isThreadViewPost(brand.thread.data?.thread) ? brand.thread.data.thread as FeedTypes.ThreadViewPost : undefined;
-  const recipient = profile?.handle ? `@${profile.handle}` : brandDid;
+  const recipient = profile?.handle ? `@${profile.handle}` : "Delegated Account";
   const status = error ? <div role="alert" className="space-y-2 rounded-xl border p-3"><p className="text-sm">{notificationsOnly ? `${recipient}: ` : ""}{error}</p><Button size="sm" variant="outline" disabled={reauthorizing} onClick={() => { setReauthorizing(true); setAuthorizationError(undefined); void linkBrandAccount(ownerDid, brandDid).catch(failure => { setAuthorizationError(failure instanceof Error ? failure.message : "Authorization Could Not Be Opened."); setReauthorizing(false); }); }}>{reauthorizing ? "Authorizing…" : "Reauthorize Account"}</Button>{connection.error ? <Button size="sm" onClick={connection.retry}>Reconnect Account</Button> : <Button size="sm" variant="outline" onClick={() => { if (mutation.isError && mutation.variables?.kind === "seen") mutation.mutate(mutation.variables); else void brand.refresh(); }}>Retry</Button>}</div> : null;
   const conversation = <>{brand.thread.isPending ? <p role="status">Loading Conversation…</p> : brand.thread.error ? <p role="alert">{brand.thread.error.message}</p> : thread ? <>{AppBskyFeedDefs.isThreadViewPost(thread.parent) ? card({ post: thread.parent.post }) : null}{card({ post: thread.post })}{thread.replies?.filter(AppBskyFeedDefs.isThreadViewPost).map(reply => card({ post: reply.post }))}</> : <p>This Conversation Is Unavailable.</p>}</>;
-  const composer = compose && moderation && connection.session ? <BrandPostComposer ownerDid={ownerDid} session={connection.session} moderation={moderation} profile={profile} parent={compose.parent} pending={mutation.isPending} assertCurrentActor={connection.assertCurrentActor} publish={(text, linkPreview) => mutation.mutateAsync({ kind: "post", text, linkPreview, parent: compose.parent })} close={() => setCompose(undefined)} /> : null;
+  const closeComposer = () => setCompose(undefined);
+  const composer = compose?.parent
+    ? <AccountReplyDialog ownerDid={ownerDid} recipientDid={brandDid} parent={compose.parent} close={closeComposer} />
+    : compose && moderation && connection.session
+      ? <BrandPostComposer ownerDid={ownerDid} session={connection.session} moderation={moderation} profile={profile}
+          pending={mutation.isPending} assertCurrentActor={connection.assertCurrentActor}
+          publish={(text, linkPreview) => mutation.mutateAsync({ kind: "post", text, linkPreview })} close={closeComposer} />
+      : null;
 
   // Each keyed viewer keeps its own session and actions. The list owns row order.
   useLayoutEffect(() => {

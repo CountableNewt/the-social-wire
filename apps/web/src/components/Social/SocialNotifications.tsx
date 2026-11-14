@@ -93,7 +93,7 @@ function SocialNotificationsViewer() {
       group,
       content: <>
         <SocialNotificationGroupHeader group={group} moderation={moderation} />
-        {item ? <InteractiveSocialPost item={item} moderation={moderation} showReplyParentActions /> : uri ? <SocialPostLink uri={uri} moderation={moderation} /> : null}
+        {item ? <InteractiveSocialPost item={item} moderation={moderation} showReplyParentActions replyAccounts={brandAccounts} /> : uri ? <SocialPostLink uri={uri} moderation={moderation} /> : null}
       </>,
       recipient: showRecipients ? "Personal Account" : undefined,
       key: `${session?.did}:${group.key}`,
