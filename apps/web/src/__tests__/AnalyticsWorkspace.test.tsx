@@ -38,6 +38,18 @@ const publicationReport: PublicationAnalyticsSummary = {
 };
 beforeEach(() => {
   brands = [];
+  const frameHandlers = {
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+  };
+  for (const [name, value] of Object.entries(frameHandlers)) {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    restores.push(() => {
+      if (previous) Object.defineProperty(globalThis, name, previous);
+      else Reflect.deleteProperty(globalThis, name);
+    });
+  }
   const brandSpy = spyOn(Brands, "useBrandAccounts").mockImplementation(() => brands); restores.push(() => brandSpy.mockRestore());
   auth = { session: { did: "did:plc:alice" }, isLoading: false } as ReturnType<typeof Auth.useAuth>;
   const authSpy = spyOn(Auth, "useAuth").mockImplementation(() => auth); restores.push(() => authSpy.mockRestore());
@@ -164,9 +176,10 @@ test("the Analytics route waits for authentication and redirects signed-out view
   render(<AnalyticsPage />); expect(screen.getByText("Log In to View Analytics.")).toBeTruthy();
 });
 
-test("switches floating account tabs with one dashboard and a shared time range", async () => {
+test("switches horizontal account tabs with one dashboard and a shared time range", async () => {
   brands = ["did:plc:brand"];
   const spy = await mount();
+  expect(screen.getByRole("tablist", { name: "Analytics Accounts" }).getAttribute("data-orientation")).toBe("horizontal");
   const personal = screen.getByRole("tab", { name: "Personal Account" });
   const brand = screen.getByRole("tab", { name: "did:plc:brand" });
   expect(personal.getAttribute("aria-selected")).toBe("true");
@@ -177,14 +190,14 @@ test("switches floating account tabs with one dashboard and a shared time range"
   expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
   expect(screen.getByRole("tabpanel").id).toBe(brand.getAttribute("aria-controls")!);
   expect(spy.mock.calls.at(-1)).toEqual([7, "did:plc:brand"]);
-  expect(spy.mock.calls.some(args => args[1] === "did:plc:brand")).toBe(true);
-  fireEvent.keyDown(brand, { key: "ArrowDown" });
-  expect(personal.getAttribute("aria-selected")).toBe("true");
-  expect(document.activeElement).toBe(personal);
+  act(() => brand.focus());
+  fireEvent.keyDown(brand, { key: "ArrowLeft" });
+  await waitFor(() => expect(personal.getAttribute("aria-selected")).toBe("true"));
+  await waitFor(() => expect(document.activeElement).toBe(personal));
   fireEvent.keyDown(personal, { key: "End" });
-  expect(document.activeElement).toBe(brand);
+  await waitFor(() => expect(document.activeElement).toBe(brand));
   fireEvent.keyDown(brand, { key: "Home" });
-  expect(document.activeElement).toBe(personal);
+  await waitFor(() => expect(document.activeElement).toBe(personal));
   expect(screen.queryByText("Combined Totals")).toBeNull();
 });
 
@@ -210,7 +223,7 @@ test("hides brand integrations and keeps personal Analytics when the flag is off
   brands = ["did:plc:brand"];
   const spy = await mount();
   expect(screen.queryByRole("link", { name: "Manage Delegated Accounts" })).toBeNull();
-  expect(screen.queryByRole("group", { name: "Accounts" })).toBeNull();
+  expect(screen.queryByRole("tablist", { name: "Analytics Accounts" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
   expect(screen.getByRole("region", { name: "Analytics for did:plc:alice" })).toBeTruthy();
   expect(spy.mock.calls.every(([, did]) => did === "did:plc:alice")).toBe(true);
