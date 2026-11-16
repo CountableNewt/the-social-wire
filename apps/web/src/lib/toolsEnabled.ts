@@ -6,3 +6,11 @@ export function toolsEnabled(): boolean {
   if (flag !== undefined) return flag === "true";
   return isNonProd(getAppEnv());
 }
+
+export function mediaEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_MEDIA_ENABLED !== "false";
+}
+
+export function livestreamEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_LIVESTREAM_ENABLED !== "false";
+}

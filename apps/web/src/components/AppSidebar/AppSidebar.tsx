@@ -45,6 +45,7 @@ import { sumUnreadForPublications } from "@/lib/unreadCounts";
 import { PublicationTabs } from "./PublicationTabs";
 import { SidebarSocialSection } from "./SidebarSocialSection";
 import { SidebarAudioSection } from "./SidebarAudioSection";
+import { mediaEnabled } from "@/lib/toolsEnabled";
 import { podcastsEnabled } from "@/lib/podcasts/playback";
 import { SidebarToolsSection } from "./SidebarToolsSection";
 import { SidebarTopicsSection } from "./SidebarTopicsSection";
@@ -438,7 +439,8 @@ export function AppSidebar({
   const displayPreferences = clientHydrated ? feedPreferences : DEFAULT_FEED_DISPLAY_PREFERENCES;
 
   if (displayPreferences.showPodcasts && podcastsEnabled()) visible.add("podcasts");
-  if (displayPreferences.showSocial) { visible.add("social"); visible.add("shortVideos"); visible.add("photos"); }
+  if (displayPreferences.showSocial) visible.add("social");
+  if (displayPreferences.showSocial && mediaEnabled()) { visible.add("shortVideos"); visible.add("photos"); }
 
   const selectTopLevelFeed = (feed: ReaderNavigationFeed) => {
     if (feed === "shortVideos" || feed === "photos") { setOpenMobile(false); router.push(feed === "photos" ? "/media/photos" : "/media/short-videos"); return; }
