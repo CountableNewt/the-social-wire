@@ -34,9 +34,9 @@ export function AnalyticsAccountSelection({ ownerDid }: { ownerDid: string }) {
               <Tabs.Tab
                 key={did}
                 value={did}
-                className="max-w-56 shrink-0 cursor-pointer rounded-md border-b-2 border-transparent px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-active:border-primary data-active:bg-muted data-active:text-foreground"
+                className="shrink-0 cursor-pointer rounded-lg border border-transparent px-3 py-2 text-left text-sm font-medium whitespace-nowrap text-sidebar-foreground hover:bg-sidebar-accent/65 hover:text-sidebar-accent-foreground focus-visible:outline-2 focus-visible:outline-sidebar-ring data-active:border-[var(--purple-border)] data-active:bg-[var(--purple-surface)] data-active:text-[var(--purple-foreground)] data-active:hover:bg-[var(--purple-surface)] data-active:hover:text-[var(--purple-foreground)] dark:hover:bg-sidebar-accent/48 dark:data-active:hover:bg-[var(--purple-surface)]"
               >
-                <span className="block truncate"><AnalyticsAccountIdentity did={did} personal={did === ownerDid} /></span>
+                <AnalyticsAccountIdentity did={did} personal={did === ownerDid} />
               </Tabs.Tab>
             ))}
           </Tabs.List>
