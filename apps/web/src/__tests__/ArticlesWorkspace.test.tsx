@@ -27,6 +27,7 @@ let storageError: string | undefined;
 let client: QueryClient;
 let scheduleRows: unknown[];
 let publishedRows: PublishedArticle[];
+let extraDrafts: ArticleDraft[];
 const scheduleArticle = mock(async (_input: unknown, _time: string): Promise<unknown> => { void _input; void _time; return {}; });
 const persist = mock(async () => {});
 const createDraft = mock(async (_publicationUri?: string) => { void _publicationUri; return storedDraft; });
@@ -49,6 +50,7 @@ beforeEach(() => {
   seed = { id: "draft", title: "Working Article", markdown: "# Article Body\n\nA private paragraph.", excerpt: "", path: "/working-article", tags: [], publicationUri: publications[0]!.uri, createdAt: "2026-10-10T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z", assets: [], revision: 1 };
   scheduleRows = [];
   publishedRows = [];
+  extraDrafts = [];
   scheduleArticle.mockReset(); scheduleArticle.mockResolvedValue({ scheduleUri: `at://${did}/at.skej.schedule/current` });
   const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
@@ -62,19 +64,19 @@ beforeEach(() => {
   const local = spyOn(Drafts, "useArticleDrafts").mockImplementation(() => {
     const [draft, setDraft] = useState(() => { storedDraft = seed; return seed; });
     const [syncing, setSyncing] = useState(false);
-    return { draft, drafts: [draft], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: selectDraft, create: createDraft, remove: async () => {} };
+    return { draft, drafts: [draft, ...extraDrafts], loading: false, status: storageError ? "Not Saved" : "Saved in This Browser", error: storageError, update: patch => { storedDraft = { ...storedDraft, ...patch }; setDraft(storedDraft); }, persist, syncing, refresh: async () => { setSyncing(true); await new Promise(resolve => setTimeout(resolve, 0)); setSyncing(false); }, select: selectDraft, create: createDraft, remove: async () => {} };
   }); restores.push(() => local.mockRestore());
   const pubs = spyOn(Publishing, "listArticlePublications").mockResolvedValue(publications); restores.push(() => pubs.mockRestore());
   const stored = spyOn(Storage, "getArticleDraft").mockImplementation(async () => storedDraft); restores.push(() => stored.mockRestore());
   const history = spyOn(Publishing, "listPublishedArticles").mockResolvedValue(publishedRows); restores.push(() => history.mockRestore());
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-async function show(openDraft = true) {
-  await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace /></SidebarProvider></QueryClientProvider>); });
-  await screen.findByRole("region", { name: "Article Library" });
+async function show(openDraft = true, initialDraftId?: string) {
+  await act(async () => { render(<QueryClientProvider client={client}><SidebarProvider><ArticlesWorkspace initialDraftId={initialDraftId} /></SidebarProvider></QueryClientProvider>); });
+  await screen.findByRole("region", { name: initialDraftId ? "Article Editor" : "Article Library" });
   if (openDraft) {
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${seed.title || "Untitled Article"}`) }));
     await waitFor(() => expect(screen.getByRole("option", { name: /^First Publication/ })).toBeTruthy());
   }
 }
@@ -557,7 +559,7 @@ describe("article publishing workspace", () => {
     const uri = `at://${did}/site.standard.document/stable-key`;
     publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title } });
     const publish = publishingSpy();
-    await show();
+    await show(false, seed.id);
     fireEvent.click(screen.getByRole("button", { name: "Check Publication" }));
     await waitFor(() => expect(storedDraft.publishedUri).toBe(uri));
     expect(storedDraft.publishingRecordKey).toBeUndefined();
@@ -573,7 +575,7 @@ describe("article publishing workspace", () => {
     const uri = `at://${did}/site.standard.document/stable-key`;
     publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title, ...record } });
     const publish = publishingSpy();
-    await show();
+    await show(false, seed.id);
     const link = await screen.findByRole("link", { name: "Open Article" });
     expect(link.getAttribute("href")).toBe(url);
     expect(link.getAttribute("target")).toBe("_blank");
@@ -587,7 +589,7 @@ describe("article publishing workspace", () => {
   it("does not offer an unsafe published article URL", async () => {
     seed.publishingRecordKey = "stable-key";
     publishedRows.push({ uri: `at://${did}/site.standard.document/stable-key`, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, url: "javascript:alert(1)" } });
-    await show();
+    await show(false, seed.id);
     expect(screen.queryByRole("link", { name: "Open Article" })).toBeNull();
     expect(screen.getByRole("button", { name: "Check Publication" })).toBeTruthy();
   });
@@ -699,13 +701,35 @@ describe("article publishing workspace", () => {
     const uri = `at://${did}/site.standard.document/stable-key`;
     publishedRows.push({ uri, cid: "existing", record: { $type: "site.standard.document", site: seed.publicationUri, title: seed.title } });
     const publish = publishingSpy();
+    const pending = Promise.withResolvers<PublishedArticle[]>();
+    const history = spyOn(Publishing, "listPublishedArticles").mockReturnValue(pending.promise);
+    restores.push(() => history.mockRestore());
     await show(false);
     fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    expect(screen.getByRole("status").textContent).toContain("Checking Publication Status");
+    expect(screen.queryByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeNull();
+    expect(screen.queryByText("Create an article to start writing.")).toBeNull();
+    pending.resolve(publishedRows);
     expect(await screen.findByText("Create an article to start writing.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Published" }));
     expect(await screen.findByRole("button", { name: new RegExp(`^${seed.title}`) })).toBeTruthy();
     expect(publish).not.toHaveBeenCalled();
+  });
+  it("keeps ordinary drafts visible while checking and retries failed publication checks", async () => {
+    seed.publishingRecordKey = "stable-key";
+    extraDrafts = [{ ...seed, id: "ordinary", title: "Ordinary Draft", publishingRecordKey: undefined }];
+    const history = spyOn(Publishing, "listPublishedArticles").mockRejectedValueOnce(new Error("Offline")).mockResolvedValue([]);
+    restores.push(() => history.mockRestore());
+    await show(false);
+    fireEvent.click(screen.getByRole("button", { name: "Drafts" }));
+    expect(screen.getByRole("button", { name: /^Ordinary Draft/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Working Article/ })).toBeNull();
+    await screen.findByText("Couldn’t Check Publication Status for Some Drafts.");
+    expect(screen.queryByRole("button", { name: /^Working Article/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: /^Working Article/ })).toBeTruthy();
+    expect(screen.getByText(/Publishing Requested/)).toBeTruthy();
   });
   it.each(["missing", "wrong-owner", "wrong-publication", "wrong-type"])("retains an uncertain publication in Drafts (%s)", async mismatch => {
     seed.publishingRecordKey = "stable-key";
