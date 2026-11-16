@@ -193,11 +193,11 @@ test("switches horizontal account tabs with one dashboard and a shared time rang
   act(() => brand.focus());
   fireEvent.keyDown(brand, { key: "ArrowLeft" });
   await waitFor(() => expect(personal.getAttribute("aria-selected")).toBe("true"));
-  await waitFor(() => expect(document.activeElement).toBe(personal));
+  await waitFor(() => expect(document.activeElement === personal).toBe(true));
   fireEvent.keyDown(personal, { key: "End" });
-  await waitFor(() => expect(document.activeElement).toBe(brand));
+  await waitFor(() => expect(document.activeElement === brand).toBe(true));
   fireEvent.keyDown(brand, { key: "Home" });
-  await waitFor(() => expect(document.activeElement).toBe(personal));
+  await waitFor(() => expect(document.activeElement === personal).toBe(true));
   expect(screen.queryByText("Combined Totals")).toBeNull();
 });
 
