@@ -102,7 +102,7 @@ function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?:
   }, [initialDraftId, draftsLoading, openRequestedDraft]);
   const session = () => { const value = getOAuthSession(); if (!value || value.did !== did) throw new Error("Log In Again to Continue."); return value; };
   const publications = useQuery({ queryKey: ["articles", did, "publications", oauthSessionReloadSeq], queryFn: ({ signal }) => listArticlePublications(session(), signal), retry: false });
-  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published" || (editorOpen && !!draft?.publishingRecordKey) || (tab === "drafts" && local.drafts.some(item => !!item.publishingRecordKey)), retry: false });
+  const history = useQuery({ queryKey: ["articles", did, "published", oauthSessionReloadSeq], queryFn: ({ signal }) => listPublishedArticles(session(), signal), enabled: tab === "published" || (editorOpen && !!draft?.publishingRecordKey) || (tab === "drafts" && local.drafts.some(item => !!item.publishingRecordKey && !item.publishedUri)), retry: false });
   const pendingArticle = draft?.publishingRecordKey ? history.data?.find(article => article.uri === `at://${did}/site.standard.document/${draft.publishingRecordKey}` && article.record.$type === "site.standard.document" && article.record.site === draft.publicationUri) : undefined;
   const pendingArticleUrl = pendingArticle ? publishedArticleUrl(pendingArticle, publications.data ?? []) : undefined;
   const publication = publications.data?.find(value => value.uri === draft?.publicationUri);
@@ -331,7 +331,7 @@ function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?:
     {!editorOpen && !publishedArticle ? <ArticleLibrary did={did} publications={publications.data ?? []} publicationsReady={!publications.isPending && !publications.error} tab={tab} onTabChange={setTab} drafts={local.drafts} loading={local.loading} busy={busy}
       onDeleteDraft={target => { setFailure(undefined); setDraftDeletion(target); }}
       onOpenDraft={id => { void perform(async () => { await local.select(id); setPublishedUrl(undefined); setPublishedArticle(undefined); setMetadataVisible(true); setEditorOpen(true); }); }}
-      published={history.data ?? []} publishedPending={history.isPending} publishedError={history.error} onOpenPublished={article => { setPublishedArticle(article); setEditingPublished(false); setMetadataVisible(true); }}
+      published={history.data ?? []} publishedPending={history.isPending} publishedFetching={history.isFetching} publishedError={history.error} onRetryPublished={() => { void history.refetch(); }} onOpenPublished={article => { setPublishedArticle(article); setEditingPublished(false); setMetadataVisible(true); }}
       onEditPublished={article => { setFailure(undefined); setPublishedArticle(article); setEditingPublished(true); }}
       onDeletePublished={article => { setFailure(undefined); setPublishedDeletion(article); }}
       research={<ResearchWorkspace did={did} />} scheduled={<ArticleScheduledList did={did} publications={publications.data ?? []} scheduler={scheduler} isPro={isPro} onCanceled={async item => {
