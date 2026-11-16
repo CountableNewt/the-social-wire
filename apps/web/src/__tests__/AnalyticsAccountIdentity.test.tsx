@@ -67,8 +67,18 @@ test("ignores an old profile response after the displayed account changes", asyn
   expect(requests[0].signal.aborted).toBe(true);
 });
 
-test("retains the compact label used by dormant account-picker checkboxes", async () => {
-  render(<label><input type="checkbox" /><AnalyticsAccountIdentity did={did} personal /></label>);
-  await waitFor(() => expect(screen.getByRole("checkbox", { name: "Alice Example (@alice.test) · Personal" })).toBeTruthy());
+test("uses the full display name as the account tab label", async () => {
+  const displayName = "Alice Example and the Very Long Newsroom Name";
+  respond = async () => Response.json({ ...profile, displayName });
+  render(<button role="tab"><AnalyticsAccountIdentity did={did} personal /></button>);
+  await waitFor(() => expect(screen.getByRole("tab").textContent).toBe(displayName));
   expect(screen.queryByRole("heading")).toBeNull();
+});
+
+test("uses the account DID when a delegated tab has no display name", async () => {
+  respond = async () => Response.json({ ...profile, displayName: " " });
+  await act(async () => {
+    render(<button role="tab"><AnalyticsAccountIdentity did={did} /></button>);
+  });
+  expect(screen.getByRole("tab").textContent).toBe(did);
 });
