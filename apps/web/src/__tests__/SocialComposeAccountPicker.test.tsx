@@ -26,7 +26,7 @@ test("keeps an unlinked selected actor instead of falling back to personal", asy
   const metadata = spyOn(profiles, "getBrandAccountPublicProfile").mockResolvedValue({ did: "did:plc:wrong", handle: "wrong.test" }); restores.push(() => metadata.mockRestore());
   render(<QueryClientProvider client={cache}><SocialComposeAccountPicker ownerDid="did:plc:owner" accounts={[]} actorDid="did:plc:removed" disabled onChange={() => { throw new Error("No Silent Selection"); }} /></QueryClientProvider>);
   expect((screen.getByRole("combobox", { name: "Post As" }) as HTMLSelectElement).value).toBe("did:plc:removed");
-  expect(screen.getByRole("option", { name: "Unlinked Brand Account" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: "Unlinked Delegated Account" })).toBeTruthy();
   expect(screen.queryByText(/wrong.test/)).toBeNull();
   expect(screen.getByRole("combobox").hasAttribute("disabled")).toBe(true);
 });

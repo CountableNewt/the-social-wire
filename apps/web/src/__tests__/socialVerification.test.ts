@@ -1,5 +1,5 @@
 import { afterEach, expect, it, spyOn } from "bun:test";
-import { loadCustomVerifications, parseVerificationPreferences, verificationLabel, type VerificationSubject } from "@/lib/socialVerification";
+import { loadCustomVerifications, parseVerificationPreferences, verificationIssuers, verificationLabel, type VerificationSubject } from "@/lib/socialVerification";
 const issuer = "did:plc:abcdefghijklmnopqrstuvwx", did = "did:plc:bcdefghijklmnopqrstuvwxy";
 const preferences = { includesBlueskyVerification: true, trustedVerifierDIDs: [issuer] };
 const subject: VerificationSubject = { did, handle: "person.test", displayName: "Person" };
@@ -16,6 +16,13 @@ it("accepts custom issuers only while subject, handle and display name still mat
   expect(verificationLabel(subject, preferences, [verification])).toBe("Verified by a Custom Trusted Verifier");
   for (const patch of [{ subject: issuer }, { handle: "old.test" }, { displayName: "Previous Name" }, { issuer: did }]) expect(verificationLabel(subject, preferences, [{ ...verification, ...patch }])).toBeUndefined();
   expect(verificationLabel(subject, { ...preferences, trustedVerifierDIDs: [] }, [verification])).toBeUndefined();
+});
+it("lists only valid enabled issuers and deduplicates official and custom verifiers", () => {
+  const official = { issuer, uri: verification.uri, isValid: true, createdAt: "2026-11-07T00:00:00Z" };
+  const verified = { ...subject, verification: { verifiedStatus: "valid", trustedVerifierStatus: "none", verifications: [official, { ...official, issuer: did, isValid: false }] } };
+  expect(verificationIssuers(verified, preferences, [verification, verification])).toEqual([issuer]);
+  expect(verificationIssuers(verified, { includesBlueskyVerification: false, trustedVerifierDIDs: [] }, [verification])).toEqual([]);
+  expect(verificationIssuers({ ...verified, verification: { ...verified.verification, verifiedStatus: "invalid" } }, preferences, [{ ...verification, handle: "old.test" }])).toEqual([]);
 });
 it("normalizes local preferences and removes duplicate or invalid verifier IDs", () => {
   expect(parseVerificationPreferences(JSON.stringify({ includesBlueskyVerification: false, trustedVerifierDIDs: [issuer, issuer, "bad", 1] }))).toEqual({ includesBlueskyVerification: false, trustedVerifierDIDs: [issuer] });

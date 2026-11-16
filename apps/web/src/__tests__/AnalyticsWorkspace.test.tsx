@@ -38,6 +38,18 @@ const publicationReport: PublicationAnalyticsSummary = {
 };
 beforeEach(() => {
   brands = [];
+  const frameHandlers = {
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+  };
+  for (const [name, value] of Object.entries(frameHandlers)) {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    restores.push(() => {
+      if (previous) Object.defineProperty(globalThis, name, previous);
+      else Reflect.deleteProperty(globalThis, name);
+    });
+  }
   const brandSpy = spyOn(Brands, "useBrandAccounts").mockImplementation(() => brands); restores.push(() => brandSpy.mockRestore());
   auth = { session: { did: "did:plc:alice" }, isLoading: false } as ReturnType<typeof Auth.useAuth>;
   const authSpy = spyOn(Auth, "useAuth").mockImplementation(() => auth); restores.push(() => authSpy.mockRestore());
@@ -164,18 +176,41 @@ test("the Analytics route waits for authentication and redirects signed-out view
   render(<AnalyticsPage />); expect(screen.getByText("Log In to View Analytics.")).toBeTruthy();
 });
 
-test("selects brand account reports and removes deselected reports without combined totals", async () => {
+test("switches horizontal account tabs with one dashboard and a shared time range", async () => {
   brands = ["did:plc:brand"];
   const spy = await mount();
-  expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
-  fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
-  expect(screen.getByRole("region", { name: "Analytics for did:plc:brand" })).toBeTruthy();
-  expect(spy.mock.calls.some(args => args[1] === "did:plc:brand")).toBe(true);
-  fireEvent.click(screen.getByRole("checkbox", { name: "Personal Account" }));
-  expect(screen.queryByRole("region", { name: "Analytics for did:plc:alice" })).toBeNull();
+  expect(screen.getByRole("tablist", { name: "Analytics Accounts" }).getAttribute("data-orientation")).toBe("horizontal");
+  const personal = screen.getByRole("tab", { name: "Personal Account" });
+  const brand = screen.getByRole("tab", { name: "did:plc:brand" });
+  expect(personal.getAttribute("aria-selected")).toBe("true");
+  expect(spy.mock.calls.every(args => args[1] === "did:plc:alice")).toBe(true);
+  fireEvent.change(screen.getByRole("combobox", { name: "Analytics Time Range" }), { target: { value: "7" } });
+  fireEvent.click(brand);
+  expect(brand.getAttribute("aria-selected")).toBe("true");
+  expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+  expect(screen.getByRole("tabpanel").id).toBe(brand.getAttribute("aria-controls")!);
+  expect(spy.mock.calls.at(-1)).toEqual([7, "did:plc:brand"]);
+  act(() => brand.focus());
+  fireEvent.keyDown(brand, { key: "ArrowLeft" });
+  await waitFor(() => expect(personal.getAttribute("aria-selected")).toBe("true"));
+  await waitFor(() => expect(document.activeElement === personal).toBe(true));
+  fireEvent.keyDown(personal, { key: "End" });
+  await waitFor(() => expect(document.activeElement === brand).toBe(true));
+  fireEvent.keyDown(brand, { key: "Home" });
+  await waitFor(() => expect(document.activeElement === personal).toBe(true));
   expect(screen.queryByText("Combined Totals")).toBeNull();
-  fireEvent.click(screen.getByRole("checkbox", { name: "did:plc:brand" }));
-  expect(screen.getByText("Select Accounts to View Analytics.")).toBeTruthy();
+});
+
+test("falls back to personal analytics when the active delegated account is unlinked", async () => {
+  brands = ["did:plc:brand", "did:plc:brand"];
+  hook();
+  const view = render(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
+  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  fireEvent.click(screen.getByRole("tab", { name: "did:plc:brand" }));
+  brands = [];
+  view.rerender(<SidebarProvider><AnalyticsPage /></SidebarProvider>);
+  expect(screen.getByRole("tab", { name: "Personal Account" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
 });
 
 
@@ -187,8 +222,8 @@ test("hides brand integrations and keeps personal Analytics when the flag is off
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   brands = ["did:plc:brand"];
   const spy = await mount();
-  expect(screen.queryByRole("link", { name: "Manage Brand Accounts" })).toBeNull();
-  expect(screen.queryByRole("group", { name: "Accounts" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Manage Delegated Accounts" })).toBeNull();
+  expect(screen.queryByRole("tablist", { name: "Analytics Accounts" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Analytics for did:plc:brand" })).toBeNull();
   expect(screen.getByRole("region", { name: "Analytics for did:plc:alice" })).toBeTruthy();
   expect(spy.mock.calls.every(([, did]) => did === "did:plc:alice")).toBe(true);

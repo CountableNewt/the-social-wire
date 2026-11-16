@@ -22,8 +22,89 @@ final class XRPCClient {
         self.transport = transport
     }
 
+    var currentViewerDID: String? { auth.session?.did }
+
     func currentDID() async throws -> String {
         try await auth.validSession().did
+    }
+
+    /// Raw XRPC envelopes let Quill's shared sources decode their own lexicon models while
+    /// keeping signing, service proxying, nonce recovery, and account ownership here.
+    func socialServiceGetData(method: String, service: String, query: [String: String] = [:], labelers: [String] = [], expectedViewer: String) async throws -> Data {
+        try await socialRequestData(method: method, service: service, query: query, labelers: labelers, expectedViewer: expectedViewer)
+    }
+
+    func socialServicePostData(method: String, service: String, body: Data, expectedViewer: String) async throws -> Data {
+        try await socialRequestData(method: method, service: service, body: body, expectedViewer: expectedViewer)
+    }
+
+    func socialPDSGetData(method: String, query: [String: String] = [:], expectedViewer: String) async throws -> Data {
+        try await socialRequestData(method: method, query: query, expectedViewer: expectedViewer)
+    }
+
+    func socialPDSPostData(method: String, body: Data, expectedViewer: String) async throws -> Data {
+        try await socialRequestData(method: method, body: body, expectedViewer: expectedViewer)
+    }
+
+    func socialUploadBlobData(data: Data, mimeType: String, expectedViewer: String) async throws -> Data {
+        try await socialRequestData(method: "com.atproto.repo.uploadBlob", body: data,
+                                    contentType: mimeType, expectedViewer: expectedViewer)
+    }
+
+    func socialPublicPDSGetData(repo: String, method: String, query: [String: String], expectedViewer: String) async throws -> Data {
+        try requireSocialViewer(expectedViewer)
+        let base = try await resolver.resolvePDSURL(did: repo)
+        try requireSocialViewer(expectedViewer)
+        var request = URLRequest(url: try xrpcURL(base: base, method: method, query: query.mapValues(Optional.some)))
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await transport(request)
+        try requireSocialViewer(expectedViewer)
+        guard let http = response as? HTTPURLResponse else { throw SocialWireError.badResponse("Missing response.") }
+        return try checkedSocialData(data, response: http, method: method)
+    }
+
+    private func socialRequestData(method: String, service: String? = nil, query: [String: String] = [:], labelers: [String] = [],
+                                   body: Data? = nil, contentType: String = "application/json",
+                                   expectedViewer: String) async throws -> Data {
+        try requireSocialViewer(expectedViewer)
+        let session = try await auth.validSession()
+        guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+        var request = URLRequest(url: try xrpcURL(base: session.pdsURL, method: method, query: query.mapValues(Optional.some)))
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let service { request.setValue(service, forHTTPHeaderField: "atproto-proxy") }
+        if !labelers.isEmpty { request.setValue(labelers.joined(separator: ", "), forHTTPHeaderField: "atproto-accept-labelers") }
+        if let body {
+            request.httpMethod = "POST"
+            request.httpBody = body
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+        do {
+            let (data, response) = try await sendAuthorized(request, session: session)
+            try requireSocialViewer(expectedViewer)
+            return try checkedSocialData(data, response: response, method: method)
+        } catch {
+            let failure = error as NSError
+            Self.logger.error("Social XRPC \(method, privacy: .public) failed before decoding: \(failure.domain, privacy: .public) \(failure.code)")
+            throw error
+        }
+    }
+
+    private func requireSocialViewer(_ expectedViewer: String) throws {
+        guard auth.session?.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+        try Task.checkCancellation()
+    }
+
+    private func checkedSocialData(_ data: Data, response: HTTPURLResponse, method: String) throws -> Data {
+        guard (200..<300).contains(response.statusCode) else {
+            // Log only the method/status and a bounded protocol error code, never credentials
+            // or the response body (which may include private social content).
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let rawCode = object?["error"] as? String ?? "Unknown"
+            let code = String(rawCode.prefix(64).filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") })
+            Self.logger.error("Social XRPC \(method, privacy: .public) failed: HTTP \(response.statusCode), code \(code, privacy: .public)")
+            throw SocialWireError.badResponse("XRPC request failed with HTTP \(response.statusCode).")
+        }
+        return data
     }
 
     func publicGet<T: Decodable>(_ base: URL, method: String, query: [String: String?] = [:]) async throws -> T {
@@ -56,6 +137,25 @@ final class XRPCClient {
         return try await sendWithDPoPRetry(request, session: session)
     }
 
+    func authorizedServiceProxyPost<Body: Encodable, T: Decodable>(
+        method: String,
+        service: String,
+        body: Body,
+        expectedViewer: String? = nil
+    ) async throws -> T {
+        let session = try await auth.validSession()
+        if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
+        let url = try xrpcURL(base: session.pdsURL, method: method)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(service, forHTTPHeaderField: "atproto-proxy")
+        request.httpBody = try jsonEncoder.encode(body)
+        try await sign(&request, session: session)
+        return try await sendWithDPoPRetry(request, session: session)
+    }
+
     func authorizedPost<Body: Encodable, T: Decodable>(_ base: URL, method: String, body: Body, expectedViewer: String? = nil) async throws -> T {
         let session = try await auth.validSession()
         if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
@@ -70,8 +170,9 @@ final class XRPCClient {
     }
 
     /// Signed `com.atproto.repo.getRecord` for the signed-in user's repo. Returns **`nil`** when the record does not exist (404).
-    func authorizedRepoGetRecord<Value: Decodable>(collection: String, rkey: String) async throws -> RepoRecord<Value>? {
+    func authorizedRepoGetRecord<Value: Decodable>(collection: String, rkey: String, expectedViewer: String? = nil) async throws -> RepoRecord<Value>? {
         let session = try await auth.validSession()
+        if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
         let query: [String: String?] = [
             "repo": session.did,
             "collection": collection,
@@ -228,7 +329,7 @@ final class XRPCClient {
     }
 
     private func readStateRequest(url: URL, session: AuthSession, body: Data?) async throws -> (Data, HTTPURLResponse) {
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false, preemptsBackground: body != nil) { [self] in
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }
@@ -273,8 +374,43 @@ final class XRPCClient {
         return StrongRef(uri: response.uri, cid: response.cid)
     }
 
-    func uploadBlob(data: Data, mimeType: String) async throws -> ATProtoBlob {
+    /// A stable key makes retries safe even when the PDS committed but its response was lost.
+    /// Never overwrite a record occupying the key; reconcile only an exact matching payload.
+    func createRecordOnce(collection: String, rkey: String, record: [String: JSONValue], expectedViewer: String) async throws -> StrongRef {
+        func readback() async throws -> StrongRef? {
+            let existing: RepoRecord<[String: JSONValue]>? = try await authorizedRepoGetRecord(
+                collection: collection, rkey: rkey, expectedViewer: expectedViewer)
+            guard currentViewerDID == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+            guard let existing else { return nil }
+            guard existing.uri == "at://\(expectedViewer)/\(collection)/\(rkey)",
+                  existing.value == record, let cid = existing.cid, !cid.isEmpty else {
+                throw SocialWireError.badResponse("A Different Post Already Uses This Draft's Record Key.")
+            }
+            return StrongRef(uri: existing.uri, cid: cid)
+        }
+        if let reference = try await readback() { return reference }
         let session = try await auth.validSession()
+        guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+        do {
+            let response: CreateRecordResponse = try await authorizedPost(
+                session.pdsURL, method: "com.atproto.repo.createRecord",
+                body: CreateRecordRequest(repo: expectedViewer, collection: collection, record: AnyEncodable(record), rkey: rkey),
+                expectedViewer: expectedViewer)
+            guard currentViewerDID == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
+            guard response.uri == "at://\(expectedViewer)/\(collection)/\(rkey)", !response.cid.isEmpty else {
+                throw SocialWireError.badResponse("The Published Post Response Was Invalid.")
+            }
+            return StrongRef(uri: response.uri, cid: response.cid)
+        } catch {
+            let failure = error
+            if let reference = try await readback() { return reference }
+            throw failure
+        }
+    }
+
+    func uploadBlob(data: Data, mimeType: String, expectedViewer: String? = nil) async throws -> ATProtoBlob {
+        let session = try await auth.validSession()
+        if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
         let url = try xrpcURL(base: session.pdsURL, method: "com.atproto.repo.uploadBlob")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -315,7 +451,7 @@ final class XRPCClient {
     }
 
     private func sendAuthorized(_ request: URLRequest, session: AuthSession) async throws -> (Data, HTTPURLResponse) {
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false, preemptsBackground: request.httpMethod != "GET") { [self] in
             guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
                 throw ReadStateSyncFailure.accountChanged
             }
@@ -402,6 +538,7 @@ private struct CreateRecordRequest: Encodable {
     let repo: String
     let collection: String
     let record: AnyEncodable
+    var rkey: String? = nil
 }
 
 private struct CreateRecordResponse: Decodable {

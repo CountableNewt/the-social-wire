@@ -24,6 +24,28 @@ struct NewsSceneModelTests {
         return (model, transport)
     }
 
+    @Test("Selecting the current aggregate clears a stale publication")
+    func aggregateSelectionClearsStalePublication() async throws {
+        let (model, _) = try await wireFixture(replies: [])
+        defer { model.authService.signOut() }
+        for source in [ReaderListSource.subscribed, .following] {
+            model.readerListSource = source
+            model.feedSelection = .topLevel(source)
+            model.selectedPublication = DiscoveredPublication(
+                publicationId: "at://did:plc:author/site.standard.publication/test",
+                authorDid: "did:plc:author", authorHandle: "author.test",
+                title: "Publication", discoveredAt: "2026-11-04T00:00:00Z"
+            )
+            model.entries = [EntryListItem(entryId: "stale-publication-entry", title: "Stale Story", summary: nil,
+                                           publishedAt: "2026-11-04T00:00:00Z", thumbnailUrl: nil, thumbnailFallbackUrl: nil)]
+            model.selectReaderListSource(source)
+            #expect(model.entries.isEmpty)
+            #expect(model.feedSelection == .topLevel(source))
+            #expect(model.selectedPublication == nil)
+            #expect(model.selectedSidebar == nil)
+        }
+    }
+
     @Test("Selecting Wire schedules no detached feed load before the destination task")
     func wireSelectionDoesNotSpawnRequest() async throws {
         let (model, transport) = try await wireFixture(replies: [])
@@ -57,25 +79,25 @@ struct NewsSceneModelTests {
 
     @Test("Tabs keep their editorial order while gated destinations are omitted")
     func availableTabOrder() {
-        #expect(NewsTab.available(wire: true, circle: true, finance: true, sports: true, podcasts: true) == NewsTab.allCases)
+        #expect(NewsTab.available(wire: true, circle: true, finance: true, sports: true, podcasts: true) == [.podcasts, .library, .saved, .search])
         #expect(
             NewsTab.available(wire: false, circle: false)
                 == [.library, .saved, .search]
         )
     }
 
-    @Test("Circle stays reachable while its catalog loads or lacks stories")
+    @Test("Retired Circle stays omitted regardless of catalog state")
     func circleNavigationDoesNotRequireAvailableStories() {
         for available in [false, true] {
             let catalog = CircleFeedCatalog(
                 enabled: true, available: available, title: "Your Circle", subtitle: "",
                 supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
             )
-            #expect(NewsTab.available(
+            #expect(!NewsTab.available(
                 preferences: .defaults, wireCatalog: nil, circleCatalog: catalog
             ).contains(.circle))
         }
-        #expect(NewsTab.available(
+        #expect(!NewsTab.available(
             preferences: .defaults, wireCatalog: nil, circleCatalog: nil
         ).contains(.circle))
     }
@@ -96,12 +118,12 @@ struct NewsSceneModelTests {
         ).contains(.circle))
     }
 
-    @Test("Primary slots stay stable while catalogs load and honor resolved gates")
+    @Test("Retired primary slots stay omitted while catalogs load or become available")
     func primarySlotsRespectCatalogAvailability() {
         let model = SocialWireAppModel()
         model.loadPrimaryTabPreferences()
-        #expect(model.primaryTabFeeds.contains(.wire))
-        #expect(model.primaryTabFeeds.contains(.circle))
+        #expect(!model.primaryTabFeeds.contains(.wire))
+        #expect(!model.primaryTabFeeds.contains(.circle))
 
         model.wireCatalog = WireFeedCatalog(
             enabled: true, available: true, title: "The Wire", subtitle: "",
@@ -112,7 +134,7 @@ struct NewsSceneModelTests {
             supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
         )
         model.loadPrimaryTabPreferences()
-        #expect(model.primaryTabFeeds.contains(.wire))
+        #expect(!model.primaryTabFeeds.contains(.wire))
         #expect(!model.primaryTabFeeds.contains(.circle))
 
         model.circleCatalog = CircleFeedCatalog(
@@ -122,7 +144,7 @@ struct NewsSceneModelTests {
         model.feedPreferences.showWire = false
         model.loadPrimaryTabPreferences()
         #expect(!model.primaryTabFeeds.contains(.wire))
-        #expect(model.primaryTabFeeds.contains(.circle))
+        #expect(!model.primaryTabFeeds.contains(.circle))
     }
 
     @Test("Podcast navigation honors section visibility while preserving other destinations")
@@ -148,7 +170,7 @@ struct NewsSceneModelTests {
         scene.select(.podcasts, availableTabs: visible)
         scene.navigate(to: .settings, in: .podcasts)
         scene.updateContext(viewerDID: "did:plc:viewer", availableTabs: hidden)
-        #expect(scene.selectedTab == .wire)
+        #expect(scene.selectedTab == .library)
         #expect(scene.activeRoute == .settings)
     }
 

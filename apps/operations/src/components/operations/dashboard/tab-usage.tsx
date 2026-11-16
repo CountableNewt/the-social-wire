@@ -1,7 +1,7 @@
 import { OperationsSection } from "@/components/operations/operations-section"
 import type { TabUsageSummary } from "@/lib/operations-types"
 
-const labels: Record<string, string> = { home: "Home", wire: "The Wire", circle: "Your Circle", "live-post": "Live Post", "brand-accounts": "Brand Accounts", "content-calendar": "Content Calendar" }
+const labels: Record<string, string> = { home: "Home", wire: "The Wire", circle: "Your Circle", "live-post": "Live Post", "brand-accounts": "Delegated Accounts", "content-calendar": "Content Calendar" }
 const label = (tab: string) => labels[tab] ?? tab[0].toUpperCase() + tab.slice(1)
 const duration = (ms: number) => `${(ms / 60_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} min`
 

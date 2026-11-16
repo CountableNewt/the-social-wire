@@ -9,8 +9,8 @@ import { composeExternalEmbed, type ComposeLinkPreview } from "@/lib/blueskyExte
 import { postTextLength } from "@/lib/blueskyComposeClient";
 
 export async function publishBrandPost(args: { session: OAuthSession; text: string; linkPreview?: ComposeLinkPreview; parent?: AppBskyFeedDefs.PostView; assertCurrentActor: () => void }) {
-  const assertAvailable = () => { if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment."); args.assertCurrentActor(); };
-  if (!brandAccountsEnabled()) throw new Error("Brand Accounts Are Not Available In This Environment.");
+  const assertAvailable = () => { if (!brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available In This Environment."); args.assertCurrentActor(); };
+  if (!brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available In This Environment.");
   const length = postTextLength(args.text);
   if (!compilePostText(args.text).text.trim() || length.graphemes > 300 || length.bytes > 3000) throw new Error("Posts Must Contain 1–300 Characters and At Most 3,000 UTF-8 Bytes.");
   let reply;

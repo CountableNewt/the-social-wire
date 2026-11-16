@@ -33,7 +33,7 @@ describe("reader feed selection storage", () => {
     expect(loadReaderFeedSelection(storage)).toBe("subscribed");
   });
 
-  it.each(["wire", "circle"])("falls back from a previously persisted %s selection", feed => {
+  it.each(["wire", "circle", "finance", "sports"])("falls back from a previously persisted %s selection", feed => {
     expect(loadReaderFeedSelection({ getItem: key => key === READER_FEED_SELECTION_STORAGE_KEY ? feed : null })).toBe("subscribed");
   });
 

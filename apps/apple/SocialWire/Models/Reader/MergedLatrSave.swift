@@ -4,6 +4,48 @@ enum MergedLatrSave: Identifiable, Codable, Equatable, Hashable, Sendable {
     case external(MergedLatrExternalSave)
     case native(MergedLatrNativeSave)
 
+    var needsPreview: Bool {
+        switch self {
+        case .external(let save):
+            return save.title?.isEmpty != false || save.image?.isEmpty != false
+        case .native(let save):
+            return save.title?.isEmpty != false || save.image?.isEmpty != false
+        }
+    }
+
+    /// Enrichment fills display fields without replacing bookmark state or tags.
+    func mergingPreview(_ metadata: LatrSaveMetadata) -> MergedLatrSave {
+        func filled(_ current: String?, _ fallback: String?) -> String? {
+            if let current, !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return current
+            }
+            guard let fallback, !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return fallback
+        }
+        switch self {
+        case .external(var save):
+            save.title = filled(save.title, metadata.title)
+            save.excerpt = filled(save.excerpt, metadata.excerpt)
+            save.image = filled(save.image, metadata.image)
+            save.site = filled(save.site, metadata.site)
+            save.author = filled(save.author, metadata.author)
+            save.publishedAt = filled(save.publishedAt, metadata.publishedAt)
+            save.linkedWebUrl = filled(save.linkedWebUrl, metadata.linkedWebUrl)
+            return .external(save)
+        case .native(var save):
+            save.title = filled(save.title, metadata.title)
+            save.excerpt = filled(save.excerpt, metadata.excerpt)
+            save.image = filled(save.image, metadata.image)
+            save.site = filled(save.site, metadata.site)
+            save.author = filled(save.author, metadata.author)
+            save.publishedAt = filled(save.publishedAt, metadata.publishedAt)
+            save.linkedWebUrl = filled(save.linkedWebUrl, metadata.linkedWebUrl)
+            return .native(save)
+        }
+    }
+
     var id: String {
         switch self {
         case .external(let save): "external:\(save.normalizedUrl)"

@@ -6,7 +6,7 @@ import {
   DialogClose,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { ActorTypeaheadInput } from "@/components/ActorTypeaheadInput";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
@@ -55,17 +55,12 @@ export function PublicationAuthFields({
       ) : null}
       <div className="space-y-1.5">
         <Label htmlFor={handleId}>Bluesky or ATProto handle</Label>
-        <Input
+        <ActorTypeaheadInput
           id={handleId}
-          type="text"
-          name="publication-authorize-handle"
-          autoCapitalize="none"
-          autoCorrect="off"
           autoComplete="username"
-          spellCheck={false}
           placeholder="you.bsky.social"
           value={handle}
-          onChange={(ev) => setHandle(ev.target.value)}
+          onValueChange={setHandle}
           disabled={busy}
           required
         />

@@ -1,0 +1,16 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.getShows
+  type: http
+  seq: 311
+}
+
+get {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.getShows
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}

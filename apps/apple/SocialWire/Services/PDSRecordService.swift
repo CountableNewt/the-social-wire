@@ -80,15 +80,16 @@ final class PDSRecordService {
         return page.records
     }
 
-    func createPublicationSubscription(publication: String) async throws {
+    func createPublicationSubscription(publication: String, expectedViewer: String? = nil) async throws {
         try await xrpc.createRecord(
             collection: Self.standardSiteSubscription,
-            record: PublicationSubscriptionRecord(type: Self.standardSiteSubscription, publication: publication)
+            record: PublicationSubscriptionRecord(type: Self.standardSiteSubscription, publication: publication),
+            expectedViewer: expectedViewer
         )
     }
 
-    func deletePublicationSubscription(rkey: String) async throws {
-        try await xrpc.deleteRecord(collection: Self.standardSiteSubscription, rkey: rkey)
+    func deletePublicationSubscription(rkey: String, expectedViewer: String? = nil) async throws {
+        try await xrpc.deleteRecord(collection: Self.standardSiteSubscription, rkey: rkey, expectedViewer: expectedViewer)
     }
 
     func listSkyreaderSubscriptions() async throws -> [RepoRecord<SkyreaderFeedSubscriptionRecord>] {
@@ -182,7 +183,7 @@ final class PDSRecordService {
         return records
     }
 
-    func toggleStandardSiteRecommendation(documentURI: String) async throws -> Bool {
+    func toggleStandardSiteRecommendation(documentURI: String, expectedViewer: String? = nil) async throws -> Bool {
         guard let normalizedDocument = StandardSiteRecommendationContract.documentURI(from: documentURI) else {
             throw SocialWireError.invalidATURI
         }
@@ -193,7 +194,8 @@ final class PDSRecordService {
             for record in existing {
                 try await xrpc.deleteRecord(
                     collection: Self.standardSiteRecommend,
-                    rkey: rkey(from: record.uri)
+                    rkey: rkey(from: record.uri),
+                    expectedViewer: expectedViewer
                 )
             }
             return false
@@ -205,7 +207,8 @@ final class PDSRecordService {
                 type: Self.standardSiteRecommend,
                 document: normalizedDocument,
                 createdAt: DateFormatters.string()
-            )
+            ),
+            expectedViewer: expectedViewer
         )
         return true
     }
@@ -250,6 +253,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: prev?.showTopLevelFeedUnreadCounts,
             feedsWithUnreadCounts: prev?.feedsWithUnreadCounts,
             rssArticleOpenMode: prev?.rssArticleOpenMode,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )
@@ -277,6 +281,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: !preferences.feedsWithUnreadCounts.isEmpty,
             feedsWithUnreadCounts: preferences.feedsWithUnreadCounts.map(\.preferenceKey),
             rssArticleOpenMode: preferences.articleOpenMode.rawValue,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )
@@ -308,6 +313,7 @@ final class PDSRecordService {
             showTopLevelFeedUnreadCounts: prev?.showTopLevelFeedUnreadCounts,
             feedsWithUnreadCounts: prev?.feedsWithUnreadCounts,
             rssArticleOpenMode: mode.rawValue,
+            automaticallyMarkAsRead: prev?.automaticallyMarkAsRead,
             createdAt: prev?.createdAt ?? now,
             updatedAt: now
         )

@@ -282,11 +282,11 @@ struct ImageCacheRequestSharingTests {
         #expect(await downloader.completedFilesAreRemoved)
     }
 
-    @Test("Failed shared downloads release all callers and can retry")
+    @Test("Failed shared downloads release all callers and can retry with cooldown disabled")
     func failureCanRetry() async throws {
         let downloader = try ImageCacheTestDownloader()
         defer { downloader.removeFixture() }
-        let cache = ImageCacheService(download: { try await downloader.download($0) })
+        let cache = ImageCacheService(failureCooldown: 0, download: { try await downloader.download($0) })
         let first = Task { await cache.image(for: url, maxPixelSize: 96) != nil }
         let second = Task { await cache.image(for: url, maxPixelSize: 96) != nil }
         try await waitUntil { await cache.pendingRequestCount == 2 }

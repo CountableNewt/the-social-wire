@@ -70,7 +70,7 @@ struct PodcastEmbeddedChapterArtworkTests {
     let result = PodcastEmbeddedChapterArtwork.enrich(episode: item, images: images)
     let route = try #require(result.chapters[0].artworkUrl)
     let components = try #require(URLComponents(string: route))
-    #expect(components.path == "/v1/podcasts/image")
+    #expect(components.path == "/xrpc/app.thesocialwire.podcast.getImage")
     #expect(components.queryItems?.first(where: { $0.name == "episodeId" })?.value == item.id)
     #expect(components.queryItems?.first(where: { $0.name == "index" })?.value == "0")
     #expect(result.chapters[1].artworkUrl == item.chapters[1].artworkUrl)

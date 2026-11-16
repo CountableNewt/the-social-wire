@@ -81,6 +81,7 @@ describe("standalone CI path detection", () => {
     "services/appview/bin/backend-supervisor",
     "services/podcast-worker/src/index.ts",
     "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
+  "packages/swift/skej-backend/Sources/SkejBackend/EmbeddedSkejBackend.swift",
     "scripts/migrations/postgres_to_sqlite.py",
     "database/migrations/20990101000000_example.sql",
     "railway/appview-standalone.json",
@@ -96,15 +97,14 @@ describe("standalone CI path detection", () => {
     "packages/lexicons/lexicons/article.json",
     "packages/spec/__tests__/example.test.ts",
     "apps/apple/SocialWire/Feature.swift",
-    "scripts/go/check-out-swift-contracts.py",
-    "packages/go/migration/extracted-swift-packages.json",
+    "packages/swift/extracted-swift-packages.json",
     "services/gateway/Sources/Gateway/GatewayCommand.swift",
     "services/indexing-worker/Tests/WorkerTests/RuntimeTests.swift",
     "railway/web.json",
   ])("retains cross-client/source contracts without distributed runtime jobs for %s", path => {
     expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request"))).toEqual({ web: "true", appview: "false" });
   });
-  it.each(["scripts/ci/verify-runtime-images.mjs", "scripts/ci/verify-runtime-images.test.mjs", "scripts/ci/development-parity.mjs"])("checks both packaged verifiers when %s changes", path => {
+  it.each(["scripts/ci/verify-runtime-images.mjs", "scripts/ci/verify-runtime-images.test.mjs", "scripts/ci/development-parity.mjs", "scripts/ci/check-out-swift-contracts.py"])("checks both packaged verifiers when %s changes", path => {
     expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true"]);
   });
   it.each([".github/workflows/ci.yml", ".github/workflows/validated-merge.yml", "scripts/ci-detect-changes.sh"])("requires every runtime check when shared gate %s changes", path => {

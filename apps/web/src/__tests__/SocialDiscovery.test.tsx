@@ -1,6 +1,5 @@
 import * as Tools from "@/lib/toolsEnabled";
 import * as Brands from "@/hooks/useBrandAccounts";
-import * as BrandNotifications from "@/components/Social/BrandNotificationSections";
 import { afterEach, beforeEach, expect, it, mock, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -80,17 +79,18 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); queryClient.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
 
-it("restores Explore search and type from its return URL and persists submitted changes", async () => {
+it("restores a legacy Explore search URL, searches both types and persists the query", async () => {
   restoreSpy(spyOn(Navigation, "useSearchParams").mockReturnValue(new URLSearchParams({ q: "trees", type: "people" }) as ReturnType<typeof Navigation.useSearchParams>));
   const fetch = spyOn(Client, "getSocialExplorePage").mockResolvedValue({ actors: [actor], posts: [] });
   restoreSpy(fetch);
   render(<SocialExplore />, { wrapper: Wrapper });
   await screen.findByText("Other");
   expect((screen.getByRole("textbox", { name: "Search Bluesky" }) as HTMLInputElement).value).toBe("trees");
-  expect(fetch.mock.calls[0]![0]).toMatchObject({ query: "trees", kind: "people" });
+  expect(fetch.mock.calls.some(call => call[0].query === "trees" && call[0].kind === "people")).toBe(true);
+  expect(fetch.mock.calls.some(call => call[0].query === "trees" && call[0].kind === "posts")).toBe(true);
   fireEvent.change(screen.getByRole("textbox", { name: "Search Bluesky" }), { target: { value: "forest" } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
-  expect(replaceRoute).toHaveBeenCalledWith("/social/explore?q=forest&type=people", { scroll: false });
+  expect(replaceRoute).toHaveBeenCalledWith("/social/explore?q=forest", { scroll: false });
 });
 
 it("Explore performs real suggestions, submitted post search, people search and pagination", async () => {
@@ -103,24 +103,30 @@ it("Explore performs real suggestions, submitted post search, people search and 
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
   await screen.findByText("first");
   expect(fetch.mock.calls.some(call => call[0].query === "science" && call[0].kind === "posts")).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Load More" }));
+  expect(await screen.findByText("Search Person")).toBeTruthy();
+  expect(fetch.mock.calls.some(call => call[0].query === "science" && call[0].kind === "people")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Load More Posts" }));
   await screen.findByText("second");
-  fireEvent.click(screen.getByRole("button", { name: "People" }));
-  await screen.findByText("Search Person");
-  expect(screen.queryByText("first")).toBeNull();
+  expect(screen.getByText("Search Person")).toBeTruthy();
+  expect(screen.getByText("first")).toBeTruthy();
+  expect(fetch.mock.calls.filter(call => call[0].query === "science" && call[0].kind === "people")).toHaveLength(1);
 });
 
 it("Explore filters blocked posts and actors and fails closed when moderation refresh fails", async () => {
+  restoreSpy(spyOn(Navigation, "useSearchParams").mockReturnValue(new URLSearchParams({ q: "secret" }) as ReturnType<typeof Navigation.useSearchParams>));
   const blocked = { ...actor, displayName: "Blocked Person", viewer: { blocking: "at://did:plc:alice/app.bsky.graph.block/one" } };
   const catalog = spyOn(Catalog, "getBlueskySocialCatalog").mockResolvedValue({ feeds: [], moderation: safety(alice) }); restoreSpy(catalog);
   const fetch = spyOn(Client, "getSocialExplorePage").mockResolvedValue({ actors: [blocked], posts: [post("secret", blocked)] }); restoreSpy(fetch);
   render(<SocialExplore />, { wrapper: Wrapper });
-  await screen.findByText("No suggestions to show right now.");
+  await screen.findByText("No matching people to show.");
+  await screen.findByText("No matching posts to show.");
   expect(screen.queryByText("Blocked Person")).toBeNull(); expect(screen.queryByText("secret")).toBeNull();
   catalog.mockRejectedValue(new Error("Your moderation settings could not be loaded. Please retry."));
   await act(async () => { await queryClient.invalidateQueries({ queryKey: ["blueskySocial", alice, "catalog"] }); });
   expect(await screen.findByText("Explore Unavailable")).toBeTruthy();
-  expect(screen.getByRole("region", { name: "Suggested People" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Explore Unavailable" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "People" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Posts" })).toBeNull();
 });
 
 it("Notifications shows unread rows and hydrated interactive posts, then marks seen explicitly", async () => {
@@ -194,7 +200,7 @@ it("unsupported Explore service shows an error instead of a successful empty sta
   render(<SocialExplore />, { wrapper: Wrapper });
   expect(await screen.findByText("Explore is not supported by this server.")).toBeTruthy();
   expect(screen.queryByText("No suggestions to show right now.")).toBeNull();
-  expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Retry Suggested People" })).toBeTruthy();
 });
 
 it("notifications paginate, deduplicate overlap and stop rendering after moderation failure", async () => {
@@ -228,12 +234,13 @@ it("notification mark-seen failure retains unread rows and allows another attemp
 });
 
 
-it("Trending Topics updates Posts search and the shareable Explore URL", async () => {
+it("Trending Topics searches posts and people and updates the shareable Explore URL", async () => {
   const fetch = spyOn(Client, "getSocialExplorePage").mockResolvedValue({ actors: [], posts: [] }); restoreSpy(fetch);
   render(<SocialExplore />, { wrapper: Wrapper });
   fireEvent.click(await screen.findByRole("button", { name: "Trending Science" }));
   await waitFor(() => expect(fetch.mock.calls.some(call => call[0].query === "science" && call[0].kind === "posts")).toBe(true));
-  expect(replaceRoute).toHaveBeenCalledWith("/social/explore?q=science&type=posts", { scroll: false });
+  await waitFor(() => expect(fetch.mock.calls.some(call => call[0].query === "science" && call[0].kind === "people")).toBe(true));
+  expect(replaceRoute).toHaveBeenCalledWith("/social/explore?q=science", { scroll: false });
   expect((screen.getByRole("textbox", { name: "Search Bluesky" }) as HTMLInputElement).value).toBe("science");
   expect(screen.queryByText("Trending Topics")).toBeNull();
 });
@@ -250,17 +257,6 @@ it("groups Explore search, trends, feeds and people into separate cards", async 
   }
 });
 
-it("keeps personal notifications available without rendering linked-brand controls when Tools is disabled", async () => {
-  restoreSpy(spyOn(Tools, "toolsEnabled").mockReturnValue(false));
-  restoreSpy(spyOn(Brands, "useBrandAccounts").mockReturnValue(["did:plc:brand"]));
-  const brands = spyOn(BrandNotifications, "BrandNotificationSections").mockReturnValue(<p>Brand Tools</p>); restoreSpy(brands);
-  restoreSpy(spyOn(Client, "getSocialNotificationsPage").mockResolvedValue({ notifications: [], posts: [] }));
-  restoreSpy(spyOn(Client, "getSocialNotificationUnread").mockResolvedValue(0));
-  render(<SocialNotifications />, { wrapper: Wrapper });
-  await screen.findByText("No notifications to show.");
-  expect(brands).not.toHaveBeenCalled();
-  expect(screen.queryByText("Brand Tools")).toBeNull();
-});
 
 it("automatically marks loaded notifications seen only after two visible seconds at their loaded boundary", async () => {
   const clock = pageReadClock();
@@ -339,4 +335,15 @@ it("updates cached notifications strictly before seenAt while preserving later a
   await act(async () => { await result.current.mutateAsync(seenAt); });
   const cached = queryClient.getQueryData<{ pages: Client.SocialNotificationPage[] }>(key)!;
   expect(cached.pages[0]!.notifications.map(row => row.isRead)).toEqual([true, false, false]);
+});
+
+
+it("keeps personal notifications available without rendering linked-brand controls when Tools is disabled", async () => {
+  restoreSpy(spyOn(Tools, "toolsEnabled").mockReturnValue(false));
+  restoreSpy(spyOn(Brands, "useBrandAccounts").mockReturnValue(["did:plc:brand"]));
+  restoreSpy(spyOn(Client, "getSocialNotificationsPage").mockResolvedValue({ notifications: [], posts: [] }));
+  restoreSpy(spyOn(Client, "getSocialNotificationUnread").mockResolvedValue(0));
+  render(<SocialNotifications />, { wrapper: Wrapper });
+  await screen.findByText("No notifications to show.");
+  expect(screen.queryByRole("checkbox", { name: "Include Delegated Accounts" })).toBeNull();
 });

@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.deleteClip",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Remove Podcast Clips",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "clipId"
+          ],
+          "properties": {
+            "clipId": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

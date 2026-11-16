@@ -1,0 +1,23 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.retryJob
+  type: http
+  seq: 318
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.retryJob
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "jobId": "{{podcastJobId}}"
+}
+}

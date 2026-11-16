@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useWireEdition } from "@/hooks/useWireEdition";
 import { useWireFeedEntries } from "@/hooks/useWireFeed";
 import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
+import { WireBetaBadge } from "@/components/Wire/WireBetaBadge";
 import { useCircleEdition } from "@/hooks/useCircleFeed";
 import { editorialFeedForReadRoute } from "@/lib/editorialFeedRoute";
 import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
@@ -92,8 +93,16 @@ export function ReadArticleFilterBar() {
     const title = isCircle ? "Your Circle" : "The Wire";
     return (
       <FeedHeader
-        className="xl:mr-[calc(19rem+2rem)]"
-        title={title}
+        className="xl:mr-[calc(19rem+3rem)]"
+        title={
+          <span
+            aria-label={`${title}, Beta`}
+            className="inline-flex items-center gap-2"
+          >
+            <span>{title}</span>
+            <WireBetaBadge />
+          </span>
+        }
       >
         <Button
           type="button"

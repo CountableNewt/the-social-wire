@@ -9,20 +9,14 @@ import {
 } from "bun:test";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { OAuthSession } from "@atproto/oauth-client-browser";
 import type { ReactNode } from "react";
 
-import * as DisplayPreferences from "@/hooks/useFeedDisplayPreferences";
-import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
-import * as Runtime from "@/lib/pdsReadStateRuntime";
-import * as PendingRead from "@/hooks/usePendingPDSReadState";
-import * as SyncNotice from "@/components/Account/PDSReadStateSyncNotice";
-import * as Thin from "@/lib/thinAppViewClient";
-import * as RssReader from "@/components/EntryDetail/RssArticleReaderDialog";
-import { ARTICLE_LIST_FILTER_STORAGE_KEY } from "@/lib/articleListFilterStorage";
 import { ReadRouteProvider } from "@/contexts/ReadRouteContext";
 import * as AuthHook from "@/hooks/useAuth";
 import * as EntryListModule from "@/components/EntryList/EntryList";
+import * as RssReaderModule from "@/components/EntryDetail/RssArticleReaderDialog";
+import * as FeedPreferences from "@/hooks/useFeedDisplayPreferences";
+import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import * as WireEditionHook from "@/hooks/useWireEdition";
 import type { EntryListItem } from "@/lib/atprotoClient";
 import * as ResolveEntryOpenURL from "@/lib/resolveEntryOpenUrl";
@@ -42,6 +36,12 @@ beforeAll(() => {
 
 let restoreAuthSpy: (() => void) | undefined;
 let restoreEntryListSpy: (() => void) | undefined;
+let restorePreferencesSpy: (() => void) | undefined;
+let automaticallyMarkAsRead: boolean | undefined = true;
+let automaticReadReady = true;
+let rssArticleOpenMode: "original" | "reader" = "original";
+let viewerDid = "did:plc:viewer";
+let oauthSessionReloadSeq = 0;
 let resolveEntryOpenUrlFromPds: ReturnType<
   typeof spyOn<typeof ResolveEntryOpenURL, "resolveEntryOpenUrlFromPds">
 >;
@@ -54,12 +54,20 @@ beforeEach(() => {
   window.localStorage.clear();
   renderedEntry = unresolvedEntry;
   renderedEntryListProps = {};
+  viewerDid = "did:plc:viewer";
+  oauthSessionReloadSeq = 0;
+  automaticallyMarkAsRead = true;
+  automaticReadReady = true;
+  rssArticleOpenMode = "original";
+  const preferencesSpy = spyOn(FeedPreferences, "useFeedDisplayPreferences").mockImplementation(() => ({ preferences: { ...DEFAULT_FEED_DISPLAY_PREFERENCES, automaticallyMarkAsRead, rssArticleOpenMode }, automaticReadReady }) as ReturnType<typeof FeedPreferences.useFeedDisplayPreferences>);
+  restorePreferencesSpy = () => preferencesSpy.mockRestore();
   const entryListSpy = spyOn(EntryListModule, "EntryList").mockImplementation(renderEntryList);
   restoreEntryListSpy = () => entryListSpy.mockRestore();
-  const authSpy = spyOn(AuthHook, "useAuth").mockReturnValue({
-    session: { did: "did:plc:viewer" },
+  const authSpy = spyOn(AuthHook, "useAuth").mockImplementation(() => ({
+    session: { did: viewerDid },
     getOAuthSession: () => null,
-  } as ReturnType<typeof AuthHook.useAuth>);
+    oauthSessionReloadSeq,
+  } as ReturnType<typeof AuthHook.useAuth>));
   restoreAuthSpy = () => authSpy.mockRestore();
   resolveEntryOpenUrlFromPds = spyOn(
     ResolveEntryOpenURL,
@@ -98,6 +106,8 @@ afterEach(() => {
   restoreAuthSpy = undefined;
   restoreEntryListSpy?.();
   restoreEntryListSpy = undefined;
+  restorePreferencesSpy?.();
+  restorePreferencesSpy = undefined;
   resolveEntryOpenUrlFromPds.mockRestore();
   useWireEdition.mockRestore();
 });
@@ -113,6 +123,10 @@ let renderedEntryListProps: {
   wireFeed?: boolean;
   readIndicatorsEnabled?: boolean;
   articleFilter?: string;
+  isEntryRead?: (entryId: string) => boolean;
+  markEntryRead?: (entryId: string) => void;
+  markEntryUnread?: (entryId: string) => void;
+  resolvingEntryId?: string | null;
 } = {};
 
 function wireEditionPageForEntry(entry: EntryListItem): WireEditionPage {
@@ -149,23 +163,30 @@ function wireEditionPageForEntry(entry: EntryListItem): WireEditionPage {
 
 const renderEntryList = ({
     onSelectEntry,
-    markEntryUnread,
     resolvingEntryId,
     wireFeed,
     readIndicatorsEnabled,
     articleFilter,
+    isEntryRead,
+    markEntryRead,
+    markEntryUnread,
+    selectedEntryId,
   }: {
     onSelectEntry: (entryId: string, entry?: EntryListItem) => void;
-    markEntryUnread: (entryId: string) => void;
     resolvingEntryId?: string | null;
     wireFeed?: boolean;
     readIndicatorsEnabled?: boolean;
     articleFilter?: string;
+    isEntryRead?: (entryId: string) => boolean;
+    markEntryRead?: (entryId: string) => void;
+    markEntryUnread?: (entryId: string) => void;
+    selectedEntryId?: string | null;
   }) => (
-    <>
     <button
       type="button"
       data-testid="entry-row"
+      data-entry-id={renderedEntry.entryId}
+      aria-pressed={selectedEntryId === renderedEntry.entryId}
       aria-busy={resolvingEntryId === renderedEntry.entryId || undefined}
       onClick={() => onSelectEntry(renderedEntry.entryId, renderedEntry)}
       ref={() => {
@@ -173,13 +194,15 @@ const renderEntryList = ({
           wireFeed,
           readIndicatorsEnabled,
           articleFilter,
+          isEntryRead,
+          markEntryRead,
+          markEntryUnread,
+          resolvingEntryId,
         };
       }}
     >
       {renderedEntry.title}
     </button>
-    <button data-testid="mark-unread" onClick={() => markEntryUnread(renderedEntry.entryId)}>Mark As Unread</button>
-    </>
   );
 
 const { default: ReadPubPage } = await import(
@@ -216,6 +239,7 @@ function stubWindowOpen(): { tabs: OpenedTab[]; restore: () => void } {
     // that needs the handle to navigate the tab later must not pass them.
     if (features && /\bno(opener|referrer)\b/.test(features)) return null;
     return {
+      get closed() { return tab.closed; },
       close: () => {
         tab.closed = true;
       },
@@ -297,7 +321,7 @@ describe("ReadPubPage entry open fallback", () => {
     render(<ReadPubPage wireFeed />, { wrapper: Wrapper });
 
     expect(screen.getByTestId("entry-row")).toBeDefined();
-    expect(renderedEntryListProps).toEqual({
+    expect(renderedEntryListProps).toMatchObject({
       wireFeed: true,
       readIndicatorsEnabled: false,
       articleFilter: "all",
@@ -355,91 +379,182 @@ describe("ReadPubPage entry open fallback", () => {
   });
 });
 
-function mutationHarness() {
-  let oauth = { did: "did:plc:viewer" } as unknown as OAuthSession;
-  const getOAuthSession = () => oauth;
-  const read = spyOn(Thin, "writeThroughReadMark").mockResolvedValue();
-  const unread = spyOn(Thin, "writeThroughReadMarkDelete").mockResolvedValue();
-  const spies = [
-    spyOn(AuthHook, "useAuth").mockImplementation(() => ({ session: { did: oauth.did }, getOAuthSession } as ReturnType<typeof AuthHook.useAuth>)),
-    spyOn(DisplayPreferences, "useFeedDisplayPreferences").mockReturnValue({ preferences: { ...DEFAULT_FEED_DISPLAY_PREFERENCES, rssArticleOpenMode: "reader" } } as ReturnType<typeof DisplayPreferences.useFeedDisplayPreferences>),
-    spyOn(Runtime, "pdsReadStateEnabled").mockReturnValue(false),
-    spyOn(Runtime, "usesPDSReadState").mockResolvedValue(false),
-    spyOn(PendingRead, "usePendingPDSReadState").mockReturnValue(new Map()),
-    spyOn(SyncNotice, "PDSReadStateSyncNotice").mockReturnValue(null),
-    spyOn(Thin, "isThinAppViewEnabled").mockReturnValue(true),
-    spyOn(RssReader, "RssArticleReaderDialog").mockImplementation(({ open, onClose }) => <>{open ? <button data-testid="close-reader" onClick={onClose}>Close Reader</button> : null}</>),
-    read, unread,
-  ];
-  return { read, unread, restore() { spies.forEach(spy => spy.mockRestore()); }, switchAccount() { oauth = { did: "did:plc:other" } as unknown as OAuthSession; } };
-}
-function persistedRead(entryId: string) { return JSON.parse(window.localStorage.getItem(READ_STATE_STORAGE_KEY) ?? "{}")[entryId]; }
-it("does not replay an old async article-open read over a newer explicit unread", async () => {
-  const mutations = mutationHarness(); const tabs = stubWindowOpen();
-  let finish!: (url: string) => void;
-  resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-  try {
-    renderedEntry = { ...unresolvedEntry, isRead: true };
-    const page = renderPage(); await act(async () => {});
-    act(() => screen.getByTestId("entry-row").click());
-    act(() => screen.getByTestId("mark-unread").click());
-    await waitFor(() => expect(mutations.unread).toHaveBeenCalledTimes(1));
-    await act(async () => finish("https://example.com/resolved"));
-    expect(tabs.tabs[0].location.href).toBe("https://example.com/resolved");
-    expect(mutations.read).not.toHaveBeenCalled();
-    expect(persistedRead(unresolvedEntry.entryId)).toBeUndefined();
-    page.unmount(); renderPage(); await act(async () => {});
-    expect(persistedRead(unresolvedEntry.entryId)).toBeUndefined();
-  } finally { tabs.restore(); mutations.restore(); }
-});
-it("discards an old account's unresolved article-open completion", async () => {
-  const mutations = mutationHarness(); const tabs = stubWindowOpen(); let finish!: (url: string) => void;
-  resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-  try {
-    const page = renderPage(); await act(async () => {});
-    act(() => screen.getByTestId("entry-row").click());
-    act(() => { mutations.switchAccount(); page.rerender(<ReadPubPage pubId="at://did:plc:alice/site.standard.publication/main" />); });
-    await act(async () => finish("https://example.com/resolved"));
-    expect(mutations.read).not.toHaveBeenCalled(); expect(tabs.tabs[0].closed).toBe(true);
-  } finally { tabs.restore(); mutations.restore(); }
-});
-for (const explicitUnread of [false, true]) {
-  it(`RSS deferred close ${explicitUnread ? "preserves a newer explicit unread" : "still marks an untouched article read"}`, async () => {
-    const mutations = mutationHarness();
-    renderedEntry = { ...unresolvedEntry, entryId: "rssentry:article", originalUrl: "https://example.com/rss" };
-    window.localStorage.setItem(ARTICLE_LIST_FILTER_STORAGE_KEY, "unread");
-    try {
-      renderPage(); await act(async () => {});
-      act(() => screen.getByTestId("entry-row").click());
-      expect(mutations.read).not.toHaveBeenCalled();
-      if (explicitUnread) {
-        act(() => screen.getByTestId("mark-unread").click());
-        await waitFor(() => expect(mutations.unread).toHaveBeenCalledTimes(1));
-      }
-      act(() => screen.getByTestId("close-reader").click()); await act(async () => {});
-      expect(mutations.read.mock.calls.length).toBe(explicitUnread ? 0 : 1);
-    } finally { mutations.restore(); }
-  });
-}
+describe("automatic article read setting", () => {
+  const first = { ...unresolvedEntry, originalUrl: "https://example.com/first" };
+  const second = { ...first, entryId: "at://did:plc:alice/site.standard.document/entry-2", originalUrl: "https://example.com/second" };
+  const publication = "at://did:plc:alice/site.standard.publication/main";
+  const stored = (id: string) => JSON.parse(window.localStorage.getItem(READ_STATE_STORAGE_KEY) ?? "{}")[id];
 
-for (const explicitUnread of [false, true]) {
-  it(`switching RSS articles ${explicitUnread ? "preserves the previous article's newer unread" : "still marks the previous article read"}`, async () => {
-    const mutations = mutationHarness();
-    const firstId = "rssentry:first"; const secondId = "rssentry:second";
-    renderedEntry = { ...unresolvedEntry, entryId: firstId, originalUrl: "https://example.com/first" };
-    window.localStorage.setItem(ARTICLE_LIST_FILTER_STORAGE_KEY, "unread");
+  it.each([true, undefined])("automatically marks successful external opens when enabled or unset (%s)", enabled => {
+    automaticallyMarkAsRead = enabled;
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
     try {
-      renderPage(); await act(async () => {});
+      renderPage();
       act(() => screen.getByTestId("entry-row").click());
-      if (explicitUnread) {
-        act(() => screen.getByTestId("mark-unread").click());
-        await waitFor(() => expect(mutations.unread).toHaveBeenCalledTimes(1));
-      }
-      renderedEntry = { ...renderedEntry, entryId: secondId, originalUrl: "https://example.com/second" };
-      act(() => screen.getByTestId("entry-row").click()); await act(async () => {});
-      expect(mutations.read.mock.calls.map(([, id]) => id)).toEqual(explicitUnread ? [] : [firstId]);
-      act(() => screen.getByTestId("close-reader").click()); await act(async () => {});
-      expect(mutations.read.mock.calls.map(([, id]) => id)).toEqual(explicitUnread ? [secondId] : [firstId, secondId]);
-    } finally { mutations.restore(); }
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(true);
+      expect(screen.getByTestId("entry-row").getAttribute("aria-pressed")).toBe("false");
+    } finally { restore(); }
   });
-}
+  it("never automatically marks while disabled, including outside clicks, page departure, or another open", async () => {
+    automaticallyMarkAsRead = false;
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      await act(async () => { window.dispatchEvent(new window.Event("focus")); document.body.click(); window.dispatchEvent(new window.Event("pagehide")); });
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+      renderedEntry = second;
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.isEntryRead!(second.entryId)).toBe(false);
+      page.rerender(<ReadPubPage pubId="another-publication" />);
+      page.unmount();
+      expect(stored(first.entryId)).toBeUndefined();
+      expect(stored(second.entryId)).toBeUndefined();
+    } finally { restore(); }
+  });
+  it("waits for known preferences before applying the default automatic behavior", () => {
+    automaticReadReady = false;
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
+    try {
+      renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+      act(() => renderedEntryListProps.markEntryRead!(first.entryId));
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(true);
+    } finally { restore(); }
+  });
+  it("keeps explicit mark-as-read and unread actions available when disabled", () => {
+    automaticallyMarkAsRead = false;
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      act(() => renderedEntryListProps.markEntryRead!(first.entryId));
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(true);
+      act(() => renderedEntryListProps.markEntryUnread!(first.entryId));
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+      page.unmount();
+      expect(stored(first.entryId)).toBeUndefined();
+    } finally { restore(); }
+  });
+  it.each([true, false])("applies the setting to RSS reader opens and does not mark on close (%s)", enabled => {
+    automaticallyMarkAsRead = enabled;
+    rssArticleOpenMode = "reader";
+    renderedEntry = { ...first, entryId: "rssentry:one" };
+    const reader = spyOn(RssReaderModule, "RssArticleReaderDialog").mockImplementation(({ open, onClose }) => <>{open ? <button onClick={onClose}>Close Reader</button> : null}</>);
+    try {
+      renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.isEntryRead!(renderedEntry.entryId)).toBe(enabled);
+      if (enabled) act(() => renderedEntryListProps.markEntryUnread!(renderedEntry.entryId));
+      act(() => screen.getByRole("button", { name: "Close Reader" }).click());
+      expect(renderedEntryListProps.isEntryRead!(renderedEntry.entryId)).toBe(false);
+    } finally { reader.mockRestore(); }
+  });
+  it("can re-enable automatic marking for subsequent opens", () => {
+    automaticallyMarkAsRead = false;
+    renderedEntry = first;
+    const { restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+      automaticallyMarkAsRead = true;
+      page.rerender(<ReadPubPage pubId={publication} />);
+      renderedEntry = second;
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.isEntryRead!(second.entryId)).toBe(true);
+      expect(renderedEntryListProps.isEntryRead!(first.entryId)).toBe(false);
+    } finally { restore(); }
+  });
+  it("honors disabling automatic marking while a PDS URL is still resolving", async () => {
+    let resolve: (url: string) => void = () => {};
+    resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise<string>(done => { resolve = done; }));
+    const { tabs, restore } = stubWindowOpen();
+    try {
+      renderedEntry = unresolvedEntry;
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      automaticallyMarkAsRead = false;
+      page.rerender(<ReadPubPage pubId={publication} />);
+      await act(async () => resolve("https://example.com/resolved"));
+      expect(tabs[0]?.location.href).toBe("https://example.com/resolved");
+      expect(renderedEntryListProps.isEntryRead!(unresolvedEntry.entryId)).toBe(false);
+      page.unmount();
+      expect(stored(unresolvedEntry.entryId)).toBeUndefined();
+    } finally { restore(); }
+  });
+  it("preserves an explicit unread choice made during delayed URL resolution", async () => {
+    let resolve: (url: string) => void = () => {};
+    resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise<string>(done => { resolve = done; }));
+    const { restore } = stubWindowOpen();
+    try {
+      renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      act(() => renderedEntryListProps.markEntryUnread!(unresolvedEntry.entryId));
+      await act(async () => resolve("https://example.com/resolved"));
+      expect(renderedEntryListProps.isEntryRead!(unresolvedEntry.entryId)).toBe(false);
+    } finally { restore(); }
+  });
+  it("does not mark an article after a blocked popup", () => {
+    renderedEntry = first;
+    const popup = spyOn(window, "open").mockReturnValue(null);
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      expect(screen.getByRole("status").textContent).toContain("Allow Pop-Ups");
+      page.unmount();
+      expect(stored(first.entryId)).toBeUndefined();
+    } finally { popup.mockRestore(); }
+  });
+  it.each(["account", "session"])("rejects delayed automatic marks after a %s change", async change => {
+    let resolve: (url: string) => void = () => {};
+    resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise<string>(done => { resolve = done; }));
+    const { tabs, restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      if (change === "account") viewerDid = "did:plc:other";
+      else oauthSessionReloadSeq++;
+      page.rerender(<ReadPubPage pubId={publication} />);
+      await act(async () => resolve("https://example.com/stale"));
+      expect(tabs[0]?.closed).toBe(true);
+      expect(stored(unresolvedEntry.entryId)).toBeUndefined();
+    } finally { restore(); }
+  });
+  it("closes obsolete resolutions without replacing the newly opened article", async () => {
+    let resolve: (url: string) => void = () => {};
+    resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise<string>(done => { resolve = done; }));
+    const { tabs, restore } = stubWindowOpen();
+    try {
+      renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      renderedEntry = second;
+      act(() => screen.getByTestId("entry-row").click());
+      expect(renderedEntryListProps.resolvingEntryId).toBeNull();
+      await act(async () => resolve("https://example.com/obsolete"));
+      expect(tabs[0]?.closed).toBe(true);
+      expect(tabs[0]?.location.href).toBe("");
+      expect(renderedEntryListProps.isEntryRead!(unresolvedEntry.entryId)).toBe(false);
+      expect(renderedEntryListProps.isEntryRead!(second.entryId)).toBe(true);
+    } finally { restore(); }
+  });
+  it("does not mark a pending tab closed during URL resolution", async () => {
+    let resolve: (url: string) => void = () => {};
+    resolveEntryOpenUrlFromPds.mockImplementation(() => new Promise<string>(done => { resolve = done; }));
+    const { tabs, restore } = stubWindowOpen();
+    try {
+      const page = renderPage();
+      act(() => screen.getByTestId("entry-row").click());
+      tabs[0]!.closed = true;
+      await act(async () => resolve("https://example.com/closed"));
+      expect(tabs[0]?.location.href).toBe("");
+      page.unmount();
+      expect(stored(unresolvedEntry.entryId)).toBeUndefined();
+    } finally { restore(); }
+  });
+});

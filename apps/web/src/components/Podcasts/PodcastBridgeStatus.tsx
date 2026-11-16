@@ -26,14 +26,14 @@ export function PodcastBridgeStatus({
       try {
         const result = await podcastRequest<BridgeJob>(
           oauth,
-          `jobs?showId=${encodeURIComponent(show.id)}`,
+          `getJob?showId=${encodeURIComponent(show.id)}`,
         );
         if (cancelled) return;
         setJob(result);
         if (result.status === "complete" && !linked) {
           const catalog = await podcastRequest<{ shows: PodcastShow[] }>(
             oauth,
-            "shows",
+            "getShows",
           );
           const mirrored = catalog.shows.find((item) => item.id === show.id);
           if (mirrored?.sourceUri && !cancelled) {
@@ -63,7 +63,7 @@ export function PodcastBridgeStatus({
           onClick={() => {
             const oauth = getOAuthSession();
             if (oauth)
-              void podcastRequest(oauth, "jobs", "POST", { jobId: job.id })
+              void podcastRequest(oauth, "retryJob", "POST", { jobId: job.id })
                 .then(() => setJob({ ...job, status: "queued" }))
                 .catch((reason) => setError(String(reason)));
           }}

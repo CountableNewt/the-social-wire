@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.listClips",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read Podcast Clips",
+      "parameters": {
+        "type": "params",
+        "properties": {}
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { AppBskyFeedPost, AppBskyFeedDefs, type ModerationOpts } from "@atproto/api";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
+import { AppBskyFeedDefs, type ModerationOpts } from "@atproto/api";
 import { MessagesSquare } from "lucide-react";
 import { SocialAuthorThreadIndicator } from "./SocialAuthorThreadIndicator";
 import { SocialPostCard } from "./SocialPostCard";
@@ -11,12 +12,12 @@ import { moderateSocialPost } from "./socialModeration";
 import { socialReplyMetadata } from "@/lib/socialReplyMetadata";
 import { isSocialInteractionHidden } from "@/lib/socialInteractionModeration";
 
-export function InteractiveSocialPost({ item, moderation, showReplyParentActions = true }: { item: AppBskyFeedDefs.FeedViewPost; moderation: ModerationOpts; showReplyParentActions?: boolean }) {
+export function InteractiveSocialPost({ item, moderation, showReplyParentActions = true, replyAccounts }: { item: AppBskyFeedDefs.FeedViewPost; moderation: ModerationOpts; showReplyParentActions?: boolean; replyAccounts?: string[] }) {
   const resolvedItem = { ...item, reply: socialReplyMetadata(item) };
   const navigation = useSocialPostNavigation();
   if (isSocialInteractionHidden(resolvedItem, moderation)) return null;
   const content = moderateSocialPost(item.post, moderation).ui("contentList");
-  const showContext = !content.filter && !content.blur && !content.noOverride && AppBskyFeedPost.validateRecord(item.post.record).success;
+  const showContext = !content.filter && !content.blur && !content.noOverride && validateSocialPostRecord(item.post.record).success;
   const grouped = showContext && !!resolvedItem.reply && !(AppBskyFeedDefs.isPostView(resolvedItem.reply.parent) && resolvedItem.reply.parent.uri === item.post.uri);
   const parent = resolvedItem.reply && AppBskyFeedDefs.isPostView(resolvedItem.reply.parent) ? resolvedItem.reply.parent : undefined;
   const root = resolvedItem.reply?.root;
@@ -28,7 +29,7 @@ export function InteractiveSocialPost({ item, moderation, showReplyParentActions
       <span>Conversation</span>
     </p> : null}
     {showContext ? <SocialAuthorThreadIndicator item={resolvedItem} moderation={moderation} onOpen={navigation.openPost} /> : null}
-    {grouped && resolvedItem.reply ? <SocialReplyContext reply={resolvedItem.reply} postUri={item.post.uri} moderation={moderation} onOpenPost={openPost} onShowThread={() => navigation.openPost(threadUri)} parentActions={showReplyParentActions && parent ? <SocialPostActions post={parent} moderation={moderation} /> : undefined} /> : null}
-    <SocialPostCard embedded={grouped} item={resolvedItem} moderation={moderation} onOpen={() => openPost(item.post)} onOpenPost={openPost} actions={<SocialPostActions post={item.post} moderation={moderation} />} />
+    {grouped && resolvedItem.reply ? <SocialReplyContext reply={resolvedItem.reply} postUri={item.post.uri} moderation={moderation} onOpenPost={openPost} onShowThread={() => navigation.openPost(threadUri)} parentActions={showReplyParentActions && parent ? <SocialPostActions replyAccounts={replyAccounts} post={parent} moderation={moderation} /> : undefined} /> : null}
+    <SocialPostCard embedded={grouped} item={resolvedItem} moderation={moderation} onOpen={() => openPost(item.post)} onOpenPost={openPost} actions={<SocialPostActions replyAccounts={replyAccounts} post={item.post} moderation={moderation} />} />
   </div>;
 }

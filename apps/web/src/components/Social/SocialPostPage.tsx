@@ -1,8 +1,9 @@
 "use client";
 
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { AppBskyFeedDefs, AppBskyFeedPost } from "@atproto/api";
+import { AppBskyFeedDefs } from "@atproto/api";
 import { ArrowLeft } from "lucide-react";
 import { FeedHeader } from "@/components/FeedHeader/FeedHeader";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ function SocialPostViewer({ uri }: { uri: string | null | undefined }) {
           {!replies.length ? <p className="text-sm text-muted-foreground">No replies yet.</p> : replies.map(({ post, parent, depth, hasMore }) => {
             if (isSocialInteractionHidden({ post, reply: { root: { ...root.post, $type: "app.bsky.feed.defs#postView" }, parent: { ...parent, $type: "app.bsky.feed.defs#postView" } } }, moderation)) return null;
             const content = moderateSocialPost(post, moderation).ui("contentList");
-            const showMore = hasMore && !content.filter && !content.blur && !content.noOverride && AppBskyFeedPost.validateRecord(post.record).success;
+            const showMore = hasMore && !content.filter && !content.blur && !content.noOverride && validateSocialPostRecord(post.record).success;
             return <div key={post.uri} data-thread-post-uri={post.uri} data-reply-depth={depth} className={`min-w-0 ${depth > 0 ? "border-l-2 border-border pl-2 sm:pl-3" : ""} ${socialThreadReplyIndent(depth)}`}>
               <SocialPostCard item={{ post, reply: { root: { ...root.post, $type: "app.bsky.feed.defs#postView" }, parent: { ...parent, $type: "app.bsky.feed.defs#postView" } } }} moderation={moderation} onOpen={() => openPost(post)} onOpenPost={openPost} actions={<SocialPostActions post={post} moderation={moderation} />} />
               {showMore ? <Button data-thread-show-more variant="ghost" className="mt-2 min-h-11 text-muted-foreground" onClick={() => threadNavigation.openThread(post.uri, scrollContainer.current)}>Show More</Button> : null}

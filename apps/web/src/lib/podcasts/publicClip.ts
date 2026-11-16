@@ -8,7 +8,7 @@ export async function fetchPublicPodcastClip(
     "https://api.thesocialwire.app"
   ).replace(/\/$/, "");
   const response = await fetch(
-    `${base}/v1/podcasts/public/clips?clipId=${encodeURIComponent(id)}`,
+    `${base}/xrpc/app.thesocialwire.podcast.getPublicClip?clipId=${encodeURIComponent(id)}`,
     { cache: "no-store" },
   );
   return response.ok ? response.json() : null;

@@ -1,0 +1,16 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.listClips
+  type: http
+  seq: 304
+}
+
+get {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.listClips
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}

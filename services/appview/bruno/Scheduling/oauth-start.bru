@@ -1,0 +1,11 @@
+meta {
+  name: Start scheduler OAuth connection
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/oauth/scheduling/start?accountDid={{accountDid}}
+  body: none
+  auth: none
+}

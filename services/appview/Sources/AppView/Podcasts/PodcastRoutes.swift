@@ -6,7 +6,7 @@ import ThinAppViewCore
 struct PodcastRoutes {
   let service: PodcastService
   func register(on group: RouterGroup<GatewayRequestContext>) {
-    group.post("/v1/podcasts/search") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.findPodcasts") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let input = try await request.decode(as: PodcastSearchRequest.self, context: context)
       do {
@@ -33,19 +33,19 @@ struct PodcastRoutes {
         throw HTTPError(.badRequest, message: "Invalid Podcast Search")
       }
     }
-    group.post("/v1/podcasts/resolve") { request, context async throws -> PodcastResolveResponse in
+    group.post("/xrpc/app.thesocialwire.podcast.resolveShow") { request, context async throws -> PodcastResolveResponse in
       guard context.authContext != nil else { throw HTTPError(.unauthorized) }
       return try await service.resolve(
         request.decode(as: PodcastResolveRequest.self, context: context).url)
     }
-    group.get("/v1/podcasts/shows") { _, context async throws -> [String: [PodcastShow]] in
+    group.get("/xrpc/app.thesocialwire.podcast.getShows") { _, context async throws -> [String: [PodcastShow]] in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let shows = try await service.hydrate(auth: auth)
       let snapshot = try await service.store.state(viewer: auth.did)
       let hidden = Set(snapshot.state.manualLinks.map(\.protocolShowId))
       return ["shows": shows.filter { !hidden.contains($0.id) }]
     }
-    group.get("/v1/podcasts/episodes") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getEpisodes") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       if let id = request.uri.queryParameters.get("episodeId") {
         guard let episode = try await service.episode(id: id, viewer: auth.did) else { throw HTTPError(.notFound) }
@@ -100,7 +100,7 @@ struct PodcastRoutes {
       body += "}"
       return PodcastJSON.response(body)
     }
-    group.get("/v1/podcasts/state") { _, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getState") { _, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let shows = try await service.hydrate(auth: auth)
       var snapshot = try await service.store.state(viewer: auth.did)
@@ -108,7 +108,7 @@ struct PodcastRoutes {
       snapshot.state = try await service.canonicalState(snapshot.state)
       return PodcastJSON.response(try PodcastJSON.encode(snapshot))
     }
-    group.put("/v1/podcasts/state") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.putState") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       var body = try await request.decode(as: PodcastStateRequest.self, context: context)
       guard body.state.validate() else {
@@ -135,7 +135,7 @@ struct PodcastRoutes {
         throw HTTPError(.badRequest, message: "Invalid Podcast State")
       }
     }
-    group.get("/v1/podcasts/transcript") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getTranscript") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       guard let id = request.uri.queryParameters.get("episodeId"),
         let episode = try await service.episode(id: id, viewer: auth.did)
@@ -157,7 +157,7 @@ struct PodcastRoutes {
         "{\"episodeId\":" + (try PodcastJSON.encode(id)) + ",\"transcripts\":"
           + (try PodcastJSON.encode(transcripts)) + "}")
     }
-    group.post("/v1/podcasts/analysis") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.requestAnalysis") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: PodcastEpisodeRequest.self, context: context)
       guard let episode = try await service.episode(id: body.episodeId, viewer: auth.did) else {
@@ -178,7 +178,7 @@ struct PodcastRoutes {
       else { throw HTTPError(.notFound) }
       return PodcastJSON.response(job)
     }
-    group.get("/v1/podcasts/analysis") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getAnalysis") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       guard let id = request.uri.queryParameters.get("episodeId"),
         let episode = try await service.episode(id: id, viewer: auth.did)
@@ -208,7 +208,7 @@ struct PodcastRoutes {
             "analysisVersion": "v2", "status": job["status"] ?? "unavailable", "intervals": result["intervals"] ?? [],
           ]), as: UTF8.self))
     }
-    group.get("/v1/podcasts/jobs") { request, context async throws -> Response in
+    group.get("/xrpc/app.thesocialwire.podcast.getJob") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let id = request.uri.queryParameters.get("jobId")
       let showID = request.uri.queryParameters.get("showId")
@@ -221,7 +221,7 @@ struct PodcastRoutes {
       else { throw HTTPError(.notFound) }
       return PodcastJSON.response(raw)
     }
-    group.post("/v1/podcasts/jobs") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.retryJob") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: PodcastJobRetryRequest.self, context: context)
       guard try await service.store.retry(viewer: auth.did, id: body.jobId) else {
@@ -233,7 +233,7 @@ struct PodcastRoutes {
       else { throw HTTPError(.notFound) }
       return PodcastJSON.response(job)
     }
-    group.post("/v1/podcasts/clips") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.createClip") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: PodcastClipRequest.self, context: context)
       if PodcastPrivateCatalog.isPrivateID(body.episodeId) {
@@ -261,11 +261,11 @@ struct PodcastRoutes {
       return PodcastJSON.response(
         try PodcastJSON.string(["clipId": clip.id, "jobId": job, "status": "queued"]))
     }
-    group.get("/v1/podcasts/clips") { _, context async throws -> [String: [PodcastClip]] in
+    group.get("/xrpc/app.thesocialwire.podcast.listClips") { _, context async throws -> [String: [PodcastClip]] in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       return ["clips": try await service.store.clips(viewer: auth.did)]
     }
-    group.post("/v1/podcasts/clips/publish") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.publishClip") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
       let body = try await request.decode(as: PodcastPublishRequest.self, context: context)
       guard let clip = try await service.store.clip(id: body.clipId, viewer: auth.did),
@@ -279,10 +279,10 @@ struct PodcastRoutes {
       try await service.store.publishClip(id: clip.id, viewer: auth.did, uri: body.uri)
       return PodcastJSON.response(try PodcastJSON.string(["clipId": clip.id, "uri": body.uri]))
     }
-    group.delete("/v1/podcasts/clips") { request, context async throws -> Response in
+    group.post("/xrpc/app.thesocialwire.podcast.deleteClip") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      guard let id = request.uri.queryParameters.get("clipId"),
-        let clip = try await service.store.clip(id: id, viewer: auth.did)
+      let id = try await request.decode(as: PodcastClipIdentifierRequest.self, context: context).clipId
+      guard let clip = try await service.store.clip(id: id, viewer: auth.did)
       else { throw HTTPError(.notFound) }
       let payload = try PodcastJSON.string([
         "clipId": clip.id, "audioKey": clip.audioKey ?? "clips/" + clip.id + "/audio.m4a",
@@ -306,7 +306,7 @@ struct PodcastRoutes {
       && record["videoUrl"] as? String == clip.publicVideoUrl
   }
   func registerPublic(on router: Router<GatewayRequestContext>) {
-    router.get("/v1/podcasts/public/clips") { request, _ async throws -> Response in
+    router.get("/xrpc/app.thesocialwire.podcast.getPublicClip") { request, _ async throws -> Response in
       guard
         let id = request.uri.queryParameters.get("clipId")
           ?? request.uri.queryParameters.get("uri"),

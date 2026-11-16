@@ -14,12 +14,12 @@ function assertRecordUri(uri: string, collection: string, owner?: string) {
   if (!match || match[2] !== collection || (owner && match[1] !== owner)) throw new Error("This post action has an invalid record reference.");
 }
 
-export async function getBlueskyPostThread(args: { session: OAuthSession; uri: string; moderation: ModerationOpts; signal?: AbortSignal }) {
+export async function getBlueskyPostThread(args: { session: OAuthSession; uri: string; moderation: ModerationOpts; signal?: AbortSignal; depth?: number; parentHeight?: number }) {
   assertViewer(args.session, args.moderation);
   assertRecordUri(args.uri, "app.bsky.feed.post");
   const agent = createAuthenticatedAppViewAgent(args.session);
   agent.configureLabelers(args.moderation.prefs.labelers.map(labeler => labeler.did));
-  const response = await agent.app.bsky.feed.getPostThread({ uri: args.uri, depth: 6, parentHeight: 80 }, { signal: args.signal });
+  const response = await agent.app.bsky.feed.getPostThread({ uri: args.uri, depth: args.depth ?? 6, parentHeight: args.parentHeight ?? 80 }, { signal: args.signal });
   return response.data;
 }
 

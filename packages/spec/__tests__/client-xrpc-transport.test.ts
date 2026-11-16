@@ -129,19 +129,19 @@ describe("client XRPC transport", () => {
     }
   });
 
-  it("classifies canonical XRPC feed routes in request telemetry", () => {
-    const middleware = readFileSync(
+  it("registers canonical XRPC feed routes in the Gateway", () => {
+    const routes = readFileSync(
       join(
         REPO_ROOT,
-        "services/gateway/internal/gateway/request_trace.go"
+        "services/gateway/Sources/Gateway/Routes/AppViewProxyRoutes.swift"
       ),
       "utf8"
     );
-    expect(middleware).toContain(
-      '"/xrpc/app.thesocialwire.appview.getFeed"'
+    expect(routes).toContain(
+      'group.get("/xrpc/app.thesocialwire.appview.getFeed")'
     );
-    expect(middleware).toContain(
-      '"/xrpc/app.thesocialwire.appview.listEntries"'
+    expect(routes).toContain(
+      'group.get("/xrpc/app.thesocialwire.appview.listEntries")'
     );
   });
 
@@ -160,7 +160,7 @@ describe("client XRPC transport", () => {
     const appViewRoutes = readFileSync(
       join(
         REPO_ROOT,
-        "services/appview/internal/unreadcounts/routes.go"
+        "services/appview/Sources/AppView/Routes/AppViewExtendedRoutes.swift"
       ),
       "utf8"
     );
@@ -170,7 +170,7 @@ describe("client XRPC transport", () => {
       'repeatedQuery: ["publicationIds": publicationIds]'
     );
     expect(appViewRoutes).toContain(
-      'q["publicationIds"]'
+      'queryParameters[values: "publicationIds"]'
     );
   });
 

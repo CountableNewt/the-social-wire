@@ -4,6 +4,7 @@ import type { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Atproto from "@/lib/atprotoClient";
 import * as Social from "@/lib/blueskySocialClient";
+import * as Gateway from "@/lib/socialWireGatewayClient";
 import * as Environment from "@/lib/skej/skejEnvironment";
 import { cancelSkejSchedule, createSkejArticleSchedule, isSkejArticleSchedule, createSkejSchedule, getSkejSchedulingReadiness, listSkejSchedules, rescheduleSkejPost, SkejSchedulingError, type SkejScheduleRecord, type SkejScheduleSummary } from "@/lib/skej/skejSchedulingClient";
 
@@ -51,7 +52,23 @@ test("service authorization uses the selected actor, exact audience and method w
   expect(f.mints[0].exp).toBeGreaterThanOrEqual(before + 60);
   expect(f.mints[0].exp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 60);
   expect(f.requests[0].url.searchParams.get("accountDid")).toBe(did);
-  expect(f.requests[0].init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error", headers: { Authorization: "Bearer one-method-grant" } });
+  expect(f.requests[0].init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
+  expect(new Headers(f.requests[0].init.headers).get("Authorization")).toBe("Bearer one-method-grant");
+});
+
+test("embedded scheduling uses the selected actor's Social Wire session and skips Skej service auth", async () => {
+  const f = fixture();
+  const embedded = spyOn(Environment, "usesEmbeddedScheduling").mockReturnValue(true);
+  const gateway = spyOn(Gateway, "gatewayFetch").mockResolvedValue(Response.json({ records: [item()] }));
+  cleanups.push(() => embedded.mockRestore(), () => gateway.mockRestore());
+
+  expect(await listSkejSchedules(f.actor)).toEqual([item()]);
+  expect(f.mints).toHaveLength(0);
+  expect(f.requests).toHaveLength(0);
+  expect(gateway).toHaveBeenCalledWith(
+    session, `/xrpc/at.skej.schedule.list?accountDid=${encodeURIComponent(did)}`,
+    expect.objectContaining({ method: "GET", credentials: "omit", redirect: "error" }),
+  );
 });
 
 test("AccountNeedsReauth is a disconnected readiness result and a typed mutation failure", async () => {

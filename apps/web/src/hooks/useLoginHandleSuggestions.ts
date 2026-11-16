@@ -16,11 +16,12 @@ export function useLoginHandleSuggestions(value: string) {
   }, [value]);
 
   const query = loginHandleSearchQuery(debouncedValue);
-  return useQuery({
+  const result = useQuery({
     queryKey: ["loginHandleTypeahead", query],
     queryFn: ({ signal }) => searchLoginHandles(query ?? "", signal),
     enabled: !!query,
     staleTime: 60_000,
-    placeholderData: (previous) => previous,
   });
+  // Never offer actors from an earlier query while a new handle is debouncing.
+  return { ...result, data: query === loginHandleSearchQuery(value) ? result.data : undefined };
 }

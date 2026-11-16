@@ -135,7 +135,7 @@ test("Free owners can still unlink and revoke existing brand credentials", async
 test("disabled Tools rejects an already pending brand callback before exchange without changing personal credentials", async () => {
   const f = clientFixture();
   const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
-  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(f.client.callback(f.params)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(f.del).toHaveBeenCalled();
   expect(f.exchange).not.toHaveBeenCalled();
   expect(f.stored).not.toHaveBeenCalled();
@@ -148,8 +148,8 @@ test("disabled Tools rejects direct brand linking and restoration before request
   addBrandAccount(owner, brand);
   const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
   const client = spyOn(Auth, "getOAuthClientForScopes"); restores.push(() => client.mockRestore());
-  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Brand Accounts Are Not Available");
-  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Delegated Accounts Are Not Available");
+  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(client).not.toHaveBeenCalled();
   expect(Auth.getStoredOAuthDid()).toBe(owner);
 });
@@ -172,9 +172,9 @@ test("default-off flag blocks brand linking, restoration and unlinking while pre
   const client = spyOn(Auth, "getOAuthClientForScopes"); restores.push(() => client.mockRestore());
   const sessions = await import("@/lib/brandAccounts/brandAccountSessions");
   expect(sessions.listBrandAccounts(owner)).toEqual([]);
-  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Brand Accounts Are Not Available");
-  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
-  await expect(unlinkBrandAccount(owner, brand)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Delegated Accounts Are Not Available");
+  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Delegated Accounts Are Not Available");
+  await expect(unlinkBrandAccount(owner, brand)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(client).not.toHaveBeenCalled();
   expect(listBrandAccounts(owner)).toEqual([brand]);
   expect(Auth.getStoredOAuthDid()).toBe(owner);
@@ -183,7 +183,7 @@ test("default-off flag blocks brand linking, restoration and unlinking while pre
 test("disabled brand flag rejects a pending SDK callback before exchanging or replacing credentials", async () => {
   const f = clientFixture();
   process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
-  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(f.client.callback(f.params)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(f.exchange).not.toHaveBeenCalled(); expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled();
   expect(Auth.getStoredOAuthDid()).toBe(owner);
 });
@@ -191,7 +191,7 @@ test("disabled brand flag rejects a pending SDK callback before exchanging or re
 test("disabling during authorization rejects the new grant without replacing stored credentials", async () => {
   const f = clientFixture();
   f.exchange.mockImplementation(async () => { process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false"; return { sub: brand, access_token: "new-test-token", refresh_token: "new-test-refresh" }; });
-  await expect(f.client.callback(f.params)).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(f.client.callback(f.params)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled(); expect(f.revokeNew).toHaveBeenCalledWith("new-test-refresh");
   expect(Auth.getStoredOAuthDid()).toBe(owner);
 });
@@ -203,7 +203,7 @@ test("disabled brand callbacks cannot become the personal account and stale inte
   const callback = mock(async (): Promise<{ session: { did: string }; state: string | null }> => ({ session: { did: brand }, state: BRAND_LINK_STATE_PREFIX + "validated-test-state" }));
   const loader = spyOn(BrandAwareOAuthClient, "loadForAccounts").mockImplementation(async ({ clientId }) => ({ clientMetadata: atprotoLoopbackClientMetadata(clientId), findRedirectUrl: () => "http://127.0.0.1:3016/callback", callback }) as unknown as BrandAwareOAuthClient); restores.push(() => loader.mockRestore());
   window.history.replaceState(null, "", "/callback?state=opaque-state&code=test-code"); restores.push(() => window.history.replaceState(null, "", "/"));
-  await expect(Auth.handleCallback()).rejects.toThrow("Brand Accounts Are Not Available");
+  await expect(Auth.handleCallback()).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(Auth.getStoredOAuthDid()).toBe(owner); expect(Auth.consumeOAuthCallbackDestination()).toBeNull();
   expect(window.sessionStorage.getItem("the-social-wire.brand-link.v1")).toBeNull();
   callback.mockResolvedValue({ session: { did: "did:plc:normal" }, state: null });

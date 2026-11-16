@@ -43,7 +43,7 @@ export function usePodcastLibrarySearch({ viewer, query, scope = "library", show
       setFailure(null);
       const oauth = oauthGetter.current();
       const request = oauth?.did === viewer && navigator.onLine
-        ? podcastRequest<PodcastSearchPage>(oauth, "search", "POST", scope === "directory" ? { query: normalized, scope, limit: 50 } : { query: normalized, scope, kind: "all", showId, limit: 20 }, active.signal)
+        ? podcastRequest<PodcastSearchPage>(oauth, "findPodcasts", "POST", scope === "directory" ? { query: normalized, scope, limit: 50 } : { query: normalized, scope, kind: "all", showId, limit: 20 }, active.signal)
         : Promise.reject(new Error(navigator.onLine ? "Account Is Loading. Please Retry Search." : "Search Downloaded Episodes While Offline"));
       void request.then(next => {
         if (!active.signal.aborted && currentIdentity.current === identity) setResult({ identity, page: next });
@@ -66,7 +66,7 @@ export function usePodcastLibrarySearch({ viewer, query, scope = "library", show
     setLoadingIdentity(identity);
     setFailure(null);
     try {
-      const next = await podcastRequest<PodcastSearchPage>(oauth, "search", "POST", { query: normalized, scope: "library", kind: "all", showId, limit: 20, cursor: page.cursor }, active.signal);
+      const next = await podcastRequest<PodcastSearchPage>(oauth, "findPodcasts", "POST", { query: normalized, scope: "library", kind: "all", showId, limit: 20, cursor: page.cursor }, active.signal);
       if (active.signal.aborted || currentIdentity.current !== identity) return;
       setResult(previous => ({ identity, page: {
         ...next,

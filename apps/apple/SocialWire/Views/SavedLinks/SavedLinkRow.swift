@@ -21,6 +21,9 @@ struct SavedLinkRow: View {
                 showsReadState: false
             )
         )
+        .task(id: save.id) {
+            await appModel.enrichSavedLinkPreview(save)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

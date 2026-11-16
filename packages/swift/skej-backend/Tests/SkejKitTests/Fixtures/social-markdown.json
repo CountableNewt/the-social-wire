@@ -1,0 +1,252 @@
+{
+  "profile": "skej.social-markdown.v1",
+  "cases": [
+    {
+      "name": "emphasis-strike-and-inline-code",
+      "source": "**Bold** and *italic* and _also italic_, ~~gone~~, `x * y #literal`.",
+      "text": "Bold and italic and also italic, gone, `x * y #literal`.",
+      "facets": []
+    },
+    {
+      "name": "nested-emphasis",
+      "source": "**bold and _nested_**",
+      "text": "bold and nested",
+      "facets": []
+    },
+    {
+      "name": "client-rendered-inline-code-preserves-markers-and-suppresses-facets",
+      "source": "`https://example.com #code`",
+      "text": "`https://example.com #code`",
+      "facets": []
+    },
+    {
+      "name": "intraword-underscores-are-literal",
+      "source": "snake_case_value",
+      "text": "snake_case_value",
+      "facets": []
+    },
+    {
+      "name": "labeled-link-after-utf8",
+      "source": "👋 [Open **docs**](https://example.com/docs)",
+      "text": "👋 Open docs",
+      "facets": [
+        {
+          "byteStart": 5,
+          "byteEnd": 14,
+          "type": "link",
+          "value": "https://example.com/docs"
+        }
+      ]
+    },
+    {
+      "name": "labeled-link-replaces-a-link-shaped-label-facet",
+      "source": "[https://shown.example](https://target.example)",
+      "text": "https://shown.example",
+      "facets": [
+        {
+          "byteStart": 0,
+          "byteEnd": 21,
+          "type": "link",
+          "value": "https://target.example"
+        }
+      ]
+    },
+    {
+      "name": "bare-link-keeps-visible-punctuation",
+      "source": "See https://example.com/docs_(v2)).",
+      "text": "See https://example.com/docs_(v2)).",
+      "facets": [
+        {
+          "byteStart": 4,
+          "byteEnd": 33,
+          "type": "link",
+          "value": "https://example.com/docs_(v2)"
+        }
+      ]
+    },
+    {
+      "name": "escaped-markers",
+      "source": "\\*\\*literal\\*\\* and \\[brackets\\] and \\`ticks\\`",
+      "text": "**literal** and [brackets] and `ticks`",
+      "facets": []
+    },
+    {
+      "name": "escaped-hashtag-does-not-create-a-facet",
+      "source": "\\#literal #linked",
+      "text": "#literal #linked",
+      "facets": [
+        {
+          "byteStart": 9,
+          "byteEnd": 16,
+          "type": "tag",
+          "value": "linked"
+        }
+      ]
+    },
+    {
+      "name": "structural-cues-and-crlf",
+      "source": "> **Windows**\r\n- #skej",
+      "text": "› Windows\n• #skej",
+      "facets": [
+        {
+          "byteStart": 16,
+          "byteEnd": 21,
+          "type": "tag",
+          "value": "skej"
+        }
+      ]
+    },
+    {
+      "name": "ordered-and-unordered-lists",
+      "source": "1) first\n+ second\n* third",
+      "text": "1. first\n• second\n• third",
+      "facets": []
+    },
+    {
+      "name": "hashtags-and-url-fragments",
+      "source": "Read https://x.test/#anchor #skej and ＃atproto.",
+      "text": "Read https://x.test/#anchor #skej and ＃atproto.",
+      "facets": [
+        {
+          "byteStart": 5,
+          "byteEnd": 27,
+          "type": "link",
+          "value": "https://x.test/#anchor"
+        },
+        {
+          "byteStart": 28,
+          "byteEnd": 33,
+          "type": "tag",
+          "value": "skej"
+        },
+        {
+          "byteStart": 38,
+          "byteEnd": 48,
+          "type": "tag",
+          "value": "atproto"
+        }
+      ]
+    },
+    {
+      "name": "unsafe-link-schemes-are-literal",
+      "source": "[do not run](javascript:alert(1)) and [mail](mailto:test@example.com)",
+      "text": "[do not run](javascript:alert(1)) and [mail](mailto:test@example.com)",
+      "facets": []
+    },
+    {
+      "name": "unsafe-link-does-not-create-a-facet-from-its-destination",
+      "source": "[bad](javascript:https://evil.example)",
+      "text": "[bad](javascript:https://evil.example)",
+      "facets": []
+    },
+    {
+      "name": "empty-link-label-is-literal",
+      "source": "[](https://example.com)",
+      "text": "[](https://example.com)",
+      "facets": []
+    },
+    {
+      "name": "malformed-markup-is-literal",
+      "source": "Keep **broken and [unfinished](",
+      "text": "Keep **broken and [unfinished](",
+      "facets": []
+    },
+    {
+      "name": "html-and-images-are-literal",
+      "source": "<b>literal</b> and ![alt](https://example.com/image.png)",
+      "text": "<b>literal</b> and ![alt](https://example.com/image.png)",
+      "facets": []
+    },
+    {
+      "name": "excluded-blocks-are-literal",
+      "source": "# **Heading**\n---\n```\n**code** https://example.com\n```",
+      "text": "# **Heading**\n---\n```\n**code** https://example.com\n```",
+      "facets": []
+    },
+    {
+      "name": "tasks-and-tables-are-literal",
+      "source": "- [ ] **task** https://example.com #private\n| **name** | link |\n| --- | --- |\n| Skej | https://skej.at |",
+      "text": "- [ ] **task** https://example.com #private\n| **name** | link |\n| --- | --- |\n| Skej | https://skej.at |",
+      "facets": []
+    },
+    {
+      "name": "resolved-mention-and-tag-after-utf8",
+      "source": "👋 @alice.test #skej",
+      "mentions": [
+        {
+          "handle": "alice.test",
+          "did": "did:plc:alice"
+        }
+      ],
+      "text": "👋 @alice.test #skej",
+      "facets": [
+        {
+          "byteStart": 5,
+          "byteEnd": 16,
+          "type": "mention",
+          "value": "did:plc:alice"
+        },
+        {
+          "byteStart": 17,
+          "byteEnd": 22,
+          "type": "tag",
+          "value": "skej"
+        }
+      ]
+    },
+    {
+      "name": "uppercase-http-scheme-is-native",
+      "source": "HTTPS://example.com",
+      "text": "HTTPS://example.com",
+      "facets": [
+        {
+          "byteStart": 0,
+          "byteEnd": 19,
+          "type": "link",
+          "value": "HTTPS://example.com"
+        }
+      ]
+    },
+    {
+      "name": "unicode-tag-limit-counts-graphemes",
+      "source": "#😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "text": "#😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "facets": [
+        {
+          "byteStart": 0,
+          "byteEnd": 161,
+          "type": "tag",
+          "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+        }
+      ]
+    },
+    {
+      "name": "block-exclusion-variants-stay-literal",
+      "source": "+ [ ] see https://example.com #private\n###\tHeading https://example.com\n| partial https://example.com",
+      "text": "+ [ ] see https://example.com #private\n###\tHeading https://example.com\n| partial https://example.com",
+      "facets": []
+    },
+    {
+      "name": "whitespace-adjacent-emphasis-is-literal",
+      "source": "** bold** and **bold **",
+      "text": "** bold** and *bold *",
+      "facets": []
+    },
+    {
+      "name": "projected-limit-exactly-300",
+      "source": "**aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa**",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "graphemeCount": 300,
+      "valid": true,
+      "facets": []
+    },
+    {
+      "name": "projected-limit-over-300",
+      "source": "**aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa**",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "graphemeCount": 301,
+      "valid": false,
+      "facets": []
+    }
+  ]
+}

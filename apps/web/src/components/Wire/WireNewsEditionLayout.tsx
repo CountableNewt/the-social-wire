@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { EntryListItem } from "@/lib/atprotoClient";
@@ -11,7 +11,6 @@ import { WireStoryRail } from "./WireStoryRail";
 import { WireTalkedAboutPeople } from "./WireTalkedAboutPeople";
 import { WireTopStories } from "./WireTopStories";
 import { WireTrendingStories } from "./WireTrendingStories";
-import { FeedRecoveryNotice } from "./FeedRecoveryNotice";
 
 export function WireNewsEditionLayout({
   pages,
@@ -22,7 +21,6 @@ export function WireNewsEditionLayout({
   onLoadMore,
   onSelect,
   editionLabel,
-  feedMessage,
 }: {
   pages: WireEditionPage[];
   continuedStories: EntryListItem[];
@@ -32,7 +30,6 @@ export function WireNewsEditionLayout({
   onLoadMore: () => Promise<unknown>;
   onSelect: (entryId: string, entry?: EntryListItem) => void;
   editionLabel?: string;
-  feedMessage?: ReactNode;
 }) {
   const edition = pages[0];
   const model = useMemo(() => {
@@ -91,8 +88,6 @@ export function WireNewsEditionLayout({
     >
       <div className="grid w-full min-w-0 xl:grid-cols-[minmax(0,1fr)_19rem] xl:gap-x-4 xl:pr-4">
         <div className="min-w-0 xl:col-start-1 xl:row-start-1">
-          <FeedRecoveryNotice edition={edition} circle={editionLabel === "Your Circle"} />
-          {feedMessage}
           <WireTopStories
             stories={model.effectiveTopStories}
             onSelect={onSelect}

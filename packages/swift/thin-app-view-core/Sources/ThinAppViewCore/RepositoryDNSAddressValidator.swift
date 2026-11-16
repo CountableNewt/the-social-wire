@@ -87,7 +87,12 @@ private actor RepositoryDNSResolutionAttempt {
 /// Resolves an untrusted HTTPS endpoint immediately before use and rejects it unless every
 /// returned address is globally routable. This complements hostname checks by blocking DNS
 /// answers that point at loopback, link-local, private, documentation, or multicast networks.
-enum RepositoryDNSAddressValidator {
+public enum RepositoryDNSAddressValidator {
+  /// Resolve immediately before a request and use the returned address as a DNS override.
+  public static func publicAddress(for url: URL) async throws -> String {
+    try await validatedAddress(for: url.absoluteString)
+  }
+
   typealias Resolver = @Sendable (String) -> [String]?
 
   private static let sharedAdmission = RepositoryDNSResolverAdmission()

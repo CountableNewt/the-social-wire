@@ -43,8 +43,9 @@ describe("Podcast public PDS records", () => {
     const fetch = spyOn(gateway, "gatewayFetch").mockResolvedValue(new Response(null, { status: 204 }));
     restores.push(() => fetch.mockRestore());
     await writePodcastSubscription(oauth, "did:plc:viewer", { id: "private", title: "Private", sourceKind: "private-rss", visibility: "private" }, true);
-    expect(fetch.mock.calls[0]?.[1]).toBe("/v1/podcasts/private/subscriptions?showId=private");
-    expect(fetch.mock.calls[0]?.[2]?.method).toBe("DELETE");
+    expect(fetch.mock.calls[0]?.[1]).toBe("/xrpc/app.thesocialwire.podcast.deletePrivateSubscription");
+    expect(fetch.mock.calls[0]?.[2]?.method).toBe("POST");
+    expect(fetch.mock.calls[0]?.[2]?.body).toBe(JSON.stringify({ showId: "private" }));
     expect(writes).toEqual([]);
   });
   it("uses authoritative Skyreader collection source fields and a stable show reference", async () => {
@@ -121,7 +122,7 @@ describe("Podcast public PDS records", () => {
     expect(record.videoUrl).toBe("https://gateway/public/video");
     expect(fetch).toHaveBeenCalledWith(
       oauth,
-      "/v1/podcasts/clips/publish",
+      "/xrpc/app.thesocialwire.podcast.publishClip",
       expect.objectContaining({ method: "POST" }),
     );
   });

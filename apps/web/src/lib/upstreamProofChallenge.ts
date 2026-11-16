@@ -20,7 +20,9 @@ export async function gatewayFetchWithProofChallenge(
   header: string,
   prepare: () => Promise<string>,
 ): Promise<Response> {
-  const response = await gatewayFetch(session, path, init);
+  // A warm-cache probe negotiates its own proof requirement. Do not add a
+  // speculative attestation request before the server asks for a proof pool.
+  const response = await gatewayFetch(session, path, init, undefined, { projectionPreflight: false });
   if (!(await isUpstreamProofRequired(response))) return response;
   init.signal?.throwIfAborted();
   // gatewayFetch obtains the bound receipt before preparing proofs and renews

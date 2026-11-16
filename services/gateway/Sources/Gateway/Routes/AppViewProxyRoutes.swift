@@ -30,24 +30,15 @@ struct AppViewProxyRoutes {
     group.post("/v1/media/project") { request, context async throws -> Response in
       try await forward(request: request, context: context, path: "/v1/media/project", method: "POST")
     }
-    for path in ["/v1/podcasts/shows", "/v1/podcasts/episodes", "/v1/podcasts/transcript", "/v1/podcasts/state", "/v1/podcasts/analysis", "/v1/podcasts/clips", "/v1/podcasts/jobs"] {
+    for path in ["/xrpc/app.thesocialwire.podcast.getShows", "/xrpc/app.thesocialwire.podcast.getEpisodes", "/xrpc/app.thesocialwire.podcast.getTranscript", "/xrpc/app.thesocialwire.podcast.getState", "/xrpc/app.thesocialwire.podcast.getAnalysis", "/xrpc/app.thesocialwire.podcast.listClips", "/xrpc/app.thesocialwire.podcast.getJob"] {
       group.get(RouterPath(path)) { request, context async throws -> Response in
         try await forward(request: request, context: context, path: path, method: "GET")
       }
     }
-    for path in ["/v1/podcasts/search", "/v1/podcasts/resolve", "/v1/podcasts/private/resolve", "/v1/podcasts/private/refresh", "/v1/podcasts/analysis", "/v1/podcasts/clips", "/v1/podcasts/clips/publish", "/v1/podcasts/jobs"] {
+    for path in ["/xrpc/app.thesocialwire.podcast.findPodcasts", "/xrpc/app.thesocialwire.podcast.resolveShow", "/xrpc/app.thesocialwire.podcast.resolvePrivateShow", "/xrpc/app.thesocialwire.podcast.refreshPrivateShow", "/xrpc/app.thesocialwire.podcast.deletePrivateSubscription", "/xrpc/app.thesocialwire.podcast.putState", "/xrpc/app.thesocialwire.podcast.requestAnalysis", "/xrpc/app.thesocialwire.podcast.retryJob", "/xrpc/app.thesocialwire.podcast.createClip", "/xrpc/app.thesocialwire.podcast.publishClip", "/xrpc/app.thesocialwire.podcast.deleteClip"] {
       group.post(RouterPath(path)) { request, context async throws -> Response in
         try await forward(request: request, context: context, path: path, method: "POST")
       }
-    }
-    group.put("/v1/podcasts/state") { request, context async throws -> Response in
-      try await forward(request: request, context: context, path: "/v1/podcasts/state", method: "PUT")
-    }
-    group.delete("/v1/podcasts/clips") { request, context async throws -> Response in
-      try await forward(request: request, context: context, path: "/v1/podcasts/clips", method: "DELETE")
-    }
-    group.delete("/v1/podcasts/private/subscriptions") { request, context async throws -> Response in
-      try await forward(request: request, context: context, path: "/v1/podcasts/private/subscriptions", method: "DELETE")
     }
     group.get("/v1/lists") { request, context async throws -> Response in
       try await forward(request: request, context: context, path: "/v1/lists", method: "GET")
@@ -349,7 +340,7 @@ struct AppViewProxyRoutes {
     }
     var headers = HTTPFields()
     headers[.contentType] = "application/json"
-    if path == "/v1/podcasts/search" || path == "/v1/media/project" || path.hasPrefix("/v1/analytics/") { headers[.cacheControl] = "private, no-store" }
+    if path == "/xrpc/app.thesocialwire.podcast.findPodcasts" || path == "/v1/media/project" || path.hasPrefix("/v1/analytics/") { headers[.cacheControl] = "private, no-store" }
     if path == "/xrpc/app.thesocialwire.publication.getArticleEmbed" {
       headers[.cacheControl] = reply.headers.first(name: "Cache-Control") ?? "no-store"
     }

@@ -5,7 +5,8 @@ import { createOAuthAgent } from "@/lib/atprotoClient";
 import { createAuthenticatedAppViewAgent } from "@/lib/blueskySocialClient";
 import { composeExternalEmbed, type ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
 import { postTextLength } from "@/lib/blueskyComposeClient";
-import { getSkejEnvironment, type SKEJ_SCHEDULING_METHODS } from "./skejEnvironment";
+import { gatewayFetch } from "@/lib/socialWireGatewayClient";
+import { getSkejEnvironment, usesEmbeddedScheduling, type SKEJ_SCHEDULING_METHODS } from "./skejEnvironment";
 import { assertPostSchedulingEnabled } from "@/lib/postScheduling";
 
 export type SkejScheduleStatus = "draft" | "scheduled" | "blocked" | "publishing" | "published" | "failed" | "canceled";
@@ -50,22 +51,42 @@ async function request(actor: SkejSchedulingActor, method: Method, input?: unkno
   assertPostSchedulingEnabled();
   actor.assertCurrentActor();
   const environment = getSkejEnvironment();
-  const { data } = await createOAuthAgent(actor.session).com.atproto.server.getServiceAuth({ aud: environment.audience, lxm: method, exp: Math.floor(Date.now() / 1000) + 60 }, { signal });
-  actor.assertCurrentActor();
-  if (!data.token) throw new Error("Scheduling Authorization Is Unavailable.");
   const url = new URL(`/xrpc/${method}`, environment.api);
   if (!input && method === "at.skej.schedule.list") url.searchParams.set("accountDid", actor.session.did);
-  const response = await fetch(url, { method: input ? "POST" : "GET", headers: { Authorization: `Bearer ${data.token}`, ...(input ? { "Content-Type": "application/json" } : {}) }, body: input ? JSON.stringify(input) : undefined, signal, credentials: "omit", redirect: "error" });
+  const init: RequestInit = {
+    method: input ? "POST" : "GET",
+    headers: input ? { "Content-Type": "application/json" } : undefined,
+    body: input ? JSON.stringify(input) : undefined,
+    signal,
+    credentials: "omit",
+    redirect: "error",
+  };
+  const response = usesEmbeddedScheduling()
+    ? await gatewayFetch(actor.session, url.pathname + url.search, init)
+    : await requestLegacyScheduler(actor, method, environment.audience, url, init);
   actor.assertCurrentActor();
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   actor.assertCurrentActor();
   if (!response.ok) {
     const code = typeof body?.error === "string" ? body.error : "Unavailable";
     const needsConnection = code.replace(/[^a-z]/gi, "").toLowerCase() === "accountneedsreauth";
-    throw new SkejSchedulingError(needsConnection ? "Connect This Account to Skej to Enable Scheduling." : "Skej Could Not Complete This Request. Please Try Again.", code, response.status);
+    throw new SkejSchedulingError(needsConnection ? "Connect This Account to Enable Scheduling." : "Skej Could Not Complete This Request. Please Try Again.", code, response.status);
   }
   return body;
 }
+async function requestLegacyScheduler(
+  actor: SkejSchedulingActor, method: Method, audience: string, url: URL, init: RequestInit,
+): Promise<Response> {
+  const { data } = await createOAuthAgent(actor.session).com.atproto.server.getServiceAuth({
+    aud: audience, lxm: method, exp: Math.floor(Date.now() / 1000) + 60,
+  }, { signal: init.signal ?? undefined });
+  actor.assertCurrentActor();
+  if (!data.token) throw new Error("Scheduling Authorization Is Unavailable.");
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${data.token}`);
+  return fetch(url, { ...init, headers });
+}
+
 function summary(value: unknown, did: string): SkejScheduleSummary {
   const item = value as Partial<SkejScheduleSummary> | null;
   if (!item || item.did !== did || typeof item.rkey !== "string" || !/^[a-zA-Z0-9._~:-]{1,512}$/.test(item.rkey) || item.scheduleUri !== `at://${did}/at.skej.schedule/${item.rkey}` || !Number.isFinite(Date.parse(item.scheduledAt || "")) || !["draft", "scheduled", "blocked", "publishing", "published", "failed", "canceled"].includes(item.status || "") || !item.record || item.record.$type !== "at.skej.schedule" || !Array.isArray(item.record.posts) || item.record.posts.some(post => !post || typeof post.text !== "string")) throw new Error("Skej Returned an Invalid Scheduled Post.");

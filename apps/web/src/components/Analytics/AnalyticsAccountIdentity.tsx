@@ -27,5 +27,5 @@ export function AnalyticsAccountIdentity({ did, personal = false, presentation =
       </div>
     </div>;
   }
-  return <span className="min-w-0 break-all" title={did}>{current ? `${current.name || current.handle} (@${current.handle})` : personal ? "Personal Account" : did}{current && personal ? " · Personal" : ""}</span>;
+  return <span>{current?.name?.trim() || (personal ? "Personal Account" : did)}</span>;
 }

@@ -20,7 +20,7 @@ function AccountCalendarWorkspace({ ownerDid }: { ownerDid: string }) {
   return <section data-analytics-ignore className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
     <FeedHeader title="Content Calendar">{brandsAvailable ? <div className="w-full max-w-sm"><SocialComposeAccountPicker label="Account" ownerDid={ownerDid} accounts={accounts} actorDid={actorDid} disabled={false} onChange={setActorDid} /></div> : null}</FeedHeader>
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pt-0">
-    {actorDid !== ownerDid && !accounts.includes(actorDid) ? <p role="alert" className="py-6 text-center text-sm text-muted-foreground">This Brand Account Is No Longer Linked.</p> : <ContentCalendarAccount key={`${ownerDid}:${actorDid}`} ownerDid={ownerDid} actorDid={actorDid} />}
+    {actorDid !== ownerDid && !accounts.includes(actorDid) ? <p role="alert" className="py-6 text-center text-sm text-muted-foreground">This Delegated Account Is No Longer Linked.</p> : <ContentCalendarAccount key={`${ownerDid}:${actorDid}`} ownerDid={ownerDid} actorDid={actorDid} />}
     </div>
   </section>;
 }

@@ -4,6 +4,17 @@ import Testing
 
 @Suite("Unified feed selection")
 struct UnifiedFeedSelectionTests {
+    @Test("automatic read preference survives PDS round trips", arguments: [true, false])
+    func automaticReadPreferenceRoundTrip(enabled: Bool) throws {
+        let data = Data("""
+        {"$type":"app.thesocialwire.preferences","automaticallyMarkAsRead":\(enabled),
+         "createdAt":"2026-11-10T00:00:00Z","updatedAt":"2026-11-10T00:00:00Z"}
+        """.utf8)
+        let record = try JSONDecoder().decode(PreferencesRecord.self, from: data)
+        #expect(record.automaticallyMarkAsRead == enabled)
+        #expect(try JSONDecoder().decode(PreferencesRecord.self, from: JSONEncoder().encode(record)) == record)
+    }
+
     @Test("selection cases remain exclusive")
     func selectionCasesRemainDistinct() {
         let selections: Set<FeedSelection> = [

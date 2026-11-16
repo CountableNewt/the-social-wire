@@ -150,11 +150,11 @@ it("rejects a brand actor when the release flag is off before restoring or fetch
   expect(restore).not.toHaveBeenCalled();
   expect(bluesky).not.toHaveBeenCalled();
   expect(publications).not.toHaveBeenCalled();
-  await act(async () => { await expect(result.current.collect()).rejects.toThrow("Brand Accounts Are Not Available"); });
+  await act(async () => { await expect(result.current.collect()).rejects.toThrow("Delegated Accounts Are Not Available"); });
   expect(legacy).not.toHaveBeenCalled();
 });
 
-it("hides an already cached brand report when Brand Accounts becomes unavailable", async () => {
+it("hides an already cached brand report when Delegated Accounts becomes unavailable", async () => {
   const registry = spyOn(Brands, "listBrandAccounts").mockReturnValue(["did:plc:brand"]); restores.push(() => registry.mockRestore());
   const restore = spyOn(Brands, "restoreBrandAccount").mockResolvedValue({ did: "did:plc:brand" } as unknown as OAuthSession); restores.push(() => restore.mockRestore());
   const { result, rerender } = renderHook(() => useCreatorAnalytics(30, "did:plc:brand"), { wrapper: Wrapper });

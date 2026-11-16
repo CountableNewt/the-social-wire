@@ -38,7 +38,7 @@ struct PublicationsPaneView: View {
             case .wire:
                 await appModel.loadWireFeed()
             case .readLater, .archive:
-                await appModel.refreshSavedLinks()
+                await appModel.refreshSavedLinks(force: false)
             case .subscribed, .following:
                 await appModel.refreshSidebarProjection()
             }

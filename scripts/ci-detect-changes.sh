@@ -92,6 +92,7 @@ filter_changed appview \
   'services/appview/**' \
   'services/podcast-worker/**' \
   'packages/swift/thin-app-view-core/**' \
+  'packages/swift/skej-backend/**' \
   'scripts/migrations/**' \
   'scripts/ci/**' \
   'database/migrations/**' \

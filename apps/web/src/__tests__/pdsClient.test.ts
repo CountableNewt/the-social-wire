@@ -46,6 +46,13 @@ describe("rkeyFromURI", () => {
 });
 
 describe("mergePreferencesRecord", () => {
+  it("preserves a disabled automatic read preference through unrelated writes and supports re-enabling", () => {
+    const manual = mergePreferencesRecord({ automaticallyMarkAsRead: false }, null);
+    const changed = mergePreferencesRecord({ rssArticleOpenMode: "reader" }, manual);
+    expect(changed.automaticallyMarkAsRead).toBe(false);
+    expect(mergePreferencesRecord({ automaticallyMarkAsRead: true }, changed).automaticallyMarkAsRead).toBe(true);
+  });
+
   it("preserves disabled Social and Podcasts through unrelated writes and re-enables independently", () => {
     const hidden = mergePreferencesRecord({ showSocial: false, showPodcasts: false }, null);
     const updated = mergePreferencesRecord({ rssArticleOpenMode: "reader" }, hidden);

@@ -40,7 +40,7 @@ it("continues an empty bounded page and deduplicates subsequent pages", async ()
   online();
   const bodies: unknown[] = [];
   const replies = [ { ...empty, hasMore: true, cursor: "scan-500" }, { ...empty, episodes: [episode("one")], hasMore: true, cursor: "scan-1000" }, { ...empty, episodes: [episode("one"), episode("two")] } ];
-  const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string, _method?: string, body?: unknown): Promise<T> => { expect(path).toBe("search"); bodies.push(body); return replies.shift() as T; });
+  const request = spyOn(client, "podcastRequest").mockImplementation(async <T,>(_oauth: OAuthSession, path: string, _method?: string, body?: unknown): Promise<T> => { expect(path).toBe("findPodcasts"); bodies.push(body); return replies.shift() as T; });
   restores.push(() => request.mockRestore());
   const { result } = renderHook(() => usePodcastLibrarySearch({ viewer: "did:one", query: "science", showId: "show", getOAuthSession }));
   await waitFor(() => expect(result.current.hasMore).toBe(true));
@@ -94,7 +94,7 @@ it("sends only explicit directory queries, excludes library parameters, and stop
   expect(request).not.toHaveBeenCalled();
   rerender({ query: "science", scope: "directory" });
   await waitFor(() => expect(result.current.candidates).toHaveLength(1));
-  expect(request).toHaveBeenCalledWith(oauth, "search", "POST", { query: "science", scope: "directory", limit: 50 }, expect.any(AbortSignal));
+  expect(request).toHaveBeenCalledWith(oauth, "findPodcasts", "POST", { query: "science", scope: "directory", limit: 50 }, expect.any(AbortSignal));
   expect(result.current.episodes).toEqual([]);
   await act(async () => result.current.loadMore());
   expect(request).toHaveBeenCalledTimes(1);

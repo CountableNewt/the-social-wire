@@ -345,7 +345,7 @@ it.each(["true", "false"])("publishes and resolves mentions as the selected bran
   const picker = screen.getByRole("combobox", { name: "Post As" });
   expect((picker as HTMLSelectElement).value).toBe(oauth.did);
   fireEvent.change(picker, { target: { value: brand.did } });
-  const field = await screen.findByRole("textbox", { name: "Brand Post Text" });
+  const field = await screen.findByRole("textbox", { name: "Delegated Post Text" });
   if (flag === "false") expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
   fireEvent.change(field, { target: { value: "Hi @person", selectionStart: 10 } });
   fireEvent.click(await screen.findByRole("option", { name: "@person.test" }));
@@ -364,7 +364,7 @@ it.each(["true", "false"])("publishes and resolves mentions as the selected bran
   expect((screen.getByRole("combobox", { name: "Post As" }) as HTMLSelectElement).value).toBe(oauth.did);
   const schedule = mockSchedule();
   fireEvent.change(screen.getByRole("combobox", { name: "Post As" }), { target: { value: brand.did } });
-  fireEvent.change(await screen.findByRole("textbox", { name: "Brand Post Text" }), { target: { value: "Brand Scheduled" } });
+  fireEvent.change(await screen.findByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "Brand Scheduled" } });
   if (flag === "false") {
     expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
     expect(schedule).not.toHaveBeenCalled();
@@ -448,10 +448,10 @@ it("drops a selected brand composer after downgrade without publishing its draft
   const view = render(<QueryClientProvider client={cache}><SocialComposeButton /></QueryClientProvider>);
   fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
   fireEvent.change(screen.getByRole("combobox", { name: "Post As" }), { target: { value: brand.did } });
-  fireEvent.change(await screen.findByRole("textbox", { name: "Brand Post Text" }), { target: { value: "Private Brand Draft" } });
+  fireEvent.change(await screen.findByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "Private Brand Draft" } });
   isPro = false;
   view.rerender(<QueryClientProvider client={cache}><SocialComposeButton /></QueryClientProvider>);
-  expect(screen.queryByRole("textbox", { name: "Brand Post Text" })).toBeNull();
+  expect(screen.queryByRole("textbox", { name: "Delegated Post Text" })).toBeNull();
   expect((screen.getByRole("combobox", { name: "Post As" }) as HTMLSelectElement).value).toBe(oauth.did);
   expect((screen.getByRole("textbox", { name: "Post Text" }) as HTMLTextAreaElement).value).toBe("");
   expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();

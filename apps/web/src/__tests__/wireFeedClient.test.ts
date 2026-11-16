@@ -93,17 +93,10 @@ describe("The Wire client", () => {
       }),
     );
     const fetchMock = mock(async (url: string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      if (url.includes("appview.listEntries")) {
-        expect(url).toContain("authorDid=did%3Aplc%3Aviewer&limit=1");
-        expect(headers.has("X-Wire-Moderation-DPoP")).toBe(false);
-        return Response.json({}, { headers: { "X-ATProto-Session-Attestation-Receipt": "wire-viewer-receipt" } });
-      }
       expect(url).toStartWith(
         "https://api.example.test/xrpc/app.thesocialwire.discovery.getWire",
       );
-      expect(headers.get("X-ATProto-Session-Attestation-Receipt")).toBe("wire-viewer-receipt");
-      expect(headers.get("X-ATProto-Upstream-DPoP-Prepared")).toBe("true");
+      const headers = new Headers(init?.headers);
       if (url.includes("getWireItem")) {
         expect(headers.has("X-Wire-Moderation-DPoP")).toBe(false);
         return Response.json({ item });
@@ -159,8 +152,7 @@ describe("The Wire client", () => {
     expect(page.generationId).toBe("generation-viewer");
     expect(detail?.item.itemId).toBe(item.itemId);
     expect(pdsFetchHandler).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls.filter(([url]) => url.includes("appview.listEntries"))).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("maps canonical URLs, representative social subjects, and bounded known reasons", () => {

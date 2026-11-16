@@ -1,0 +1,23 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.requestAnalysis
+  type: http
+  seq: 314
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.requestAnalysis
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "episodeId": "{{podcastEpisodeId}}"
+}
+}

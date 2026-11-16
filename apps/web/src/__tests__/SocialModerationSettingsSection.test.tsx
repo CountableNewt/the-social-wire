@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { interpretLabelValueDefinition } from "@atproto/api";
 import * as Auth from "@/hooks/useAuth";
 import * as Hook from "@/hooks/useSocialModerationSettings";
+import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import { SocialModerationSettingsSection } from "@/components/Account/SocialModerationSettingsSection";
 
 const did = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -13,6 +14,8 @@ let value: ReturnType<typeof Hook.useSocialModerationSettings>;
 const restores: (() => void)[] = [];
 beforeEach(() => {
   mutate.mockClear(); lookup.mockClear();
+  const suggestions = spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
+  restores.push(() => suggestions.mockRestore());
   value = { settings: { data: { moderation: { userDid: "did:plc:viewer", prefs: { adultContentEnabled: false, labels: {}, labelers: [{ did, labels: {} }], mutedWords: [], hiddenPosts: [] } }, labelers: [{ did, profile: { did, handle: "labels.example", displayName: "Helpful Labels" }, definitions: [definition], subscribed: true, mandatory: false }] }, isPending: false, isError: false, error: null }, lookup: { mutate: lookup, reset() {}, isPending: false, error: null }, change: { mutate, isPending: false, error: null } } as unknown as typeof value;
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did: "did:plc:viewer" } } as ReturnType<typeof Auth.useAuth>);
   const hook = spyOn(Hook, "useSocialModerationSettings").mockImplementation(() => value);
@@ -41,7 +44,7 @@ it("requires removal confirmation and validates lookup before offering subscript
   fireEvent.click(screen.getByRole("button", { name: "Remove Labeler" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm Removal" }));
   expect(mutate.mock.calls[0]?.[0]).toEqual({ type: "unsubscribe", did });
-  fireEvent.change(screen.getByRole("textbox", { name: "Add Labeler" }), { target: { value: "new.example" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Add Labeler" }), { target: { value: "new.example" } });
   fireEvent.click(screen.getByRole("button", { name: "Find Labeler" }));
   expect(lookup).toHaveBeenCalledWith("new.example");
   expect(screen.queryByRole("button", { name: "Subscribe" })).toBeNull();
@@ -68,4 +71,16 @@ it("withholds stale labeler controls when moderation reload fails", () => {
   expect(screen.getByRole("alert").textContent).toBe("Moderation unavailable");
   expect(screen.queryByText("Helpful Labels")).toBeNull();
   expect(screen.queryByRole("button", { name: "Show" })).toBeNull();
+});
+
+it("uses shared actor suggestions before checking labeler eligibility", () => {
+  spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [{ did: "did:plc:new", handle: "new.example", displayName: "New Labeler" }], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
+  render(<SocialModerationSettingsSection />);
+  fireEvent.click(screen.getByRole("button", { name: "Manage Labelers" }));
+  fireEvent.focus(screen.getByRole("combobox", { name: "Add Labeler" }));
+  fireEvent.click(screen.getByRole("option", { name: /New Labeler/ }));
+  expect(lookup).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Find Labeler" }));
+  expect(lookup).toHaveBeenCalledWith("new.example");
+  expect(screen.queryByRole("button", { name: "Subscribe" })).toBeNull();
 });

@@ -1,7 +1,15 @@
 import { getAppEnv } from "@/lib/appEnv";
 
+export function usesEmbeddedScheduling(): boolean {
+  return process.env.NEXT_PUBLIC_USE_EMBEDDED_SCHEDULING === "true";
+}
+
 export function getSkejEnvironment() {
   const environment = getAppEnv();
+  if (usesEmbeddedScheduling()) {
+    const api = new URL(process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL ?? "https://api.thesocialwire.app");
+    return { api: api.origin, audience: "", connectUrl: new URL("/oauth/scheduling/start", api).href };
+  }
   const production = environment === "prod";
   const fallback = production ? "https://api.skej.at" : "https://api.testing.skej.at";
   const api = new URL(environment === "local" ? process.env.NEXT_PUBLIC_LOCAL_SKEJ_API_URL || fallback : fallback);
@@ -13,5 +21,8 @@ export const SKEJ_SCHEDULING_METHODS = ["at.skej.actor.getSession", "at.skej.sch
 export const SKEJ_SCHEDULING_SCOPES = SKEJ_SCHEDULING_METHODS.map(method => `rpc:${method}?aud=did:web:api.skej.at%23skej_scheduler`);
 
 export function skejScopesForEnvironment(scopes: string): string {
+  if (usesEmbeddedScheduling()) {
+    return scopes.split(" ").filter(scope => !SKEJ_SCHEDULING_SCOPES.includes(scope)).join(" ");
+  }
   return scopes.replaceAll("did:web:api.skej.at%23skej_scheduler", getSkejEnvironment().audience.replaceAll("#", "%23"));
 }

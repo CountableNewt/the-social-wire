@@ -92,29 +92,11 @@ describe("Bluesky post creation", () => {
   it("does not resolve handles inside code or explicit link labels", async () => {
     const session = sessionFor(request => {
       expect(request.method).toBe("com.atproto.repo.createRecord");
-      expect(request.body!.record).toMatchObject({ text: "`@code.test` @label.test", facets: [{ features: [{ uri: "https://target.test/" }] }] });
+      expect(request.body!.record).toMatchObject({ text: "@code.test @label.test", facets: [{ features: [{ uri: "https://target.test/" }] }] });
       return result;
     });
     await createBlueskyPost({ session, text: "`@code.test` [@label.test](https://target.test)" });
     await expect(createBlueskyPost({ session, text: "[](https://example.com)" })).rejects.toThrow("Write Something");
-  });
-  it("publishes Markdown verbatim except hypertext links", async () => {
-    const source = "## **Heading**\n\n- *Item*\n\n> [Read](https://example.com)\n\n```md\n[Code](https://code.test)\n```";
-    const session = sessionFor(request => {
-      const record = request.body!.record as AppBskyFeedPost.Record;
-      expect(record.text).toBe(source.replace("[Read](https://example.com)", "Read"));
-      expect(record.facets).toHaveLength(1);
-      expect(record.facets?.[0].features).toEqual([{ $type: "app.bsky.richtext.facet#link", uri: "https://example.com/" }]);
-      expect(AppBskyFeedPost.validateRecord(record).success).toBe(true);
-      return result;
-    });
-    await createBlueskyPost({ session, text: source });
-  });
-  it("rejects excessive retained Markdown markers before networking", async () => {
-    let calls = 0;
-    const session = sessionFor(() => { calls++; return result; });
-    await expect(createBlueskyPost({ session, text: `**${"a".repeat(300)}**` })).rejects.toThrow("at most 300");
-    expect(calls).toBe(0);
   });
   it("serializes a valid external embed alongside URL facets on a direct PDS post", async () => {
     const session = sessionFor(request => {
@@ -194,6 +176,14 @@ describe("Bluesky post creation", () => {
       return result;
     });
     await createBlueskyPost({ session, text: "@missing.test" });
+  });
+  it("replies to a long upstream post while keeping newly authored text limits", async () => {
+    let writes = 0;
+    const session = sessionFor(request => { writes++; expect(request.body!.record).toMatchObject({ text: "Short Reply", reply: { parent: { uri: replyTo.uri } } }); return result; });
+    const target = { ...replyTo, record: { ...replyTo.record, text: "🦋".repeat(1100) } };
+    await expect(createBlueskyPost({ session, text: "Short Reply", replyTo: target })).resolves.toEqual(result);
+    await expect(createBlueskyPost({ session, text: "x".repeat(301), replyTo: target })).rejects.toThrow("at most 300 characters");
+    expect(writes).toBe(1);
   });
   it("posts a reply with the exact target as root and parent directly to the viewer PDS", async () => {
     const session = sessionFor(request => {

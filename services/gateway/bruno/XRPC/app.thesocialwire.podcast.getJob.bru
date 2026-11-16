@@ -1,0 +1,16 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.getJob
+  type: http
+  seq: 307
+}
+
+get {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.getJob?jobId={{podcastJobId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+}

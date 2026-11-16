@@ -2,7 +2,7 @@
 
 **Package:** `services/gateway`  
 **Runner:** Go (`go test -race -p 1 ./...`)\
-**CI:** `go-packages`
+**CI:** Not run in CI (Go services are no longer exercised by GitHub Actions)
 
 ## Commands
 

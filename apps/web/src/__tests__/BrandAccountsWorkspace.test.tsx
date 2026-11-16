@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as OAuth from "@/lib/auth";
+import * as Compose from "@/lib/blueskyComposeClient";
+import * as Posts from "@/lib/blueskyPostClient";
+import * as Catalog from "@/lib/blueskySocialClient";
 import * as Auth from "@/hooks/useAuth";
 import * as Navigation from "next/navigation";
 import * as Mobile from "@/hooks/use-mobile";
@@ -43,17 +47,48 @@ test("shows the selected brand identity, immediate reply context and actor-speci
   await mount();
   expect(screen.getByText(/Acting as @brand.test/)).toBeTruthy();
   expect(screen.getByText("Customer Reply")).toBeTruthy(); expect(screen.getByText("Brand Post Content")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Like as Brand Account" }));
+  fireEvent.click(screen.getByRole("button", { name: "Like as Delegated Account" }));
   await waitFor(() => expect(state.mutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ kind: "like", post: expect.objectContaining({ uri: "at://did:plc:customer/app.bsky.feed.post/reply" }) })));
   fireEvent.click(screen.getByRole("button", { name: "Mark Notifications Read" }));
   expect(state.mutation.mutateAsync).toHaveBeenCalledWith({ kind: "seen" });
 });
-test("reply composer names the acting brand and publishes the selected immediate post", async () => {
-  await mount(); fireEvent.click(screen.getByRole("button", { name: "Reply as Brand Account" }));
-  expect(screen.getByRole("dialog").textContent).toContain("Publishing as @brand.test");
-  fireEvent.change(screen.getByRole("textbox", { name: "Brand Post Text" }), { target: { value: "Brand Response" } });
+test("reply defaults to the recipient and can publish from another linked or personal account", async () => {
+  const other = "did:plc:other";
+  const personal = { did: owner } as unknown as OAuthSession;
+  const stored = spyOn(OAuth, "getStoredOAuthDid").mockReturnValue(owner);
+  const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did: owner }, getOAuthSession: () => personal } as ReturnType<typeof Auth.useAuth>);
+  const linked = spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand, other]);
+  const connection = spyOn(Accounts, "useBrandAccountSession").mockImplementation((_owner, did) => ({
+    session: { did } as OAuthSession, error: undefined, assertCurrentActor: () => {}, retry: () => {}, generation: 0,
+  }));
+  const catalog = spyOn(Catalog, "getBlueskySocialCatalog").mockImplementation(async session => ({ feeds: [], moderation: { ...state.moderation!, userDid: session.did } }));
+  const profiles = spyOn(PublicProfile, "getBrandAccountPublicProfile").mockImplementation(async did => ({
+    did, handle: did === owner ? "personal.test" : did === other ? "other.test" : "brand.test",
+  }));
+  const target = state.notifications.data!.pages[0].posts[1];
+  const thread = spyOn(Posts, "getBlueskyPostThread").mockResolvedValue({ thread: { $type: "app.bsky.feed.defs#threadViewPost", post: target } });
+  const publish = spyOn(Compose, "createBlueskyPost").mockResolvedValue({ uri: target.uri, cid });
+  for (const spy of [stored, auth, linked, connection, catalog, profiles, thread, publish]) restores.push(() => spy.mockRestore());
+
+  await mount();
+  fireEvent.click(screen.getByRole("button", { name: "Reply as Delegated Account" }));
+  const picker = screen.getByRole("combobox", { name: "Reply As" }) as HTMLSelectElement;
+  expect(picker.value).toBe(brand);
+  await screen.findByRole("option", { name: /@brand.test/ });
+  expect(screen.getByRole("dialog").textContent).not.toContain("did:plc:");
+  fireEvent.change(await screen.findByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "A reply" } });
+
+  fireEvent.change(picker, { target: { value: other } });
+  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
+  fireEvent.change(picker, { target: { value: owner } });
+  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
   fireEvent.click(screen.getByRole("button", { name: "Post Reply" }));
-  await waitFor(() => expect(state.mutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ kind: "post", text: "Brand Response", parent: expect.objectContaining({ uri: "at://did:plc:customer/app.bsky.feed.post/reply" }) })));
+  await waitFor(() => expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    session: personal, text: "A reply", replyTo: target,
+  })));
+  expect(thread).toHaveBeenCalledWith(expect.objectContaining({ session: personal, uri: target.uri, depth: 0, parentHeight: 0 }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(state.mutation.mutateAsync).not.toHaveBeenCalled();
 });
 test("opens posts inline in the brand workspace and returns with Back", async () => {
   state = { ...state, thread: { data: { thread: { $type: "app.bsky.feed.defs#threadViewPost", post, replies: [] } } } as unknown as typeof state.thread };
@@ -65,7 +100,7 @@ test("opens posts inline in the brand workspace and returns with Back", async ()
 test("mention suggestions use the brand session and insert its selected handle", async () => {
   const people = spyOn(Discovery, "getSocialExplorePage").mockResolvedValue({ posts: [], actors: [{ did: "did:plc:person", handle: "person.test", displayName: "Person", labels: [] }] }); restores.push(() => people.mockRestore());
   await mount(); fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
-  const input = screen.getByRole("textbox", { name: "Brand Post Text" });
+  const input = screen.getByRole("textbox", { name: "Delegated Post Text" });
   fireEvent.change(input, { target: { value: "Hello @person", selectionStart: 13 } });
   const option = await screen.findByRole("option", { name: "@person.test" });
   expect(people).toHaveBeenCalledWith(expect.objectContaining({ session: state.connection.session, moderation: expect.objectContaining({ userDid: brand }), kind: "people", query: "person" }));
@@ -74,14 +109,15 @@ test("mention suggestions use the brand session and insert its selected handle",
 test("callback failures give a recovery action without rendering untrusted URL messages", async () => {
   const params = spyOn(Navigation, "useSearchParams").mockReturnValue(new URLSearchParams("error=callback_failed&message=untrusted-payload") as unknown as ReturnType<typeof Navigation.useSearchParams>); restores.push(() => params.mockRestore());
   await mount(<BrandAccountsPage />);
-  expect(screen.getByRole("alert").textContent).toContain("Brand Account Authorization Failed");
+  expect(screen.getByRole("heading", { name: "Delegated Accounts" })).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("Delegated Account Authorization Failed");
   expect(screen.queryByText(/untrusted-payload/)).toBeNull();
   expect(screen.getByRole("button", { name: "Link Account" })).toBeTruthy();
 });
 test("unlinks only after confirmation and removes the actor viewer before revocation", async () => {
   const unlink = spyOn(Sessions, "unlinkBrandAccount").mockImplementation(async () => { expect(screen.queryByText(/Acting as @brand.test/)).toBeNull(); }); restores.push(() => unlink.mockRestore());
   await mount(<BrandAccountsPage />);
-  fireEvent.click(screen.getByRole("button", { name: new RegExp(`Select Brand Account:.*${brand}`) })); expect(screen.getByText(/Acting as @brand.test/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`Select Delegated Account:.*${brand}`) })); expect(screen.getByText(/Acting as @brand.test/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Unlink Account" })); expect(unlink).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm Unlink" }));
   await waitFor(() => expect(unlink).toHaveBeenCalledWith(owner, brand));
@@ -91,7 +127,7 @@ test("does not expose the brand route to a signed-out owner", async () => {
   const replace = mock<(path: string) => void>(() => {}); const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace } as unknown as ReturnType<typeof Navigation.useRouter>); restores.push(() => router.mockRestore());
   render(<BrandAccountsLayout><BrandAccountsPage /></BrandAccountsLayout>);
   await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
-  expect(screen.queryByText("Brand Accounts")).toBeNull();
+  expect(screen.queryByText("Delegated Accounts")).toBeNull();
 });
 
 test("selects a suggested brand handle before authorizing the linked account", async () => {
@@ -99,7 +135,7 @@ test("selects a suggested brand handle before authorizing the linked account", a
   const link = spyOn(Sessions, "linkBrandAccount").mockResolvedValue(undefined); restores.push(() => link.mockRestore());
   await mount(<BrandAccountsPage />);
   fireEvent.click(screen.getByRole("button", { name: "Link Account" }));
-  fireEvent.focus(screen.getByRole("combobox", { name: "Brand Account Handle or DID" }));
+  fireEvent.focus(screen.getByRole("combobox", { name: "Delegated Account Handle or DID" }));
   fireEvent.click(screen.getByRole("option", { name: /Brand.*@brand.test/ }));
   expect(link).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Authorize Account" }));
@@ -107,7 +143,7 @@ test("selects a suggested brand handle before authorizing the linked account", a
 });
 
 
-test("does not mount Brand Accounts or its private children while disabled", () => {
+test("does not mount Delegated Accounts or its private children while disabled", () => {
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
   expect(() => BrandAccountsPage()).toThrow();
   const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace: mock(() => {}) } as unknown as ReturnType<typeof Navigation.useRouter>); restores.push(() => router.mockRestore());

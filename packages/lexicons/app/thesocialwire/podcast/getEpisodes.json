@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getEpisodes",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "With no showId returns the viewer subscribed public and private episodes sorted by publication time. queue=true returns owned queued episodes in queue order. Private episodes contain authenticated media proxy URLs.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "showId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "episodeId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "cursor": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "limit": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "queue": {
+            "type": "boolean"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

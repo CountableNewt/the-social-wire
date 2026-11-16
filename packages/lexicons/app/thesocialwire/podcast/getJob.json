@@ -1,0 +1,35 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getJob",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read Podcast Jobs",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "showId": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}

@@ -9,7 +9,7 @@ export const TOP_LEVEL_FEEDS = [
 
 export type TopLevelFeed = (typeof TOP_LEVEL_FEEDS)[number];
 /** Reader navigation also includes server-capability feeds that are not PDS preferences. */
-export type ReaderNavigationFeed = TopLevelFeed | "wire" | "circle" | "finance" | "sports" | "podcasts" | "social";
+export type ReaderNavigationFeed = TopLevelFeed | "wire" | "circle" | "finance" | "sports" | "podcasts" | "social" | "shortVideos" | "photos";
 export type RssArticleOpenMode = "reader" | "original";
 
 export const TOP_LEVEL_FEED_LABELS: Record<TopLevelFeed, string> = {
@@ -32,6 +32,7 @@ export type FeedDisplayPreferences = {
   visibleFeeds: TopLevelFeed[];
   feedsWithUnreadCounts: TopLevelFeed[];
   rssArticleOpenMode: RssArticleOpenMode;
+  automaticallyMarkAsRead: boolean;
 };
 
 export const DEFAULT_FEED_DISPLAY_PREFERENCES: FeedDisplayPreferences = {
@@ -47,6 +48,7 @@ export const DEFAULT_FEED_DISPLAY_PREFERENCES: FeedDisplayPreferences = {
   visibleFeeds: [...TOP_LEVEL_FEEDS],
   feedsWithUnreadCounts: [...TOP_LEVEL_FEEDS],
   rssArticleOpenMode: "original",
+  automaticallyMarkAsRead: true,
 };
 
 const STORAGE_PREFIX = "the-social-wire.feed-display.v1";
@@ -81,6 +83,7 @@ export function normalizeFeedDisplayPreferences(
         | "showTopLevelFeedUnreadCounts"
         | "feedsWithUnreadCounts"
         | "rssArticleOpenMode"
+        | "automaticallyMarkAsRead"
       >
     | FeedDisplayPreferences
     | null
@@ -116,6 +119,7 @@ export function normalizeFeedDisplayPreferences(
         visibleFeeds.includes(feed) &&
         requestedCountFeedSet.has(feed),
     ),
+    automaticallyMarkAsRead: value?.automaticallyMarkAsRead !== false,
     rssArticleOpenMode: isRssArticleOpenMode(value?.rssArticleOpenMode)
       ? value.rssArticleOpenMode
       : DEFAULT_FEED_DISPLAY_PREFERENCES.rssArticleOpenMode,

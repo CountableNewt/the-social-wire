@@ -61,8 +61,9 @@ describe("standalone Railway Frontend contract", () => {
     expect(web.deploy.healthcheckPath).toBe("/");
     expect(image).toContain('CMD ["node", "apps/web/server.js"]');
     expect(image).toContain("USER node");
-    for (const input of ["/package.json", "/bun.lock", "/turbo.json", "/.dockerignore", "/railway/web-standalone.json"]) {
+    for (const input of ["/package.json", "/bun.lock", "/turbo.json", "/.dockerignore", "/railway/web-standalone.json", "/scripts/ci/**", "/packages/**"]) {
       expect(web.build.watchPatterns).toContain(input);
     }
+    expect(web.build.watchPatterns).not.toContain("/scripts/go/**");
   });
 });

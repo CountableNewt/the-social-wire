@@ -22,10 +22,10 @@ struct PodcastPublicationTests {
     var clip = PodcastClip(
       id: UUID().uuidString, episodeId: "episode:id", startSeconds: 1.234, endSeconds: 4.567,
       title: "Clip", status: "complete", createdAt: "2026-10-05T00:00:00Z")
-    clip.audioUrl = "/v1/podcasts/assets?clipId=id&format=audio"
-    clip.videoUrl = "/v1/podcasts/assets?clipId=id&format=video"
-    clip.publicAudioUrl = "https://example.com/v1/podcasts/public/assets?clipId=id&format=audio"
-    clip.publicVideoUrl = "https://example.com/v1/podcasts/public/assets?clipId=id&format=video"
+    clip.audioUrl = "/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=id&format=audio"
+    clip.videoUrl = "/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=id&format=video"
+    clip.publicAudioUrl = "https://example.com/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=id&format=audio"
+    clip.publicVideoUrl = "https://example.com/xrpc/app.thesocialwire.podcast.getPublicClipAsset?clipId=id&format=video"
     var record: [String: Any] = [
       "$type": "app.thesocialwire.podcast.clip", "episodeId": clip.episodeId, "title": clip.title,
       "startMillis": 1234, "endMillis": 4567, "audioUrl": clip.publicAudioUrl!,

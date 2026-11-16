@@ -1,4 +1,5 @@
-import { AppBskyFeedPost, type AppBskyActorDefs, type AppBskyFeedDefs, type AppBskyNotificationListNotifications, type ModerationOpts } from "@atproto/api";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
+import { type AppBskyActorDefs, type AppBskyFeedDefs, type AppBskyNotificationListNotifications, type ModerationOpts } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { createAuthenticatedAppViewAgent, socialErrorMessage } from "./blueskySocialClient";
 import { socialReplyMetadata } from "./socialReplyMetadata";
@@ -56,7 +57,7 @@ export function notificationPostUri(notification: SocialNotification): string | 
 /** Reply context is the immediate parent; thread roots are never hydrated as substitutes. */
 export function notificationReplyParentUri(notification: SocialNotification): string | undefined {
   if (notification.reason !== "reply") return undefined;
-  const record = AppBskyFeedPost.validateRecord(notification.record);
+  const record = validateSocialPostRecord(notification.record);
   const uri = record.success ? record.value.reply?.parent.uri : undefined;
   return uri && /^at:\/\/did:[^/]+\/app\.bsky\.feed\.post\/[^/?#]+$/.test(uri) ? uri : undefined;
 }
@@ -66,7 +67,7 @@ export function notificationFeedItem(notification: SocialNotification, posts: Re
   const post = uri ? posts.get(uri) : undefined;
   if (!post) return undefined;
   const parentUri = notificationReplyParentUri(notification);
-  const record = AppBskyFeedPost.validateRecord(notification.record);
+  const record = validateSocialPostRecord(notification.record);
   if (!parentUri || parentUri === post.uri || !record.success || !record.value.reply) return { post };
   return { post, reply: socialReplyMetadata({ post: { ...post, record: record.value } }, posts, unavailablePosts) };
 }

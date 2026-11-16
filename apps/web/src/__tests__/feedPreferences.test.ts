@@ -29,6 +29,7 @@ describe("feed display preferences", () => {
           visibleFeeds: ["following"],
           feedsWithUnreadCounts: [],
           rssArticleOpenMode: "original",
+          automaticallyMarkAsRead: true,
           showWire: false,
           showCircle: false,
           showFinance: true,
@@ -76,6 +77,7 @@ describe("feed display preferences", () => {
       hideFinancePerformance: false,
           hideFinanceCrypto: false,
       rssArticleOpenMode: "original",
+          automaticallyMarkAsRead: true,
     });
   });
 
@@ -98,6 +100,7 @@ describe("feed display preferences", () => {
       hideFinancePerformance: false,
           hideFinanceCrypto: false,
       rssArticleOpenMode: "original",
+          automaticallyMarkAsRead: true,
     });
   });
 
@@ -107,6 +110,7 @@ describe("feed display preferences", () => {
         visibleFeeds: ["following"],
         feedsWithUnreadCounts: ["following"],
         rssArticleOpenMode: "original",
+          automaticallyMarkAsRead: true,
       }).rssArticleOpenMode,
     ).toBe("original");
 
@@ -179,3 +183,17 @@ test("drops counts for every explicitly hidden feed", () => {
      }
    }
  });
+
+
+test("automatic read preference defaults on and keeps explicit false through cache round trips", () => {
+  expect(normalizeFeedDisplayPreferences(undefined).automaticallyMarkAsRead).toBe(true);
+  expect(normalizeFeedDisplayPreferences({}).automaticallyMarkAsRead).toBe(true);
+  expect(normalizeFeedDisplayPreferences({ automaticallyMarkAsRead: null } as never).automaticallyMarkAsRead).toBe(true);
+  const preferences = normalizeFeedDisplayPreferences({ automaticallyMarkAsRead: false });
+  expect(preferences.automaticallyMarkAsRead).toBe(false);
+  const cache = new Map<string, string>();
+  const storage = { getItem: (key: string) => cache.get(key) ?? null, setItem: (key: string, value: string) => { cache.set(key, value); } };
+  saveCachedFeedDisplayPreferences(storage, "did:plc:viewer", preferences);
+  expect(loadCachedFeedDisplayPreferences(storage, "did:plc:viewer")?.automaticallyMarkAsRead).toBe(false);
+  expect(loadCachedFeedDisplayPreferences(storage, "did:plc:other")).toBeNull();
+});

@@ -2,6 +2,8 @@ import {
   afterAll,
   beforeAll,
   afterEach,
+  beforeEach,
+  spyOn,
   describe,
   expect,
   it,
@@ -19,6 +21,8 @@ import {
   SidebarListsSection,
   type SidebarListsSectionProps,
 } from "@/components/AppSidebar/SidebarListsSection";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
 const globalKeys = [
@@ -104,14 +108,34 @@ const base: SidebarListsSectionProps = {
 };
 function mount(props: Partial<SidebarListsSectionProps> = {}) {
   return render(
-    <SidebarProvider>
+    <QueryClientProvider client={client}><SidebarProvider>
       <SidebarListsSection {...base} {...props} />
-    </SidebarProvider>,
+    </SidebarProvider></QueryClientProvider>,
   );
 }
-afterEach(cleanup);
+let client: QueryClient;
+let suggestions: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  suggestions = spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
+});
+afterEach(() => { cleanup(); client.clear(); suggestions.mockRestore(); });
 
 describe("Standard Reader Lists Sidebar", () => {
+  it("selects a creator suggestion before explicitly searching for lists", async () => {
+    suggestions.mockReturnValue({ data: [{ did: "did:plc:creator", handle: "creator.test" }], isFetching: false });
+    const onSearchCreator = mock(async () => []);
+    mount({ onSearchCreator });
+    fireEvent.click(screen.getByRole("button", { name: "Add List" }));
+    const input = screen.getByRole("combobox", { name: "List Creator" });
+    fireEvent.change(input, { target: { value: "cre" } });
+    fireEvent.focus(input);
+    fireEvent.click(screen.getByRole("option", { name: /creator.test/ }));
+    expect((input as HTMLInputElement).value).toBe("creator.test");
+    expect(onSearchCreator).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Find Creator's Lists" }));
+    await waitFor(() => expect(onSearchCreator).toHaveBeenCalledWith("creator.test"));
+  });
   it("opens a dialog for creator search and list URLs without expanding the sidebar filter", () => {
     mount();
     expect(
@@ -122,7 +146,7 @@ describe("Standard Reader Lists Sidebar", () => {
       screen.queryByRole("textbox", { name: "Filter Your Lists" }),
     ).toBeNull();
     expect(screen.getByRole("dialog", { name: "Add List" })).toBeDefined();
-    expect(screen.getByRole("textbox", { name: "List Creator" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "List Creator" })).toBeDefined();
     expect(
       screen.getByRole("textbox", { name: "List URL Or AT URI" }),
     ).toBeDefined();
@@ -142,12 +166,12 @@ describe("Standard Reader Lists Sidebar", () => {
         { name: "Technology" },
       ),
     ).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "List Creator" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "List Creator" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(onSearchCreator).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Add List" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "List Creator" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "List Creator" }), {
       target: { value: "alice.test" },
     });
     fireEvent.click(
@@ -222,7 +246,7 @@ describe("Standard Reader Lists Sidebar", () => {
     expect(
       screen.getByRole("textbox", { name: "List URL Or AT URI" }),
     ).toBeDefined();
-    fireEvent.change(screen.getByRole("textbox", { name: "List Creator" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "List Creator" }), {
       target: { value: "alice.test" },
     });
     fireEvent.click(
@@ -241,11 +265,11 @@ describe("Standard Reader Lists Sidebar", () => {
     expect(
       screen.queryByText("No Public Lists Found For This Creator."),
     ).toBeNull();
-    fireEvent.change(screen.getByRole("textbox", { name: "List Creator" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "List Creator" }), {
       target: { value: "alice.test" },
     });
     fireEvent.submit(
-      screen.getByRole("textbox", { name: "List Creator" }).closest("form")!,
+      screen.getByRole("combobox", { name: "List Creator" }).closest("form")!,
     );
     await waitFor(() =>
       expect(
@@ -437,7 +461,7 @@ describe("Standard Reader Lists Sidebar", () => {
       within(dialog).getByRole("checkbox", { name: /Science News/ }),
     );
     fireEvent.change(
-      within(dialog).getByRole("textbox", { name: "Creator Account" }),
+      within(dialog).getByRole("combobox", { name: "Creator Account" }),
       { target: { value: "creator.test" } },
     );
     expect(onResolveCreator).not.toHaveBeenCalled();
@@ -613,14 +637,14 @@ describe("Standard Reader Lists Sidebar", () => {
     );
     for (const input of ["creator.test", "did:plc:creator"]) {
       fireEvent.change(
-        screen.getByRole("textbox", { name: "Creator Account" }),
+        screen.getByRole("combobox", { name: "Creator Account" }),
         { target: { value: input } },
       );
       fireEvent.click(screen.getByRole("button", { name: "Add Creator" }));
       await waitFor(() =>
         expect(
           (
-            screen.getByRole("textbox", {
+            screen.getByRole("combobox", {
               name: "Creator Account",
             }) as HTMLInputElement
           ).value,
@@ -661,7 +685,7 @@ describe("Standard Reader Lists Sidebar", () => {
         name: "Create List",
       }),
     );
-    fireEvent.change(screen.getByRole("textbox", { name: "Creator Account" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Creator Account" }), {
       target: { value: "missing.test" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add Creator" }));
@@ -672,7 +696,7 @@ describe("Standard Reader Lists Sidebar", () => {
     );
     expect(
       (
-        screen.getByRole("textbox", {
+        screen.getByRole("combobox", {
           name: "Creator Account",
         }) as HTMLInputElement
       ).value,

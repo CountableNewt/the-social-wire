@@ -1,3 +1,4 @@
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import { AppBskyFeedPost, ComAtprotoRepoStrongRef, RichText, type AppBskyDraftDefs, type AppBskyEmbedRecord, type AppBskyFeedDefs } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { createOAuthAgent } from "@/lib/atprotoClient";
@@ -72,7 +73,7 @@ function quoteEmbed(post: AppBskyFeedDefs.PostView): AppBskyEmbedRecord.Main & {
 
 function replyReferences(post: AppBskyFeedDefs.PostView): AppBskyFeedPost.ReplyRef {
   if (post.viewer?.replyDisabled) throw new Error("Replies are disabled for this post.");
-  const record = AppBskyFeedPost.validateRecord(post.record);
+  const record = validateSocialPostRecord(post.record);
   if (!AppBskyFeedPost.isRecord(post.record) || !record.success) {
     throw new Error("This post cannot be replied to.");
   }

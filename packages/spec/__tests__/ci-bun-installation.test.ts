@@ -13,7 +13,7 @@ describe("Bounded CI dependency installation", () => {
       expect(readFileSync(join(root, path), "utf8")).toContain("--frozen-lockfile");
     }
     expect(ci.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
-    expect(ci.jobs.appview.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh appview")).toBe(true);
+    expect(ci.jobs.appview_lanes.steps.some((step: any) => step.name === "Verify AppView lane" && step.run.includes("scripts/ci/benchmark-appview-swiftpm.sh"))).toBe(true);
   });
   it("runs hermetic retry tests in the always-required changes job", () => {
     expect(ci.jobs.changes.steps.some((step: any) => step.run === "node --test scripts/ci/install-bun.test.mjs")).toBe(true);

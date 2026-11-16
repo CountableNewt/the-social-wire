@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     /// When pushed from **Profile**, use the navigation back button instead of **Done**.
     var showsDoneButton: Bool = true
+    @AppStorage(AppAccentColor.storageKey) private var accentRaw = AppAccentColor.indigo.rawValue
     @AppStorage("the-social-wire.theme.v1") private var themeRaw = AppThemePreference.system.rawValue
     @AppStorage("the-social-wire.font.v1") private var fontRaw = AppFontPreference.sans.rawValue
     @AppStorage("the-social-wire.bold-text.v1") private var boldText = false
@@ -13,12 +14,30 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            if let viewerDID = appModel.viewerDID {
+                NewsStartupSettingsSection(viewerDID: viewerDID)
+                    .id(viewerDID)
+            }
+
             Section("Appearance") {
                 Picker("Theme", selection: $themeRaw) {
                     ForEach(AppThemePreference.allCases) { theme in
                         Text(theme.title).tag(theme.rawValue)
                     }
                 }
+                Picker("Theme Color", selection: $accentRaw) {
+                    ForEach(AppAccentColor.allCases) { accent in
+                        Label {
+                            Text(accent.title)
+                        } icon: {
+                            Circle()
+                                .fill(accent.color)
+                                .frame(width: 16, height: 16)
+                        }
+                        .tag(accent.rawValue)
+                    }
+                }
+                .accessibilityIdentifier("settings-theme-color")
                 Picker("Typography", selection: $fontRaw) {
                     ForEach(AppFontPreference.allCases) { font in
                         Text(font.title).tag(font.rawValue)
@@ -121,74 +140,80 @@ struct SettingsView: View {
             } header: {
                 Text("Feed Tabs")
             } footer: {
-                Text("The first selected feed opens when there is no previously viewed feed. Read Later is always available.")
+                Text("Choose which feeds appear as tabs. Use Open On Launch to choose your starting destination. Read Later is always available.")
             }
 
             Section("Feed Display") {
-                FeedDisplayPicker(
-                    title: "The Wire",
-                    supportsCount: false,
-                    canHide: true,
-                    selection: Binding(
-                        get: {
-                            .current(
-                                isVisible: appModel.feedPreferences.showWire,
-                                showsCount: false
-                            )
-                        },
-                        set: { option in
-                            Task { await appModel.setWireVisible(option != .hideFeed) }
-                        }
+                if NewsFeatureVisibility.wire {
+                    FeedDisplayPicker(
+                        title: "The Wire",
+                        supportsCount: false,
+                        canHide: true,
+                        selection: Binding(
+                            get: {
+                                .current(
+                                    isVisible: appModel.feedPreferences.showWire,
+                                    showsCount: false
+                                )
+                            },
+                            set: { option in
+                                Task { await appModel.setWireVisible(option != .hideFeed) }
+                            }
+                        )
                     )
-                )
-                .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                }
 
-                FeedDisplayPicker(
-                    title: "Your Circle",
-                    supportsCount: false,
-                    canHide: true,
-                    selection: Binding(
-                        get: {
-                            .current(
-                                isVisible: appModel.feedPreferences.showCircle,
-                                showsCount: false
-                            )
-                        },
-                        set: { option in
-                            Task { await appModel.setCircleVisible(option != .hideFeed) }
-                        }
+                if NewsFeatureVisibility.circle {
+                    FeedDisplayPicker(
+                        title: "Your Circle",
+                        supportsCount: false,
+                        canHide: true,
+                        selection: Binding(
+                            get: {
+                                .current(
+                                    isVisible: appModel.feedPreferences.showCircle,
+                                    showsCount: false
+                                )
+                            },
+                            set: { option in
+                                Task { await appModel.setCircleVisible(option != .hideFeed) }
+                            }
+                        )
                     )
-                )
-                .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                }
 
-                FeedDisplayPicker(title: "Finance", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showFinance, showsCount: false) },
-                        set: { option in Task { await appModel.setFinanceVisible(option != .hideFeed) } }))
-                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
-                FeedDisplayPicker(title: "Sports", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSports, showsCount: false) },
-                        set: { option in Task { await appModel.setSportsVisible(option != .hideFeed) } }))
-                FeedDisplayPicker(title: "Social", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSocial, showsCount: false) },
-                        set: { option in Task { await appModel.setSocialVisible(option != .hideFeed) } }))
-                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                if NewsFeatureVisibility.topics {
+                    FeedDisplayPicker(title: "Finance", supportsCount: false, canHide: true,
+                        selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showFinance, showsCount: false) },
+                            set: { option in Task { await appModel.setFinanceVisible(option != .hideFeed) } }))
+                        .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                    FeedDisplayPicker(title: "Sports", supportsCount: false, canHide: true,
+                        selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showSports, showsCount: false) },
+                            set: { option in Task { await appModel.setSportsVisible(option != .hideFeed) } }))
+                        .disabled(appModel.isSavingDiscoveryFeedVisibility)
+                }
+
                 FeedDisplayPicker(title: "Podcasts", supportsCount: false, canHide: true,
                     selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showPodcasts, showsCount: false) },
                         set: { option in Task { await appModel.setPodcastsVisible(option != .hideFeed) } }))
                     .disabled(appModel.isSavingDiscoveryFeedVisibility)
-                Toggle("Hide Sports Scores", isOn: Binding(
-                    get: { appModel.feedPreferences.hideSportsScores },
-                    set: { value in Task { await appModel.setSportsScoresHidden(value) } }))
-                Text("Hides event scores and results. Article headlines and images may reveal results.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if NewsFeatureVisibility.topics {
+                    Toggle("Hide Sports Scores", isOn: Binding(
+                        get: { appModel.feedPreferences.hideSportsScores },
+                        set: { value in Task { await appModel.setSportsScoresHidden(value) } }))
+                    Text("Hides event scores and results. Article headlines and images may reveal results.")
+                        .font(.caption).foregroundStyle(.secondary)
 
-                Toggle("Hide Finance Performance Data", isOn: Binding(
-                    get: { appModel.feedPreferences.hideFinancePerformance },
-                    set: { value in Task { await appModel.setFinancePerformanceHidden(value) } }))
+                    Toggle("Hide Finance Performance Data", isOn: Binding(
+                        get: { appModel.feedPreferences.hideFinancePerformance },
+                        set: { value in Task { await appModel.setFinancePerformanceHidden(value) } }))
 
-                Toggle("Hide Crypto", isOn: Binding(
-                    get: { appModel.feedPreferences.hideFinanceCrypto },
-                    set: { value in Task { await appModel.setFinanceCryptoHidden(value) } }))
+                    Toggle("Hide Crypto", isOn: Binding(
+                        get: { appModel.feedPreferences.hideFinanceCrypto },
+                        set: { value in Task { await appModel.setFinanceCryptoHidden(value) } }))
+                }
 
                 if let error = appModel.discoveryFeedSaveError {
                     Text(error)
