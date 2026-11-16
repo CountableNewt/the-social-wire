@@ -9,29 +9,43 @@ import ContentCalendarLayout from "@/app/content-calendar/layout";
 import * as Auth from "@/hooks/useAuth";
 import * as Accounts from "@/hooks/useBrandAccounts";
 import * as Profiles from "@/lib/brandAccounts/brandAccountPublicProfile";
-import { ContentCalendarAccount } from "@/components/ContentCalendar/ContentCalendarAccount";
 import ContentCalendarPage from "@/app/content-calendar/page";
-import type { SkejScheduleSummary } from "@/lib/skej/skejSchedulingClient";
+import type { SkejArticleScheduleSummary, SkejScheduleSummary } from "@/lib/skej/skejSchedulingClient";
 import { localCalendarDate, localDateTimeValue } from "@/components/ContentCalendar/calendarDates";
 
 let cache: QueryClient;
 let state: ReturnType<typeof Scheduling.useSkejScheduling>;
+let delegated: typeof state;
 const restores: (() => void)[] = [];
 const owner = "did:plc:owner", brand = "did:plc:brand";
 const time = new Date(Date.now() + 3_600_000);
+const delegatedTime = new Date(time.getTime() + 60_000);
 const item = { did: owner, rkey: "post", scheduleUri: `at://${owner}/app.skej.schedule/post`, scheduledAt: time.toISOString(), status: "scheduled", record: { posts: [{ text: "Planned Content" }] }, attempts: 0 } as unknown as SkejScheduleSummary;
+const delegatedItem = {
+  ...item,
+  did: brand,
+  scheduleUri: `at://${brand}/app.skej.schedule/post`,
+  scheduledAt: delegatedTime.toISOString(),
+  record: { posts: [{ text: "Delegated Content" }] },
+} as SkejScheduleSummary;
 beforeEach(() => {
   const mobile = spyOn(Mobile, "useIsMobile").mockReturnValue(false); restores.push(() => mobile.mockRestore());
   cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   state = { schedules: { data: [item], isPending: false, isError: false, isFetching: false, refetch: mock(async () => ({})) }, readiness: { data: { accountDid: owner, connected: true }, isPending: false, isError: false, refetch: mock(async () => ({})) }, pending: false, schedule: mock(async () => item), cancel: mock(async () => {}), reschedule: mock(async () => {}), connectUrl: "https://skej.test/connect" } as unknown as typeof state;
-  const hook = spyOn(Scheduling, "useSkejScheduling").mockImplementation(() => state); restores.push(() => hook.mockRestore());
+  delegated = { ...state, schedules: { ...state.schedules, data: [delegatedItem, item], refetch: mock(async () => ({})) },
+    readiness: { ...state.readiness, data: { accountDid: brand, connected: true } },
+    cancel: mock(async () => {}), reschedule: mock(async () => {}) } as unknown as typeof state;
+  const hook = spyOn(Scheduling, "useSkejScheduling").mockImplementation((_owner, actor) => actor === brand ? delegated : state); restores.push(() => hook.mockRestore());
   const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: { did: owner } } as ReturnType<typeof Auth.useAuth>); restores.push(() => auth.mockRestore());
-  const linked = spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand]); restores.push(() => linked.mockRestore());
+  const linked = spyOn(Accounts, "useBrandAccounts").mockReturnValue([]); restores.push(() => linked.mockRestore());
   const profiles = spyOn(Profiles, "getBrandAccountPublicProfile").mockImplementation(async did => ({ did, handle: did === owner ? "owner.test" : "brand.test" })); restores.push(() => profiles.mockRestore());
   for (const [name, value] of Object.entries({ getComputedStyle: window.getComputedStyle.bind(window), requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0), cancelAnimationFrame: clearTimeout })) { const original = Object.getOwnPropertyDescriptor(globalThis, name); Object.defineProperty(globalThis, name, { configurable: true, value }); restores.push(() => { if (original) Object.defineProperty(globalThis, name, original); else Reflect.deleteProperty(globalThis, name); }); }
 });
 afterEach(async () => { await act(async () => { cleanup(); await new Promise(resolve => setTimeout(resolve, 0)); }); cache.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-function mount(ui = <ContentCalendarAccount ownerDid={owner} actorDid={owner} />) { return render(<QueryClientProvider client={cache}><SidebarProvider>{ui}</SidebarProvider></QueryClientProvider>); }
+function mount() { return render(<QueryClientProvider client={cache}><SidebarProvider><ContentCalendarPage /></SidebarProvider></QueryClientProvider>); }
+function setSchedules(account: typeof state, items: SkejScheduleSummary[]) {
+  return { ...account, schedules: { ...account.schedules, data: items } as typeof account.schedules };
+}
 test("rejects the direct Content Calendar route when scheduling is disabled", () => {
   delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
   expect(() => ContentCalendarPage()).toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
@@ -57,13 +71,90 @@ test("reschedules in local time and refreshes the server-backed list", async () 
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
   expect(state.schedules.refetch).toHaveBeenCalled();
 });
-test("filters out another account and opens the tool route with a selected account", async () => {
-  mount(<ContentCalendarPage />);
-  expect(screen.getByRole("heading", { name: "Content Calendar" })).toBeTruthy();
-  fireEvent.change(screen.getByRole("combobox", { name: "Account" }), { target: { value: brand } });
-  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, brand);
-  expect(screen.queryByText("Planned Content")).toBeNull();
+test("shows personal and delegated schedules together and uses the owning account for actions", async () => {
+  spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand]);
+  const selectedDay = new Date();
+  selectedDay.setHours(12, 0, 0, 0);
+  const personal = { ...item, scheduledAt: selectedDay.toISOString() };
+  const earlier = { ...delegatedItem, scheduledAt: new Date(selectedDay.getTime() - 60_000).toISOString() };
+  state = setSchedules(state, [personal]);
+  delegated = setSchedules(delegated, [earlier, personal]);
+  mount();
+
+  const cards = screen.getAllByRole("article");
+  expect(cards.map(card => card.textContent)).toEqual([
+    expect.stringContaining("Delegated Content"), expect.stringContaining("Planned Content"),
+  ]);
+  await within(cards[0]).findByText("@brand.test");
+  await within(cards[1]).findByText("@owner.test");
+  expect(screen.getByRole("button", { name: /2 posts/i })).toBeTruthy();
+  expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+
+  fireEvent.click(within(cards[0]).getByRole("button", { name: "Cancel Scheduled Post" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel Scheduled Post" }));
+  await waitFor(() => expect(delegated.cancel).toHaveBeenCalledWith(earlier));
+  expect(state.cancel).not.toHaveBeenCalled();
+
+  fireEvent.click(within(cards[0]).getByRole("button", { name: "Reschedule" }));
+  const future = new Date(Date.now() + 86_400_000);
+  fireEvent.change(screen.getByLabelText("Publish At"), { target: { value: localDateTimeValue(future) } });
+  fireEvent.click(screen.getByRole("button", { name: "Save Time" }));
+  await waitFor(() => expect(delegated.reschedule).toHaveBeenCalledWith(earlier, new Date(localDateTimeValue(future)).toISOString()));
+  expect(state.reschedule).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(state.schedules.refetch).toHaveBeenCalled();
+  expect(delegated.schedules.refetch).toHaveBeenCalled();
 });
+test("includes scheduled blog posts from both accounts in the day list and month count", async () => {
+  spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand]);
+  const socialTime = new Date();
+  socialTime.setHours(12, 0, 0, 0);
+  function blogPost(did: string, title: string, minuteOffset: number): SkejArticleScheduleSummary {
+    const scheduledAt = new Date(socialTime.getTime() + minuteOffset * 60_000).toISOString();
+    return {
+      ...item,
+      did,
+      rkey: "blog",
+      scheduleUri: `at://${did}/at.skej.schedule/blog`,
+      scheduledAt,
+      record: {
+        ...item.record,
+        recordType: "site.standard.document",
+        posts: [],
+        shadowRecord: {
+          $type: "site.standard.document",
+          title,
+          site: `at://${did}/site.standard.publication/blog`,
+          publishedAt: scheduledAt,
+        },
+      },
+    };
+  }
+
+  const personalBlog = blogPost(owner, "Personal Blog Post", -1);
+  const delegatedBlog = blogPost(brand, "Delegated Blog Post", 1);
+  state = setSchedules(state, [{ ...item, scheduledAt: socialTime.toISOString() }, personalBlog]);
+  delegated = setSchedules(delegated, [delegatedBlog]);
+  mount();
+
+  const cards = screen.getAllByRole("article");
+  expect(cards.map(card => card.textContent)).toEqual([
+    expect.stringContaining("Blog Post · Personal Blog Post"),
+    expect.stringContaining("Planned Content"),
+    expect.stringContaining("Blog Post · Delegated Blog Post"),
+  ]);
+  await within(cards[0]).findByText("@owner.test");
+  await within(cards[2]).findByText("@brand.test");
+  expect(screen.getByRole("button", { name: /3 posts/i })).toBeTruthy();
+
+  fireEvent.click(within(cards[2]).getByRole("button", { name: "Cancel Scheduled Article" }));
+  const dialog = screen.getByRole("dialog", { name: "Cancel Scheduled Article?" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel Scheduled Article" }));
+  await waitFor(() => expect(delegated.cancel).toHaveBeenCalledWith(delegatedBlog));
+  expect(state.cancel).not.toHaveBeenCalled();
+});
+
 test("shows connection and load failure recovery without inventing records", () => {
   state = { ...state, readiness: { ...state.readiness, data: { accountDid: owner, connected: false } }, schedules: { ...state.schedules, data: undefined, isError: true } } as typeof state;
   mount();
@@ -81,27 +172,23 @@ test("protects the calendar route when signed out", async () => {
   expect(screen.queryByText("Private Calendar")).toBeNull();
 });
 
-test("hides private calendar rows immediately after unlink while keeping the selection explicit", async () => {
-  // Unlink visibility is independent of scheduling across the next day or month.
+test("removes delegated calendar rows immediately when the account is unlinked", () => {
+  spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand]);
   const selectedDay = new Date();
   selectedDay.setHours(12, 0, 0, 0);
-  state = { ...state, schedules: { ...state.schedules, data: [{ ...item, did: brand, scheduledAt: selectedDay.toISOString() }] } } as typeof state;
-  const view = mount(<ContentCalendarPage />);
-  fireEvent.change(screen.getByRole("combobox", { name: "Account" }), { target: { value: brand } });
-  expect(screen.getByText("Planned Content")).toBeTruthy();
+  delegated = setSchedules(delegated, [{ ...delegatedItem, scheduledAt: selectedDay.toISOString() }]);
+  const view = mount();
+  expect(screen.getByText("Delegated Content")).toBeTruthy();
   spyOn(Accounts, "useBrandAccounts").mockReturnValue([]);
   view.rerender(<QueryClientProvider client={cache}><SidebarProvider><ContentCalendarPage /></SidebarProvider></QueryClientProvider>);
-  expect(screen.queryByText("Planned Content")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("No Longer Linked");
-  expect((screen.getByRole("combobox", { name: "Account" }) as HTMLSelectElement).value).toBe(brand);
+  expect(screen.queryByText("Delegated Content")).toBeNull();
 });
 
-
-test("keeps calendar account actions in the shared top bar outside the scrolling calendar", () => {
-  mount(<ContentCalendarPage />);
+test("keeps the shared refresh action outside the scrolling calendar", () => {
+  mount();
   const header = screen.getByRole("heading", { name: "Content Calendar" }).closest("header")!;
   expect(header.classList.contains("floating-glass")).toBe(true);
-  expect(header.contains(screen.getByRole("combobox", { name: "Account" }))).toBe(true);
+  expect(header.contains(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
   expect(header.parentElement!.classList.contains("overflow-hidden")).toBe(true);
   expect(header.nextElementSibling!.classList.contains("overflow-y-auto")).toBe(true);
 });
@@ -115,26 +202,11 @@ let previousBrandAccountsFlag: string | undefined;
 beforeEach(() => { previousBrandAccountsFlag = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "true"; });
 afterEach(() => { if (previousBrandAccountsFlag === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrandAccountsFlag; });
 
-test("hides account switching and retains personal scheduling when brands are disabled", () => {
+test("loads only personal scheduling when delegated accounts are disabled", () => {
+  spyOn(Accounts, "useBrandAccounts").mockReturnValue([brand]);
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  mount(<ContentCalendarPage />);
-  expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+  mount();
   expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, owner);
+  expect(Scheduling.useSkejScheduling).not.toHaveBeenCalledWith(owner, brand);
   expect(Profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
-});
-test("drops a selected brand calendar immediately when the feature is disabled", () => {
-  const view = mount(<ContentCalendarPage />);
-  fireEvent.change(screen.getByRole("combobox", { name: "Account" }), { target: { value: brand } });
-  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, brand);
-  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  view.rerender(<QueryClientProvider client={cache}><SidebarProvider><ContentCalendarPage /></SidebarProvider></QueryClientProvider>);
-  expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
-  expect(Scheduling.useSkejScheduling).toHaveBeenLastCalledWith(owner, owner);
-});
-
-test("does not mount a directly requested brand calendar while disabled", () => {
-  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  mount(<ContentCalendarAccount ownerDid={owner} actorDid={brand} />);
-  expect(Scheduling.useSkejScheduling).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 });
