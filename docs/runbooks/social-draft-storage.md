@@ -6,27 +6,25 @@ This is an explicitly approved exception to the rebuildable AppView projection
 model: these files are canonical user data and cannot be rebuilt from the PDS.
 Both services can read their stored data; this is not end-to-end encryption.
 
-## Development Rollout
+## Railway bucket configuration
 
-The independent `.railway/social-drafts.ts` partial manages only the Development
-`Social Draft Attachments` bucket in `sjc`. Plan and apply this file explicitly;
-do not apply the indexing partial as part of a draft rollout. Production is excluded.
-App View remains managed by `railway/appview.json`.
+Use one private media bucket in each environment. The standalone Gateway's
+`SOCIAL_DRAFT_S3_` variables for endpoint, bucket, region, access key, and secret
+reference the matching `PODCAST_S3_` variables on that service. Draft objects use
+opaque 64-character hex keys. Podcast media uses the `clips/` prefix. Drafts
+retain their independent `SOCIAL_DRAFT_STORAGE_KEY` for application encryption.
+The old `.railway/social-drafts.ts` partial describes the former dedicated
+Development bucket and should not be applied for this configuration.
 
-Configure App View's server-only `SOCIAL_DRAFTS_ENABLED=true` and
-`SOCIAL_DRAFT_STORAGE_KEY` (32 random bytes, standard base64), plus
-`SOCIAL_DRAFT_S3_ENDPOINT`, `SOCIAL_DRAFT_S3_BUCKET`,
-`SOCIAL_DRAFT_S3_ACCESS_KEY_ID`, `SOCIAL_DRAFT_S3_SECRET_ACCESS_KEY`, and
-`SOCIAL_DRAFT_S3_REGION` using the dedicated bucket's Railway reference variables. Never reuse
-podcast credentials or storage keys. Disabled storage returns unavailable; incomplete enabled configuration rejects
-startup so a deployment cannot silently claim the feature is ready. No public bucket hostname, anonymous download, or signed public URL is used.
+When changing buckets, copy existing encrypted draft objects with their
+original keys and verify the copied bytes before switching the references.
+Roll out to Development first. Check Gateway readiness and verify that saving
+and reopening an article draft preserves its image. Apply the same references
+in Production after Development verification.
 
-The Database Migrator owns migration `20261020233000_private_social_draft_assets.sql`.
-Deploy Gateway and App View with their existing migrator readiness dependency,
-then Web. The four native draft RPC OAuth grants require renewed authorization
-for older Web sessions. Verify the exact deployed commits, authenticated upload
-and restoration in a fresh browser, owner isolation, and deletion retry before
-acceptance. Merely rendering the Drafts page is insufficient.
+Configure `SOCIAL_DRAFTS_ENABLED=true` and a 32-byte, standard base64 storage
+key. Disabled storage returns unavailable. Incomplete enabled configuration
+rejects startup. Draft attachment downloads require viewer authentication.
 
 ## Storage and Recovery
 
