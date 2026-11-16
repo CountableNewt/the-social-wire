@@ -1,0 +1,16 @@
+meta {
+  name: List schedules
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/xrpc/at.skej.schedule.list
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: DPoP {{accessToken}}
+  DPoP: {{dpopProof}}
+}

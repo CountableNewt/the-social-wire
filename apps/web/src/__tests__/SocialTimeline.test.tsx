@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { focusManager, onlineManager, QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-query";
 import type { AppBskyFeedDefs, ModerationOpts } from "@atproto/api";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { prepareSocialQueryPersistence, shouldPersistSocialQuery } from "@/lib/socialQueryPersist";
@@ -9,6 +9,8 @@ import * as Navigation from "next/navigation";
 
 import * as Auth from "@/hooks/useAuth";
 import * as Client from "@/lib/blueskySocialClient";
+import * as PostClient from "@/lib/blueskyPostClient";
+import * as BookmarkClient from "@/lib/blueskyBookmarksClient";
 import SocialPage from "@/app/social/page";
 import { useBlueskySocialTimeline } from "@/hooks/useBlueskySocialTimeline";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -37,6 +39,11 @@ afterAll(() => {
   else Reflect.deleteProperty(window, "matchMedia");
 });
 beforeEach(() => {
+  for (const [name, value] of Object.entries({ getComputedStyle: window.getComputedStyle.bind(window), requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0), cancelAnimationFrame: clearTimeout })) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    restores.push(() => { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name); });
+  }
   params = new URLSearchParams();
   signIn.mockClear();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -505,12 +512,59 @@ describe("Social timeline page", () => {
     fireEvent.click(row);
     expect(Navigation.useRouter().push).toHaveBeenCalled();
     cleanup();
+    // Returning after the freshness window or a mutation must not replay page one.
+    await queryClient.invalidateQueries({ queryKey: ["blueskySocial", did, "timeline"], refetchType: "none" });
+    posts.mockResolvedValue({ feed: [item("newer-head", "Newer upstream head")] });
     await show();
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+    });
     const returned = await screen.findByText("Return Second Page");
     expect(returned.closest(".overflow-y-auto")?.scrollTop).toBe(780);
     expect(screen.getByText("Return First Page")).toBeTruthy();
     expect(posts).toHaveBeenCalledTimes(2);
   });
+
+  for (const action of ["Like", "Repost", "Bookmark"] as const) {
+    it(`preserves page-two rows and position after ${action} when newer upstream posts exist`, async () => {
+      serveCatalog();
+      const posts = servePage();
+      posts.mockImplementation(async args => args.cursor
+        ? { feed: [item("action-two", "Action Second Page")] }
+        : { feed: [item("action-one", "Action First Page")], cursor: "action-next" });
+      const engage = spyOn(PostClient, "setBlueskyPostEngagement").mockResolvedValue("at://did:plc:viewer/app.bsky.feed.like/action");
+      const bookmark = spyOn(BookmarkClient, "setBlueskyBookmark").mockResolvedValue(undefined);
+      restores.push(() => engage.mockRestore(), () => bookmark.mockRestore());
+      await show();
+      await screen.findByText("Action First Page");
+      fireEvent.click(screen.getByRole("button", { name: "Load More" }));
+      const row = await screen.findByText("Action Second Page");
+      const card = within(row.closest("article")!);
+      const scrolling = row.closest(".overflow-y-auto") as HTMLElement;
+      scrolling.scrollTop = 780;
+      posts.mockResolvedValue({ feed: [item("new-head", "New upstream post")] });
+      if (action === "Bookmark") {
+        fireEvent.click(card.getByRole("button", { name: "Bookmark Post" }));
+        await waitFor(() => expect(card.getByRole("button", { name: "Remove Bookmark" })).toBeTruthy());
+      } else if (action === "Like") {
+        fireEvent.click(card.getByRole("button", { name: "Like (0)" }));
+        await waitFor(() => expect(card.getByRole("button", { name: "Like (1)" }).getAttribute("aria-pressed")).toBe("true"));
+      } else {
+        fireEvent.click(card.getByRole("button", { name: "Repost (0)" }));
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Repost" }));
+        await waitFor(() => expect(card.getByRole("button", { name: "Repost (1)" })).toBeTruthy());
+      }
+      await waitFor(() => expect(action === "Bookmark" ? bookmark : engage).toHaveBeenCalledTimes(1));
+      expect(posts).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Action First Page")).toBeTruthy();
+      expect(screen.getByText("Action Second Page")).toBe(row);
+      expect(scrolling.scrollTop).toBe(780);
+      expect(screen.queryByText("New upstream post")).toBeNull();
+    });
+  }
 
   it("refreshes safety settings before invalidating posts and reflects updated preferences", async () => {
     const oldPost = item("old", "Old feed post");
@@ -542,4 +596,55 @@ describe("Social timeline page", () => {
     expect(signIn).toHaveBeenCalledWith(did);
     expect(posts).not.toHaveBeenCalled();
   });
+});
+
+describe("live Media timeline", () => {
+  it("keeps Media modes isolated from the Social cache and preserves empty-page continuation", async () => {
+    serveCatalog();
+    const photo = item("photo", "Live media caption");
+    const fetch = servePage({ feed: [photo], cursor: "next" });
+    const media = await import("@/lib/mediaFeedClient");
+    const projection = spyOn(media, "projectMediaPage").mockImplementation(async (_session, page, mode) => ({ ...page, feed: mode === "photos" ? page.feed : [] }));
+    restores.push(() => projection.mockRestore());
+    const { default: ShortVideosPage } = await import("@/app/media/short-videos/page");
+    const { default: PhotosPage } = await import("@/app/media/photos/page");
+    const view = render(<QueryClientProvider client={queryClient}><SidebarProvider><ShortVideosPage /></SidebarProvider></QueryClientProvider>);
+    await screen.findByText("No Short Videos on These Pages");
+    expect(screen.getByRole("button", { name: "Load More" })).toBeTruthy();
+    view.rerender(<QueryClientProvider client={queryClient}><SidebarProvider><PhotosPage /></SidebarProvider></QueryClientProvider>);
+    await screen.findByText("Live media caption");
+    expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(queryClient.getQueryData(["blueskySocial", did, "timeline", "cache-v1", "following", "", []])).toBeUndefined();
+    expect(queryClient.getQueryData(["blueskySocial", did, "timeline", "cache-v1", "following", "", [], "media", "short-videos"])).toBeTruthy();
+  });
+  it("withholds blocked and hidden media through the existing moderation path", async () => {
+    const blocked = item("blocked-media", "Blocked media caption");
+    blocked.post.author.viewer = { blocking: "at://did:plc:viewer/app.bsky.graph.block/x" };
+    const hidden = item("hidden-media", "Hidden media caption");
+    serveCatalog({ feeds: [], moderation: { ...safety, prefs: { ...safety.prefs, hiddenPosts: [hidden.post.uri] } } });
+    servePage({ feed: [blocked, hidden] });
+    const media = await import("@/lib/mediaFeedClient");
+    const projection = spyOn(media, "projectMediaPage").mockImplementation(async (_session, page) => page);
+    restores.push(() => projection.mockRestore());
+    const { MediaTimeline } = await import("@/components/Media/MediaTimeline");
+    render(<QueryClientProvider client={queryClient}><SidebarProvider><MediaTimeline mode="photos" /></SidebarProvider></QueryClientProvider>);
+    await screen.findByText("No Photos on These Pages");
+    expect(screen.queryByText("Blocked media caption")).toBeNull();
+    expect(screen.queryByText("Hidden media caption")).toBeNull();
+  });
+});
+
+it("gates Media routes until account restoration and redirects signed-out viewers", async () => {
+  const { default: MediaLayout } = await import("@/app/media/layout");
+  const auth = spyOn(Auth, "useAuth").mockReturnValue({ session: null, isLoading: true } as unknown as ReturnType<typeof Auth.useAuth>);
+  const replace = mock(() => {});
+  const router = spyOn(Navigation, "useRouter").mockReturnValue({ replace } as unknown as ReturnType<typeof Navigation.useRouter>);
+  restores.push(() => auth.mockRestore(), () => router.mockRestore());
+  const view = render(<MediaLayout><p>Private Media</p></MediaLayout>);
+  expect(screen.queryByText("Private Media")).toBeNull();
+  expect(replace).not.toHaveBeenCalled();
+  auth.mockReturnValue({ session: null, isLoading: false } as unknown as ReturnType<typeof Auth.useAuth>);
+  view.rerender(<MediaLayout><p>Private Media</p></MediaLayout>);
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  expect(screen.queryByText("Private Media")).toBeNull();
 });

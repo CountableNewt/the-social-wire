@@ -5,7 +5,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: process.env.NEXT_STANDALONE === "true" ? "standalone" : undefined,
   outputFileTracingRoot: path.join(__dirname, "../.."),
-  transpilePackages: ["latr-packages", "@stygian/anypub-kit"],
+  transpilePackages: ["latr-packages"],
   env: {
     NEXT_PUBLIC_APP_ENV:
       process.env.NEXT_PUBLIC_APP_ENV ?? process.env.APP_ENV ?? "",

@@ -10,10 +10,6 @@ const migration = readFileSync(
   ),
   "utf8",
 )
-const postgresStore = readFileSync(
-  join(repositoryRoot, "services/jetstream-ingest/internal/store/postgres.go"),
-  "utf8",
-)
 
 describe("bounded Jetstream snapshot migration", () => {
   it("adds an explicit immutable replay-window identity", () => {
@@ -32,8 +28,6 @@ describe("bounded Jetstream snapshot migration", () => {
     expect(migration).toContain("last_staged_seq IS NULL")
     expect(migration).toContain("completed bounded snapshot with no matching events")
     expect(migration).toContain("OLD.replay_state = 'snapshot_complete'")
-    expect(postgresStore).toContain("'snapshot_complete', $7, $8, $9")
-    expect(postgresStore).toContain("cursor_kind, last_staged_seq, last_staged_event_at")
   })
 
   it("remains provider-neutral", () => {

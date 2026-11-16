@@ -1,0 +1,24 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.publishClip
+  type: http
+  seq: 315
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.publishClip
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "clipId": "{{podcastClipId}}",
+  "uri": "{{podcastClipUri}}"
+}
+}

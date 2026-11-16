@@ -2,16 +2,16 @@
 
 import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
-  ACCOUNT_PREFERENCES_QUERY_KEY,
+  accountPreferencesQueryKey,
   useAccountPreferences,
 } from "@/hooks/useReadLaterPreferences";
 import { usePDSClient } from "@/hooks/usePDSClient";
 import { useAuth } from "@/hooks/useAuth";
-import type { PreferencesRecord, RepoRecord } from "@/lib/pdsClient";
+import type { PDSClient, PreferencesRecord, RepoRecord } from "@/lib/pdsClient";
 import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
 import { fetchSyncPreferences } from "@/lib/syncPreferencesClient";
 import {
@@ -24,39 +24,46 @@ import {
   type TopLevelFeed,
 } from "@/lib/feedPreferences";
 
+type PreferenceMutation = {
+  next: FeedDisplayPreferences;
+  viewerDid?: string;
+  oauth: ReturnType<ReturnType<typeof useAuth>["getOAuthSession"]>;
+  client: PDSClient | null;
+  previousPreferences: FeedDisplayPreferences;
+  policyReady: boolean;
+};
+
 export function useFeedDisplayPreferences() {
   const { session, getOAuthSession } = useAuth();
   const client = usePDSClient();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
-  const [optimistic, setOptimistic] =
-    useState<FeedDisplayPreferences | null>(null);
-  const [cached, setCached] = useState<FeedDisplayPreferences | null>(null);
+  const viewerDid = session?.did;
+  const auth = useRef({ viewerDid, getOAuthSession });
+  useLayoutEffect(() => { auth.current = { viewerDid, getOAuthSession }; }, [viewerDid, getOAuthSession]);
+  const [optimistic, setOptimistic] = useState<{ viewerDid?: string; value: FeedDisplayPreferences } | null>(null);
+  const [cached, setCached] = useState<{ viewerDid: string; value: FeedDisplayPreferences } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setCached(
-        session && typeof window !== "undefined"
-          ? loadCachedFeedDisplayPreferences(window.localStorage, session.did)
-          : null,
-      );
+      const value = viewerDid && typeof window !== "undefined" ? loadCachedFeedDisplayPreferences(window.localStorage, viewerDid) : null;
+      setCached(value && viewerDid ? { viewerDid, value } : null);
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [session]);
+    return () => { cancelled = true; };
+  }, [viewerDid]);
 
-  const serverPreferences = accountPreferences.data?.value;
+  const serverRecord = accountPreferences.data;
+  const serverPreferences = serverRecord?.uri === `at://${viewerDid}/app.thesocialwire.preferences/self` ? serverRecord.value : undefined;
+  const currentOptimistic = optimistic && optimistic.viewerDid === viewerDid ? optimistic.value : null;
+  const currentCached = cached && cached.viewerDid === viewerDid ? cached.value : null;
   const preferences = useMemo(
-    () =>
-      optimistic ??
-      (serverPreferences
-        ? normalizeFeedDisplayPreferences(serverPreferences)
-        : (cached ?? DEFAULT_FEED_DISPLAY_PREFERENCES)),
-    [cached, optimistic, serverPreferences],
+    () => currentOptimistic ?? (serverPreferences ? normalizeFeedDisplayPreferences(serverPreferences) : currentCached ?? DEFAULT_FEED_DISPLAY_PREFERENCES),
+    [currentCached, currentOptimistic, serverPreferences],
   );
+  const automaticReadReady = !viewerDid || currentOptimistic !== null || currentCached !== null || serverRecord === null || serverPreferences !== undefined;
+  const isCurrentActor = (input: PreferenceMutation) => auth.current.viewerDid === input.viewerDid && auth.current.getOAuthSession() === input.oauth;
 
   useEffect(() => {
     if (!session || !serverPreferences || typeof window === "undefined") return;
@@ -69,11 +76,13 @@ export function useFeedDisplayPreferences() {
   }, [serverPreferences, session]);
 
   const mutation = useMutation({
-    mutationFn: async (next: FeedDisplayPreferences) => {
+    mutationFn: async (input: PreferenceMutation) => {
+      const { next, viewerDid: actorDid, oauth, client: actorClient } = input;
+      if (!isCurrentActor(input)) throw new Error("Your account changed. Reopen Settings.");
       if (isDummyReaderDataEnabled()) return null;
-      if (!client) throw new Error("PDS session required");
-      const existing = accountPreferences.data ?? null;
-      const saved = await client.upsertPreferences(
+      if (!actorClient || !actorDid || !oauth || oauth.did !== actorDid) throw new Error("PDS session required");
+      const existing = queryClient.getQueryData<RepoRecord<PreferencesRecord> | null>(accountPreferencesQueryKey(actorDid)) ?? null;
+      const saved = await actorClient.upsertPreferences(
         {
           visibleFeeds: next.visibleFeeds,
           showWire: next.showWire,
@@ -87,6 +96,7 @@ export function useFeedDisplayPreferences() {
           hideFinanceCrypto: next.hideFinanceCrypto,
           feedsWithUnreadCounts: next.feedsWithUnreadCounts,
           rssArticleOpenMode: next.rssArticleOpenMode,
+          automaticallyMarkAsRead: next.automaticallyMarkAsRead,
           showTopLevelFeedUnreadCounts:
             next.feedsWithUnreadCounts.length > 0,
         },
@@ -94,93 +104,60 @@ export function useFeedDisplayPreferences() {
       );
       // Reads use the Gateway cache, while writes go directly to the PDS.
       // Rewarm it before a reload can replace the committed visibility settings.
-      const oauth = getOAuthSession();
-      if (oauth && session) {
+      if (saved.uri !== `at://${actorDid}/app.thesocialwire.preferences/self`) throw new Error("These preferences belong to another account.");
+      if (isCurrentActor(input)) {
         try {
-          await fetchSyncPreferences(oauth, session.did, undefined, true);
+          await fetchSyncPreferences(oauth, actorDid, undefined, true);
         } catch {
           // A cache refresh failure cannot undo a successful PDS write.
         }
       }
       return saved;
     },
-    onMutate: async (next) => {
-      await queryClient.cancelQueries({
-        queryKey: ACCOUNT_PREFERENCES_QUERY_KEY,
-      });
-      const previous =
-        queryClient.getQueryData<RepoRecord<PreferencesRecord> | null>(
-          ACCOUNT_PREFERENCES_QUERY_KEY,
-        );
-      const previousPreferences = preferences;
-      const normalized = normalizeFeedDisplayPreferences(next);
-      setOptimistic(normalized);
-      setCached(normalized);
-      if (session && typeof window !== "undefined") {
-        saveCachedFeedDisplayPreferences(
-          window.localStorage,
-          session.did,
-          normalized,
-        );
+    onMutate: async (input) => {
+      const key = accountPreferencesQueryKey(input.viewerDid);
+      await queryClient.cancelQueries({ queryKey: key });
+      if (!isCurrentActor(input)) throw new Error("Your account changed. Reopen Settings.");
+      if (!input.policyReady) throw new Error("Wait for your preferences to load before changing settings.");
+      const previous = queryClient.getQueryData<RepoRecord<PreferencesRecord> | null>(key);
+      if (previous && previous.uri !== `at://${input.viewerDid}/app.thesocialwire.preferences/self`) throw new Error("These preferences belong to another account.");
+      const normalized = normalizeFeedDisplayPreferences(input.next);
+      setOptimistic({ viewerDid: input.viewerDid, value: normalized });
+      if (input.viewerDid && typeof window !== "undefined") {
+        setCached({ viewerDid: input.viewerDid, value: normalized });
+        saveCachedFeedDisplayPreferences(window.localStorage, input.viewerDid, normalized);
       }
-      queryClient.setQueryData<RepoRecord<PreferencesRecord> | null>(
-        ACCOUNT_PREFERENCES_QUERY_KEY,
-        (previous) => ({
-          uri:
-            previous?.uri ??
-            `at://${session?.did ?? ""}/app.thesocialwire.preferences/self`,
-          cid: previous?.cid ?? "",
-          value: {
-            $type: "app.thesocialwire.preferences",
-            createdAt: previous?.value.createdAt ?? new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            ...previous?.value,
-            visibleFeeds: normalized.visibleFeeds,
-            showWire: normalized.showWire,
-            showCircle: normalized.showCircle,
-            showFinance: normalized.showFinance,
-            showSports: normalized.showSports,
-            showSocial: normalized.showSocial,
-            showPodcasts: normalized.showPodcasts,
-            hideSportsScores: normalized.hideSportsScores,
-            hideFinancePerformance: normalized.hideFinancePerformance,
-            hideFinanceCrypto: normalized.hideFinanceCrypto,
-            feedsWithUnreadCounts: normalized.feedsWithUnreadCounts,
-            rssArticleOpenMode: normalized.rssArticleOpenMode,
-            showTopLevelFeedUnreadCounts:
-              normalized.feedsWithUnreadCounts.length > 0,
-          },
-        }),
-      );
-      return { previous, previousPreferences };
+      queryClient.setQueryData<RepoRecord<PreferencesRecord> | null>(key, old => ({
+        uri: old?.uri ?? `at://${input.viewerDid ?? ""}/app.thesocialwire.preferences/self`,
+        cid: old?.cid ?? "",
+        value: {
+          $type: "app.thesocialwire.preferences",
+          createdAt: old?.value.createdAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          ...old?.value,
+          ...normalized,
+          showTopLevelFeedUnreadCounts: normalized.feedsWithUnreadCounts.length > 0,
+        },
+      }));
+      return { previous, previousPreferences: input.previousPreferences, key };
     },
-    onSuccess: (saved) => {
-      if (saved) {
-        queryClient.setQueryData(ACCOUNT_PREFERENCES_QUERY_KEY, saved);
-      }
-      setOptimistic(null);
+    onSuccess: (saved, input) => {
+      if (saved) queryClient.setQueryData(accountPreferencesQueryKey(input.viewerDid), saved);
+      setOptimistic(previous => previous?.viewerDid === input.viewerDid ? null : previous);
     },
-    onError: (_error, _next, context) => {
-      setOptimistic(null);
+    onError: (_error, input, context) => {
+      setOptimistic(previous => previous?.viewerDid === input.viewerDid ? null : previous);
       if (context) {
-        queryClient.setQueryData(
-          ACCOUNT_PREFERENCES_QUERY_KEY,
-          context.previous ?? null,
-        );
-        setCached(context.previousPreferences);
-        if (session && typeof window !== "undefined") {
-          saveCachedFeedDisplayPreferences(
-            window.localStorage,
-            session.did,
-            context.previousPreferences,
-          );
+        queryClient.setQueryData(context.key, context.previous ?? null);
+        if (input.viewerDid && typeof window !== "undefined") {
+          setCached(previous => auth.current.viewerDid === input.viewerDid ? { viewerDid: input.viewerDid!, value: context.previousPreferences } : previous);
+          saveCachedFeedDisplayPreferences(window.localStorage, input.viewerDid, context.previousPreferences);
         }
       }
-      void queryClient.invalidateQueries({
-        queryKey: ACCOUNT_PREFERENCES_QUERY_KEY,
-      });
+      void queryClient.invalidateQueries({ queryKey: accountPreferencesQueryKey(input.viewerDid) });
     },
   });
+  const mutatePreferences = useCallback((next: FeedDisplayPreferences) => mutation.mutate({ next, viewerDid, oauth: getOAuthSession(), client, previousPreferences: preferences, policyReady: automaticReadReady }), [mutation, viewerDid, getOAuthSession, client, preferences, automaticReadReady]);
 
   const setFeedVisible = useCallback(
     (feed: TopLevelFeed, visible: boolean) => {
@@ -190,7 +167,7 @@ export function useFeedDisplayPreferences() {
               candidate === feed || preferences.visibleFeeds.includes(candidate),
           )
         : preferences.visibleFeeds.filter((candidate) => candidate !== feed);
-      mutation.mutate({
+      mutatePreferences({
         ...preferences,
         visibleFeeds,
         feedsWithUnreadCounts: visible
@@ -200,7 +177,7 @@ export function useFeedDisplayPreferences() {
             ),
       });
     },
-    [mutation, preferences],
+    [mutatePreferences, preferences],
   );
 
   const setFeedUnreadCountVisible = useCallback(
@@ -215,46 +192,48 @@ export function useFeedDisplayPreferences() {
         : preferences.feedsWithUnreadCounts.filter(
             (candidate) => candidate !== feed,
           );
-      mutation.mutate({
+      mutatePreferences({
         ...preferences,
         feedsWithUnreadCounts,
       });
     },
-    [mutation, preferences],
+    [mutatePreferences, preferences],
   );
 
   const setDiscoveryFeedVisible = useCallback(
     (feed: "wire" | "circle" | "finance" | "sports" | "social" | "podcasts", visible: boolean) => {
       if (isRetiredReaderFeed(feed)) return;
-      mutation.mutate({
+      mutatePreferences({
         ...preferences,
         [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial", podcasts: "showPodcasts" } as const)[feed]]: visible,
       });
     },
-    [mutation, preferences],
+    [mutatePreferences, preferences],
   );
 
   const setRssArticleOpenInReader = useCallback(
     (openInReader: boolean) => {
-      mutation.mutate({
+      mutatePreferences({
         ...preferences,
         rssArticleOpenMode: openInReader ? "reader" : "original",
       });
     },
-    [mutation, preferences],
+    [mutatePreferences, preferences],
   );
 
   return {
     preferences,
+    automaticReadReady,
     setFeedVisible,
     setDiscoveryFeedVisible,
     setFeedUnreadCountVisible,
     setRssArticleOpenInReader,
-    setHideSportsScores: (hidden: boolean) => mutation.mutate({ ...preferences, hideSportsScores: hidden }),
-    setHideFinanceCrypto: (hidden: boolean) => mutation.mutate({ ...preferences, hideFinanceCrypto: hidden }),
-    setHideFinancePerformance: (hidden: boolean) => mutation.mutate({ ...preferences, hideFinancePerformance: hidden }),
+    setAutomaticallyMarkAsRead: (enabled: boolean) => mutatePreferences({ ...preferences, automaticallyMarkAsRead: enabled }),
+    setHideSportsScores: (hidden: boolean) => mutatePreferences({ ...preferences, hideSportsScores: hidden }),
+    setHideFinanceCrypto: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinanceCrypto: hidden }),
+    setHideFinancePerformance: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinancePerformance: hidden }),
     isLoading: accountPreferences.isLoading,
-    isPending: mutation.isPending,
-    error: mutation.error,
+    isPending: !automaticReadReady || mutation.isPending && mutation.variables?.viewerDid === viewerDid,
+    error: mutation.variables?.viewerDid === viewerDid ? mutation.error : null,
   };
 }

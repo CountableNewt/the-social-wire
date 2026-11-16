@@ -73,3 +73,17 @@ it("reports the selected actor while keeping the handle visible", async () => {
     expect.objectContaining({ did: "did:plc:alice" })
   );
 });
+
+it("hides suggestions while disabled and leaves composition Enter untouched", async () => {
+  const { ActorTypeaheadInput } = await import("@/components/ActorTypeaheadInput");
+  const changed = mock(() => {});
+  const view = render(<ActorTypeaheadInput id="actor" aria-label="Account Handle" value="ali" onValueChange={changed} />);
+  const input = screen.getByRole("combobox", { name: "Account Handle" });
+  fireEvent.focus(input);
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+  expect(changed).not.toHaveBeenCalled();
+  view.rerender(<ActorTypeaheadInput id="actor" aria-label="Account Handle" value="ali" onValueChange={changed} disabled />);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input.getAttribute("aria-expanded")).toBe("false");
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
 import { CachedImage } from "@/components/shared/CachedImage";
 import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
 
@@ -47,7 +48,7 @@ export function SocialPostCard({
   const post = item.post;
   const reply = socialReplyMetadata(item);
   if (isSocialInteractionHidden({ ...item, reply }, moderation)) return null;
-  const record = AppBskyFeedPost.validateRecord(post.record);
+  const record = validateSocialPostRecord(post.record);
   const decision = moderateSocialPost(post, moderation);
   const content = decision.ui("contentList");
   if (content.filter) return null;

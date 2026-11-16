@@ -83,7 +83,7 @@ function PodcastViewerLibrary() {
     const generation = ++libraryGeneration.current;
     const [catalog, local] = await Promise.allSettled([
       oauth && navigator.onLine
-        ? podcastRequest<{ shows: PodcastShow[] }>(oauth, "shows")
+        ? podcastRequest<{ shows: PodcastShow[] }>(oauth, "getShows")
         : Promise.resolve({ shows: [] }),
       listPodcastDownloads(viewer),
     ]);
@@ -108,12 +108,12 @@ function PodcastViewerLibrary() {
     if (feed === "clips" || searching || !oauth || !navigator.onLine || feed === "downloads" || (feed === "show" && !showId)) return;
     const controller = new AbortController();
     const path = feed === "show"
-      ? `episodes?showId=${encodeURIComponent(showId!)}`
-      : "episodes";
+      ? `getEpisodes?showId=${encodeURIComponent(showId!)}`
+      : "getEpisodes";
     setLoading(true);
     setCursor(undefined);
     const request = podcastRequest<{ episodes: PodcastEpisode[]; cursor?: string }>(
-      oauth, feed === "queue" ? "episodes?queue=true" : path,
+      oauth, feed === "queue" ? "getEpisodes?queue=true" : path,
       "GET", undefined, controller.signal,
     );
     void request.then((page) => {
@@ -145,7 +145,7 @@ function PodcastViewerLibrary() {
     setBusy(true);
     setError(null);
     try {
-      const resolved = await podcastRequest<{ show: PodcastShow; episodes: PodcastEpisode[] }>(oauth, "resolve", "POST", { url: candidate.feedUrl }, controller.signal);
+      const resolved = await podcastRequest<{ show: PodcastShow; episodes: PodcastEpisode[] }>(oauth, "resolveShow", "POST", { url: candidate.feedUrl }, controller.signal);
       if (controller.signal.aborted || getOAuthSession()?.did !== viewer) return;
       setShows(current => [...current.filter(show => show.id !== resolved.show.id), resolved.show]);
       setDirectoryShows(current => ({ ...current, [candidate.feedUrl]: resolved.show }));
@@ -179,16 +179,16 @@ function PodcastViewerLibrary() {
     setDownloadStatus((current) => ({ ...current, [item.id]: "Downloading…" }));
     try {
       const [response, transcript, silence] = await Promise.all([
-        gatewayFetch(oauth, `/v1/podcasts/${podcastMediaPath(item.id)}`, {
+        gatewayFetch(oauth, podcastMediaPath(item.id), {
           signal: controller.signal,
         }),
         podcastRequest<{ transcripts: PodcastTranscript[] }>(
           oauth,
-          `transcript?episodeId=${encodeURIComponent(item.id)}`,
+          `getTranscript?episodeId=${encodeURIComponent(item.id)}`,
         ).catch(() => ({ transcripts: item.transcripts })),
         podcastRequest<PodcastSilence>(
           oauth,
-          `analysis?episodeId=${encodeURIComponent(item.id)}`,
+          `getAnalysis?episodeId=${encodeURIComponent(item.id)}`,
         ).catch(() => undefined),
       ]);
       if (!response.ok) throw new Error(`Download Failed (${response.status})`);
@@ -266,7 +266,7 @@ function PodcastViewerLibrary() {
       const result = await savePodcastAudioToDevice(viewer, item, async () => {
         const oauth = getOAuthSession();
         if (!oauth) throw new Error("Sign In to Save Audio That Is Not Downloaded");
-        return gatewayFetch(oauth, `/v1/podcasts/${podcastMediaPath(item.id)}`);
+        return gatewayFetch(oauth, podcastMediaPath(item.id));
       });
       setDownloadStatus((current) => ({ ...current, [item.id]: result === "cancelled" ? "Save Cancelled" : "Saved to Device" }));
     } catch { setError("Audio Could Not Be Saved. Please Retry."); }
@@ -314,7 +314,7 @@ function PodcastViewerLibrary() {
           void action(async () => {
             const oauth = getOAuthSession();
             if (!oauth || !session) throw new Error("Sign In to Add a Podcast");
-            const resolved = await podcastRequest<{ show?: PodcastShow; shows?: PodcastShow[]; episodes: PodcastEpisode[] }>(oauth, privateFeed ? "private/resolve" : "resolve", "POST", { url });
+            const resolved = await podcastRequest<{ show?: PodcastShow; shows?: PodcastShow[]; episodes: PodcastEpisode[] }>(oauth, privateFeed ? "resolvePrivateShow" : "resolveShow", "POST", { url });
             const candidates = resolved.shows ?? (resolved.show ? [resolved.show] : []);
             setShows((current) => [...current.filter((item) => !candidates.some((candidate) => candidate.id === item.id)), ...candidates]);
             if (candidates[0]) {
@@ -360,8 +360,8 @@ function PodcastViewerLibrary() {
           {selectedShow.visibility === "private" ? <button type="button" className={button} disabled={busy} onClick={() => void action(async () => {
             const oauth = getOAuthSession();
             if (!oauth) return;
-            await podcastRequest(oauth, "private/refresh", "POST", { showId: selectedShow.id });
-            const page = await podcastRequest<{ episodes: PodcastEpisode[]; cursor?: string }>(oauth, `episodes?showId=${encodeURIComponent(selectedShow.id)}`);
+            await podcastRequest(oauth, "refreshPrivateShow", "POST", { showId: selectedShow.id });
+            const page = await podcastRequest<{ episodes: PodcastEpisode[]; cursor?: string }>(oauth, `getEpisodes?showId=${encodeURIComponent(selectedShow.id)}`);
             setEpisodes(page.episodes);
             setCursor(page.cursor);
           })}>Refresh Feed</button> : null}
@@ -485,7 +485,7 @@ function PodcastViewerLibrary() {
                   cursor?: string;
                 }>(
                   oauth,
-                  `episodes?${feed === "show" && showId ? `showId=${encodeURIComponent(showId)}&` : ""}cursor=${encodeURIComponent(cursor)}`,
+                  `getEpisodes?${feed === "show" && showId ? `showId=${encodeURIComponent(showId)}&` : ""}cursor=${encodeURIComponent(cursor)}`,
                 );
                 setEpisodes((current) => [
                   ...current,

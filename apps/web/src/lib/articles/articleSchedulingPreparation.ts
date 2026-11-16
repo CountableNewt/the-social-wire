@@ -1,5 +1,5 @@
-import { buildArticleNativeContent, buildDocumentRecord, prepareContentOffload } from "@stygian/anypub-kit";
-import { markdownCodeText, markdownHeadingText, parseMarkdownBlocks } from "@stygian/markdown-editor/model";
+import { parseMarkdownBlocks } from "@stygian/markdown-editor/model";
+import { requestPreparation } from "@/lib/anypub/preparationClient";
 import { assertArticlePublicationEditable } from "./articlePublicationCapabilities";
 import type { ArticlePublishInput, ArticleRecord } from "./articlePublishingTypes";
 
@@ -27,18 +27,21 @@ export async function prepareScheduledArticle(input: ArticlePublishInput, schedu
   const rawPath = input.path.trim() || input.title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "untitled-article";
   if (/[?#\\\u0000-\u0020]/.test(rawPath) || rawPath.split("/").some(part => part === "." || part === "..")) throw new Error("Choose a Relative Article Path Without Query Parameters or Traversal.");
   const path = `/${rawPath.replace(/^\/+/, "")}`;
-  const native = await buildArticleNativeContent({
-    host: input.publication.host, markdown: input.markdown, assets: [], description: input.description,
-    blocks: blocks.map(block => ({ ...block, source: block.kind === "heading" ? markdownHeadingText(block.source) : block.kind === "code" ? markdownCodeText(block.source) : block.source })),
-  }, { signal });
-  const prepared = await prepareContentOffload(input.publication.host, native.content, { signal });
+  const native = await requestPreparation<{ content: ArticleRecord; textContent: string }>({
+    operation: "article", native: { host: input.publication.host, markdown: input.markdown, assets: [] },
+  }, "native", signal);
+  const prepared = await requestPreparation<{ content: ArticleRecord; offload?: unknown }>({
+    operation: "offload", host: input.publication.host, content: native.content,
+  }, "prepared", signal);
   if (prepared.offload) throw new Error("This Article Is Too Large to Schedule Without Deferred Asset Uploads.");
-  const record = await buildDocumentRecord({
-    site: input.publication.uri, title: input.title.trim(), publishedAt: timestamp.toISOString(), updatedAt: timestamp.toISOString(),
-    path, content: prepared.content, textContent: native.textContent,
-    description: input.description?.trim() || undefined,
-    tags: input.tags.length ? [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))] : undefined,
-  }, undefined, { signal });
+  const record = await requestPreparation<ArticleRecord>({
+    operation: "document", input: {
+      site: input.publication.uri, title: input.title.trim(), publishedAt: timestamp.toISOString(), updatedAt: timestamp.toISOString(),
+      path, content: prepared.content, textContent: native.textContent,
+      description: input.description?.trim() || undefined,
+      tags: input.tags.length ? [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))] : undefined,
+    },
+  }, "record", signal);
   if (record.$type !== "site.standard.document" || record.title !== input.title.trim() || record.site !== input.publication.uri || record.publishedAt !== timestamp.toISOString() || record.path !== path) throw new Error("The Publishing Service Returned an Unexpected Article.");
   // Fail closed if a service response unexpectedly introduces retained asset dependencies.
   const serialized = JSON.stringify(record);

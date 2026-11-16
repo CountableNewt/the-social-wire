@@ -1,0 +1,64 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.team.member",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A member of a Skej team.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "teamUri",
+          "memberDid",
+          "role",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "teamUri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "memberDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "maxLength": 8192
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "maxLength": 8192
+          },
+          "groupUris": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "maxLength": 100
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

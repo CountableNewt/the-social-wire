@@ -1,0 +1,64 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.schedule.list",
+  "defs": {
+    "main": {
+      "type": "query",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "accountDid": {
+            "type": "string",
+            "format": "did"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "records"
+          ],
+          "properties": {
+            "records": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "at.skej.defs#scheduleSummary"
+              },
+              "maxLength": 1000
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "name": "AuthRequired"
+        },
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "Forbidden"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "AccountNeedsReauth"
+        },
+        {
+          "name": "InvalidServiceAuth"
+        },
+        {
+          "name": "ActorMismatch"
+        },
+        {
+          "name": "account_needs_reauth"
+        }
+      ],
+      "description": "Query contract for at.skej.schedule.list. Supports account-bound Skej service authentication for the token issuer only."
+    }
+  }
+}

@@ -100,6 +100,18 @@ final class SocialWireGatewayClient {
         self.transport = transport
     }
 
+    func fetchProEntitlement() async throws -> SocialProEntitlement {
+        let result = try await authorizedGET(
+            path: "/v1/subscription/entitlements",
+            query: [:],
+            ifNoneMatch: nil
+        )
+        guard (200 ..< 300).contains(result.statusCode) else {
+            throw SocialWireError.badResponse("Pro access check failed (\(result.statusCode)).")
+        }
+        return try JSONDecoder().decode(SocialProEntitlement.self, from: result.body)
+    }
+
     nonisolated static func preferencesSyncRequest(
         ifNoneMatch: String?,
         forceRefresh: Bool
@@ -736,7 +748,7 @@ final class SocialWireGatewayClient {
     }
 
     func consumeBootstrapStream(
-        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) -> Void
+        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) async -> Void
     ) async throws {
         guard let url = URL(
             string: "/v1/appview/bootstrap-stream?includeLists=true",
@@ -754,7 +766,7 @@ final class SocialWireGatewayClient {
         }
 
         for try await line in bytes.lines {
-            try Self.consumeBootstrapLine(line, onEvent: onEvent)
+            try await Self.consumeBootstrapLine(line, onEvent: onEvent)
         }
     }
 
@@ -786,15 +798,15 @@ final class SocialWireGatewayClient {
 
     private static func consumeBootstrapLine(
         _ rawLine: String,
-        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) -> Void
-    ) throws {
+        onEvent: @escaping @Sendable (BootstrapStreamEventDTO) async -> Void
+    ) async throws {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !line.isEmpty else { return }
         let event = try BootstrapStreamNDJSON.decoder.decode(
             BootstrapStreamEventDTO.self,
             from: Data(line.utf8)
         )
-        onEvent(event)
+        await onEvent(event)
     }
 
     // MARK: - Private
@@ -867,7 +879,7 @@ final class SocialWireGatewayClient {
     func podcastDownloadRequest(media: String, expectedViewer: String, challenge: HTTPURLResponse? = nil) async throws -> URLRequest {
         guard let url = URL(string: media, relativeTo: baseURL)?.absoluteURL,
               url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path == "/v1/podcasts/media" else { throw SocialWireError.invalidURL }
+              url.path == "/xrpc/app.thesocialwire.podcast.getMedia" else { throw SocialWireError.invalidURL }
         let session = try await auth.validSession()
         guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
         return try await auth.dpop.withNonceSequence(for: session.pdsURL) { [self] in
@@ -890,7 +902,7 @@ final class SocialWireGatewayClient {
 
     func podcastAsset(url: URL, expectedViewer: String) async throws -> Data {
         guard url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path.hasPrefix("/v1/podcasts/") else { throw SocialWireError.invalidURL }
+              url.path == "/xrpc/app.thesocialwire.podcast.getImage" else { throw SocialWireError.invalidURL }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let response = try await authorizedRequest(method: "GET", path: url.path,
             query: Dictionary(query.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last }),
@@ -911,6 +923,45 @@ final class SocialWireGatewayClient {
             throw PodcastGatewayFailure(status: response.statusCode)
         }
         return try JSONDecoder().decode(Value.self, from: response.body)
+    }
+
+    /// Classifies already moderated, viewer-scoped Bluesky post views; this does not discover content.
+    /// Callers retain the upstream cursor, including when projection returns no matching URIs.
+    func projectMedia(_ request: MediaProjectionRequest, expectedViewer: String) async throws -> MediaProjectionResponse {
+        guard request.posts.count <= 30 else {
+            throw SocialWireError.badResponse("Media projection accepts at most 30 posts.")
+        }
+        let body = try JSONEncoder().encode(request)
+        guard body.count <= 512 * 1024 else {
+            throw SocialWireError.badResponse("Media projection request is too large.")
+        }
+        let response = try await authorizedRequest(method: "POST", path: "/v1/media/project", query: [:],
+            body: body, contentType: "application/json", expectedViewer: expectedViewer)
+        guard response.statusCode == 200 else {
+            throw SocialWireError.badResponse("Media could not load (\(response.statusCode)).")
+        }
+        let projection = try JSONDecoder().decode(MediaProjectionResponse.self, from: response.body)
+        let expectedSelection = request.mode == .photos ? "images" : "portrait-video"
+        guard projection.source == "bluesky-following", projection.selection == expectedSelection,
+              !projection.durationVerified,
+              Set(projection.uris).isSubset(of: Set(request.posts.map(\.uri))),
+              Set(projection.uris).count == projection.uris.count else {
+            throw SocialWireError.badResponse("Media projection response was invalid.")
+        }
+        return projection
+    }
+
+    func standardSiteArticleEmbed(url: URL, expectedViewer: String) async throws -> StandardSiteSocialEmbed? {
+        let response = try await authorizedRequest(method: "GET",
+            path: SocialWireXRPCMethod.getArticleEmbed,
+            query: ["url": url.absoluteString], body: nil, contentType: nil, expectedViewer: expectedViewer)
+        if response.statusCode == 404 { return nil }
+        guard response.statusCode == 200 else {
+            throw SocialWireError.badResponse("Article preview could not load (\(response.statusCode)).")
+        }
+        let metadata = try JSONDecoder().decode(StandardSiteSocialEmbed.self, from: response.body)
+        guard metadata.isValid else { throw SocialWireError.invalidURL }
+        return metadata
     }
 
     private struct ListsErrorEnvelope: Decodable { let message: String? }
@@ -953,7 +1004,7 @@ final class SocialWireGatewayClient {
 
         let session = try await auth.validSession()
         if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: includesWireModerationProofs || includesCircleGraphProofs) { [self] in
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: includesWireModerationProofs || includesCircleGraphProofs, preemptsBackground: method != "GET") { [self] in
             let prepared = includesWireModerationProofs || includesCircleGraphProofs
             for ceremony in 0 ..< (prepared ? 2 : 1) {
                 try Task.checkCancellation()

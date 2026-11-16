@@ -1,9 +1,11 @@
+import { mediaEnabled } from "@/lib/toolsEnabled";
+
 export const PODCAST_SPEEDS = Array.from(
   { length: 6 },
   (_, index) => 0.75 + index * 0.25,
 );
 export const podcastsEnabled = () =>
-  process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
+  mediaEnabled() && process.env.NEXT_PUBLIC_PODCASTS_ENABLED === "true";
 export type SilenceInterval = { start: number; end: number };
 export type TranscriptCue = { start: number; end: number; text: string };
 export function clampPlaybackTime(time: number, duration: number): number {

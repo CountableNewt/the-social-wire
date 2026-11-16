@@ -1,4 +1,5 @@
-import { AppBskyFeedPost, AppBskyFeedDefs } from "@atproto/api";
+import { validateSocialPostRecord } from "@/lib/socialPostRecord";
+import { AppBskyFeedDefs } from "@atproto/api";
 import { isPendingSocialReplyPost, PENDING_SOCIAL_REPLY_POST } from "./pendingSocialReplyPost";
 
 /** Record references identify replies even when AppView omits feed context. */
@@ -25,7 +26,7 @@ export function socialReplyMetadata(item: AppBskyFeedDefs.FeedViewPost, posts: R
     return parent === item.reply.parent && root === item.reply.root
       ? item.reply : { ...item.reply, parent, root };
   }
-  const record = AppBskyFeedPost.validateRecord(item.post.record);
+  const record = validateSocialPostRecord(item.post.record);
   const refs = record.success ? record.value.reply : undefined;
   if (!refs || refs.parent.uri === item.post.uri) return undefined;
   return { parent: view(refs.parent.uri), root: view(refs.root.uri) };

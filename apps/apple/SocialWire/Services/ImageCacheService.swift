@@ -24,12 +24,16 @@ actor ImageCacheService {
     }
 
     private var pendingDownloads: [String: PendingDownload] = [:]
+    private var failedUntil: [String: Date] = [:]
+    private let failureCooldown: TimeInterval
+
 
     var pendingRequestCount: Int {
         pendingDownloads.values.reduce(0) { $0 + $1.waiters.count }
     }
 
-    init(download: (@Sendable (URL) async throws -> (URL, URLResponse))? = nil) {
+    init(failureCooldown: TimeInterval = 30, download: (@Sendable (URL) async throws -> (URL, URLResponse))? = nil) {
+        self.failureCooldown = max(0, failureCooldown)
         memoryCache.countLimit = 160
         memoryCache.totalCostLimit = 48 * 1024 * 1024
 
@@ -49,9 +53,15 @@ actor ImageCacheService {
         guard !Task.isCancelled else { return nil }
         let key = cacheKey(url: url, maxPixelSize: maxPixelSize)
         if let cached = memoryCache.object(forKey: key as NSString)?.image {
+            LoadingDiagnostics.log("image memory-hit resource=\(LoadingDiagnostics.resource(url)) pixels=\(Int(maxPixelSize))")
             return cached
         }
 
+        if let retryAt = failedUntil[key], retryAt > Date() {
+            LoadingDiagnostics.log("image cooldown resource=\(LoadingDiagnostics.resource(url)) pixels=\(Int(maxPixelSize))")
+            return nil
+        }
+        failedUntil.removeValue(forKey: key)
         let waiterID = UUID()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -60,13 +70,14 @@ actor ImageCacheService {
                     return
                 }
                 if pendingDownloads[key] != nil {
+                    LoadingDiagnostics.log("image joined resource=\(LoadingDiagnostics.resource(url)) pixels=\(Int(maxPixelSize))")
                     pendingDownloads[key]?.waiters[waiterID] = continuation
                     return
                 }
                 let downloadID = UUID()
                 let task = Task {
                     let image = await downloadImage(for: url, maxPixelSize: maxPixelSize)
-                    finishDownload(key: key, id: downloadID, image: image)
+                    finishDownload(key: key, id: downloadID, image: image, cancelled: Task.isCancelled)
                 }
                 pendingDownloads[key] = PendingDownload(
                     id: downloadID,
@@ -88,12 +99,20 @@ actor ImageCacheService {
         }
     }
 
-    private func finishDownload(key: String, id: UUID, image: PlatformImage?) {
+    private func finishDownload(key: String, id: UUID, image: PlatformImage?, cancelled: Bool) {
         // A cancelled download can finish after a new request for the same key starts.
         guard pendingDownloads[key]?.id == id,
               let pending = pendingDownloads.removeValue(forKey: key) else { return }
         if let image {
             memoryCache.setObject(CacheEntry(image), forKey: key as NSString, cost: Self.decodedImageCost(image))
+        }
+        if image == nil && !cancelled {
+            let now = Date()
+            failedUntil = failedUntil.filter { $0.value > now }
+            if failedUntil.count >= 256, let oldest = failedUntil.min(by: { $0.value < $1.value })?.key {
+                failedUntil.removeValue(forKey: oldest)
+            }
+            failedUntil[key] = now.addingTimeInterval(failureCooldown)
         }
         for continuation in pending.waiters.values {
             continuation.resume(returning: image)
@@ -101,11 +120,19 @@ actor ImageCacheService {
     }
 
     private func downloadImage(for url: URL, maxPixelSize: CGFloat) async -> PlatformImage? {
+        let start = ProcessInfo.processInfo.systemUptime
+        let trace = UUID().uuidString.prefix(8)
+        let resource = LoadingDiagnostics.resource(url)
+        var outcome = "failed"
+        LoadingDiagnostics.log("image start id=\(trace) resource=\(resource) pixels=\(Int(maxPixelSize))")
+        defer { LoadingDiagnostics.log("image end id=\(trace) outcome=\(outcome) totalMs=\(LoadingDiagnostics.milliseconds(since: start))") }
         do {
             let (temporaryURL, response) = try await download(url)
+            LoadingDiagnostics.log("image response id=\(trace) downloadMs=\(LoadingDiagnostics.milliseconds(since: start)) status=\((response as? HTTPURLResponse)?.statusCode ?? 0) mime=\(response.mimeType ?? "unknown") expectedBytes=\(response.expectedContentLength)")
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
             try Task.checkCancellation()
             guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+                outcome = "http-rejected"
                 return nil
             }
             guard response.expectedContentLength <= 0
@@ -120,12 +147,18 @@ actor ImageCacheService {
                 return nil
             }
             let data = try Data(contentsOf: temporaryURL, options: .mappedIfSafe)
-            guard let decoded = Self.decodeImage(data: data, maxPixelSize: maxPixelSize) else {
+            let decodeStart = ProcessInfo.processInfo.systemUptime
+            let decoded = Self.decodeImage(data: data, maxPixelSize: maxPixelSize)
+            LoadingDiagnostics.log("image decode id=\(trace) bytes=\(data.count) decodeMs=\(LoadingDiagnostics.milliseconds(since: decodeStart)) success=\(decoded != nil)")
+            guard let decoded else {
+                outcome = "decode-failed"
                 return nil
             }
             try Task.checkCancellation()
+            outcome = "success"
             return decoded
         } catch {
+            outcome = Task.isCancelled ? "cancelled" : LoadingDiagnostics.failure(error)
             return nil
         }
     }
@@ -167,7 +200,9 @@ actor ImageCacheService {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else {
-            return PlatformImage(data: data)
+            let fallback = PlatformImage(data: data)
+            LoadingDiagnostics.log("image thumbnail-fallback pixels=\(Int(maxPixelSize)) success=\(fallback != nil)")
+            return fallback
         }
 #if canImport(UIKit)
         return PlatformImage(cgImage: cgImage)

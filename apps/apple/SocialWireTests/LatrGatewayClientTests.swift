@@ -33,6 +33,24 @@ struct LatrBookmarkProofPoolTests {
         #expect(LatrGatewayClient.proofSpecs(for: .setBookmarkState).map(\.httpMethod) == ["GET", "POST"])
     }
 
+    @Test("preview requests supply a separate PDS session attestation proof")
+    func previewSessionAttestation() throws {
+        let specs = LatrGatewayClient.proofSpecs(for: .getOpenGraph)
+        #expect(specs.count == 1)
+        let spec = try #require(specs.first)
+        #expect(spec.nsid == "com.atproto.server.getSession")
+        #expect(spec.httpMethod == "GET")
+        #expect(spec.count == 1)
+
+        var request = URLRequest(
+            url: try #require(URL(string: "https://api.thesocialwire.app/xrpc/link.latr.preview.getOpenGraph"))
+        )
+        request.setValue("gateway-session-proof", forHTTPHeaderField: ATProtoSessionDPoP.headerName)
+        LatrGatewayClient.applyPreparedUpstreamProof("latr-session-proof", to: &request)
+        #expect(request.value(forHTTPHeaderField: "X-ATProto-Upstream-DPoP") == "latr-session-proof")
+        #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.headerName) == "gateway-session-proof")
+    }
+
     @Test("tag writes use the pinned L@tr normalization contract")
     func tagNormalization() throws {
         #expect(
@@ -148,6 +166,33 @@ struct LatrBookmarkProofPoolTests {
         ])
         #expect(specs.last?.httpMethod == "POST")
         #expect(specs.last?.count == 25)
+    }
+
+    @Test("preview enrichment preserves bookmark identity, state, tags, and existing metadata")
+    func previewEnrichment() throws {
+        let data = Data(#"""
+        {
+          "normalizedUrl":"https://example.com/story", "url":"https://example.com/story",
+          "savedAt":"2026-11-04", "externalRkey":"", "itemRkey":"bookmark",
+          "externalUri":"https://example.com/story", "itemUri":"at://did:plc:test/community.lexicon.bookmarks.bookmark/one",
+          "subjectUri":"https://example.com/story", "state":"archived",
+          "title":"Existing Title", "excerpt":"  ", "tags":["Reading"]
+        }
+        """#.utf8)
+        let original = MergedLatrSave.external(try JSONDecoder().decode(MergedLatrExternalSave.self, from: data))
+        #expect(original.needsPreview)
+        let enriched = original.mergingPreview(LatrSaveMetadata(
+            title: "Replacement Title", excerpt: "Article Summary",
+            image: "https://example.com/photo.jpg", site: "Example", author: "Author"
+        ))
+        #expect(enriched.id == original.id)
+        #expect(enriched.title == "Existing Title")
+        #expect(enriched.excerpt == "Article Summary")
+        #expect(enriched.image == "https://example.com/photo.jpg")
+        #expect(enriched.state == "archived")
+        #expect(enriched.tags == ["Reading"])
+        #expect(!enriched.needsPreview)
+        #expect(enriched.mergingPreview(LatrSaveMetadata()) == enriched)
     }
 
     private func total(_ method: LatrXRPCMethod) -> Int {

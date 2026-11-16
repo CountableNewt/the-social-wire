@@ -1,6 +1,7 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { LATR_UPSTREAM_DPOP_HEADER } from "latr-packages/gateway-client";
 
+import { enqueueForGatewayOrigin } from "@/lib/gatewayOriginQueue";
 import {
   createUpstreamDpopProof,
   pdsXrpcMethodForSocialWireGatewayRequest,
@@ -55,28 +56,8 @@ function shouldRetryGatewayDpopNonce(res: Response): boolean {
   return Boolean(res.headers.get("DPoP-Nonce")?.trim());
 }
 
-// PDS proof ceremonies and writes share a lane. Receipt-backed projection reads
-// cannot advance the PDS nonce and do not hold this lane during server work.
-const gatewayOriginQueues = new Map<string, Promise<unknown>>();
 const PDS_SESSION_PREFLIGHT_PATH =
   "/xrpc/app.thesocialwire.appview.listEntries";
-
-function enqueueForGatewayOrigin<T>(origin: string, task: () => Promise<T>, signal?: AbortSignal | null): Promise<T> {
-  const prior = gatewayOriginQueues.get(origin) ?? Promise.resolve();
-  const settled = prior.then(
-    () => undefined,
-    () => undefined
-  );
-  const result = settled.then(() => { signal?.throwIfAborted(); return task(); });
-  gatewayOriginQueues.set(
-    origin,
-    result.then(
-      () => undefined,
-      () => undefined
-    )
-  );
-  return waitForAbort(result, signal);
-}
 
 function waitForAbort<T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> {
   if (!signal) return promise;
@@ -95,7 +76,7 @@ function isProjectionRead(path: string, init?: RequestInit): boolean {
   if ((init?.method ?? "GET").toUpperCase() !== "GET") return false;
   const route = path.split("?")[0];
   return /^\/xrpc\/app\.thesocialwire\.(appview|discovery)\.get[A-Z]/.test(route) ||
-    route === "/xrpc/app.thesocialwire.sync.getPreferences" || route === "/v1/podcasts/state";
+    route === "/xrpc/app.thesocialwire.sync.getPreferences" || route === "/xrpc/app.thesocialwire.podcast.getState";
 }
 
 async function tokenBinding(oauth: OAuthSession): Promise<string> {
@@ -116,7 +97,7 @@ async function projectionRead(oauth: OAuthSession, path: string, init?: RequestI
     if (!state || state.binding !== binding) {
       state = { binding }; states.set(origin, state);
     }
-    if (state.serializedUntil && state.serializedUntil > Date.now()) return enqueueForGatewayOrigin(origin, () => gatewayFetchAttempt(oauth, path, init), init?.signal);
+    if (state.serializedUntil && state.serializedUntil > Date.now()) return enqueueForGatewayOrigin(origin, () => gatewayFetchAttempt(oauth, path, init), { signal: init?.signal });
     if (!state.receipt) {
       const current = state;
       if (!current.pending) {
@@ -128,7 +109,7 @@ async function projectionRead(oauth: OAuthSession, path: string, init?: RequestI
             current.serializedUntil = current.receipt ? undefined : Date.now() + 50_000;
           }
           return response;
-        }, signal);
+        }, { signal });
         current.pending = pending;
         void pending.finally(() => { if (current.pending === pending) current.pending = undefined; }).catch(() => {});
       }
@@ -137,7 +118,7 @@ async function projectionRead(oauth: OAuthSession, path: string, init?: RequestI
       if (!preflight.ok) return preflight.clone();
       // Public-JWKS authentication does not issue receipts. Preserve its existing
       // serialized path rather than sending an unbacked Prepared declaration.
-      if (!current.receipt) return enqueueForGatewayOrigin(origin, () => gatewayFetchAttempt(oauth, path, init), init?.signal);
+      if (!current.receipt) return enqueueForGatewayOrigin(origin, () => gatewayFetchAttempt(oauth, path, init), { signal: init?.signal });
     }
     init?.signal?.throwIfAborted();
     const receipt = state.receipt;
@@ -154,7 +135,8 @@ export async function gatewayFetch(
   oauthSession: OAuthSession,
   path: string,
   init?: RequestInit,
-  prepareProofPool?: () => Promise<Readonly<Record<string, string>>>
+  prepareProofPool?: () => Promise<Readonly<Record<string, string>>>,
+  options: { projectionPreflight?: boolean } = {}
 ): Promise<Response> {
   const gatewayPath = path.startsWith("/") ? path : `/${path}`;
   const run = async () => {
@@ -220,10 +202,10 @@ export async function gatewayFetch(
   };
   try {
     if (canManuallySignGatewayRequest(oauthSession)) {
-      if (!prepareProofPool && !pdsXrpcMethodForSocialWireGatewayRequest(init?.method ?? "GET", gatewayPath) && isProjectionRead(gatewayPath, init)) {
+      if (options.projectionPreflight !== false && !prepareProofPool && !pdsXrpcMethodForSocialWireGatewayRequest(init?.method ?? "GET", gatewayPath) && isProjectionRead(gatewayPath, init)) {
         return await projectionRead(oauthSession, gatewayPath, init);
       }
-      return await enqueueForGatewayOrigin(gatewayBaseUrl(), run, init?.signal);
+      return await waitForAbort(enqueueForGatewayOrigin(gatewayBaseUrl(), run, { signal: init?.signal }), init?.signal);
     }
     return await run();
   } catch (error) {

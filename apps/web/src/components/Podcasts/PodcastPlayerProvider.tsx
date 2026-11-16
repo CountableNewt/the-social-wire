@@ -112,14 +112,14 @@ export function PodcastPlayerProvider({
     for (let attempt = 0; attempt < 3; attempt++) {
       const current = await podcastRequest<PodcastStateEnvelope>(
         oauth,
-        "state",
+        "getState",
       );
       if (viewerRef.current !== did) return;
       try {
         const updated = await podcastRequest<PodcastStateEnvelope>(
           oauth,
-          "state",
-          "PUT",
+          "putState",
+          "POST",
           {
             expectedRevision: current.revision,
             state: mergePodcastPatch(current.state, patches),
@@ -154,7 +154,7 @@ export function PodcastPlayerProvider({
         const oauth = getOAuthSession();
         if (requestController.signal.aborted || viewerRef.current !== did || oauth?.did !== did) return;
         try {
-          const envelope = await podcastRequest<PodcastStateEnvelope>(oauth, "state", "GET", undefined, requestController.signal);
+          const envelope = await podcastRequest<PodcastStateEnvelope>(oauth, "getState", "GET", undefined, requestController.signal);
           if (requestController.signal.aborted || viewerRef.current !== did || getOAuthSession()?.did !== did) return;
           // Refresh only membership; edits still waiting to sync take precedence over a server snapshot.
           stateRef.current = { ...stateRef.current, subscriptions: pending.current.subscriptions ?? envelope.state.subscriptions };
@@ -280,7 +280,7 @@ export function PodcastPlayerProvider({
         try {
           const oauth = getOAuthSession();
           if (!oauth) throw new Error("Sign In to Play This Private Episode");
-          const response = await gatewayFetch(oauth, `/v1/podcasts/${podcastMediaPath(item.id)}`);
+          const response = await gatewayFetch(oauth, podcastMediaPath(item.id));
           if (!response.ok) throw new Error("Private Audio Could Not Be Loaded");
           const media = await response.blob();
           if (generation !== playbackGeneration.current || viewerRef.current !== did) return;
@@ -325,7 +325,7 @@ export function PodcastPlayerProvider({
       const metadataSession = getOAuthSession();
       if (metadataSession && navigator.onLine && item.chapters?.some(chapter => !chapter.artworkUrl)) {
         // Enrich only selected media; image extraction must not delay or restart playback.
-        void podcastRequest<{ episodes: PodcastEpisode[] }>(metadataSession, `episodes?episodeId=${encodeURIComponent(item.id)}`)
+        void podcastRequest<{ episodes: PodcastEpisode[] }>(metadataSession, `getEpisodes?episodeId=${encodeURIComponent(item.id)}`)
           .then(page => {
             if (generation !== playbackGeneration.current || viewerRef.current !== did || audio.current !== element) return;
             const enriched = page.episodes?.find(candidate => candidate.id === item.id);
@@ -352,8 +352,8 @@ export function PodcastPlayerProvider({
           let analysis: PodcastSilence;
           if (local?.silence && isCurrentSilenceAnalysis(local.silence)) analysis = local.silence;
           else if (oauth && navigator.onLine) {
-            await podcastRequest(oauth, "analysis", "POST", { episodeId: item.id });
-            analysis = currentSilence(await podcastRequest<PodcastSilence>(oauth, `analysis?episodeId=${encodeURIComponent(item.id)}`));
+            await podcastRequest(oauth, "requestAnalysis", "POST", { episodeId: item.id });
+            analysis = currentSilence(await podcastRequest<PodcastSilence>(oauth, `getAnalysis?episodeId=${encodeURIComponent(item.id)}`));
           } else analysis = { status: "unavailable", intervals: [], analysisVersion: PODCAST_SILENCE_ANALYSIS_VERSION };
           if (active.current?.id === item.id && viewerRef.current === did && playbackGeneration.current === generation) {
             silenceRef.current = analysis;
@@ -396,10 +396,10 @@ export function PodcastPlayerProvider({
         return;
       }
       try {
-        await podcastRequest(oauth, "analysis", "POST", { episodeId: item.id });
+        await podcastRequest(oauth, "requestAnalysis", "POST", { episodeId: item.id });
         const result = await podcastRequest<PodcastSilence>(
           oauth,
-          `analysis?episodeId=${encodeURIComponent(item.id)}`,
+          `getAnalysis?episodeId=${encodeURIComponent(item.id)}`,
         );
         if (active.current?.id === item.id) {
           silenceRef.current = currentSilence(result);
@@ -475,7 +475,7 @@ export function PodcastPlayerProvider({
             if (oauth) {
               const page = await podcastRequest<{ episodes: PodcastEpisode[] }>(
                 oauth,
-                `episodes?episodeId=${encodeURIComponent(queue[0])}`,
+                `getEpisodes?episodeId=${encodeURIComponent(queue[0])}`,
               );
               if (page.episodes[0]) return play(page.episodes[0]);
             }
@@ -566,7 +566,7 @@ export function PodcastPlayerProvider({
       }
       const oauth = getOAuthSession();
       if (oauth && navigator.onLine)
-        void podcastRequest<PodcastStateEnvelope>(oauth, "state")
+        void podcastRequest<PodcastStateEnvelope>(oauth, "getState")
           .then((envelope) => {
             if (cancelled) return;
             stateRef.current = mergePodcastPatch(
@@ -645,7 +645,7 @@ export function PodcastPlayerProvider({
       if (oauth)
         void podcastRequest<PodcastSilence>(
           oauth,
-          `analysis?episodeId=${encodeURIComponent(episode.id)}`,
+          `getAnalysis?episodeId=${encodeURIComponent(episode.id)}`,
         )
           .then(async (result) => {
             if (active.current?.id !== episode.id) return;

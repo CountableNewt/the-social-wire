@@ -7,7 +7,7 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  ACCOUNT_PREFERENCES_QUERY_KEY,
+  accountPreferencesQueryKey,
   useConfiguredReadLaterService,
 } from "@/hooks/useReadLaterPreferences";
 import { usePDSClient } from "@/hooks/usePDSClient";
@@ -74,7 +74,7 @@ export function ReadLaterSettingsSection() {
         );
       }
       try {
-        return (
+        committed = (
           (await fetchSyncPreferences(
             oauthSession,
             oauthSession.did,
@@ -85,13 +85,16 @@ export function ReadLaterSettingsSection() {
       } catch {
         // The PDS write is authoritative. Keep the committed value visible even if
         // the Gateway cache cannot be reconciled immediately.
-        return committed;
       }
+      if (committed && committed.uri !== `at://${oauthSession.did}/app.thesocialwire.preferences/self`) throw new Error("These preferences belong to another account.");
+      return { committed, viewerDid: oauthSession.did };
     },
-    onSuccess: (committed) => {
-      queryClient.setQueryData(ACCOUNT_PREFERENCES_QUERY_KEY, committed);
-      setProviderOverride(null);
-      setSelectedCollectionOverride(null);
+    onSuccess: ({ committed, viewerDid }) => {
+      queryClient.setQueryData(accountPreferencesQueryKey(viewerDid), committed);
+      if (getOAuthSession()?.did === viewerDid) {
+        setProviderOverride(null);
+        setSelectedCollectionOverride(null);
+      }
     },
     onError: () => {
       setProviderOverride(null);

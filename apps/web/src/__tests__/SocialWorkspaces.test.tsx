@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { AppBskyFeedDefs, AppBskyGraphDefs, ModerationOpts } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Auth from "@/hooks/useAuth";
+import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import * as Catalog from "@/lib/blueskySocialClient";
 import * as Lists from "@/lib/socialListsClient";
 import * as Feeds from "@/lib/socialFeedDirectoryClient";
@@ -29,6 +30,7 @@ const restores: (() => void)[] = [];
 function restore<T extends { mockRestore(): void }>(spy: T): T { restores.push(() => spy.mockRestore()); return spy; }
 function Wrapper({ children }: { children: ReactNode }) { return <QueryClientProvider client={queryClient}><SidebarProvider>{children}</SidebarProvider></QueryClientProvider>; }
 beforeEach(() => {
+  restore(spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>));
   const media = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) });
   restores.push(() => { if (media) Object.defineProperty(window, "matchMedia", media); else Reflect.deleteProperty(window, "matchMedia"); });
@@ -120,8 +122,22 @@ it("workspace drafts and list selections reset when the active account changes",
   const listRender = render(<SocialLists />, { wrapper: Wrapper });
   fireEvent.click(await screen.findByRole("button", { name: "Friends" }));
   await screen.findByRole("link", { name: "Open List Feed" });
-  fireEvent.change(screen.getByRole("textbox", { name: "Member Handle Or DID" }), { target: { value: "private member" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Member Handle Or DID" }), { target: { value: "private member" } });
   viewer = "did:plc:bob"; listRender.rerender(<SocialLists />);
   expect(Boolean(screen.queryByRole("link", { name: "Open List Feed" }))).toBe(false);
-  expect(Boolean(screen.queryByRole("textbox", { name: "Member Handle Or DID" }))).toBe(false);
+  expect(Boolean(screen.queryByRole("combobox", { name: "Member Handle Or DID" }))).toBe(false);
+});
+
+it("adds the selected suggested handle to a social list only on submit", async () => {
+  spyOn(Suggestions, "useLoginHandleSuggestions").mockReturnValue({ data: [{ did: "did:plc:member", handle: "member.example", displayName: "Member" }], isFetching: false } as unknown as ReturnType<typeof Suggestions.useLoginHandleSuggestions>);
+  restore(spyOn(Lists, "getSocialLists").mockResolvedValue({ lists: [list] }));
+  restore(spyOn(Lists, "getSocialList").mockResolvedValue({ list, items: [] }));
+  const add = restore(spyOn(Lists, "addSocialListMember").mockResolvedValue(undefined));
+  render(<SocialLists />, { wrapper: Wrapper });
+  fireEvent.click(await screen.findByRole("button", { name: "Friends" }));
+  fireEvent.focus(await screen.findByRole("combobox", { name: "Member Handle Or DID" }));
+  fireEvent.click(screen.getByRole("option", { name: /Member.*@member.example/ }));
+  expect(add).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Add Member" }));
+  await waitFor(() => expect(add).toHaveBeenCalledWith(expect.objectContaining({ did }), list.uri, "member.example"));
 });

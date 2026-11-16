@@ -2,6 +2,8 @@
 
 import { useFeedFirstContentTiming } from "@/hooks/useFeedFirstContentTiming";
 
+import { attachFloatingGlassControlsOverlay } from "@/components/shared/floatingGlassScrollOverlay";
+
 import { useMemo } from "react";
 import { Network } from "lucide-react";
 
@@ -184,19 +186,35 @@ export function CircleNewsExperience({
     );
   }
 
+  const stale = pages[0].degraded || pages[0].source === "stale_generation";
+
   return (
     <CircleStoryActionsProvider refresh={() => edition.refetch()}>
-      <WireNewsEditionLayout
-        pages={layoutPages}
-        continuedStories={[]}
-        hasNextPage={edition.hasNextPage}
-        isFetchingNextPage={edition.isFetchingNextPage}
-        isLoadMoreError={edition.isFetchNextPageError}
-        onLoadMore={edition.fetchNextPage}
-        onSelect={onSelect}
-        editionLabel="Your Circle"
-        feedMessage={<CircleActionsError />}
-      />
+      <div className="relative flex h-full min-h-0 flex-col">
+        <div data-floating-glass-controls ref={attachFloatingGlassControlsOverlay}>
+        {stale ? (
+          <div
+            role="status"
+            className="shrink-0 border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-xs text-foreground"
+          >
+            Your Circle is showing limited network coverage while it refreshes.
+          </div>
+        ) : null}
+        <CircleActionsError />
+        </div>
+        <div className="min-h-0 flex-1">
+          <WireNewsEditionLayout
+            pages={layoutPages}
+            continuedStories={[]}
+            hasNextPage={edition.hasNextPage}
+            isFetchingNextPage={edition.isFetchingNextPage}
+            isLoadMoreError={edition.isFetchNextPageError}
+            onLoadMore={edition.fetchNextPage}
+            onSelect={onSelect}
+            editionLabel="Your Circle"
+          />
+        </div>
+      </div>
     </CircleStoryActionsProvider>
   );
 }

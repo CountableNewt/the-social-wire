@@ -15,7 +15,7 @@ function fixture(branch = 'dev') {
 for (const branch of ['dev', 'main']) test(`reuses exact tested-tree PR target proof on a ${branch} push`, async () => {
   const f = fixture(branch);
   const result = await reusePRVerification(f.event, f.environment, f.dependencies);
-  assert.deepEqual(result, { reuseWeb: true, reuseAppview: true, reason: `Verified PR #7, CI run 31, source tree ${tree}.` });
+  assert.deepEqual(result, { reuseWeb: true, reuseAppview: true, cacheRunID: 31, reason: `Verified PR #7, CI run 31, source tree ${tree}.` });
   assert.deepEqual(f.calls, [{ token: 'private-test-token' }, { args: ['api', 'owner/repo', merge, { baseRef: branch, requireTestedTree: true }] }]);
 });
 
@@ -89,7 +89,7 @@ test('unavailable, failed or stale PR evidence cannot skip a build or disclose e
 });
 
 test('strict output serialization permits only exact boolean values', () => {
-  assert.equal(reuseOutputs({ reuseWeb: true, reuseAppview: false }), 'reuse_web=true\nreuse_appview=false\n');
+  assert.equal(reuseOutputs({ reuseWeb: true, reuseAppview: false }), 'reuse_web=true\nreuse_appview=false\ncache_run_id=\n');
   for (const result of [null, {}, { reuseWeb: 'true', reuseAppview: false }, { reuseWeb: true, reuseAppview: 'false\nreuse_web=true' }]) assert.throws(() => reuseOutputs(result), /Invalid verification reuse outputs/);
 });
 
@@ -97,7 +97,7 @@ test('runner appends outputs and bounded safe provenance without logging credent
   const f = fixture(); const writes = [], logs = [];
   const result = await main(f.environment, { read: () => JSON.stringify(f.event), append: (...args) => writes.push(args), log: value => logs.push(value), decide: (event, environment) => reusePRVerification(event, environment, f.dependencies) });
   assert.equal(result.reuseWeb, true);
-  assert.deepEqual(writes, [['/output', 'reuse_web=true\nreuse_appview=true\n']]);
+  assert.deepEqual(writes, [['/output', 'reuse_web=true\nreuse_appview=true\ncache_run_id=31\n']]);
   assert.deepEqual(logs, [`Verified PR #7, CI run 31, source tree ${tree}.`]);
   assert.doesNotMatch(logs.join('\n'), /private-test-token/);
 });
@@ -107,15 +107,28 @@ test('unreadable or malformed event payloads append false flags for full build f
   for (const read of [() => '{bad JSON', () => { throw new Error('private-test-token'); }]) {
     const writes = [], logs = [];
     await main(f.environment, { read, append: (...args) => writes.push(args), log: value => logs.push(value) });
-    assert.deepEqual(writes, [['/output', 'reuse_web=false\nreuse_appview=false\n']]);
+    assert.deepEqual(writes, [['/output', 'reuse_web=false\nreuse_appview=false\ncache_run_id=\n']]);
     assert.doesNotMatch(logs.join('\n'), /private-test-token/);
   }
 });
 test('decision exceptions fall back, but invalid or unwriteable outputs fail the step', async () => {
   const f = fixture(); const writes = [];
   await main(f.environment, { read: () => '{}', decide: async () => { throw new Error('private-test-token'); }, append: (...args) => writes.push(args), log: () => {} });
-  assert.equal(writes[0][1], 'reuse_web=false\nreuse_appview=false\n');
+  assert.equal(writes[0][1], 'reuse_web=false\nreuse_appview=false\ncache_run_id=\n');
   await assert.rejects(main(f.environment, { read: () => '{}', decide: async () => ({ reuseWeb: 'true', reuseAppview: false }), append: () => { throw new Error('Should not append'); } }), /Invalid verification reuse outputs/);
   await assert.rejects(main({ ...f.environment, GITHUB_OUTPUT: '' }), /Missing GitHub output file/);
   await assert.rejects(main(f.environment, { read: () => '{}', decide: async () => ({ reuseWeb: false, reuseAppview: false }), append: () => { throw new Error('Write failed'); } }), /Write failed/);
+});
+
+test('cache provenance is emitted only for a proven reused target', async () => {
+  for (const [web, appview] of [[true, true], [true, false], [false, true], [false, false]]) {
+    const f = fixture(); f.evidence.targets = { web, appview };
+    const outputs = reuseOutputs(await reusePRVerification(f.event, f.environment, f.dependencies));
+    assert.match(outputs, new RegExp(`cache_run_id=${web || appview ? '31' : ''}\\n$`));
+  }
+  const f = fixture(); f.evidence.mergeSHA = head;
+  assert.match(reuseOutputs(await reusePRVerification(f.event, f.environment, f.dependencies)), /cache_run_id=\n$/);
+  for (const cacheRunID of ['31', '31\nreuse_web=true', 0, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => reuseOutputs({ reuseWeb: true, reuseAppview: false, cacheRunID }), /Invalid cache provenance output/);
+  }
 });

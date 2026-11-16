@@ -21,7 +21,7 @@ struct SportsFeedTests {
         #expect(try JSONDecoder().decode(SportsEvent.self, from: unknown).scheduleDateLabel.contains("TBD"))
     }
 
-    @Test("older preferences default visible; sports settings survive serialization")
+    @Test("stored Sports preferences survive serialization while the retired destination stays hidden")
     func preferences() throws {
         var value = try JSONDecoder().decode(ReaderFeedPreferences.self, from: Data("{}".utf8))
         #expect(value.showSports)
@@ -29,7 +29,7 @@ struct SportsFeedTests {
         value.showSports = false; value.hideSportsScores = true
         #expect(try JSONDecoder().decode(ReaderFeedPreferences.self, from: JSONEncoder().encode(value)) == value)
         #expect(NewsPrimaryFeed.defaultFeeds.count == 4)
-        #expect(NewsTab.available(wire: true, circle: true, sports: true).contains(.sports))
+        #expect(!NewsTab.available(wire: true, circle: true, sports: true).contains(.sports))
         #expect(!NewsTab.available(wire: true, circle: true).contains(.sports))
     }
 

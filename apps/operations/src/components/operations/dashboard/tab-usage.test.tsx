@@ -31,3 +31,10 @@ test("labels isolated local telemetry without widening the console environment",
   expect(() => assertTabUsage({ ...usage, sourceEnvironment: "local" })).not.toThrow()
   expect(() => assertTabUsage({ ...usage, sourceEnvironment: "unknown" })).toThrow()
 })
+
+test("labels delegated account usage from the existing telemetry key", () => {
+  const activity = { ...usage, tabs: [{ ...usage.tabs[0], tab: "brand-accounts" }] }
+  expect(() => assertTabUsage(activity)).not.toThrow()
+  render(<TabUsage usage={activity} />)
+  expect(screen.getByRole("rowheader", { name: "Delegated Accounts" })).toBeTruthy()
+})

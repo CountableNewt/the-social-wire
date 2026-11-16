@@ -11,23 +11,23 @@ struct PodcastMediaProxyRoutes {
   func register(
     on protected: RouterGroup<GatewayRequestContext>, router: Router<GatewayRequestContext>
   ) {
-    protected.get("/v1/podcasts/image") { request, context async throws -> Response in
+    protected.get("/xrpc/app.thesocialwire.podcast.getImage") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      return try await forward(request: request, path: "/v1/podcasts/image", auth: auth)
+      return try await forward(request: request, path: "/xrpc/app.thesocialwire.podcast.getImage", auth: auth)
     }
-    protected.get("/v1/podcasts/media") { request, context async throws -> Response in
+    protected.get("/xrpc/app.thesocialwire.podcast.getMedia") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      return try await forward(request: request, path: "/v1/podcasts/media", auth: auth)
+      return try await forward(request: request, path: "/xrpc/app.thesocialwire.podcast.getMedia", auth: auth)
     }
-    protected.get("/v1/podcasts/assets") { request, context async throws -> Response in
+    protected.get("/xrpc/app.thesocialwire.podcast.getClipAsset") { request, context async throws -> Response in
       guard let auth = context.authContext else { throw HTTPError(.unauthorized) }
-      return try await forward(request: request, path: "/v1/podcasts/assets", auth: auth)
+      return try await forward(request: request, path: "/xrpc/app.thesocialwire.podcast.getClipAsset", auth: auth)
     }
-    router.get("/v1/podcasts/public/assets") { request, _ async throws -> Response in
-      try await forward(request: request, path: "/v1/podcasts/public/assets", auth: nil)
+    router.get("/xrpc/app.thesocialwire.podcast.getPublicClipAsset") { request, _ async throws -> Response in
+      try await forward(request: request, path: "/xrpc/app.thesocialwire.podcast.getPublicClipAsset", auth: nil)
     }
-    router.get("/v1/podcasts/public/clips") { request, _ async throws -> Response in
-      try await forward(request: request, path: "/v1/podcasts/public/clips", auth: nil)
+    router.get("/xrpc/app.thesocialwire.podcast.getPublicClip") { request, _ async throws -> Response in
+      try await forward(request: request, path: "/xrpc/app.thesocialwire.podcast.getPublicClip", auth: nil)
     }
   }
   private func forward(request: Request, path: String, auth: AuthContext?) async throws -> Response

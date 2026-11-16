@@ -1,0 +1,23 @@
+meta {
+  name: XRPC app.thesocialwire.podcast.resolveShow
+  type: http
+  seq: 321
+}
+
+post {
+  url: {{baseUrl}}/xrpc/app.thesocialwire.podcast.resolveShow
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{oauthAccessToken}}
+  DPoP: {{dpopProof}}
+  Content-Type: application/json
+}
+
+body:json {
+{
+  "url": "https://example.com/podcast.xml"
+}
+}

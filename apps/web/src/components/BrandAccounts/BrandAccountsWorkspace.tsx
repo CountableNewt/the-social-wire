@@ -17,7 +17,7 @@ import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 export function BrandAccountsWorkspace() {
   const { session } = useAuth();
   if (!brandAccountsEnabled()) return null;
-  return session ? <BrandAccountsManager key={session.did} ownerDid={session.did} /> : <p className="p-6">Log In to Manage Brand Accounts.</p>;
+  return session ? <BrandAccountsManager key={session.did} ownerDid={session.did} /> : <p className="p-6">Log In to Manage Delegated Accounts.</p>;
 }
 
 function BrandAccountsManager({ ownerDid }: { ownerDid: string }) {
@@ -35,7 +35,7 @@ function BrandAccountsManager({ ownerDid }: { ownerDid: string }) {
     if (busy || !handle.trim()) return;
     setBusy(true); setError(undefined);
     try { await linkBrandAccount(ownerDid, handle.trim().replace(/^@/, "")); setLinkOpen(false); setHandle(""); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "The Brand Account Could Not Be Linked."); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "The Delegated Account Could Not Be Linked."); }
     finally { setBusy(false); }
   }
   async function disconnect() {
@@ -44,17 +44,17 @@ function BrandAccountsManager({ ownerDid }: { ownerDid: string }) {
     // Unmount actor operations before revoking or removing its credentials.
     setSelected(undefined); setBusy(true); setError(undefined);
     try { await cache.cancelQueries({ queryKey: ["brandAccounts", ownerDid, did] }); cache.removeQueries({ queryKey: ["brandAccounts", ownerDid, did] }); await unlinkBrandAccount(ownerDid, did); setUnlink(undefined); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "The Brand Account Could Not Be Removed."); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "The Delegated Account Could Not Be Removed."); }
     finally { setBusy(false); }
   }
   return <div data-analytics-ignore className="flex min-h-0 min-w-0 flex-1 flex-col">
-    <FeedHeader title="Brand Accounts" subtitle="Manage Bluesky Accounts Without Switching Your Personal Account"><Button size="sm" disabled={busy} onClick={() => { setHandle(""); setError(undefined); setLinkOpen(true); }}>Link Account</Button></FeedHeader>
-    {callbackFailed ? <p role="alert" className="mx-4 rounded-xl border p-3 text-sm">Brand Account Authorization Failed. Select Link Account to Try Again.</p> : null}
+    <FeedHeader title="Delegated Accounts" subtitle="Manage Bluesky Accounts Without Switching Your Personal Account"><Button size="sm" disabled={busy} onClick={() => { setHandle(""); setError(undefined); setLinkOpen(true); }}>Link Account</Button></FeedHeader>
+    {callbackFailed ? <p role="alert" className="mx-4 rounded-xl border p-3 text-sm">Delegated Account Authorization Failed. Select Link Account to Try Again.</p> : null}
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 lg:flex-row lg:overflow-hidden">
-      <aside className="shrink-0 space-y-3 rounded-2xl border p-3 lg:w-64 lg:overflow-y-auto" aria-label="Linked Brand Accounts">{!accounts.length ? <p className="py-6 text-center text-sm text-muted-foreground">No Brand Accounts Linked Yet</p> : accounts.map(did => <BrandAccountSidebarRow key={did} did={did} selected={acting === did} disabled={busy} onSelect={() => setSelected(did)} onUnlink={() => { setError(undefined); setUnlink(did); }} />)}{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}</aside>
-      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto">{acting ? <BrandAccountViewer key={`${ownerDid}:${acting}`} ownerDid={ownerDid} brandDid={acting} /> : <p className="p-8 text-center text-muted-foreground">Select a Linked Account or Link a Brand Account to Begin.</p>}</section>
+      <aside className="shrink-0 space-y-3 rounded-2xl border p-3 lg:w-64 lg:overflow-y-auto" aria-label="Linked Delegated Accounts">{!accounts.length ? <p className="py-6 text-center text-sm text-muted-foreground">No Delegated Accounts Linked Yet</p> : accounts.map(did => <BrandAccountSidebarRow key={did} did={did} selected={acting === did} disabled={busy} onSelect={() => setSelected(did)} onUnlink={() => { setError(undefined); setUnlink(did); }} />)}{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}</aside>
+      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto">{acting ? <BrandAccountViewer key={`${ownerDid}:${acting}`} ownerDid={ownerDid} brandDid={acting} /> : <p className="p-8 text-center text-muted-foreground">Select a Linked Account or Link a Delegated Account to Begin.</p>}</section>
     </div>
-    <Dialog open={linkOpen} onOpenChange={value => { if (!busy) setLinkOpen(value); }}><DialogContent showCloseButton={!busy}><DialogTitle>Link Brand Account</DialogTitle><DialogDescription>Authorize the Brand Account in the Login Flow. Your Personal Account Will Stay Signed In.</DialogDescription><form className="space-y-3" onSubmit={event => { event.preventDefault(); void connect(); }}><div className="space-y-1 text-sm"><label htmlFor="brand-account-handle">Handle or DID</label><ActorTypeaheadInput id="brand-account-handle" aria-label="Brand Account Handle or DID" autoFocus value={handle} onValueChange={setHandle} disabled={busy} placeholder="brand.bsky.social" autoComplete="username" /></div>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<div className="flex justify-end gap-2"><DialogClose disabled={busy} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button type="submit" disabled={busy || !handle.trim()}>{busy ? "Authorizing…" : "Authorize Account"}</Button></div></form></DialogContent></Dialog>
-    <Dialog open={!!unlink} onOpenChange={value => { if (!value && !busy) setUnlink(undefined); }}><DialogContent showCloseButton={!busy}><DialogTitle>Unlink Brand Account?</DialogTitle><DialogDescription>This Removes Its Linked Session From This Browser and Revokes That Authorization. Your Personal Account Stays Signed In.</DialogDescription><p className="break-all text-sm">{unlink}</p>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<div className="flex justify-end gap-2"><DialogClose disabled={busy} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button variant="destructive" disabled={busy} onClick={() => { void disconnect(); }}>{busy ? "Unlinking…" : "Confirm Unlink"}</Button></div></DialogContent></Dialog>
+    <Dialog open={linkOpen} onOpenChange={value => { if (!busy) setLinkOpen(value); }}><DialogContent showCloseButton={!busy}><DialogTitle>Link Delegated Account</DialogTitle><DialogDescription>Authorize the Delegated Account in the Login Flow. Your Personal Account Will Stay Signed In.</DialogDescription><form className="space-y-3" onSubmit={event => { event.preventDefault(); void connect(); }}><div className="space-y-1 text-sm"><label htmlFor="brand-account-handle">Handle or DID</label><ActorTypeaheadInput id="brand-account-handle" aria-label="Delegated Account Handle or DID" autoFocus value={handle} onValueChange={setHandle} disabled={busy} placeholder="brand.bsky.social" autoComplete="username" /></div>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<div className="flex justify-end gap-2"><DialogClose disabled={busy} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button type="submit" disabled={busy || !handle.trim()}>{busy ? "Authorizing…" : "Authorize Account"}</Button></div></form></DialogContent></Dialog>
+    <Dialog open={!!unlink} onOpenChange={value => { if (!value && !busy) setUnlink(undefined); }}><DialogContent showCloseButton={!busy}><DialogTitle>Unlink Delegated Account?</DialogTitle><DialogDescription>This Removes Its Linked Session From This Browser and Revokes That Authorization. Your Personal Account Stays Signed In.</DialogDescription><p className="break-all text-sm">{unlink}</p>{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<div className="flex justify-end gap-2"><DialogClose disabled={busy} className="rounded-xl border px-3 py-2">Cancel</DialogClose><Button variant="destructive" disabled={busy} onClick={() => { void disconnect(); }}>{busy ? "Unlinking…" : "Confirm Unlink"}</Button></div></DialogContent></Dialog>
   </div>;
 }

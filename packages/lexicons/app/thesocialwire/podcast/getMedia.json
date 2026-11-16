@@ -1,0 +1,30 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getMedia",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read Podcast Media",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "episodeId": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        }
+      },
+      "output": {
+        "encoding": "*/*"
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "RangeNotSatisfiable"
+        }
+      ]
+    }
+  }
+}

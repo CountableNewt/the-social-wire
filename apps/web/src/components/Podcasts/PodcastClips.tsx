@@ -105,7 +105,7 @@ function PodcastViewerClips({ episode }: { episode: PodcastEpisode }) {
               const oauth = requireSession();
               if (!oauth) throw new Error("Sign in to create clips");
               assertCurrentAccount();
-              await podcastRequest(oauth, "clips", "POST", {
+              await podcastRequest(oauth, "createClip", "POST", {
                 episodeId: episode.id,
                 startSeconds: start,
                 endSeconds: end,

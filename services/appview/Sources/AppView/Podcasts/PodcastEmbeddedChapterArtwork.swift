@@ -33,7 +33,7 @@ actor PodcastEmbeddedChapterArtwork {
     for index in output.chapters.indices where output.chapters[index].artworkUrl == nil {
       guard images.contains(where: { abs($0.startSeconds - output.chapters[index].startSeconds) < 0.5 }) else { continue }
       var components = URLComponents()
-      components.path = "/v1/podcasts/image"
+      components.path = "/xrpc/app.thesocialwire.podcast.getImage"
       components.queryItems = [URLQueryItem(name: "episodeId", value: episode.id),
         URLQueryItem(name: "kind", value: "chapter"), URLQueryItem(name: "index", value: String(index))]
       output.chapters[index].artworkUrl = components.string

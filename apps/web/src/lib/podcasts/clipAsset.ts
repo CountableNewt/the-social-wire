@@ -8,7 +8,7 @@ export async function fetchPodcastClipAsset({ session, clipId, format, signal, a
 }): Promise<Blob> {
   const check = () => { signal?.throwIfAborted(); assertCurrentAccount?.(); };
   check();
-  const response = await gatewayFetch(session, `/v1/podcasts/assets?clipId=${encodeURIComponent(clipId)}&format=${format}`, { signal });
+  const response = await gatewayFetch(session, `/xrpc/app.thesocialwire.podcast.getClipAsset?clipId=${encodeURIComponent(clipId)}&format=${format}`, { signal });
   check();
   if (!response.ok) throw new Error("Clip Media Could Not Load. Please Retry.");
   const blob = await response.blob();

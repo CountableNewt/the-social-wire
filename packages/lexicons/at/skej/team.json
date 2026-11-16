@@ -1,0 +1,48 @@
+{
+  "lexicon": 1,
+  "id": "at.skej.team",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A Skej team permission root owned by one admin DID.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "ownerAdminDid",
+          "title",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "ownerAdminDid": {
+            "type": "string",
+            "format": "did"
+          },
+          "title": {
+            "type": "string",
+            "maxGraphemes": 120,
+            "maxLength": 512
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "maxLength": 8192
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

@@ -23,7 +23,7 @@ export function PodcastClipDialog({ player, episode }: { player: PlayerContext; 
     const controller = new AbortController();
     const oauth = getOAuthSession();
     void (oauth && navigator.onLine
-      ? podcastRequest<{ transcripts: PodcastTranscript[] }>(oauth, `transcript?episodeId=${encodeURIComponent(episode.id)}`, "GET", undefined, controller.signal)
+      ? podcastRequest<{ transcripts: PodcastTranscript[] }>(oauth, `getTranscript?episodeId=${encodeURIComponent(episode.id)}`, "GET", undefined, controller.signal)
       : Promise.reject(new Error("Offline")))
       .then(result => { if (!controller.signal.aborted) setTranscripts(result.transcripts); })
       .catch(async () => {

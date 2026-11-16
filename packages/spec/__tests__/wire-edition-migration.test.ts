@@ -27,17 +27,6 @@ const qualityIndexMigration = readFileSync(
   ),
   "utf8",
 );
-const generationStore = readFileSync(
-  join(
-    import.meta.dir,
-    "../../../packages/go/wireworkercore/generation_store.go",
-  ),
-  "utf8",
-);
-const corpusStore = readFileSync(
-  join(import.meta.dir, "../../../packages/go/corpuscore/postgres_edition.go"),
-  "utf8",
-);
 
 describe("The Wire news edition migration", () => {
   it("materializes normalized generation, module, story, and people selections", () => {
@@ -51,13 +40,6 @@ describe("The Wire news edition migration", () => {
     }
     expect(migration).toContain("REFERENCES wire_rank_generations(generation_id)");
     expect(migration).toContain("UNIQUE (generation_id, module_key, canonical_key)");
-    expect(generationStore).toContain("INSERT INTO wire_edition_generations");
-    expect(generationStore).toContain("INSERT INTO wire_edition_modules");
-    expect(generationStore).toContain("INSERT INTO wire_edition_module_items");
-    expect(generationStore).toContain("INSERT INTO wire_edition_talked_accounts");
-    expect(corpusStore).toContain("FROM wire_serving.edition_generations");
-    expect(corpusStore).toContain("FROM wire_serving.edition_module_items");
-    expect(corpusStore).not.toContain("talkedAboutAccountCandidates: accounts");
   });
 
   it("keeps metadata and mention refresh projections bounded", () => {

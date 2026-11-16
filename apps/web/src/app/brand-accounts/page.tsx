@@ -5,5 +5,5 @@ import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 
 export default function BrandAccountsPage() {
   if (!brandAccountsEnabled()) notFound();
-  return <Suspense fallback={<p role="status">Loading Brand Accounts…</p>}><BrandAccountsWorkspace /></Suspense>;
+  return <Suspense fallback={<p role="status">Loading Delegated Accounts…</p>}><BrandAccountsWorkspace /></Suspense>;
 }

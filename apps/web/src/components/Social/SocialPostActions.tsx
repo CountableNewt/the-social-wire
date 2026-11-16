@@ -12,14 +12,14 @@ import { SocialReplyButton } from "./SocialReplyButton";
 import { SocialPostMenu } from "./SocialPostMenu";
 import { SocialRepostButton } from "./SocialRepostButton";
 
-export function SocialPostActions({ post, moderation }: { post: AppBskyFeedDefs.PostView; moderation: ModerationOpts }) {
+export function SocialPostActions({ post, moderation, replyAccounts }: { post: AppBskyFeedDefs.PostView; moderation: ModerationOpts; replyAccounts?: string[] }) {
   const { engagement, toggleLike, toggleRepost, isPending, error } = useBlueskyPostEngagement(post, moderation);
   const bookmark = useBlueskyBookmark(post, moderation);
   const button = "inline-flex min-h-8 min-w-8 items-center justify-center gap-2 rounded-lg px-1 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50";
   return <div>
     <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-6 text-sm text-muted-foreground" aria-label="Post Actions">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-6">
-      <SocialReplyButton post={post} className={button} moderation={moderation} />
+      <SocialReplyButton replyAccounts={replyAccounts} post={post} className={button} moderation={moderation} />
       <SocialRepostButton post={post} moderation={moderation} className={`${button} ${engagement.repost ? "text-green-600 dark:text-green-400" : ""}`} reposted={!!engagement.repost} repostCount={engagement.repostCount} pending={isPending} onRepost={toggleRepost} />
       <button className={`${button} ${engagement.like ? "text-rose-600 dark:text-rose-400" : ""}`} title={`${engagement.likeCount} Likes`} aria-label={`Like (${engagement.likeCount})`} aria-pressed={!!engagement.like} disabled={isPending} onClick={toggleLike}><Heart className={`size-4 ${engagement.like ? "fill-current" : ""}`} /><span>{formatSocialEngagementCount(engagement.likeCount)}</span></button>
       </div>

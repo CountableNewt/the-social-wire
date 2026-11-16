@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cacheBytes, recordBuildMetrics } from './build-metrics.mjs';
 
 const canonical = 'https://github.com/CountableNewt/the-social-wire';
 const shaPattern = /^[a-f0-9]{40}$/;
@@ -44,12 +45,13 @@ export function run(command, args, { environment = process.env, capture = false,
 
 function git(args) { return execFileSync('git', args, { encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 }).trim(); }
 
-export function build(context, kind, target, { execute = run, environment = process.env } = {}) {
+export function build(context, kind, target, { execute = run, environment = process.env, now = Date.now, record = recordBuildMetrics } = {}) {
   const reference = imageReference(context.sha, kind);
   const cacheRoot = environment.CI_DOCKER_CACHE_DIR ? resolve(environment.CI_DOCKER_CACHE_DIR) : undefined;
   if (cacheRoot && /[,\r\n]/.test(cacheRoot)) throw new Error('Docker cache directory cannot contain commas or newlines.');
   const cache = cacheRoot && resolve(cacheRoot, kind);
   const nextCache = cacheRoot && resolve(cacheRoot, `${kind}-next`);
+  const importCache = cache && existsSync(resolve(cache, 'index.json'));
   // Export once per image kind, retaining intermediate compilation layers without
   // accumulating the unreferenced blobs in BuildKit's previous local exports.
   const exportCache = cacheRoot && ((kind === 'appview' && target === 'backend-tests') || (kind === 'web' && !target));
@@ -59,13 +61,16 @@ export function build(context, kind, target, { execute = run, environment = proc
   if (target) args.push('--target', target);
   if (cacheRoot) {
     mkdirSync(cacheRoot, { recursive: true });
-    if (existsSync(resolve(cache, 'index.json'))) args.push('--cache-from', `type=local,src=${cache}`);
+    if (importCache) args.push('--cache-from', `type=local,src=${cache}`);
     if (exportCache) {
       rmSync(nextCache, { recursive: true, force: true });
       args.push('--cache-to', `type=local,dest=${nextCache},mode=max`);
     }
   }
   args.push('.');
+  const started = now();
+  const importedBytes = importCache ? cacheBytes(cache) : 0;
+  let succeeded = false;
   try {
     execute('docker', args, { environment });
     if (exportCache) {
@@ -73,8 +78,12 @@ export function build(context, kind, target, { execute = run, environment = proc
       rmSync(cache, { recursive: true, force: true });
       renameSync(nextCache, cache);
     }
+    succeeded = true;
   } finally {
     if (exportCache) rmSync(nextCache, { recursive: true, force: true });
+    record({ sha: context.sha, kind, target: target ?? 'runtime', seconds: (now() - started) / 1000,
+      importedBytes, exportedBytes: succeeded && exportCache ? cacheBytes(cache) : 0,
+      result: succeeded ? 'passed' : 'failed' }, environment);
   }
   return target ? `${reference}-verify` : reference;
 }
@@ -205,7 +214,7 @@ export function webVerificationCommand() {
 async function verify(context, selection = 'all', environment = process.env) {
   const buildImage = (kind, target) => build(context, kind, target, { environment });
   if (!['all', 'web', 'appview'].includes(selection)) throw new Error('Verification target must be all, web or appview.');
-  run('node', ['--test', 'scripts/ci/verify-runtime-images.test.mjs', 'scripts/ci/development-parity.test.mjs']);
+  run('node', ['--test', 'scripts/ci/verify-runtime-images.test.mjs', 'scripts/ci/build-metrics.test.mjs', 'scripts/ci/development-parity.test.mjs']);
   for (const kind of ['appview', 'web']) {
     if (selection !== 'all' && selection !== kind) continue;
     if (kind === 'appview') {

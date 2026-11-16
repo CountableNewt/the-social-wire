@@ -8,17 +8,25 @@ import { fetchSyncPreferences } from "@/lib/syncPreferencesClient";
 import { findReadLaterService } from "@/lib/readLaterServices";
 
 export const ACCOUNT_PREFERENCES_QUERY_KEY = ["accountPreferences"] as const;
+export const accountPreferencesQueryKey = (viewerDid?: string) => [...ACCOUNT_PREFERENCES_QUERY_KEY, viewerDid ?? "anonymous"] as const;
 
 const DEFAULT_READ_LATER_SERVICE_ID = "latr-link" as const;
 
 export function useAccountPreferences() {
   const { session, getOAuthSession } = useAuth();
+  const viewerDid = session?.did;
   return useQuery({
-    queryKey: ACCOUNT_PREFERENCES_QUERY_KEY,
+    queryKey: accountPreferencesQueryKey(viewerDid),
     queryFn: async () => {
       const oauth = getOAuthSession();
-      if (!oauth || !session) return null;
-      return fetchSyncPreferences(oauth, session.did);
+      if (!oauth || !viewerDid || oauth.did !== viewerDid) throw new Error("Sign in again to load your preferences.");
+      const record = await fetchSyncPreferences(oauth, viewerDid);
+      if (getOAuthSession() !== oauth) throw new Error("Your account changed. Reload preferences.");
+      return record;
+    },
+    select: record => {
+      if (record && record.uri !== `at://${viewerDid}/app.thesocialwire.preferences/self`) throw new Error("These preferences belong to another account.");
+      return record;
     },
     enabled: !!session,
     staleTime: 30_000,

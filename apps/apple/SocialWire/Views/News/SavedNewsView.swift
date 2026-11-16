@@ -25,7 +25,7 @@ struct SavedNewsView: View {
             if appModel.isSembleReadLaterEnabled {
                 await appModel.refreshSembleCollection()
             } else {
-                await appModel.refreshSavedLinks()
+                await appModel.refreshSavedLinks(force: false)
             }
         }
         .accessibilityIdentifier("news-tab-content-saved")

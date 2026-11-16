@@ -76,7 +76,7 @@ struct SavedLinksListContent: View {
         .scrollContentBackground(.hidden)
         .contentMargins(.bottom, 16, for: .scrollContent)
         .task(id: appModel.readerListSource) {
-            await appModel.refreshSavedLinks()
+            await appModel.refreshSavedLinks(force: false)
         }
         .confirmationDialog(
             "Delete saved link?",

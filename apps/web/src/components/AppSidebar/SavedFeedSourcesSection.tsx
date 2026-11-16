@@ -1,5 +1,6 @@
 "use client";
 
+import { Rows3 } from "lucide-react";
 import { Avatar } from "@/components/shared/Avatar";
 import {
   SidebarGroupLabel,
@@ -17,28 +18,38 @@ export function SavedFeedSourcesSection({
 }: {
   sources: SavedFeedSource[];
   selectedSource: string | null;
-  onSelectSource: (sourceKey: string) => void;
+  onSelectSource: (sourceKey: string | null) => void;
 }) {
-  if (sources.length === 0) return null;
   return (
     <>
       <SidebarGroupLabel>Publications</SidebarGroupLabel>
-      <SidebarMenu aria-label="Saved Feed Publications">
+      <SidebarMenu aria-label="Saved Feed Publications" className="gap-0.5">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            type="button"
+            isActive={!selectedSource}
+            aria-current={!selectedSource ? "page" : undefined}
+            onClick={() => onSelectSource(null)}
+          >
+            <Rows3 />
+            <span>All Publications</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         {sources.map((source) => (
           <SidebarMenuItem key={source.key}>
             <SidebarMenuButton
               type="button"
               isActive={selectedSource === source.key}
               onClick={() => onSelectSource(source.key)}
-              className={source.count > 0 ? "relative pr-8" : undefined}
+              className="relative pr-8"
             >
               <Avatar
                 src={source.faviconUrl}
                 alt=""
-                size={20}
-                className="size-5 shrink-0"
+                size={16}
+                className="size-4 shrink-0"
               />
-              <span>{source.name}</span>
+              <span className="truncate">{source.name}</span>
               <SidebarMenuBadge>{source.count}</SidebarMenuBadge>
             </SidebarMenuButton>
           </SidebarMenuItem>

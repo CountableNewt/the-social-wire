@@ -5,9 +5,13 @@
     "dockerfilePath": "/services/appview/Dockerfile.standalone",
     "watchPatterns": [
       "/services/appview/**",
+      "/packages/swift/skej-backend/**",
       "/packages/swift/thin-app-view-core/**",
       "/services/podcast-worker/**",
       "/scripts/migrations/**",
+      "/scripts/ci/prepare-swift-tests.py",
+      "/scripts/ci/appview-test-targets.swift",
+      "/scripts/ci/test_prepare_swift_tests.py",
       "/packages/vendor/**",
       "/apps/web/package.json",
       "/apps/operations/package.json",

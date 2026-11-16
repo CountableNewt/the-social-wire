@@ -34,6 +34,7 @@ export async function reusePRVerification(event, environment, {
     return {
       reuseWeb: web && evidence.targets.web,
       reuseAppview: appview && evidence.targets.appview,
+      cacheRunID: evidence.runID,
       reason: `Verified PR #${evidence.prNumber}, CI run ${evidence.runID}, source tree ${evidence.treeSHA}.`,
     };
   } catch {
@@ -45,7 +46,9 @@ export async function reusePRVerification(event, environment, {
 
 export function reuseOutputs(result) {
   if (!result || typeof result.reuseWeb !== 'boolean' || typeof result.reuseAppview !== 'boolean') throw new Error('Invalid verification reuse outputs.');
-  return `reuse_web=${result.reuseWeb}\nreuse_appview=${result.reuseAppview}\n`;
+  if (result.cacheRunID !== undefined && (!Number.isSafeInteger(result.cacheRunID) || result.cacheRunID < 1)) throw new Error('Invalid cache provenance output.');
+  const cacheRunID = result.reuseWeb || result.reuseAppview ? result.cacheRunID ?? '' : '';
+  return `reuse_web=${result.reuseWeb}\nreuse_appview=${result.reuseAppview}\ncache_run_id=${cacheRunID}\n`;
 }
 
 export async function main(environment = process.env, {

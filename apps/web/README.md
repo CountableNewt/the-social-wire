@@ -244,3 +244,7 @@ Environment banners:
 - **`local`** — blue banner ("Running locally")
 - **`dev`** — amber banner ("You're on the dev server")
 - **`prod`** — no banner
+
+## Scheduled Articles
+
+Social Wire prepares scheduled article documents on its own Web server. The scheduler publishes them at the selected time and stores the full document in a public schedule record immediately. Scheduling supports text articles only; image blobs, offloaded content, and Offprint/pckt multi-record wrappers are rejected before submission. Immediate publishing keeps its existing path.

@@ -94,7 +94,7 @@ final class PodcastLibraryModel {
         }
         guard let viewer else { return }
         do {
-            let result: ShowsResponse = try await request(path: "/v1/podcasts/shows", viewer: viewer)
+            let result: ShowsResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getShows", viewer: viewer)
             guard self.viewer == viewer else { return }
             available = true
             UserDefaults.standard.set(true, forKey: "podcast-available.\(PodcastDownloadStore.key(viewer))")
@@ -119,11 +119,11 @@ final class PodcastLibraryModel {
         error = nil
         defer { loading = false }
         do {
-            let result: ShowsResponse = try await request(path: "/v1/podcasts/shows", viewer: viewer)
+            let result: ShowsResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getShows", viewer: viewer)
             guard self.viewer == viewer else { return }
             shows = result.shows
             try await refreshState(viewer: viewer)
-            let clipResult: ClipsResponse = try await request(path: "/v1/podcasts/clips", viewer: viewer)
+            let clipResult: ClipsResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.listClips", viewer: viewer)
             guard self.viewer == viewer else { return }
             clips = clipResult.clips
             await loadRecentEpisodes()
@@ -136,7 +136,7 @@ final class PodcastLibraryModel {
         error = nil
         defer { loading = false }
         do {
-            let response: ResolveResponse = try await request(method: "POST", path: privateFeed ? "/v1/podcasts/private/resolve" : "/v1/podcasts/resolve", body: ["url": url], viewer: viewer)
+            let response: ResolveResponse = try await request(method: "POST", path: privateFeed ? "/xrpc/app.thesocialwire.podcast.resolvePrivateShow" : "/xrpc/app.thesocialwire.podcast.resolveShow", body: ["url": url], viewer: viewer)
             guard self.viewer == viewer else { return }
             resolvedShow = response.show
             resolvedShows = response.shows ?? [response.show]
@@ -157,7 +157,7 @@ final class PodcastLibraryModel {
         error = nil
         defer { loading = false }
         do {
-            let response: EpisodesResponse = try await request(path: "/v1/podcasts/episodes", query: ["showId": show.id, "limit": "100"], viewer: viewer)
+            let response: EpisodesResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getEpisodes", query: ["showId": show.id, "limit": "100"], viewer: viewer)
             guard self.viewer == viewer else { return }
             showEpisodes[show.id] = response.episodes
             guard selectedShowId == show.id else { return }
@@ -178,7 +178,7 @@ final class PodcastLibraryModel {
         transcript = []
         guard let viewer else { return }
         do {
-            let result: TranscriptResponse = try await request(path: "/v1/podcasts/transcript", query: ["episodeId": episode.id], viewer: viewer)
+            let result: TranscriptResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getTranscript", query: ["episodeId": episode.id], viewer: viewer)
             guard self.viewer == viewer, player.episode?.id == episode.id else { return }
             transcript = result.transcripts
         } catch { self.error = error.localizedDescription }
@@ -188,14 +188,14 @@ final class PodcastLibraryModel {
     func searchPage(_ identity: PodcastSearchIdentity, cursor: String?) async throws -> PodcastSearchPage {
         guard identity.isValid, let viewer = identity.viewer, self.viewer == viewer else { throw CancellationError() }
         let body = identity.requestBody(cursor: cursor)
-        let result: PodcastSearchPage = try await request(method: "POST", path: "/v1/podcasts/search", body: body, viewer: viewer)
+        let result: PodcastSearchPage = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.findPodcasts", body: body, viewer: viewer)
         guard !Task.isCancelled, self.viewer == viewer else { throw CancellationError() }
         return result
     }
 
     func previewPublicFeed(_ feedURL: String) async throws -> PodcastResolvedSource {
         guard let viewer else { throw CancellationError() }
-        let result: PodcastResolvedSource = try await request(method: "POST", path: "/v1/podcasts/resolve", body: ["url": feedURL], viewer: viewer)
+        let result: PodcastResolvedSource = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.resolveShow", body: ["url": feedURL], viewer: viewer)
         guard !Task.isCancelled, self.viewer == viewer else { throw CancellationError() }
         shows.removeAll { $0.id == result.show.id }
         shows.append(result.show)
@@ -209,7 +209,7 @@ final class PodcastLibraryModel {
     }
 
     func artworkData(_ raw: String) async -> Data? {
-        guard raw.hasPrefix("/v1/podcasts/"), let viewer,
+        guard raw.hasPrefix("/xrpc/app.thesocialwire.podcast.getImage?"), let viewer,
               let url = URL(string: raw, relativeTo: URL(string: SocialWireAPIEnvironment.baseURLString))?.absoluteURL else { return nil }
         let data = try? await gateway.podcastAsset(url: url, expectedViewer: viewer)
         guard !Task.isCancelled, self.viewer == viewer else { return nil }
@@ -231,7 +231,7 @@ final class PodcastLibraryModel {
     func loadRecentEpisodes() async {
         guard let viewer else { return }
         do {
-            let response: EpisodesResponse = try await request(path: "/v1/podcasts/episodes", query: ["limit": "50"], viewer: viewer)
+            let response: EpisodesResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getEpisodes", query: ["limit": "50"], viewer: viewer)
             guard self.viewer == viewer else { return }
             recentEpisodes = response.episodes
         } catch { self.error = error.localizedDescription }
@@ -240,7 +240,7 @@ final class PodcastLibraryModel {
     func loadQueueEpisodes() async {
         guard let viewer else { return }
         do {
-            let response: EpisodesResponse = try await request(path: "/v1/podcasts/episodes", query: ["queue": "true", "limit": "100"], viewer: viewer)
+            let response: EpisodesResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getEpisodes", query: ["queue": "true", "limit": "100"], viewer: viewer)
             guard self.viewer == viewer else { return }
             queueEpisodes = response.episodes
         } catch { self.error = error.localizedDescription }
@@ -269,7 +269,7 @@ final class PodcastLibraryModel {
     func refreshPrivateShow(_ show: PodcastShow) async {
         guard show.isPrivate, let viewer else { return }
         do {
-            let response: ResolveResponse = try await request(method: "POST", path: "/v1/podcasts/private/refresh", body: ["showId": show.id], viewer: viewer)
+            let response: ResolveResponse = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.refreshPrivateShow", body: ["showId": show.id], viewer: viewer)
             guard self.viewer == viewer else { return }
             shows.removeAll { $0.id == show.id }
             shows.append(response.show)
@@ -313,10 +313,10 @@ final class PodcastLibraryModel {
         analysisTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let _: JobResponse = try await self.request(method: "POST", path: "/v1/podcasts/analysis", body: ["episodeId": episode.id], viewer: viewer)
+                let _: JobResponse = try await self.request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.requestAnalysis", body: ["episodeId": episode.id], viewer: viewer)
                 for _ in 0..<120 {
                     try Task.checkCancellation()
-                    let result: PodcastSilenceAnalysis = try await self.request(path: "/v1/podcasts/analysis", query: ["episodeId": episode.id], viewer: viewer)
+                    let result: PodcastSilenceAnalysis = try await self.request(path: "/xrpc/app.thesocialwire.podcast.getAnalysis", query: ["episodeId": episode.id], viewer: viewer)
                     guard self.viewer == viewer, self.player.episode?.id == episode.id else { return }
                     if result.status == "ready" || result.status == "completed" || result.status == "complete" {
                         guard let intervals = result.currentIntervals else {
@@ -350,7 +350,7 @@ final class PodcastLibraryModel {
         if show.isPrivate {
             guard !subscribed else { return }
             do {
-                let _: JSONValue = try await request(method: "DELETE", path: "/v1/podcasts/private/subscriptions", query: ["showId": show.id], viewer: viewer)
+                let _: JSONValue = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.deletePrivateSubscription", body: ["showId": show.id], viewer: viewer)
                 guard self.viewer == viewer else { return }
                 await refresh()
             } catch { self.error = "Could Not Remove Private Subscription. Try Again." }
@@ -406,7 +406,7 @@ final class PodcastLibraryModel {
 
     func existingOPMLFeedURLs(privateFeeds: Bool) async throws -> Set<String> {
         guard let viewer else { throw CancellationError() }
-        let response: ShowsResponse = try await request(path: "/v1/podcasts/shows", viewer: viewer)
+        let response: ShowsResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getShows", viewer: viewer)
         guard self.viewer == viewer else { throw CancellationError() }
         shows = response.shows
         try await refreshState(viewer: viewer)
@@ -441,7 +441,7 @@ final class PodcastLibraryModel {
                 resolve: { feed, isPrivate in
                     if !isPrivate, !PodcastPrivacy.permitsPublicURL(feed.feedURL) { throw SocialWireError.badResponse("Use Private Feeds.") }
                     let result: PodcastResolvedSource = try await self.request(method: "POST",
-                        path: isPrivate ? "/v1/podcasts/private/resolve" : "/v1/podcasts/resolve", body: ["url": feed.feedURL], viewer: viewer)
+                        path: isPrivate ? "/xrpc/app.thesocialwire.podcast.resolvePrivateShow" : "/xrpc/app.thesocialwire.podcast.resolveShow", body: ["url": feed.feedURL], viewer: viewer)
                     guard self.viewer == viewer, currentViewer() == viewer else { throw CancellationError() }
                     return result.show
                 }, subscribe: { show in
@@ -458,7 +458,7 @@ final class PodcastLibraryModel {
     func refreshBridgeStatus(showId: String) async {
         guard let viewer else { return }
         do {
-            let job: ClipJobResponse = try await request(path: "/v1/podcasts/jobs", query: ["showId": showId], viewer: viewer)
+            let job: ClipJobResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getJob", query: ["showId": showId], viewer: viewer)
             guard self.viewer == viewer else { return }
             bridgeStatus[showId] = job.status
             bridgeErrors[showId] = job.error
@@ -469,7 +469,7 @@ final class PodcastLibraryModel {
     func retryBridge(showId: String) async {
         guard let viewer, let id = bridgeJobIDs[showId] else { return }
         do {
-            let _: JobResponse = try await request(method: "POST", path: "/v1/podcasts/jobs", body: ["jobId": id], viewer: viewer)
+            let _: JobResponse = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.retryJob", body: ["jobId": id], viewer: viewer)
             await refreshBridgeStatus(showId: showId)
         } catch { self.error = error.localizedDescription }
     }
@@ -491,7 +491,7 @@ final class PodcastLibraryModel {
         guard let viewer else { return }
         if let episode = knownEpisodes[id] { await play(episode); return }
         do {
-            let result: EpisodesResponse = try await request(path: "/v1/podcasts/episodes", query: ["episodeId": id], viewer: viewer)
+            let result: EpisodesResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getEpisodes", query: ["episodeId": id], viewer: viewer)
             guard self.viewer == viewer else { return }
             guard let episode = result.episodes.first else { throw SocialWireError.badResponse("Episode Is Unavailable") }
             await play(episode)
@@ -512,12 +512,12 @@ final class PodcastLibraryModel {
         clipStatus = "Preparing Clip"
         do {
             let input = ClipInput(episodeId: episode.id, startSeconds: start, endSeconds: end, title: title, includeCaptions: includeCaptions)
-            let response: ClipPreparedResponse = try await request(method: "POST", path: "/v1/podcasts/clips", body: input, viewer: viewer)
+            let response: ClipPreparedResponse = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.createClip", body: input, viewer: viewer)
             guard self.viewer == viewer else { return }
             clipStatus = response.status.capitalized
             for _ in 0..<120 {
                 try Task.checkCancellation()
-                let job: ClipJobResponse = try await request(path: "/v1/podcasts/jobs", query: ["jobId": response.jobId], viewer: viewer)
+                let job: ClipJobResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getJob", query: ["jobId": response.jobId], viewer: viewer)
                 guard self.viewer == viewer else { return }
                 clipStatus = job.status.capitalized
                 if job.status == "ready" || job.status == "completed" || job.status == "complete" { await refresh(); return }
@@ -535,12 +535,12 @@ final class PodcastLibraryModel {
             if let uri = clip.publishedUri {
                 guard ATURI(uri)?.repo == viewer else { throw SocialWireError.badResponse("This Clip Belongs to Another Viewer") }
                 try await xrpc.deleteRecord(collection: collection, rkey: rkey(from: uri), expectedViewer: viewer)
-                let _: JSONValue = try await request(method: "DELETE", path: "/v1/podcasts/clips", query: ["clipId": clip.id], viewer: viewer)
+                let _: JSONValue = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.deleteClip", body: ["clipId": clip.id], viewer: viewer)
             } else {
                 guard let audio = clip.publicAudioUrl, let video = clip.publicVideoUrl else { throw SocialWireError.badResponse("Wait for the Clip to Finish Processing") }
                 var episode = knownEpisodes[clip.episodeId] ?? (player.episode?.id == clip.episodeId ? player.episode : nil)
                 if episode == nil {
-                    let result: EpisodesResponse = try await request(path: "/v1/podcasts/episodes", query: ["episodeId": clip.episodeId], viewer: viewer)
+                    let result: EpisodesResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getEpisodes", query: ["episodeId": clip.episodeId], viewer: viewer)
                     episode = result.episodes.first
                 }
                 guard let episode, episode.permitsPublicProcessing else { throw SocialWireError.badResponse("Private Episodes Cannot Be Published") }
@@ -553,7 +553,7 @@ final class PodcastLibraryModel {
                 let key = PodcastDownloadStore.key(clip.id)
                 try await xrpc.putRecord(collection: collection, rkey: key, record: record, expectedViewer: viewer)
                 let uri = "at://\(viewer)/\(collection)/\(key)"
-                let _: JSONValue = try await request(method: "POST", path: "/v1/podcasts/clips/publish", body: ["clipId": clip.id, "uri": uri], viewer: viewer)
+                let _: JSONValue = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.publishClip", body: ["clipId": clip.id, "uri": uri], viewer: viewer)
             }
             await refresh()
         } catch { self.error = error.localizedDescription }
@@ -601,7 +601,7 @@ final class PodcastLibraryModel {
     }
 
     private func refreshState(viewer: String) async throws {
-        let result: StateResponse = try await request(path: "/v1/podcasts/state", viewer: viewer)
+        let result: StateResponse = try await request(path: "/xrpc/app.thesocialwire.podcast.getState", viewer: viewer)
         guard self.viewer == viewer else { return }
         revision = result.revision
         state = result.state
@@ -620,7 +620,7 @@ final class PodcastLibraryModel {
                 mutation(&proposed)
                 let input = StateInput(expectedRevision: revision, state: proposed)
                 do {
-                    let result: StateResponse = try await request(method: "PUT", path: "/v1/podcasts/state", body: input, viewer: viewer)
+                    let result: StateResponse = try await request(method: "POST", path: "/xrpc/app.thesocialwire.podcast.putState", body: input, viewer: viewer)
                     guard self.viewer == viewer else { return false }
                     revision = result.revision
                     state = result.state

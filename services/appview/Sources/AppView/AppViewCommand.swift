@@ -5,6 +5,7 @@ import GatewayCore
 import Hummingbird
 import Logging
 import OperationsCore
+import SkejBackend
 import PostgresNIO
 import SocialWireRedis
 import ThinAppViewCore
@@ -41,6 +42,7 @@ struct Serve: AsyncParsableCommand {
     if initializeOnly, config.standaloneEdge == nil {
       throw ValidationError("--initialize-only requires BACKEND_MODE=standalone")
     }
+    let schedulingConfiguration = try EmbeddedSchedulingConfiguration.load(environment, config: config)
     let socialDraftConfiguration = try SocialDraftConfiguration.load(environment)
     let operationsConfig = OperationsConfiguration.fromEnvironment(environment)
     let listenPort = port ?? Int(environment["PORT"] ?? "8081") ?? 8081
@@ -127,6 +129,12 @@ struct Serve: AsyncParsableCommand {
           ? try SQLiteAnalyticsStore(path: path, secret: config.core.gatewayAppViewInternalSecret ?? "") : nil
         let podcastStore: (any PodcastStoring)? = config.podcastsEnabled
           ? try SQLitePodcastStore(path: path, logger: logger) : nil
+        let schedulingBackend: EmbeddedSkejBackend?
+        if let schedulingConfiguration {
+          schedulingBackend = try await schedulingConfiguration.open(httpClient: httpClient, logger: logger)
+        } else {
+          schedulingBackend = nil
+        }
         if initializeOnly {
           try await managedDraftObjects?.shutdown()
           managedDraftObjects = nil
@@ -159,6 +167,7 @@ struct Serve: AsyncParsableCommand {
           socialDraftService: socialDraftService,
           standaloneEdge: standaloneEdge,
           analyticsStore: analyticsStore,
+          schedulingBackend: schedulingBackend,
           logger: logger
         )
         let app = Application(
@@ -167,6 +176,18 @@ struct Serve: AsyncParsableCommand {
         )
         try await withThrowingTaskGroup(of: Void.self) { group in
           group.addTask { try await app.run() }
+          if let schedulingBackend {
+            group.addTask {
+              while !Task.isCancelled {
+                await schedulingBackend.runTick()
+                do {
+                  try await Task.sleep(for: .seconds(30))
+                } catch is CancellationError {
+                  return
+                }
+              }
+            }
+          }
           if config.standaloneEdge != nil {
             group.addTask {
               try await ThinAppViewWorkerRuntime.run(store: store, config: config.thinAppView,

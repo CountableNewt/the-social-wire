@@ -203,6 +203,7 @@ export interface PreferencesRecord {
     "readLater" | "archive" | "subscribed" | "following"
   >;
   rssArticleOpenMode?: "reader" | "original";
+  automaticallyMarkAsRead?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -225,6 +226,7 @@ export type PreferencesUpdates = Partial<
     | "showTopLevelFeedUnreadCounts"
     | "feedsWithUnreadCounts"
     | "rssArticleOpenMode"
+    | "automaticallyMarkAsRead"
   >
 >;
 
@@ -264,6 +266,9 @@ export function mergePreferencesRecord(
       : {}),
     ...(previous?.rssArticleOpenMode
       ? { rssArticleOpenMode: previous.rssArticleOpenMode }
+      : {}),
+    ...(previous?.automaticallyMarkAsRead !== undefined
+      ? { automaticallyMarkAsRead: previous.automaticallyMarkAsRead }
       : {}),
     ...updates,
   };

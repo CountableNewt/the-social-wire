@@ -4,6 +4,7 @@ import GatewayCore
 import Hummingbird
 import Logging
 import OperationsCore
+import SkejBackend
 import ThinAppViewCore
 import WireCore
 
@@ -29,6 +30,7 @@ enum AppViewRouterBuilder {
     standaloneEdge: StandaloneEdgeRuntime? = nil,
     analyticsStore: (any AnalyticsStoring)? = nil,
     mediaReadiness: StandaloneMediaReadinessProbe? = nil,
+    schedulingBackend: EmbeddedSkejBackend? = nil,
     logger: Logger
   ) -> Router<GatewayRequestContext> {
     let router = Router(context: GatewayRequestContext.self)
@@ -86,6 +88,19 @@ enum AppViewRouterBuilder {
       standaloneEdge.register(on: authenticated, router: router, config: config, httpClient: httpClient,
         telemetry: telemetry, telemetryEnvironment: telemetryEnvironment, logger: logger)
     }
+    if let schedulingBackend {
+      let entitlements = standaloneEdge?.configuration.entitlements
+      schedulingBackend.registerOAuth(on: router) { did in
+        guard let entitlements, entitlements.gatingEnabled else { return true }
+        return entitlements.hasPro(did: did)
+      }
+      schedulingBackend.registerScheduling(on: authenticated) { context in
+        guard let did = context.authContext?.did,
+          did != GatewayInternalTrustAuthMiddleware.anonymousDiscoveryDID
+        else { return nil }
+        return did
+      }
+    }
     let protected = authenticated
       .add(middleware: PDSReadStateReadinessMiddleware(store: thinAppViewStore as? any PDSReadStateLifecycleStoring, recovery: readStateRecovery))
       .add(middleware: LegacyReadStateMutationMiddleware())
@@ -107,8 +122,12 @@ enum AppViewRouterBuilder {
     }
 
     if config.podcastsEnabled, let podcastStore {
-      let podcastService = PodcastService(store: podcastStore, http: httpClient,
+      var podcastService = PodcastService(store: podcastStore, http: httpClient,
         repo: ATProtoAuthenticatedRepoClient(httpClient: httpClient, plcURL: config.core.atprotoPLCURL, logger: logger))
+      let resolver = podcastService
+      let feedResolution = PodcastFeedResolutionQueue { key in _ = try await resolver.resolve(key) }
+      backgroundTasks?.register { await feedResolution.shutdown() }
+      podcastService.feedResolution = feedResolution
       let routes = PodcastRoutes(service: podcastService)
       let podcasts = protected.group().add(middleware: PodcastPrivateStorageMiddleware())
       routes.register(on: podcasts)

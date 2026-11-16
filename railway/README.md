@@ -30,8 +30,8 @@ are managed by the scoped Infrastructure as Code partial in
 `/.railway/railway.ts`. Keep service build roots at `/` so Docker and Railpack
 builds can access shared monorepo packages.
 
-Environment-specific Podcast Media buckets and Podcast Media Workers are declared
-in this graph through `/.railway/podcasts.ts` for Development and Production;
+Development's Podcast Media bucket and Podcast Media Worker are also declared
+in this graph through `/.railway/podcasts.ts`. They are omitted from Production;
 new podcast resources do not use a legacy service config path.
 
 | Railway Service | Config File |
@@ -40,10 +40,6 @@ new podcast resources do not use a legacy service config path.
 | Operations Web | `/railway/operations-web.json` |
 | Gateway | `/railway/gateway.json` |
 | App View | `/railway/appview.json` |
-| Jetstream V2 Ingest | `/railway/jetstream-ingest.json` |
-| The Wire Global Ingest | `/railway/wire-jetstream-ingest.json` |
-| The Wire Corpus Edge | `/railway/wire-corpus-edge.json` |
-| Ops | `/railway/operations.json` |
 | Database Migrator | `/railway/database-migrator.json` |
 
 The repository-owned Tap image and `/railway/tap.json` were retired on

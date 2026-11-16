@@ -1,0 +1,35 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.podcast.getPublicClip",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read Podcast Public Clips",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "clipId": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "uri": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "app.thesocialwire.defs#jsonObject"
+        }
+      },
+      "errors": [
+        {
+          "name": "NotFound"
+        }
+      ]
+    }
+  }
+}
