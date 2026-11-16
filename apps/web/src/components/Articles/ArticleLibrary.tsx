@@ -16,7 +16,7 @@ import { articleEditCapability, canDeletePublishedArticle } from "@/lib/articles
 
 export type ArticleLibraryTab = "drafts" | "scheduled" | "published" | "research";
 
-export function ArticleLibrary({ did, publications, publicationsReady, tab, onTabChange, drafts, loading, busy, onOpenDraft, onDeleteDraft, published, publishedPending, publishedError, onOpenPublished, onEditPublished, onDeletePublished, scheduled, research }: {
+export function ArticleLibrary({ did, publications, publicationsReady, tab, onTabChange, drafts, loading, busy, onOpenDraft, onDeleteDraft, published, publishedPending, publishedFetching, publishedError, onRetryPublished, onOpenPublished, onEditPublished, onDeletePublished, scheduled, research }: {
   did: string;
   publications: ArticlePublication[];
   publicationsReady: boolean;
@@ -29,7 +29,9 @@ export function ArticleLibrary({ did, publications, publicationsReady, tab, onTa
   onDeleteDraft: (draft: ArticleDraft) => void;
   published: PublishedArticle[];
   publishedPending: boolean;
+  publishedFetching: boolean;
   publishedError: unknown;
+  onRetryPublished: () => void;
   onOpenPublished: (article: PublishedArticle) => void;
   onEditPublished: (article: PublishedArticle) => void;
   onDeletePublished: (article: PublishedArticle) => void;
@@ -38,7 +40,10 @@ export function ArticleLibrary({ did, publications, publicationsReady, tab, onTa
 }) {
   const selectedTab = tab === "scheduled" && !isPostSchedulingEnabled() ? "drafts" : tab;
   const publishedRecords = new Map(published.filter(article => article.record.$type === "site.standard.document").map(article => [article.uri, article]));
-  const visibleDrafts = drafts.filter(draft => !draft.publishedUri && !(draft.publishingRecordKey && publishedRecords.get(`at://${did}/site.standard.document/${draft.publishingRecordKey}`)?.record.site === draft.publicationUri));
+  const unconfirmedDrafts = drafts.filter(draft => !draft.publishedUri && !(draft.publishingRecordKey && publishedRecords.get(`at://${did}/site.standard.document/${draft.publishingRecordKey}`)?.record.site === draft.publicationUri));
+  const checkingPublication = publishedPending || publishedFetching;
+  const hiddenPublishingDrafts = (checkingPublication || !!publishedError) && unconfirmedDrafts.some(draft => draft.publishingRecordKey);
+  const visibleDrafts = hiddenPublishingDrafts ? unconfirmedDrafts.filter(draft => !draft.publishingRecordKey) : unconfirmedDrafts;
   const [toolbar, setToolbar] = useState<HTMLElement | null>(null);
   return <section aria-label="Article Library" className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
     <div className="mb-6 flex w-full flex-wrap items-center gap-2 border-b pb-3"><nav aria-label="Article Sections" className="flex flex-wrap gap-2">
@@ -47,7 +52,13 @@ export function ArticleLibrary({ did, publications, publicationsReady, tab, onTa
     <ArticleLibraryToolbarContext.Provider value={toolbar}>
     {selectedTab === "research" ? research : selectedTab === "scheduled" ? scheduled : selectedTab === "drafts" ? <>
       <p className="mb-4 text-sm text-muted-foreground">Private Drafts</p>
-      {loading ? <p role="status">Loading Drafts…</p> : !visibleDrafts.length ? <p className="py-12 text-center text-muted-foreground">Create an article to start writing.</p> : <ArticlePublicationGroups did={did} publications={publications} groups={groupArticlesByPublication(visibleDrafts, publications, draft => draft.publicationUri)} renderItems={items => <div className="divide-y">{items.map(draft => <div key={draft.id} className="flex items-start gap-2 rounded-lg hover:bg-muted/50 focus-within:bg-muted/50"><button type="button" disabled={busy} onClick={() => onOpenDraft(draft.id)} className="flex min-w-0 flex-1 items-start gap-4 rounded-lg px-3 py-5 text-left focus-visible:outline-ring disabled:opacity-50">
+      {!loading && hiddenPublishingDrafts ? checkingPublication
+        ? <p role="status" className="mb-4 text-sm text-muted-foreground">Checking Publication Status…</p>
+        : <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+            <span>Couldn’t Check Publication Status for Some Drafts.</span>
+            <Button size="sm" variant="outline" onClick={onRetryPublished}>Retry</Button>
+          </div> : null}
+      {loading ? <p role="status">Loading Drafts…</p> : !visibleDrafts.length ? hiddenPublishingDrafts ? null : <p className="py-12 text-center text-muted-foreground">Create an article to start writing.</p> : <ArticlePublicationGroups did={did} publications={publications} groups={groupArticlesByPublication(visibleDrafts, publications, draft => draft.publicationUri)} renderItems={items => <div className="divide-y">{items.map(draft => <div key={draft.id} className="flex items-start gap-2 rounded-lg hover:bg-muted/50 focus-within:bg-muted/50"><button type="button" disabled={busy} onClick={() => onOpenDraft(draft.id)} className="flex min-w-0 flex-1 items-start gap-4 rounded-lg px-3 py-5 text-left focus-visible:outline-ring disabled:opacity-50">
         <ArticleLibraryThumbnail did={did} draft={draft} /><span className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="break-words text-lg font-semibold">{draft.title || "Untitled Article"}</span>
         {draft.excerpt ? <span className="line-clamp-2 text-sm text-muted-foreground">{draft.excerpt}</span> : null}
