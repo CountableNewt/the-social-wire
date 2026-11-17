@@ -12,13 +12,16 @@ import {
 
 import {
   BOLD_TEXT_STORAGE_KEY,
+  FONT_FAMILY_STORAGE_KEY,
   FONT_STORAGE_KEY,
   isBoldTextPreference,
+  isFontFamilyPreference,
   isFontPreference,
   isThemePreference,
   resolveComputedTheme,
   THEME_STORAGE_KEY,
   type ComputedTheme,
+  type FontFamilyPreference,
   type FontPreference,
   type ThemePreference,
 } from "@/lib/appearance";
@@ -29,13 +32,15 @@ type AppearanceContextValue = {
   setTheme: (theme: ThemePreference) => void;
   font: FontPreference;
   setFont: (font: FontPreference) => void;
+  fontFamily: FontFamilyPreference;
+  setFontFamily: (fontFamily: FontFamilyPreference) => void;
   boldText: boolean;
   setBoldText: (enabled: boolean) => void;
 };
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 const subscribers = new Set<() => void>();
-const SERVER_SNAPSHOT = "system|sans|0|light";
+const SERVER_SNAPSHOT = "system|sans|system|0|light";
 
 function readStoredTheme(): ThemePreference {
   try {
@@ -52,6 +57,15 @@ function readStoredFont(): FontPreference {
     return isFontPreference(stored) ? stored : "sans";
   } catch {
     return "sans";
+  }
+}
+
+function readStoredFontFamily(): FontFamilyPreference {
+  try {
+    const stored = window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY);
+    return isFontFamilyPreference(stored) ? stored : "system";
+  } catch {
+    return "system";
   }
 }
 
@@ -72,16 +86,21 @@ function getSnapshot(): string {
   return [
     readStoredTheme(),
     readStoredFont(),
+    readStoredFontFamily(),
     readStoredBoldText() ? "1" : "0",
     readSystemDark() ? "dark" : "light",
   ].join("|");
 }
 
 function parseSnapshot(snapshot: string) {
-  const [storedTheme, storedFont, storedBold, systemTheme] = snapshot.split("|");
+  const [storedTheme, storedFont, storedFontFamily, storedBold, systemTheme] =
+    snapshot.split("|");
   return {
     theme: isThemePreference(storedTheme) ? storedTheme : "system",
     font: isFontPreference(storedFont) ? storedFont : "sans",
+    fontFamily: isFontFamilyPreference(storedFontFamily)
+      ? storedFontFamily
+      : "system",
     boldText: isBoldTextPreference(storedBold) ? storedBold === "1" : false,
     systemDark: systemTheme === "dark",
   };
@@ -108,6 +127,7 @@ function applyAppearance(
   theme: ThemePreference,
   systemDark: boolean,
   font: FontPreference,
+  fontFamily: FontFamilyPreference,
   boldText: boolean,
 ) {
   const computedTheme = resolveComputedTheme(theme, systemDark);
@@ -117,17 +137,19 @@ function applyAppearance(
   root.dataset.theme = theme;
   root.dataset.computedTheme = computedTheme;
   root.dataset.font = font;
+  root.dataset.fontFamily = fontFamily;
   root.dataset.boldText = boldText ? "true" : "false";
   root.style.colorScheme = computedTheme;
 }
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
-  const { theme, font, boldText, systemDark } = parseSnapshot(snapshot);
+  const { theme, font, fontFamily, boldText, systemDark } =
+    parseSnapshot(snapshot);
 
   useEffect(() => {
-    applyAppearance(theme, systemDark, font, boldText);
-  }, [boldText, font, systemDark, theme]);
+    applyAppearance(theme, systemDark, font, fontFamily, boldText);
+  }, [boldText, font, fontFamily, systemDark, theme]);
 
   const setTheme = useCallback((nextTheme: ThemePreference) => {
     try {
@@ -155,6 +177,19 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     notify();
   }, []);
 
+  const setFontFamily = useCallback((nextFontFamily: FontFamilyPreference) => {
+    try {
+      if (nextFontFamily === "system") {
+        window.localStorage.removeItem(FONT_FAMILY_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, nextFontFamily);
+      }
+    } catch {
+      // Ignore unavailable browser storage.
+    }
+    notify();
+  }, []);
+
   const setBoldText = useCallback((enabled: boolean) => {
     try {
       if (enabled) {
@@ -175,10 +210,22 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       setTheme,
       font,
       setFont,
+      fontFamily,
+      setFontFamily,
       boldText,
       setBoldText,
     }),
-    [boldText, font, setBoldText, setFont, setTheme, systemDark, theme],
+    [
+      boldText,
+      font,
+      fontFamily,
+      setBoldText,
+      setFont,
+      setFontFamily,
+      setTheme,
+      systemDark,
+      theme,
+    ],
   );
 
   return (

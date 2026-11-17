@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import type { CSSProperties } from "react";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
+import { GeistSerif } from "geist/font/serif/variable";
 import "./globals.css";
 import { Providers } from "./providers";
 import { EnvironmentBanner } from "@/components/shared/EnvironmentBanner";
@@ -10,6 +13,7 @@ import {
 } from "@/lib/appEnv";
 import {
   BOLD_TEXT_STORAGE_KEY,
+  FONT_FAMILY_STORAGE_KEY,
   FONT_STORAGE_KEY,
   THEME_STORAGE_KEY,
 } from "@/lib/appearance";
@@ -98,12 +102,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistSerif.variable} ${GeistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <head>
         <script
           id="appearance"
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});var theme=p==="light"||p==="dark"?p:"system";var f=localStorage.getItem(${JSON.stringify(FONT_STORAGE_KEY)});var font=f==="serif"||f==="mono"?f:"sans";var bold=localStorage.getItem(${JSON.stringify(BOLD_TEXT_STORAGE_KEY)})==="1";var systemDark=window.matchMedia("(prefers-color-scheme: dark)").matches;var computed=theme==="dark"||theme==="system"&&systemDark?"dark":"light";var root=document.documentElement;root.classList.toggle("dark",computed==="dark");root.classList.toggle("light",computed==="light");root.dataset.theme=theme;root.dataset.computedTheme=computed;root.dataset.font=font;root.dataset.boldText=bold?"true":"false";root.style.colorScheme=computed;}catch(e){}})();`,
+            __html: `(function(){try{var p=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});var theme=p==="light"||p==="dark"?p:"system";var f=localStorage.getItem(${JSON.stringify(FONT_STORAGE_KEY)});var font=f==="serif"||f==="mono"?f:"sans";var family=localStorage.getItem(${JSON.stringify(FONT_FAMILY_STORAGE_KEY)})==="geist"?"geist":"system";var bold=localStorage.getItem(${JSON.stringify(BOLD_TEXT_STORAGE_KEY)})==="1";var systemDark=window.matchMedia("(prefers-color-scheme: dark)").matches;var computed=theme==="dark"||theme==="system"&&systemDark?"dark":"light";var root=document.documentElement;root.classList.toggle("dark",computed==="dark");root.classList.toggle("light",computed==="light");root.dataset.theme=theme;root.dataset.computedTheme=computed;root.dataset.font=font;root.dataset.fontFamily=family;root.dataset.boldText=bold?"true":"false";root.style.colorScheme=computed;}catch(e){}})();`,
           }}
         />
       </head>
