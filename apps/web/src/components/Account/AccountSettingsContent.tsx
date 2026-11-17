@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
 import { podcastsEnabled } from "@/lib/podcasts/playback";
 import { useOptionalPodcastPlayer } from "@/components/Podcasts/PodcastPlayerProvider";
-import { PodcastPlaybackDefaults } from "@/components/Podcasts/PodcastPlaybackDefaults";
+import { PodcastPlaybackDefaultsFields } from "@/components/Podcasts/PodcastPlaybackDefaultsFields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrustedVerifiersSettingsSection } from "./TrustedVerifiersSettingsSection";
@@ -51,8 +51,8 @@ export function AccountSettingsContent() {
     {podcastsEnabled() && player ? <section aria-labelledby="podcast-settings-heading" className="border-t p-4 md:p-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-3">
         <h2 id="podcast-settings-heading" className="text-sm font-bold">Podcasts</h2>
-        <p className="text-sm text-muted-foreground">Set playback speed and silence removal for all podcasts.</p>
-        <div className="self-start"><PodcastPlaybackDefaults player={player} /></div>
+        <p className="text-sm text-muted-foreground">Saved for all podcasts. Changes also apply to current playback.</p>
+        <PodcastPlaybackDefaultsFields player={player} />
         {player.error ? <p role="alert" className="text-sm text-destructive">{player.error}</p> : null}
       </div>
     </section> : null}
