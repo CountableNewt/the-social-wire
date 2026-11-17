@@ -64,18 +64,20 @@ test("settings route renders the existing preferences, import, account, and enab
   expect(screen.getByText("@reader.test")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Existing Feed Settings" })).toBeTruthy();
   expect(screen.getByRole("region", { name: "Existing OPML Import" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Playback Defaults" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Podcasts" })).toBeTruthy();
+  expect(screen.getByRole("combobox", { name: "Default Speed" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
   expect(screen.getByRole("button", { name: "Edit Profile" })).toBeTruthy();
 });
 
 test("podcast defaults are hidden when the feature is disabled or the player is unavailable", () => {
   spyOn(Playback, "podcastsEnabled").mockReturnValue(false);
   const view = render(<AccountSettingsContent />);
-  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Podcasts" })).toBeNull();
   spyOn(Playback, "podcastsEnabled").mockReturnValue(true);
   spyOn(Player, "useOptionalPodcastPlayer").mockReturnValue(null);
   view.rerender(<AccountSettingsContent />);
-  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Podcasts" })).toBeNull();
 });
 
 test("profile cog opens accessible settings and Done closes it", async () => {
@@ -171,14 +173,15 @@ test("logout failure remains visible and permits retry", async () => {
   await waitFor(() => expect(signOut).toHaveBeenCalledTimes(2));
 });
 
-test("podcast settings reuse the player mutation handlers", async () => {
+test("podcast settings render inline and reuse the player mutation handlers", () => {
   render(<AccountSettingsContent />);
-  fireEvent.click(screen.getByRole("button", { name: "Playback Defaults" }));
-  await screen.findByRole("dialog", { name: "Playback Defaults" });
+  expect(screen.queryByRole("dialog", { name: "Playback Defaults" })).toBeNull();
   fireEvent.change(screen.getByRole("combobox", { name: "Default Speed" }), { target: { value: "1.5" } });
   expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1.5 });
   fireEvent.click(screen.getByRole("checkbox", { name: "Remove Silences by Default" }));
   expect(setRemoveSilences).toHaveBeenCalledWith(true);
+  fireEvent.click(screen.getByRole("button", { name: "Reset Defaults" }));
+  expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1, removeSilences: false });
 });
 
 test("Edit Profile opens inside Settings and Cancel returns to the settings dialog", async () => {
