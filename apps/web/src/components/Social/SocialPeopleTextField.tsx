@@ -2,10 +2,10 @@
 
 import { forwardRef, useId, useRef, useState, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { insertSocialMention, socialMentionAtCaret } from "@/lib/socialMentionTypeahead";
-import { SocialPeopleSuggestions, type PeopleSuggestionControl } from "./SocialPeopleSuggestions";
+import { SocialPeopleSuggestions, type PeopleSuggestionActor, type PeopleSuggestionControl } from "./SocialPeopleSuggestions";
 
-type FieldProps = { recipient?: boolean; onValueChange: (value: string) => void } & (TextareaHTMLAttributes<HTMLTextAreaElement> & InputHTMLAttributes<HTMLInputElement>);
-export const SocialPeopleTextField = forwardRef<HTMLTextAreaElement, FieldProps>(function SocialPeopleTextField({ recipient = false, onValueChange, ...props }, ref) {
+type FieldProps = { suggestionActor?: PeopleSuggestionActor; recipient?: boolean; onValueChange: (value: string) => void } & (TextareaHTMLAttributes<HTMLTextAreaElement> & InputHTMLAttributes<HTMLInputElement>);
+export const SocialPeopleTextField = forwardRef<HTMLTextAreaElement, FieldProps>(function SocialPeopleTextField({ suggestionActor, recipient = false, onValueChange, ...props }, ref) {
   const element = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
   const suggestions = useRef<PeopleSuggestionControl>(null);
   const [caret, setCaret] = useState(0);
@@ -33,7 +33,7 @@ export const SocialPeopleTextField = forwardRef<HTMLTextAreaElement, FieldProps>
   } };
   return <div className={`relative min-w-0 ${recipient ? "w-full" : "flex-1"}`}>
     {recipient ? <input {...common} /> : <textarea {...common} />}
-    {visible ? <SocialPeopleSuggestions key={`${query}:${token}`} ref={suggestions} query={query} id={id} below={recipient} onActiveChange={setActiveId} onDismiss={() => setDismissed(token)} onSelect={actor => {
+    {visible ? <SocialPeopleSuggestions key={`${query}:${token}`} ref={suggestions} actor={suggestionActor} query={query} id={id} below={recipient} onActiveChange={setActiveId} onDismiss={() => setDismissed(token)} onSelect={actor => {
       const next = recipient ? { text: actor.handle, caret: actor.handle.length } : insertSocialMention(text, range!, actor.handle);
       const input = element.current;
       if (!input) return;

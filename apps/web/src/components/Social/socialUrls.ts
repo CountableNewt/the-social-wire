@@ -12,7 +12,8 @@ export function socialHttpsUrl(value: unknown): string | undefined {
 }
 
 export function socialProfileUrl(did: string): string {
-  return `https://bsky.app/profile/${encodeURIComponent(did)}`;
+  const actor = encodeURIComponent(did).replaceAll("%3A", ":");
+  return `https://bsky.app/profile/${actor}`;
 }
 
 export function socialPostUrl(uri: string): string | undefined {

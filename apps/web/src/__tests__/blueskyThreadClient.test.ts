@@ -46,6 +46,36 @@ it("posts sequential native replies with independent facets and root ancestry", 
   expect((writes[0].record as AppBskyFeedPost.Record).facets![0].features[0]).toMatchObject({ tag: "one" });
   expect((writes[1].record as AppBskyFeedPost.Record).facets![0].features[0]).toMatchObject({ uri: "https://example.com" });
 });
+it("keeps the existing root when publishing a multi-post reply", async () => {
+  const rootRecord = { $type: "app.bsky.feed.post", text: "Root", createdAt: "2026-10-11T12:00:00Z" };
+  const root = await reference("root", rootRecord);
+  const parentRecord = { ...rootRecord, text: "Parent", reply: { root, parent: root } };
+  const parent = await reference("parent", parentRecord);
+  const [first, ...rest] = draft();
+  const publication = newThreadPublication(did, [{
+    ...first,
+    replyTo: {
+      ...parent,
+      author: { did, handle: "alice.test" },
+      record: parentRecord,
+      indexedAt: parentRecord.createdAt,
+    },
+  }, ...rest]);
+  const replies: (AppBskyFeedPost.ReplyRef | undefined)[] = [];
+  const session = pds(async (method, body) => {
+    expect(method).toBe("com.atproto.repo.createRecord");
+    const record = body!.record as AppBskyFeedPost.Record;
+    replies.push(record.reply);
+    return reference(body!.rkey as string, record);
+  });
+
+  const results = await publishBlueskyThread({ session, publication, assertCurrentAccount: () => {} });
+  expect(replies).toEqual([
+    { root, parent },
+    { root, parent: results[0] },
+    { root, parent: results[1] },
+  ]);
+});
 it("reconciles an ambiguous committed write on retry without duplicating posts", async () => {
   const records = new Map<string, { uri: string; cid: string; value: unknown }>();
   let fail = true;
