@@ -325,4 +325,26 @@ struct ReaderFeedReliabilityTests {
         #expect(model.entries.map(\.entryId) == ["refreshed"])
     }
 
+
+    @Test("Background refresh updates the Subscribed and Following aggregate feeds, not a stale publication")
+    func backgroundRefreshCoversAggregateFeeds() async throws {
+        for source in [ReaderListSource.subscribed, .following] {
+            let (model, transport) = try await fixture()
+            defer { model.signOut() }
+            try applySidebar(model)
+            model.feedSelection = .topLevel(source)
+            // A publication can stay selected after swiping back to the lists pane.
+            model.selectedPublication = publication("publication-a")
+            model.entries = [item("older")]
+            let refreshing = Task { await model.refreshActivePublicationFeedIfNeeded() }
+            await transport.waitForRequests(1)
+            let url = try #require(await transport.requestURL(0))
+            #expect(url.path.hasSuffix("app.thesocialwire.appview.getFeed"))
+            #expect(url.query?.contains("kind=\(source == .subscribed ? "subscribed" : "following")") == true)
+            await transport.complete(0, body: try page("fresh"))
+            await refreshing.value
+            #expect(model.entries.map(\.entryId) == ["fresh", "older"])
+        }
+    }
+
 }
