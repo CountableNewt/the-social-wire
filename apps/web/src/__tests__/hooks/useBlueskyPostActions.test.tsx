@@ -53,6 +53,25 @@ describe("post action hooks", () => {
     expect(result.current.engagement.like).toBeUndefined();
     expect(invalidate).toHaveBeenCalled();
   });
+  it("reconciles a pending like with refreshed counts and resumes following App View", async () => {
+    const interaction = `at://${alice}/app.bsky.feed.like/actual`;
+    let resolve!: (uri: string) => void;
+    const write = spyOn(Posts, "setBlueskyPostEngagement").mockImplementation(() => new Promise(done => { resolve = done; }));
+    restores.push(() => write.mockRestore());
+    const { result, rerender } = renderHook(view => useBlueskyPostEngagement(view, moderation(alice)), { initialProps: post, wrapper: Wrapper });
+
+    act(() => result.current.toggleLike());
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    rerender({ ...post, likeCount: 10 });
+    expect(result.current.engagement.likeCount).toBe(11);
+    rerender({ ...post, likeCount: 11, viewer: { like: interaction } });
+    expect(result.current.engagement.likeCount).toBe(11);
+
+    await act(async () => resolve(interaction));
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    rerender({ ...post, likeCount: 12 });
+    expect(result.current.engagement).toMatchObject({ likeCount: 12, like: undefined });
+  });
   it("rolls back failed reposts and isolates late completion after account cleanup", async () => {
     const write = spyOn(Posts, "setBlueskyPostEngagement").mockRejectedValue(new Error("Scope missing")); restores.push(() => write.mockRestore());
     const { result, rerender } = renderHook(({ safety }) => useBlueskyPostEngagement(post, safety), { initialProps: { safety: moderation(alice) }, wrapper: Wrapper });
