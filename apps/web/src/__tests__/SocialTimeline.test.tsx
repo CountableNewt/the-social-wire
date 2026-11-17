@@ -101,12 +101,14 @@ describe("Social timeline page", () => {
     expect(screen.queryByRole("status", { name: "Loading Social Posts" })).toBeNull();
     const row = screen.getByText("Cached post on reload").closest("[data-analytics-subject]");
     expect(row).not.toBeNull();
+    expect(row?.querySelector('button[aria-label="Like (0)"]')?.textContent).toBe("0");
     await act(async () => {
       freshCatalog.resolve({ feeds: [Client.SOCIAL_FOLLOWING_FEED], moderation: freshSafety });
       freshPage.resolve({ feed: [{ ...old, post: { ...old.post, likeCount: 5 } }, item("new", "New post from background refresh")] });
     });
     await screen.findByText("New post from background refresh");
     expect(screen.getByText("Cached post on reload").closest("[data-analytics-subject]")).toBe(row);
+    expect(row?.querySelector('button[aria-label="Like (5)"]')?.textContent).toBe("5");
     expect(posts.mock.calls[0][0].cursor).toBeUndefined();
   });
 

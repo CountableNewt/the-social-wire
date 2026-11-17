@@ -44,11 +44,15 @@ export async function publishBlueskyThread(args: {
     await args.checkpoint?.();
   }
   const agent = createOAuthAgent(session);
+  const first = publication.segments[0];
   for (let index = 0; index < publication.segments.length; index++) {
     const segment = publication.segments[index];
     assertCurrentAccount();
     if (!segment.result) {
-      if (index > 0) segment.record!.reply = { root: publication.segments[0].result!, parent: publication.segments[index - 1].result! };
+      // Keep the original record for a retry after an ambiguous write.
+      if (index > 0 && !segment.attempted) {
+        segment.record!.reply = { root: first.record!.reply?.root ?? first.result!, parent: publication.segments[index - 1].result! };
+      }
       // A previous timeout can have committed the record. Read that exact key first,
       // and fail closed on errors other than confirmed absence.
       if (segment.attempted) {

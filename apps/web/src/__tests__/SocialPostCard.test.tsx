@@ -157,7 +157,7 @@ describe("Social Post Rendering", () => {
     expect(html).toContain("lucide-repeat-2");
     expect(html.indexOf("Reposted ")).toBeLessThan(html.indexOf("Open Profile: Other"));
     expect(html).toContain(
-      "https://bsky.app/profile/did%3Aplc%3Aother/post/3abc",
+      "https://bsky.app/profile/did:plc:other/post/3abc",
     );
   });
   it("adds a small reply glyph before the author without revealing unavailable or withheld parents", () => {

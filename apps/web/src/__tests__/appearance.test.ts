@@ -2,13 +2,14 @@ import { describe, expect, it } from "bun:test";
 
 import {
   isBoldTextPreference,
+  isFontFamilyPreference,
   isFontPreference,
   isThemePreference,
   resolveComputedTheme,
 } from "@/lib/appearance";
 
 describe("appearance preferences", () => {
-  it("validates supported theme, font, and bold values", () => {
+  it("validates supported theme, font, font family, and bold values", () => {
     expect(isThemePreference("system")).toBe(true);
     expect(isThemePreference("light")).toBe(true);
     expect(isThemePreference("dark")).toBe(true);
@@ -18,6 +19,11 @@ describe("appearance preferences", () => {
     expect(isFontPreference("serif")).toBe(true);
     expect(isFontPreference("mono")).toBe(true);
     expect(isFontPreference("display")).toBe(false);
+
+    expect(isFontFamilyPreference("system")).toBe(true);
+    expect(isFontFamilyPreference("geist")).toBe(true);
+    expect(isFontFamilyPreference("inter")).toBe(false);
+    expect(isFontFamilyPreference(null)).toBe(false);
 
     expect(isBoldTextPreference("1")).toBe(true);
     expect(isBoldTextPreference("0")).toBe(true);

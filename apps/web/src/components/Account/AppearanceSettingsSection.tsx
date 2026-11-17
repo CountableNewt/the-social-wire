@@ -14,6 +14,7 @@ import type { CSSProperties } from "react";
 
 import { useAppearance } from "@/hooks/useAppearance";
 import type {
+  FontFamilyPreference,
   FontPreference,
   ThemePreference,
 } from "@/lib/appearance";
@@ -39,21 +40,44 @@ const fontOptions: Array<{
     value: "sans",
     label: "Sans",
     icon: Type,
-    style: { fontFamily: "var(--font-sans-system)" },
+    style: { fontFamily: "var(--app-font-sans)" },
   },
   {
     value: "serif",
     label: "Serif",
     icon: Type,
-    style: { fontFamily: "var(--font-serif-system)" },
+    style: { fontFamily: "var(--app-font-serif)" },
   },
   {
     value: "mono",
     label: "Mono",
     icon: Code2,
-    style: { fontFamily: "var(--font-mono-system)" },
+    style: { fontFamily: "var(--app-font-mono)" },
   },
 ];
+
+const fontFamilyOptions: Array<{
+  value: FontFamilyPreference;
+  label: string;
+  style: CSSProperties;
+}> = [
+  {
+    value: "system",
+    label: "System Fonts",
+    style: { fontFamily: "var(--font-sans-system)" },
+  },
+  {
+    value: "geist",
+    label: "Geist",
+    style: { fontFamily: "var(--font-geist-sans), var(--font-sans-system)" },
+  },
+];
+
+const fontLabels: Record<FontPreference, string> = {
+  sans: "Sans",
+  serif: "Serif",
+  mono: "Mono",
+};
 
 const optionClassName =
   "flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors";
@@ -65,6 +89,8 @@ export function AppearanceSettingsSection() {
     setTheme,
     font,
     setFont,
+    fontFamily,
+    setFontFamily,
     boldText,
     setBoldText,
   } = useAppearance();
@@ -126,14 +152,54 @@ export function AppearanceSettingsSection() {
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-foreground">Font</h3>
             <span className="text-xs text-muted-foreground">
-              {font === "sans" ? "Sans" : font === "serif" ? "Serif" : "Mono"}
+              {fontFamily === "geist" ? "Geist " : ""}
+              {fontLabels[font]}
               {boldText ? " + Bold" : ""}
             </span>
           </div>
           <div
             role="radiogroup"
+            aria-label="Font Family"
+            className="mt-3 grid gap-2 sm:grid-cols-2"
+          >
+            {fontFamilyOptions.map((option) => {
+              const active = option.value === fontFamily;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setFontFamily(option.value)}
+                  className={cn(
+                    optionClassName,
+                    active
+                      ? "border-primary bg-accent text-accent-foreground"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/45 hover:text-foreground",
+                  )}
+                >
+                  <Type
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-primary"
+                    strokeWidth={1.9}
+                  />
+                  <span
+                    className="min-w-0 flex-1 truncate text-base text-foreground"
+                    style={option.style}
+                  >
+                    {option.label}
+                  </span>
+                  {active ? (
+                    <Check aria-hidden="true" className="size-4 shrink-0 text-primary" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            role="radiogroup"
             aria-label="Font"
-            className="mt-3 grid gap-2 sm:grid-cols-3"
+            className="mt-2 grid gap-2 sm:grid-cols-3"
           >
             {fontOptions.map((option) => {
               const active = option.value === font;

@@ -1,24 +1,28 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { moderateProfile, type AppBskyActorDefs } from "@atproto/api";
+import { moderateProfile, type AppBskyActorDefs, type ModerationOpts } from "@atproto/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useBlueskySocialCatalog } from "@/hooks/useBlueskySocialCatalog";
-import { useSocialExplore } from "@/hooks/useSocialDiscovery";
+import { useSocialExplore, type SocialExploreActor } from "@/hooks/useSocialDiscovery";
 import { Avatar } from "@/components/shared/Avatar";
 import { socialHttpsUrl } from "./socialUrls";
 
+export type PeopleSuggestionActor = SocialExploreActor & { moderation: ModerationOpts };
+
 export type PeopleSuggestionControl = { keyDown: (key: string) => boolean };
-export const SocialPeopleSuggestions = forwardRef<PeopleSuggestionControl, { query: string; id: string; onSelect: (actor: AppBskyActorDefs.ProfileView) => void; onDismiss: () => void; below?: boolean; onActiveChange: (id: string | undefined) => void }>(function SocialPeopleSuggestions({ query, id, onSelect, onDismiss, below, onActiveChange }, ref) {
+export const SocialPeopleSuggestions = forwardRef<PeopleSuggestionControl, { actor?: PeopleSuggestionActor; query: string; id: string; onSelect: (actor: AppBskyActorDefs.ProfileView) => void; onDismiss: () => void; below?: boolean; onActiveChange: (id: string | undefined) => void }>(function SocialPeopleSuggestions({ actor, query, id, onSelect, onDismiss, below, onActiveChange }, ref) {
   const { session } = useAuth();
-  const catalog = useBlueskySocialCatalog();
+  const catalog = useBlueskySocialCatalog({ enabled: !actor });
   const available = catalog.data?.moderation;
-  const moderation = !catalog.isError && available?.userDid === session?.did ? available : undefined;
+  const moderation = actor?.moderation ?? (!catalog.isError && available?.userDid === session?.did ? available : undefined);
   const [debounced, setDebounced] = useState<string>();
   const [active, setActive] = useState(0);
   useEffect(() => { const timer = setTimeout(() => setDebounced(query), 200); return () => clearTimeout(timer); }, [query]);
-  const results = useSocialExplore(debounced ?? "", "people", debounced !== undefined && debounced === query ? moderation : undefined);
-  const actors = moderation && debounced === query ? (results.data?.pages[0]?.actors ?? []).filter(actor => {
+  const ready = debounced !== undefined && debounced === query;
+  const results = useSocialExplore(debounced ?? "", "people", ready ? moderation : undefined, actor);
+  const matches = results.data?.pages[0]?.actors;
+  const actors = moderation && debounced === query ? (matches ?? []).filter(actor => {
     const decision = moderateProfile(actor, moderation).ui("profileList");
     const name = moderateProfile(actor, moderation).ui("displayName");
     return !decision.filter && !decision.blur && !decision.noOverride && !name.filter && !name.blur && !name.noOverride;
@@ -40,6 +44,6 @@ export const SocialPeopleSuggestions = forwardRef<PeopleSuggestionControl, { que
         <span className="min-w-0"><span className="block truncate font-medium">{actor.displayName || actor.handle}</span><span className="block truncate text-xs text-muted-foreground">@{actor.handle}</span></span>
       </button>)}
     </div>
-    {!actors.length ? <p role="status" className="p-2 text-xs text-muted-foreground">{catalog.isError || results.isError ? "People Could Not Be Loaded" : debounced !== query || !moderation || results.isPending ? "Loading People…" : "No Matching People"}</p> : null}
+    {!actors.length ? <p role="status" className="p-2 text-xs text-muted-foreground">{(!actor && catalog.isError) || results.isError ? "People Could Not Be Loaded" : debounced !== query || !moderation || results.isPending ? "Loading People…" : "No Matching People"}</p> : null}
   </div>;
 });

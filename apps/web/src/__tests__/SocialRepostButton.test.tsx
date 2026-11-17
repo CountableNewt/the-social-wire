@@ -25,8 +25,13 @@ const restores: (() => void)[] = [];
 let cache: QueryClient;
 
 beforeEach(() => {
-  const load = spyOn(draftStorage, "loadComposerDraft").mockResolvedValue(undefined);
-  const save = spyOn(draftStorage, "saveComposerDraft").mockResolvedValue(undefined);
+  const drafts = new Map<string, draftStorage.ComposerDraft>();
+  const load = spyOn(draftStorage, "loadComposerDraft").mockImplementation(async (did, context) => drafts.get(`${did}:${context}`));
+  const save = spyOn(draftStorage, "saveComposerDraft").mockImplementation(async (did, context, draft) => {
+    const key = `${did}:${context}`;
+    if (draft) drafts.set(key, draft);
+    else drafts.delete(key);
+  });
   restores.push(() => load.mockRestore(), () => save.mockRestore());
   cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const stored = spyOn(storedAuth, "getStoredOAuthDid").mockReturnValue(oauth.did);
