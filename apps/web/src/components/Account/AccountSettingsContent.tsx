@@ -38,11 +38,13 @@ export function AccountSettingsContent() {
 
   return <div className="flex flex-col">
     <section aria-labelledby="account-settings-heading" className="p-4 md:p-6">
-      <div className="mx-auto flex max-w-2xl flex-col gap-3">
+      <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-x-3 gap-y-2">
         <h2 id="account-settings-heading" className="text-sm font-bold">Account</h2>
-        <p className="break-all text-sm text-muted-foreground">{handle ? (handle.startsWith("did:") ? handle : `@${handle}`) : session?.did}</p>
-        <div className="self-start"><ProfileEditDialog /></div>
-        <Button variant="outline" className="self-start" disabled={!session || signingOut} onClick={() => { setError(null); setConfirming(true); }}>Log Out</Button>
+        <p className="min-w-0 break-all text-sm text-muted-foreground">{handle ? (handle.startsWith("did:") ? handle : `@${handle}`) : session?.did}</p>
+        <div className="ml-auto flex items-center gap-2">
+          <ProfileEditDialog />
+          <Button variant="destructive" disabled={!session || signingOut} onClick={() => { setError(null); setConfirming(true); }}>Log Out</Button>
+        </div>
       </div>
     </section>
     <FeedSettingsSection />

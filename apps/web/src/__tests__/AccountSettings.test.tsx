@@ -137,6 +137,7 @@ test("read-history and import legacy hash changes open settings on the profile",
 
 test("logout requires confirmation and Cancel keeps the account signed in", async () => {
   render(<AccountSettingsContent />);
+  expect(screen.getByRole("button", { name: "Log Out" }).className).toContain("text-destructive");
   fireEvent.click(screen.getByRole("button", { name: "Log Out" }));
   const confirmation = await screen.findByRole("dialog", { name: "Log Out of The Social Wire?" });
   expect(signOut).not.toHaveBeenCalled();
@@ -165,6 +166,7 @@ test("logout confirmation works inside the settings modal without closing the pa
 test("logout failure remains visible and permits retry", async () => {
   signOut.mockImplementationOnce(async () => { throw new Error("Session revocation failed."); });
   render(<AccountSettingsContent />);
+  expect(screen.getByRole("button", { name: "Log Out" }).className).toContain("text-destructive");
   fireEvent.click(screen.getByRole("button", { name: "Log Out" }));
   const confirmation = await screen.findByRole("dialog", { name: "Log Out of The Social Wire?" });
   fireEvent.click(within(confirmation).getByRole("button", { name: "Log Out" }));
