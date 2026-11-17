@@ -11,6 +11,10 @@ actor ReaderFeedPendingTransport {
         return try await withCheckedThrowingContinuation { continuations[index] = $0 }
     }
 
+    func requestURL(_ index: Int) -> URL? {
+        requests.indices.contains(index) ? requests[index].url : nil
+    }
+
     func waitForRequests(_ count: Int) async {
         while requests.count < count { await Task.yield() }
     }

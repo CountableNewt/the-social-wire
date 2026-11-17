@@ -2982,9 +2982,54 @@ final class SocialWireAppModel {
     }
 
     func refreshActivePublicationFeedIfNeeded(skipEnroll: Bool = true) async {
-        guard let publication = selectedPublication else { return }
         guard !isLoadingEntries, !isLoadingMoreEntries else { return }
+        if let scope = Self.aggregateFeedScope(for: feedSelection) {
+            await refreshAggregateFeedInBackground(kind: scope.kind, id: scope.id)
+            return
+        }
+        guard let publication = selectedPublication else { return }
         await refreshPublicationEntriesInBackground(for: publication, skipEnroll: skipEnroll)
+    }
+
+    /// AppView aggregate feed parameters for Subscribed, Following, folder, and list selections.
+    static func aggregateFeedScope(for selection: FeedSelection) -> (kind: String, id: String?)? {
+        switch selection {
+        case .topLevel(.subscribed): ("subscribed", nil)
+        case .topLevel(.following): ("following", nil)
+        case let .folder(id): ("folder", id)
+        case let .standardList(id): ("list", id)
+        default: nil
+        }
+    }
+
+    /// Prepends the newest aggregate page without dropping paginated tail rows.
+    private func refreshAggregateFeedInBackground(kind: String, id: String?) async {
+        let context = beginReaderRequest()
+        do {
+            let page = try await gateway.fetchAggregateAppViewFeed(
+                kind: kind,
+                id: id,
+                filter: readerFilter,
+                cursor: nil,
+                limit: Self.aggregateFeedPageSize
+            )
+            guard ownsReaderRequest(context) else { return }
+            applyAuthoritativeReadState(from: page.entries)
+            if readerFilter == .unread {
+                entries = page.entries
+                entriesNextCursor = page.cursor
+            } else {
+                entries = mergeEntryPagesAtTop(existing: entries, freshFirstPage: page.entries)
+                if entriesNextCursor == nil {
+                    entriesNextCursor = page.cursor
+                }
+                persistAggregateEntriesByPublication(page.entries)
+            }
+            await prefetchThumbnailImages(for: page.entries)
+        } catch {
+            guard ownsReaderRequest(context) else { return }
+            markAppViewUnavailableIfNeeded(error)
+        }
     }
 
     private func persistPublicationEntries(_ publicationId: String, entries: [EntryListItem]) {
