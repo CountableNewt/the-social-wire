@@ -8,6 +8,11 @@ import * as auth from "@/hooks/useAuth";
 import * as storedAuth from "@/lib/auth";
 import * as compose from "@/lib/blueskyComposeClient";
 import * as refresh from "@/lib/socialPostRefresh";
+import * as brandFlag from "@/lib/brandAccountsEnabled";
+import * as brandHooks from "@/hooks/useBrandAccounts";
+import * as brandProfile from "@/lib/brandAccounts/brandAccountPublicProfile";
+import * as threadClient from "@/lib/blueskyThreadClient";
+
 import { DialogTrigger } from "@/components/ui/dialog";
 import { SocialPostComposeDialog } from "@/components/Social/SocialPostComposeDialog";
 
@@ -91,5 +96,47 @@ it.each(["reply", "quote"] as const)("submits a %s with the keyboard shortcut an
   await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
   expect(publish.mock.calls[0][0][mode === "reply" ? "replyTo" : "quoteTo"]).toBe(post);
   await act(async () => finish({ uri: "at://did:plc:viewer/app.bsky.feed.post/new", cid: "cid" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+it("loads linked accounts in the shared reply dialog without caller-supplied accounts", async () => {
+  const enabled = spyOn(brandFlag, "brandAccountsEnabled").mockReturnValue(true);
+  const accounts = spyOn(brandHooks, "useBrandAccounts").mockReturnValue(["did:plc:brand"]);
+  const profile = spyOn(brandProfile, "getBrandAccountPublicProfile").mockImplementation(async did => ({
+    did, handle: did === oauth.did ? "viewer.test" : "brand.test",
+  }));
+  const brandSession = spyOn(brandHooks, "useBrandAccountSession").mockReturnValue({
+    session: undefined, error: undefined, retry: () => {}, assertCurrentActor: () => {}, generation: 0,
+  });
+  restores.push(() => enabled.mockRestore(), () => accounts.mockRestore(), () => profile.mockRestore(), () => brandSession.mockRestore());
+  await open("reply");
+  const picker = screen.getByRole("combobox", { name: "Reply As" });
+  expect(accounts).toHaveBeenCalledWith(oauth.did, true);
+  await screen.findByRole("option", { name: "@brand.test" });
+  expect((picker as HTMLSelectElement).value).toBe(oauth.did);
+  fireEvent.change(picker, { target: { value: "did:plc:brand" } });
+  await screen.findByText("Loading Selected Account…");
+  expect((screen.getByRole("combobox", { name: "Reply As" }) as HTMLSelectElement).value).toBe("did:plc:brand");
+  expect(brandSession).toHaveBeenLastCalledWith(oauth.did, "did:plc:brand", true);
+});
+
+it("publishes the reply and follow-up together as a thread", async () => {
+  const publish = spyOn(threadClient, "publishBlueskyThread").mockResolvedValue([]);
+  const reload = spyOn(refresh, "refreshSocialPostQueries").mockReturnValue(() => {});
+  restores.push(() => publish.mockRestore(), () => reload.mockRestore());
+  const { field } = await open("reply");
+  fireEvent.change(field, { target: { value: "First reply" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add Post" }));
+  const followUp = screen.getByRole("textbox", { name: "Post 2 Text" });
+  const submit = screen.getByRole("button", { name: "Post Thread" });
+  expect((submit as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(followUp, { target: { value: "Follow-up" } });
+  fireEvent.click(submit);
+  await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+  const { session, publication } = publish.mock.calls[0][0];
+  expect(session).toBe(oauth);
+  expect(publication.segments.map(segment => segment.draft.text)).toEqual(["First reply", "Follow-up"]);
+  expect(publication.segments[0].draft.replyTo).toBe(post);
+  expect(publication.segments[1].draft.replyTo).toBeUndefined();
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });

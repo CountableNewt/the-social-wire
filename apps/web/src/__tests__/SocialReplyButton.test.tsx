@@ -24,8 +24,13 @@ const restores: (() => void)[] = [];
 let cache: QueryClient;
 
 beforeEach(() => {
-  const load = spyOn(draftStorage, "loadComposerDraft").mockResolvedValue(undefined);
-  const save = spyOn(draftStorage, "saveComposerDraft").mockResolvedValue(undefined);
+  const drafts = new Map<string, draftStorage.ComposerDraft>();
+  const load = spyOn(draftStorage, "loadComposerDraft").mockImplementation(async (did, context) => drafts.get(`${did}:${context}`));
+  const save = spyOn(draftStorage, "saveComposerDraft").mockImplementation(async (did, context, draft) => {
+    const key = `${did}:${context}`;
+    if (draft) drafts.set(key, draft);
+    else drafts.delete(key);
+  });
   restores.push(() => load.mockRestore(), () => save.mockRestore());
   cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const stored = spyOn(storedAuth, "getStoredOAuthDid").mockReturnValue(oauth.did);
@@ -87,7 +92,7 @@ it("prevents duplicate submissions and dismissal while publishing", async () => 
   fireEvent.change(field, { target: { value: "Only Once" } });
   fireEvent.submit(field.closest("form")!);
   fireEvent.submit(field.closest("form")!);
-  expect(publish).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
   expect(field.disabled).toBe(true);
   expect(screen.getByRole("button", { name: "Publishing…" }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
@@ -169,6 +174,7 @@ it("isolates drafts and pending success when the signed-in account changes", asy
   const field = await open();
   fireEvent.change(field, { target: { value: "Private Old Draft" } });
   fireEvent.click(screen.getByRole("button", { name: "Post Reply" }));
+  await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
   const next = { did: "did:plc:next" } as unknown as OAuthSession;
   const account = spyOn(auth, "useAuth").mockReturnValue({ session: { did: next.did }, getOAuthSession: () => next } as ReturnType<typeof auth.useAuth>);
   restores.push(() => account.mockRestore());

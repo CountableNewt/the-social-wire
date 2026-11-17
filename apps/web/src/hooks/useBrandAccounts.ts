@@ -7,8 +7,8 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { listBrandAccounts, onBrandAccountsChanged, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
 import { getStoredOAuthDid } from "@/lib/auth";
 
-export function useBrandAccounts(ownerDid: string) {
-  const enabled = brandAccountsEnabled();
+export function useBrandAccounts(ownerDid: string, active = true) {
+  const enabled = active && brandAccountsEnabled();
   const { isPro: proAccess } = useProEntitlements(enabled);
   const isPro = enabled && proAccess;
   const [accounts, setAccounts] = useState(() => ({ ownerDid, dids: enabled ? listBrandAccounts(ownerDid) : [] }));

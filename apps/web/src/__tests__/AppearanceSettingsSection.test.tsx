@@ -11,6 +11,7 @@ import { AppearanceSettingsSection } from "@/components/Account/AppearanceSettin
 import { AppearanceProvider } from "@/hooks/useAppearance";
 import {
   BOLD_TEXT_STORAGE_KEY,
+  FONT_FAMILY_STORAGE_KEY,
   FONT_STORAGE_KEY,
   THEME_STORAGE_KEY,
 } from "@/lib/appearance";
@@ -45,6 +46,7 @@ beforeEach(() => {
   });
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   window.localStorage.removeItem(FONT_STORAGE_KEY);
+  window.localStorage.removeItem(FONT_FAMILY_STORAGE_KEY);
   window.localStorage.removeItem(BOLD_TEXT_STORAGE_KEY);
 });
 
@@ -60,6 +62,7 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
   delete document.documentElement.dataset.computedTheme;
   delete document.documentElement.dataset.font;
+  delete document.documentElement.dataset.fontFamily;
   delete document.documentElement.dataset.boldText;
   document.documentElement.style.removeProperty("color-scheme");
 });
@@ -160,5 +163,62 @@ describe("AppearanceSettingsSection", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(document.documentElement.dataset.font).toBe("serif");
     expect(document.documentElement.dataset.boldText).toBe("true");
+  });
+
+  it("defaults to System Fonts without a stored font family", () => {
+    render(<AppearanceProvider><AppearanceSettingsSection /></AppearanceProvider>);
+
+    expect(screen.getByRole("radio", { name: "System Fonts" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "Geist" }).getAttribute("aria-checked")).toBe("false");
+    expect(document.documentElement.dataset.fontFamily).toBe("system");
+    expect(window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY)).toBeNull();
+  });
+
+  it("applies and persists the Geist font family across every face", () => {
+    render(<AppearanceProvider><AppearanceSettingsSection /></AppearanceProvider>);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Geist" }));
+    expect(window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY)).toBe("geist");
+    expect(document.documentElement.dataset.fontFamily).toBe("geist");
+    expect(screen.getByText("Geist Sans")).toBeTruthy();
+
+    for (const [label, face] of [["Serif", "serif"], ["Mono", "mono"], ["Sans", "sans"]] as const) {
+      fireEvent.click(screen.getByRole("radio", { name: label }));
+      expect(document.documentElement.dataset.font).toBe(face);
+      expect(document.documentElement.dataset.fontFamily).toBe("geist");
+      expect(screen.getByText(`Geist ${label}`)).toBeTruthy();
+    }
+  });
+
+  it("previews each face with the active font family variables", () => {
+    render(<AppearanceProvider><AppearanceSettingsSection /></AppearanceProvider>);
+
+    const previewFamily = (name: string) =>
+      screen.getByRole("radio", { name }).querySelector<HTMLElement>("span[style]")?.style.fontFamily;
+
+    expect(previewFamily("Sans")).toBe("var(--app-font-sans)");
+    expect(previewFamily("Serif")).toBe("var(--app-font-serif)");
+    expect(previewFamily("Mono")).toBe("var(--app-font-mono)");
+  });
+
+  it("restores a stored Geist family and removes it when System Fonts is selected", () => {
+    window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, "geist");
+    render(<AppearanceProvider><AppearanceSettingsSection /></AppearanceProvider>);
+
+    expect(screen.getByRole("radio", { name: "Geist" }).getAttribute("aria-checked")).toBe("true");
+    expect(document.documentElement.dataset.fontFamily).toBe("geist");
+
+    fireEvent.click(screen.getByRole("radio", { name: "System Fonts" }));
+
+    expect(window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY)).toBeNull();
+    expect(document.documentElement.dataset.fontFamily).toBe("system");
+  });
+
+  it("ignores an unknown stored font family", () => {
+    window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, "comic-sans");
+    render(<AppearanceProvider><AppearanceSettingsSection /></AppearanceProvider>);
+
+    expect(screen.getByRole("radio", { name: "System Fonts" }).getAttribute("aria-checked")).toBe("true");
+    expect(document.documentElement.dataset.fontFamily).toBe("system");
   });
 });
