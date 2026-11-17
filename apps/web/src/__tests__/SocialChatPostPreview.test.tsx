@@ -24,7 +24,7 @@ beforeEach(() => {
   restores.push(() => auth.mockRestore(), () => router.mockRestore(), () => path.mockRestore(), () => params.mockRestore());
 });
 afterEach(() => { cleanup(); client.clear(); restores.splice(0).reverse().forEach(restore => restore()); });
-const url = "https://bsky.app/profile/did%3Aplc%3Aother/post/one";
+const url = "https://bsky.app/profile/did:plc:other/post/one";
 describe("chat post previews", () => {
   it("hydrates canonical shared links through the viewer and opens body clicks internally", async () => {
     const fetch = spyOn(Client, "getBlueskyPostThread").mockResolvedValue({ thread: { $type: "app.bsky.feed.defs#threadViewPost", post } }); restores.push(() => fetch.mockRestore());

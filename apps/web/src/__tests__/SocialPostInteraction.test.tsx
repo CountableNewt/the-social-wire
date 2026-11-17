@@ -147,7 +147,7 @@ describe("Social Post Interactions", () => {
   render(<SocialPostMenu uri={post.uri} className="" />);
   fireEvent.click(screen.getByRole("button", { name: "More Post Actions" }));
   const send = await screen.findByRole("menuitem", { name: "Send Message" });
-  const url = "https://bsky.app/profile/did%3Aplc%3Aother/post/test";
+  const url = "https://bsky.app/profile/did:plc:other/post/test";
   expect(send.getAttribute("href")).toBe(`/social/messages?draft=${encodeURIComponent(url)}`);
   expect(copy).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("menuitem", { name: "Copy Link" }));

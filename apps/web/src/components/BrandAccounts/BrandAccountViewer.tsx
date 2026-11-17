@@ -16,7 +16,7 @@ import { SocialPostCard } from "@/components/Social/SocialPostCard";
 import { SocialReplyContext } from "@/components/Social/SocialReplyContext";
 import { moderateSocialPost } from "@/components/Social/socialModeration";
 import { socialHttpsUrl } from "@/components/Social/socialUrls";
-import { AccountReplyDialog } from "@/components/Social/AccountReplyDialog";
+import { SocialPostComposeDialog } from "@/components/Social/SocialPostComposeDialog";
 import { BrandPostComposer } from "./BrandPostComposer";
 import { useBrandAccountSocial } from "./useBrandAccountSocial";
 
@@ -103,8 +103,8 @@ export const BrandAccountViewer = memo(function BrandAccountViewer({ ownerDid, b
   const status = error ? <div role="alert" className="space-y-2 rounded-xl border p-3"><p className="text-sm">{notificationsOnly ? `${recipient}: ` : ""}{error}</p><Button size="sm" variant="outline" disabled={reauthorizing} onClick={() => { setReauthorizing(true); setAuthorizationError(undefined); void linkBrandAccount(ownerDid, brandDid).catch(failure => { setAuthorizationError(failure instanceof Error ? failure.message : "Authorization Could Not Be Opened."); setReauthorizing(false); }); }}>{reauthorizing ? "Authorizing…" : "Reauthorize Account"}</Button>{connection.error ? <Button size="sm" onClick={connection.retry}>Reconnect Account</Button> : <Button size="sm" variant="outline" onClick={() => { if (mutation.isError && mutation.variables?.kind === "seen") mutation.mutate(mutation.variables); else void brand.refresh(); }}>Retry</Button>}</div> : null;
   const conversation = <>{brand.thread.isPending ? <p role="status">Loading Conversation…</p> : brand.thread.error ? <p role="alert">{brand.thread.error.message}</p> : thread ? <>{AppBskyFeedDefs.isThreadViewPost(thread.parent) ? card({ post: thread.parent.post }) : null}{card({ post: thread.post })}{thread.replies?.filter(AppBskyFeedDefs.isThreadViewPost).map(reply => card({ post: reply.post }))}</> : <p>This Conversation Is Unavailable.</p>}</>;
   const closeComposer = () => setCompose(undefined);
-  const composer = compose?.parent
-    ? <AccountReplyDialog ownerDid={ownerDid} recipientDid={brandDid} parent={compose.parent} close={closeComposer} />
+  const composer = compose?.parent && moderation
+    ? <SocialPostComposeDialog mode="reply" initialActor={brandDid} post={compose.parent} moderation={moderation} onClose={closeComposer} />
     : compose && moderation && connection.session
       ? <BrandPostComposer ownerDid={ownerDid} session={connection.session} moderation={moderation} profile={profile}
           pending={mutation.isPending} assertCurrentActor={connection.assertCurrentActor}

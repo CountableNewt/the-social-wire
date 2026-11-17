@@ -176,7 +176,7 @@ describe("on-page post viewer", () => {
     expect(screen.getByRole("dialog", { name: "Reply" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(replies.getByRole("button", { name: "More Post Actions" }));
-    const url = "https://bsky.app/profile/did%3Aplc%3Aother/post/testreply";
+    const url = "https://bsky.app/profile/did:plc:other/post/testreply";
     expect((await screen.findByRole("menuitem", { name: "Send Message" })).getAttribute("href")).toBe(`/social/messages?draft=${encodeURIComponent(url)}`);
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy Link" }));
     await waitFor(() => expect(copy).toHaveBeenCalledWith(url));

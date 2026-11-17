@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as Drafts from "@/lib/composerDraftStorage";
 import * as OAuth from "@/lib/auth";
 import * as Compose from "@/lib/blueskyComposeClient";
 import * as Posts from "@/lib/blueskyPostClient";
@@ -53,6 +54,9 @@ test("shows the selected brand identity, immediate reply context and actor-speci
   expect(state.mutation.mutateAsync).toHaveBeenCalledWith({ kind: "seen" });
 });
 test("reply defaults to the recipient and can publish from another linked or personal account", async () => {
+  const load = spyOn(Drafts, "loadComposerDraft").mockResolvedValue(undefined);
+  const save = spyOn(Drafts, "saveComposerDraft").mockResolvedValue(undefined);
+  restores.push(() => load.mockRestore(), () => save.mockRestore());
   const other = "did:plc:other";
   const personal = { did: owner } as unknown as OAuthSession;
   const stored = spyOn(OAuth, "getStoredOAuthDid").mockReturnValue(owner);
@@ -76,12 +80,13 @@ test("reply defaults to the recipient and can publish from another linked or per
   expect(picker.value).toBe(brand);
   await screen.findByRole("option", { name: /@brand.test/ });
   expect(screen.getByRole("dialog").textContent).not.toContain("did:plc:");
-  fireEvent.change(await screen.findByRole("textbox", { name: "Delegated Post Text" }), { target: { value: "A reply" } });
+  await waitFor(() => expect(picker.disabled).toBe(false));
+  fireEvent.change(await screen.findByRole("textbox", { name: "Reply Text" }), { target: { value: "A reply" } });
 
   fireEvent.change(picker, { target: { value: other } });
-  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
-  fireEvent.change(picker, { target: { value: owner } });
-  expect((await screen.findByRole("textbox", { name: "Delegated Post Text" }) as HTMLTextAreaElement).value).toBe("A reply");
+  expect((await screen.findByRole("textbox", { name: "Reply Text" }) as HTMLTextAreaElement).value).toBe("A reply");
+  fireEvent.change(screen.getByRole("combobox", { name: "Reply As" }), { target: { value: owner } });
+  expect((await screen.findByRole("textbox", { name: "Reply Text" }) as HTMLTextAreaElement).value).toBe("A reply");
   fireEvent.click(screen.getByRole("button", { name: "Post Reply" }));
   await waitFor(() => expect(publish).toHaveBeenCalledWith(expect.objectContaining({
     session: personal, text: "A reply", replyTo: target,
