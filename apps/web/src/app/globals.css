@@ -60,6 +60,7 @@
   --app-font-mono: var(--font-mono-system);
   --app-font-family: var(--app-font-sans);
   --app-font-weight: 400;
+  --app-heading-font-weight: 650;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -129,6 +130,11 @@ html[data-font="mono"] {
 
 html[data-bold-text="true"] {
   --app-font-weight: 700;
+  --app-heading-font-weight: 800;
+  --font-weight-normal: 700;
+  --font-weight-medium: 700;
+  --font-weight-semibold: 800;
+  --font-weight-bold: 900;
 }
 
 .dark {
@@ -232,7 +238,7 @@ html[data-bold-text="true"] {
   .article-content :where(h1, h2, h3, h4, h5, h6) {
     margin-block: 1.6em 0.6em;
     color: var(--foreground);
-    font-weight: 650;
+    font-weight: var(--app-heading-font-weight);
     line-height: 1.25;
     text-wrap: balance;
   }
@@ -283,7 +289,7 @@ html[data-bold-text="true"] {
   }
 
   .article-content :where(dt) {
-    font-weight: 650;
+    font-weight: var(--app-heading-font-weight);
   }
 
   .article-content :where(dd) {
@@ -367,7 +373,7 @@ html[data-bold-text="true"] {
 
   .article-content :where(th) {
     background: var(--muted);
-    font-weight: 650;
+    font-weight: var(--app-heading-font-weight);
   }
 
   .article-content :where(hr) {
