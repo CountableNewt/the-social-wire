@@ -15,6 +15,7 @@ import {
   useEntries,
 } from "@/hooks/useEntries";
 import { useProactiveFeedRefresh } from "@/hooks/useProactiveFeedRefresh";
+import { useScrollActivity } from "@/hooks/useScrollActivity";
 import {
   sortEntryListItemsNewestFirst,
   type EntryListItem,
@@ -83,10 +84,10 @@ export function EntryList({
     return articleFilter;
   }, [readIndicatorsEnabled, articleFilter]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const canBackgroundRefresh = useCallback(
-    () => (scrollContainerRef.current?.scrollTop ?? 0) <= 0,
-    [],
-  );
+  const isScrolling = useScrollActivity(scrollContainerRef);
+  // Scroll anchoring keeps the visible article in place when rows land above it,
+  // so background refreshes only wait out an active scroll gesture.
+  const canBackgroundRefresh = useCallback(() => !isScrolling(), [isScrolling]);
 
   // AppView performs the bounded unread scan. The local read-state overlay still
   // suppresses rows immediately while read-mark write-through catches up.
