@@ -70,44 +70,41 @@ for (const scope of [
       return client.getQueryData<InfiniteData<EntriesPage>>(scope.key);
     }
 
-    it("does not fetch on focus while the reader is scrolled", async () => {
+    it("defers a focus refresh while the reader is scrolling and applies it once scrolling settles", async () => {
       const cached = seed();
       const fetch = spyOn(AppView, "listAggregateFeedFromAppView").mockResolvedValue(page("fresh"));
       restores.push(() => fetch.mockRestore());
-      let atTop = false;
-      renderHook(() => scope.useFeed(() => atTop), { wrapper });
+      let settled = false;
+      renderHook(() => scope.useFeed(() => settled), { wrapper });
       await act(async () => { fireEvent.focus(window); });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
       expect(fetch).not.toHaveBeenCalled();
       expect(client.getQueryData<InfiniteData<EntriesPage>>(scope.key)).toBe(cached);
-      atTop = true;
-      await act(async () => { fireEvent.focus(window); });
+      // No second focus or poll tick: the deferred refresh resumes on its own.
+      settled = true;
       await waitFor(() => expect(client.getQueryData<InfiniteData<EntriesPage>>(scope.key)?.pages).toEqual([page("fresh")]));
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
-    it("retains loaded pages without an error if the reader scrolls during a passive request", async () => {
+    it("holds a passive response while the reader scrolls instead of discarding it", async () => {
       const cached = seed();
-      const updatedAt = client.getQueryState(scope.key)?.dataUpdatedAt;
       let resolve!: (value: EntriesPage) => void;
       const response = new Promise<EntriesPage>(done => { resolve = done; });
       const fetch = spyOn(AppView, "listAggregateFeedFromAppView").mockReturnValue(response);
       restores.push(() => fetch.mockRestore());
-      let atTop = true;
-      const { result } = renderHook(() => scope.useFeed(() => atTop), { wrapper });
+      let settled = true;
+      const { result } = renderHook(() => scope.useFeed(() => settled), { wrapper });
       await act(async () => { fireEvent.focus(window); });
       await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-      atTop = false;
+      settled = false;
       await act(async () => { resolve(page("fresh")); await response; });
-      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
       expect(client.getQueryData<InfiniteData<EntriesPage>>(scope.key)).toBe(cached);
-      expect(client.getQueryState(scope.key)?.dataUpdatedAt).toBe(updatedAt);
+      settled = true;
+      await waitFor(() => expect(client.getQueryData<InfiniteData<EntriesPage>>(scope.key)?.pages).toEqual([page("fresh")]));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
       expect(result.current.isError).toBe(false);
-      expect(result.current.error).toBeNull();
-      atTop = true;
-      fetch.mockResolvedValue(page("fresh-after-return"));
-      await act(async () => { fireEvent.focus(window); });
-      await waitFor(() => expect(client.getQueryData<InfiniteData<EntriesPage>>(scope.key)?.pages).toEqual([page("fresh-after-return")]));
-      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
 
     it("allows an explicit refresh while the reader is scrolled", async () => {

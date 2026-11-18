@@ -4,7 +4,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
   isCancelledError,
-  CancelledError,
   onlineManager,
   useInfiniteQuery,
   useQuery,
@@ -43,6 +42,7 @@ import { coalesceFeedFirstPage, getFeedRefreshRevision, readFeedRefreshRevision 
 import { refreshPublicationUnreadCount } from "@/lib/feedRefresh";
 import { useVisibleFeedRefresh } from "./useVisibleFeedRefresh";
 import { useFeedFirstContentTiming } from "./useFeedFirstContentTiming";
+import { waitForBackgroundRefreshAllowed } from "@/lib/waitForBackgroundRefresh";
 
 export type { EntryListItem, EntryDetail };
 
@@ -59,6 +59,8 @@ export type EntriesPage = { entries: EntryListItem[]; cursor?: string };
 
 /** Matches {@link useEntries} `staleTime` / `prefetchInfiniteQuery` for entry lists. */
 export const ENTRIES_QUERY_STALE_MS = 30_000;
+/** Longest a passive refresh without a caller deadline waits for scrolling to settle. */
+const BACKGROUND_REFRESH_MAX_DEFER_MS = 30_000;
 
 /** Stop pagination when the server repeats a cursor, including duplicate rows. */
 export function entriesNextPageParam(
@@ -169,6 +171,7 @@ function useGuardedFeedRefresh(args: {
   const queryClient = useQueryClient();
   const backgroundAllowed = useRef(args.canBackgroundRefresh);
   useLayoutEffect(() => { backgroundAllowed.current = args.canBackgroundRefresh; });
+  const isBackgroundAllowed = useCallback(() => backgroundAllowed.current?.() !== false, []);
   const oauthSession = getOAuthSession();
   const reloadSeq = useRef(oauthSessionReloadSeq);
   useLayoutEffect(() => { reloadSeq.current = oauthSessionReloadSeq; }, [oauthSessionReloadSeq]);
@@ -184,7 +187,15 @@ function useGuardedFeedRefresh(args: {
     reloadSeq: number;
   } | null>(null);
   const refresh = useCallback(async (replaceSession = false, callerSignal?: AbortSignal, background = false) => {
-    if (background && backgroundAllowed.current?.() === false) return false;
+    if (background) {
+      // Defer while the reader is scrolling; skipping would drop this poll entirely.
+      try {
+        await waitForBackgroundRefreshAllowed(isBackgroundAllowed,
+          callerSignal ?? AbortSignal.timeout(BACKGROUND_REFRESH_MAX_DEFER_MS));
+      } catch {
+        return false;
+      }
+    }
     const oauth = getOAuthSession();
     if (!enabled || !oauth || !feed || callerSignal?.aborted) return false;
     const cachedQuery = queryClient.getQueryCache().find({ queryKey, exact: true });
@@ -242,11 +253,12 @@ function useGuardedFeedRefresh(args: {
       // This response still belongs to the visible-refresh caller lifetime.
       if (!operationSettled && !isCurrent()) throw new SupersededFeedRefreshError();
       if (reloadSeq.current !== requestReloadSeq) throw new SupersededFeedRefreshError();
-      const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
-      if (!operationSettled && background && backgroundAllowed.current?.() === false) {
-        await queryClient.cancelQueries({ queryKey, exact: true });
-        throw new CancelledError({ revert: true });
+      if (!operationSettled && background) {
+        // Hold the merge until scrolling settles so rows never shift mid-gesture.
+        await waitForBackgroundRefreshAllowed(isBackgroundAllowed, signal);
+        if (!isCurrent()) throw new SupersededFeedRefreshError();
       }
+      const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
       return mergeFeedRefreshForFilter(current, fresh, articleFilter);
     };
     try {
@@ -289,7 +301,7 @@ function useGuardedFeedRefresh(args: {
       await refreshPublicationUnreadCount({ queryClient, viewerDid: oauth.did, publicationId: feed.id, oauthSession: oauth });
     }
     return true;
-  }, [articleFilter, enabled, feed, fetchInitial, getOAuthSession, oauthSessionReloadSeq, queryClient, queryKey]);
+  }, [articleFilter, enabled, feed, fetchInitial, getOAuthSession, isBackgroundAllowed, oauthSessionReloadSeq, queryClient, queryKey]);
 
   useEffect(() => {
     if (!enabled || !oauthSession) return;
