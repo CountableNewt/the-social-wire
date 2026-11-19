@@ -20,6 +20,7 @@ enum SocialWireXRPCMethod {
     static let getReadAgeOptions = prefix + "app.thesocialwire.appview.getReadAgeOptions"
     static let markReadBefore = prefix + "app.thesocialwire.appview.markReadBefore"
     static let enrollSources = prefix + "app.thesocialwire.appview.enrollSources"
+    static let refreshFeed = prefix + "app.thesocialwire.appview.refreshFeed"
     static let purgeViewerData = prefix + "app.thesocialwire.appview.purgeViewerData"
     static let getWire = prefix + "app.thesocialwire.discovery.getWire"
     static let getWireEdition = prefix + "app.thesocialwire.discovery.getWireEdition"

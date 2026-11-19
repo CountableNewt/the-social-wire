@@ -78,6 +78,10 @@ final class SocialWireAppModel {
     var isLoading = false
     var isLoadingEntries = false
     var isLoadingMoreEntries = false
+    /// Explicit feed refresh in flight (pull to refresh); `nil` when idle.
+    var feedRefreshProgress: FeedRefreshProgress?
+    /// Result of the last explicit feed refresh, shown briefly in the feed footer.
+    var feedRefreshStatus: String?
     /// Bootstrap NDJSON stream in flight (sidebar may still paint from cache).
     var sidebarFetching = false
     /// Folder publication rows not yet merged from stream phase two.
@@ -653,6 +657,15 @@ final class SocialWireAppModel {
         }
     }
 
+    /// Pull to refresh: asks the server to check every publication in the feed, with progress.
+    func pullToRefreshSelectedArticleFeed() async {
+        guard useAppViewEntryTimelines, let scope = feedRefreshScope else {
+            await refreshSelectedArticleFeed()
+            return
+        }
+        await streamFeedRefresh(kind: scope.kind, id: scope.id)
+    }
+
     func refreshSelectedArticleFeed() async {
         if let publication = selectedPublication {
             await loadEntries(for: publication, forceNetworkRefresh: true)
@@ -671,6 +684,61 @@ final class SocialWireAppModel {
             await loadAggregateFeed(kind: "list", id: uri)
         default:
             break
+        }
+    }
+
+    private var feedRefreshScope: (kind: String, id: String?)? {
+        if let publication = selectedPublication { return ("publication", publication.publicationId) }
+        return Self.aggregateFeedScope(for: feedSelection)
+    }
+
+    /// Streams `refreshFeed` so the footer can show per-publication progress, repainting the
+    /// visible feed (at most once a second) as publications report new articles.
+    private func streamFeedRefresh(kind: String, id: String?) async {
+        let startingIds = Set(entries.map(\.entryId))
+        feedRefreshStatus = nil
+        feedRefreshProgress = FeedRefreshProgress()
+        defer { feedRefreshProgress = nil }
+        var lastPaint = ContinuousClock.now
+        var dirty = false
+        var unavailable = 0
+        do {
+            try await gateway.refreshFeed(kind: kind, id: id) { [self] event in
+                switch event {
+                case let .started(total):
+                    feedRefreshProgress = FeedRefreshProgress(completed: 0, total: total)
+                case let .publication(publication):
+                    feedRefreshProgress = FeedRefreshProgress(completed: publication.completed, total: publication.total)
+                    if publication.indexed > 0 { dirty = true }
+                    if dirty, ContinuousClock.now - lastPaint >= .seconds(1) {
+                        dirty = false
+                        lastPaint = .now
+                        await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+                    }
+                case let .done(_, _, count):
+                    unavailable = count
+                case .unknown:
+                    break
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            markAppViewUnavailableIfNeeded(error)
+            await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+            feedRefreshStatus = "Couldn’t Refresh — Pull to Try Again"
+            return
+        }
+        // Counters were reconciled before `done`; paint and recount once more.
+        await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+        await refreshSidebarUnreadCounts(force: true)
+        let newCount = entries.lazy.filter { !startingIds.contains($0.entryId) }.count
+        if newCount > 0 {
+            feedRefreshStatus = "\(newCount) New \(newCount == 1 ? "Article" : "Articles")"
+        } else if unavailable > 0 {
+            feedRefreshStatus = "Up to Date — Some Sources Unavailable"
+        } else {
+            feedRefreshStatus = "Up to Date"
         }
     }
 
@@ -3016,8 +3084,9 @@ final class SocialWireAppModel {
             guard ownsReaderRequest(context) else { return }
             applyAuthoritativeReadState(from: page.entries)
             if readerFilter == .unread {
-                entries = page.entries
-                entriesNextCursor = page.cursor
+                (entries, entriesNextCursor) = ReaderUnreadPageMerge.merge(
+                    existing: entries, existingCursor: entriesNextCursor, fresh: page.entries, freshCursor: page.cursor
+                )
             } else {
                 entries = mergeEntryPagesAtTop(existing: entries, freshFirstPage: page.entries)
                 if entriesNextCursor == nil {
@@ -3160,8 +3229,9 @@ final class SocialWireAppModel {
             let page = try await fetchEntriesPage(for: publication, cursor: nil, requestContext: context)
             guard ownsReaderRequest(context) else { return }
             if readerFilter == .unread {
-                entries = page.entries
-                entriesNextCursor = page.cursor
+                (entries, entriesNextCursor) = ReaderUnreadPageMerge.merge(
+                    existing: entries, existingCursor: entriesNextCursor, fresh: page.entries, freshCursor: page.cursor
+                )
             } else {
                 entries = mergeEntryPagesAtTop(existing: entries, freshFirstPage: page.entries)
                 if entriesNextCursor == nil {

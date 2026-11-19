@@ -259,6 +259,35 @@ describe("effectivePublicationUnreadCount", () => {
     ).toBe(4);
   });
 
+  it("does not subtract a cached local read the server baseline already counted", () => {
+    const publicationId =
+      "at://did:plc:author/site.standard.publication/main";
+    const earlier = "at://did:plc:author/site.standard.document/earlier";
+    const later = "at://did:plc:author/site.standard.document/later";
+    const queryClient = mockQueryClientWithEntries(publicationId, [
+      makeEntry(earlier),
+      makeEntry(later),
+    ]);
+    const readAt: Record<string, string> = {
+      [earlier]: "2026-11-18T10:00:00.000Z",
+      [later]: "2026-11-18T12:00:00.000Z",
+    };
+    const options = {
+      capRaiseToServerCount: true,
+      countedAt: "2026-11-18T11:00:00.000Z",
+      entryReadAt: (id: string) => readAt[id],
+    };
+
+    // Only the read after the count is pending, so evicting `earlier` cannot move the badge.
+    expect(
+      effectivePublicationUnreadCount(5, queryClient, viewerDid, publicationId, id => id in readAt, options)
+    ).toBe(4);
+    const withoutEarlier = mockQueryClientWithEntries(publicationId, [makeEntry(later)]);
+    expect(
+      effectivePublicationUnreadCount(5, withoutEarlier, viewerDid, publicationId, id => id in readAt, options)
+    ).toBe(4);
+  });
+
   it("detects when an entry is present in the entries cache", () => {
     const publicationId =
       "at://did:plc:author/site.standard.publication/main";

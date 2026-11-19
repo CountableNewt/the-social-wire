@@ -32,15 +32,20 @@ actor ScopedContentRefresh {
     self.enumeratePDS = nil
   }
 
-  func refresh(scope: PublicContentDiscoveryScope) async throws -> Int {
+  /// `waitForCapacity` queues an explicit refresh behind busy jobs; passive callers skip instead.
+  func refresh(scope: PublicContentDiscoveryScope, waitForCapacity: Bool = false) async throws -> Int {
     try Task.checkCancellation()
     guard !stopped else { throw CancellationError() }
+    guard (freshUntil[scope] ?? .distantPast) <= now() else { return 0 }
+    while waitForCapacity, jobs[scope] == nil, sameKindJobs(as: scope) >= Self.maximumJobsPerKind {
+      try await Task.sleep(for: .milliseconds(25))
+      guard !stopped else { throw CancellationError() }
+    }
     guard (freshUntil[scope] ?? .distantPast) <= now() else { return 0 }
     let waiter = UUID()
     let value = try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, any Error>) in
-        let sameKind = jobs.keys.filter { $0.publicationKeys.isEmpty == scope.publicationKeys.isEmpty }.count
-        guard jobs[scope] != nil || sameKind < 4, (waiters[scope]?.count ?? 0) < 32 else {
+        guard jobs[scope] != nil || sameKindJobs(as: scope) < Self.maximumJobsPerKind, (waiters[scope]?.count ?? 0) < 32 else {
           continuation.resume(returning: 0)
           return
         }
@@ -61,6 +66,12 @@ actor ScopedContentRefresh {
     }
     try Task.checkCancellation()
     return value
+  }
+
+  private static let maximumJobsPerKind = 4
+
+  private func sameKindJobs(as scope: PublicContentDiscoveryScope) -> Int {
+    jobs.keys.filter { $0.publicationKeys.isEmpty == scope.publicationKeys.isEmpty }.count
   }
 
   func shutdown() async {

@@ -87,6 +87,12 @@ actor ThinAppViewSkyreaderIngestionService {
     return indexed
   }
 
+  /// One feed already in the viewer's projected scope; the projection stores canonical feed URLs.
+  func refreshProjectedFeed(_ feedUrl: String) async throws -> Int {
+    try Task.checkCancellation()
+    return try await refreshFeed(feedUrl)
+  }
+
   /// Warm only the selected publications. Full subscription discovery belongs to background warming.
   func ingestSelectedFeeds(feedUrls: [String]) async throws -> Int {
     try await ingestOrderedFeeds(Self.normalizedUniqueFeedUrls(feedUrls))

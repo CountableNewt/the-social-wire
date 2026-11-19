@@ -133,6 +133,7 @@ struct AppViewRouteContractTests {
         "app.thesocialwire.appview.putReadMark",
         "app.thesocialwire.appview.deleteReadMark",
         "app.thesocialwire.appview.enrollSources",
+        "app.thesocialwire.appview.refreshFeed",
         "app.thesocialwire.appview.purgeViewerData",
         "app.thesocialwire.appview.markAllRead",
         "app.thesocialwire.publication.refreshSidebar",

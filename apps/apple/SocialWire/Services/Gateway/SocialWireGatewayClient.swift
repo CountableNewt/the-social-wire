@@ -770,7 +770,35 @@ final class SocialWireGatewayClient {
         }
     }
 
-    private func authorizedStream(url: URL, session: AuthSession) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
+    /// Explicit refresh of one feed; `onEvent` sees each publication as the server finishes it.
+    func refreshFeed(
+        kind: String,
+        id: String? = nil,
+        onEvent: (FeedRefreshStreamEvent) async -> Void
+    ) async throws {
+        let url = baseURL.appending(path: SocialWireXRPCMethod.refreshFeed)
+        let payload = try JSONEncoder().encode(AppViewRefreshFeedBody(kind: kind, id: id))
+        let session = try await auth.validSession()
+        let (bytes, http) = try await authorizedStream(url: url, session: session, method: "POST", body: payload)
+        guard (200 ..< 300).contains(http.statusCode) else {
+            bytes.task.cancel()
+            if http.statusCode == 404 { throw SocialWireError.appViewUnavailable }
+            throw SocialWireError.badResponse("Refresh failed (\(http.statusCode)).")
+        }
+        try await withTaskCancellationHandler {
+            defer { bytes.task.cancel() }
+            try await FeedRefreshStreamEvent.consume(bytes.lines, onEvent: onEvent)
+        } onCancel: {
+            bytes.task.cancel()
+        }
+    }
+
+    private func authorizedStream(
+        url: URL,
+        session: AuthSession,
+        method: String = "GET",
+        body: Data? = nil
+    ) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
         try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false) { [self] in
             for attempt in 0 ..< 2 {
                 try Task.checkCancellation()
@@ -778,7 +806,12 @@ final class SocialWireGatewayClient {
                     throw ReadStateSyncFailure.accountChanged
                 }
                 var request = URLRequest(url: url)
+                request.httpMethod = method
                 request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+                if let body {
+                    request.httpBody = body
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                }
                 try await authorize(&request, session: session)
                 let (bytes, raw) = try await urlSession.bytes(for: request)
                 guard let response = raw as? HTTPURLResponse else {

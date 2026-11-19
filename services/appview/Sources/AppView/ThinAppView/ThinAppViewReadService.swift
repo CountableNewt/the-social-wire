@@ -428,6 +428,16 @@ actor ThinAppViewReadService {
     return Array(try await store.publicationScopes(viewerDid: auth.did, sectionKey: section).prefix(8))
   }
 
+  /// Every projected publication in a section feed, for an explicit viewer refresh.
+  func sectionScopes(auth: AuthContext, selector: AppViewFeedSelector) async throws -> [AppViewPublicationScope] {
+    switch selector.kind {
+    case .subscribed: try await store.publicationScopes(viewerDid: auth.did, sectionKey: "subscribed")
+    case .following: try await store.publicationScopes(viewerDid: auth.did, sectionKey: "following")
+    case .folder: try await store.publicationScopes(viewerDid: auth.did, sectionKey: "folder:" + selector.id)
+    case .publication, .list: []
+    }
+  }
+
   func hasFeedProjection(auth: AuthContext) async throws -> Bool {
     try await store.hasViewerFeedProjection(viewerDid: auth.did)
   }

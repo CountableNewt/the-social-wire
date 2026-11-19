@@ -78,6 +78,8 @@ export type ReadStateContextValue = {
   markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   /** Returns whether the entry is marked read in local state. */
   isEntryRead: (entryId: string) => boolean;
+  /** First-read timestamp in local state, if read. */
+  entryReadAt: (entryId: string) => string | undefined;
   pendingEntryReadState: (entryId: string) => boolean | undefined;
   /** Bumps when readMap changes; use in unread memo deps. */
   readEpoch: number;
@@ -440,9 +442,12 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     [readMap, pendingEntryReadState]
   );
 
+  const entryReadAt = useCallback((entryId: string) => readMap[entryId] || undefined, [readMap]);
+
   const value = useMemo(
     (): ReadStateContextValue => ({
       isEntryRead,
+      entryReadAt,
       pendingEntryReadState,
       readEpoch,
       markEntryRead,
@@ -452,6 +457,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     }),
     [
       isEntryRead,
+      entryReadAt,
       pendingEntryReadState,
       readEpoch,
       markEntryRead,
