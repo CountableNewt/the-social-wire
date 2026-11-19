@@ -56,3 +56,8 @@ struct GatewayMarkReadBeforeBody: Encodable, Sendable {
     let scope: GatewayMarkAllReadScopeDTO
     let before: String
 }
+
+struct AppViewRefreshFeedBody: Encodable, Sendable {
+    let kind: String
+    let id: String?
+}

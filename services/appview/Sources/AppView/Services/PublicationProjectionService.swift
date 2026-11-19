@@ -63,6 +63,11 @@ actor PublicationProjectionService {
     try Task.checkCancellation()
   }
 
+  /// Newly indexed articles must not wait behind a cached first page during a refresh stream.
+  func invalidateFirstPages(viewerDid: String) async throws {
+    try await projectionCache?.invalidateFirstPage(viewerDid: viewerDid, publicationId: nil)
+  }
+
   func sidebar(
     auth: AuthContext,
     phase: SidebarBuildPhase = .full

@@ -3206,6 +3206,57 @@ paths:
         "404":
           description: Route disabled when thin AppView flag is unset.
 
+  /xrpc/app.thesocialwire.appview.refreshFeed:
+    post:
+      operationId: refreshAppViewFeed
+      summary: Stream an explicit refresh of one viewer feed
+      description: |
+        Checks every publication in the viewer's Subscribed, Following, folder, publication, or
+        list feed for new articles with bounded concurrency (Microcosm discovery for
+        standard.site authors, Skyreader polls for RSS feeds). Gateway forwards the AppView body
+        without buffering.
+
+        Event kinds (one JSON object per line, keyed by `kind`):
+        `started` `{ total }`, then one `publication`
+        `{ publicationId, status, indexed, completed, total }` per source as it finishes, where
+        `status` is `updated`, `checked`, or `unavailable`, then `done` `{ total, indexed, unavailable }`.
+        Unread counters are reconciled and cached first pages invalidated before `done`, so clients
+        should refetch page 1 after `publication` events with `indexed > 0` and refresh unread counts
+        after `done`.
+      tags: [AppView]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [subscribed, following, publication, folder, list]
+                id:
+                  type: string
+                  maxLength: 2048
+                  description: Required for `publication`, `folder`, and `list`.
+      responses:
+        "200":
+          description: NDJSON event stream.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited feed refresh event JSON objects.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-cache`.
+        "400":
+          description: InvalidRequest — unknown `kind` or missing `id`.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /v1/appview/feed:
     get:
       operationId: listAggregateAppViewFeed

@@ -20,7 +20,7 @@ import type { EntryListItem, EntryDetail } from "@/lib/atprotoClient";
 import type { ArticleListFilter } from "@/lib/entryArticleFilter";
 import { prefetchCachedImages } from "@/lib/imageBlobCache";
 import {
-  mergeFeedRefreshForFilter,
+  mergeVisibleFeedRefresh,
   unreadFeedPlaceholder,
 } from "@/lib/feedCacheMerge";
 import {
@@ -259,7 +259,7 @@ function useGuardedFeedRefresh(args: {
         if (!isCurrent()) throw new SupersededFeedRefreshError();
       }
       const current = queryClient.getQueryData<InfiniteData<EntriesPage>>(queryKey);
-      return mergeFeedRefreshForFilter(current, fresh, articleFilter);
+      return mergeVisibleFeedRefresh(current, fresh, articleFilter);
     };
     try {
       await queryClient.fetchQuery({

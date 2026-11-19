@@ -18,6 +18,7 @@ import * as readerFeeds from "@/lib/refreshReaderFeeds";
 import * as publicationSources from "@/lib/refreshPublicationSources";
 import * as readerUnread from "@/lib/refreshReaderUnreadCounts";
 import * as appview from "@/lib/thinAppViewClient";
+import * as feedRefreshStream from "@/lib/feedRefreshStreamClient";
 import * as attestation from "@/lib/pdsSessionAttestation";
 import * as gatewayAuth from "@/lib/latrGatewayUserAuth";
 import * as upstreamDpop from "@/lib/latrGatewayUpstreamDpop";
@@ -362,7 +363,7 @@ describe("PublicationSidebarProvider", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(sources).not.toHaveBeenCalled();
     await act(async () => { posted.resolve(); });
-    await waitFor(() => expect(result.current.refreshMessage).toBe("Checking 78 Publications…"));
+    await waitFor(() => expect(result.current.refreshMessage).toBe("Checking 0 of 78 Publications…"));
     expect(stream).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryData(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did))).toMatchObject(full);
     expect(feeds).not.toHaveBeenCalled();
@@ -404,7 +405,7 @@ describe("PublicationSidebarProvider", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(sources).toHaveBeenCalledTimes(1); expect(feeds).not.toHaveBeenCalled();
     expect(result.current.refresh.isPending).toBe(true); expect(unread).not.toHaveBeenCalled();
-    expect(result.current.refreshMessage).toBe("Checking 1 Publications…");
+    expect(result.current.refreshMessage).toBe("Checking 0 of 1 Publication…");
     await act(async () => { posted.resolve(); });
     await waitFor(() => expect(feeds).toHaveBeenCalledTimes(1));
     expect(result.current.refresh.isPending).toBe(true); expect(unread).not.toHaveBeenCalled();
@@ -422,12 +423,16 @@ describe("PublicationSidebarProvider", () => {
     await waitFor(() => expect(result.current.bootstrapStreamComplete).toBe(true));
     const cached = cacheActiveSources(mounted), posted = deferred(), ingested = deferred();
     sources.mockRestore();
-    const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => ingested.promise);
+    const enroll = spyOn(feedRefreshStream, "consumeFeedRefreshStream").mockImplementation(async ({ onEvent }) => {
+      onEvent({ kind: "started", total: 1 });
+      onEvent({ kind: "publication", publicationId: "did:plc:source", status: "updated", indexed: 1, completed: 1, total: 1 });
+      await ingested.promise;
+      onEvent({ kind: "done", total: 1, indexed: 1, unavailable: 0 });
+    });
     post.mockImplementation(async () => { await posted.promise; return cached; });
     let task!: Promise<void>;
     act(() => { task = result.current.refresh.mutateAsync(); });
     await waitFor(() => expect(enroll).toHaveBeenCalledTimes(1));
-    expect(enroll.mock.calls[0]?.[1]).toEqual(["did:plc:source"]);
     expect(post).toHaveBeenCalledTimes(1);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
     expect(feeds).not.toHaveBeenCalled(); expect(unread).not.toHaveBeenCalled();
@@ -470,9 +475,10 @@ describe("PublicationSidebarProvider", () => {
         await posted.promise;
         return Response.json({ ...cached, refreshedAt: "authoritative-queued-first" });
       }
-      if (path === socialWireXrpc.enrollSources) {
+      if (path === socialWireXrpc.refreshFeed) {
         await ingested.promise;
-        return Response.json({});
+        return new Response('{"kind":"started","started":{"total":0}}\n{"kind":"done","done":{"total":0,"indexed":0,"unavailable":0}}\n',
+          { headers: { "Content-Type": "application/x-ndjson" } });
       }
       throw new Error(`Unexpected Gateway request: ${path}`);
     }, { preconnect: globalThis.fetch.preconnect }));
@@ -485,9 +491,9 @@ describe("PublicationSidebarProvider", () => {
       expect(unread).not.toHaveBeenCalled();
       await act(async () => { posted.resolve(); });
       await waitFor(() => expect(requests).toHaveLength(2));
-      expect(requests.map(request => request.path)).toEqual([socialWireXrpc.refreshSidebar, socialWireXrpc.enrollSources]);
+      expect(requests.map(request => request.path)).toEqual([socialWireXrpc.refreshSidebar, socialWireXrpc.refreshFeed]);
       expect(queryClient.getQueryData<projectionClient.PublicationSidebarProjection>(PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did))?.refreshedAt).toBe("authoritative-queued-first");
-      expect(deadlines.map(deadline => deadline.milliseconds)).toEqual([30_000, 60_000]);
+      expect(deadlines.map(deadline => deadline.milliseconds)).toEqual([30_000, 300_000]);
       // Advance the POST's entire allowance while enrollment is still blocked.
       // Authority has already reached fetch and applied, so this cannot time it
       // out waiting behind the seed or cancel the independently owned seed.
