@@ -207,6 +207,14 @@ actor PublicationProjectionService {
     async let prefsTask = loadPublicationPrefs(auth: auth)
     async let subscriptionValuesTask = loadGraphSubscriptions(auth: auth)
     async let skyreaderRecordsTask = loadSkyreaderSubscriptions(auth: auth)
+    async let ownPublicationsTask = PublicationFollowDiscovery.discoverOwnPublications(
+      viewerDid: viewerDid,
+      auth: auth,
+      repo: repo,
+      httpClient: httpClient,
+      plcURL: plcURL,
+      logger: logger
+    )
     async let discoveredTask: [ProjectionDiscoveredRow] = {
       guard includeFollowDiscovery else { return [] }
       return await PublicationFollowDiscovery.discover(
@@ -223,7 +231,13 @@ actor PublicationProjectionService {
     let prefs = try await prefsTask
     let subscriptionValues = try await subscriptionValuesTask
     let skyreaderRecords = try await skyreaderRecordsTask
-    let discovered = await discoveredTask
+    let ownPublications: [ProjectionDiscoveredRow]
+    if let fresh = await ownPublicationsTask {
+      ownPublications = fresh
+    } else {
+      ownPublications = await lastKnownOwnPublications(viewerDid: viewerDid)
+    }
+    let discovered = ownPublications + (await discoveredTask)
 
     let rssRows = PublicationProjectionLogic.skyreaderRows(from: skyreaderRecords)
     let subscriptionKeys = PublicationProjectionLogic.subscriptionPublicationKeys(from: subscriptionValues)
@@ -323,6 +337,27 @@ actor PublicationProjectionService {
       enrollAuthorDids: enrollAuthorDids,
       prefsByPublicationId: prefsByPublicationId
     )
+  }
+
+  /// Keeps My Publications stable when the viewer repo is briefly unreadable, preferring the
+  /// in-process discovery (even if expired) and then the durable sidebar projection cache.
+  private func lastKnownOwnPublications(viewerDid: String) async -> [ProjectionDiscoveredRow] {
+    if let cached = discoveryCacheByViewer[viewerDid]?.context.myPublications, !cached.isEmpty {
+      return cached
+    }
+    let durable = await cachedSidebarResponse(viewerDid: viewerDid)?.myPublications ?? []
+    return durable.map { row in
+      ProjectionDiscoveredRow(
+        publicationId: row.publicationId,
+        subscriptionPublicationId: row.subscriptionPublicationId,
+        authorDid: row.authorDid,
+        authorHandle: row.authorHandle,
+        title: row.title,
+        iconUrl: row.iconUrl,
+        avatarUrl: row.avatarUrl,
+        discoveredAt: row.discoveredAt
+      )
+    }
   }
 
   private func cacheDiscovery(_ context: SidebarDiscoveryContext, viewerDid: String) {
