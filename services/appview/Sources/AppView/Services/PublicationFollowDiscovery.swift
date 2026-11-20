@@ -10,6 +10,8 @@ enum PublicationFollowDiscovery {
   private static let maxFollows = 500
   private static let followPageLimit = 100
   private static let discoveryConcurrency = 25
+  private static let ownPublicationMaxPages = 5
+  private static let ownPublicationRetryWindow: Duration = .seconds(3)
 
   static func discover(
     viewerDid: String,
@@ -58,20 +60,8 @@ enum PublicationFollowDiscovery {
     let subjects = Array(subjectDids.prefix(maxFollows))
     var discovered: [ProjectionDiscoveredRow] = []
 
-    // Viewer own publications first
-    if let own = await discoverAuthor(
-      authorDid: viewerDid,
-      handle: "You",
-      displayName: "My Publications",
-      avatar: nil,
-      repo: repo,
-      auth: auth,
-      httpClient: httpClient,
-      plcURL: plcURL
-    ) {
-      discovered.append(contentsOf: own)
-    }
-
+    // The viewer's own publications come from `discoverOwnPublications`, which runs on every
+    // sidebar build rather than only behind follow-graph enumeration.
     let others = subjects.filter { $0 != viewerDid }
 
     // Sliding window rather than sequential batches. Batching waited for all 25 authors to settle
@@ -115,6 +105,117 @@ enum PublicationFollowDiscovery {
     return byId.values.sorted {
       $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
     }
+  }
+
+  /// Lists the viewer's publication records directly from their PDS, querying every publication
+  /// collection in parallel. Returns `nil` when the repo could not be read (PLC/PDS failure) so
+  /// callers can keep previously known rows instead of treating a transient error as "none".
+  static func discoverOwnPublications(
+    viewerDid: String,
+    auth: AuthContext,
+    repo: ATProtoAuthenticatedRepoClient,
+    httpClient: HTTPClient,
+    plcURL: String,
+    logger: Logger
+  ) async -> [ProjectionDiscoveredRow]? {
+    let collections = PublicationLexicons.discoveryPublicationCollections
+    async let pdsBaseTask = try? ATProtoPdsResolution.resolvePdsBase(
+      repoDid: viewerDid,
+      plcBase: plcURL,
+      httpClient: httpClient
+    )
+
+    let results = await withTaskGroup(of: (Int, [ATProtoAuthenticatedRepoClient.RepoRecord]?).self) { group in
+      for (index, collection) in collections.enumerated() {
+        group.addTask {
+          let records = await listOwnPublicationRecords(
+            viewerDid: viewerDid,
+            collection: collection,
+            auth: auth,
+            repo: repo
+          )
+          return (index, records)
+        }
+      }
+      var byIndex: [Int: [ATProtoAuthenticatedRepoClient.RepoRecord]?] = [:]
+      for await (index, records) in group {
+        byIndex[index] = records
+      }
+      return byIndex
+    }
+
+    // Same precedence as follow discovery: the first collection (in lexicon order) with records
+    // wins, so a legacy or wrapper collection never shadows `site.standard.publication`.
+    let pdsBase = await pdsBaseTask
+    let now = Date()
+    for index in collections.indices {
+      guard let records = results[index] ?? nil, !records.isEmpty else { continue }
+      return records.map { record in
+        let value = record.value.values
+        let title =
+          (value["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+          ?? (value["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+          ?? "My Publications"
+        return ProjectionDiscoveredRow(
+          publicationId: record.uri,
+          subscriptionPublicationId: record.uri,
+          authorDid: viewerDid,
+          authorHandle: "You",
+          title: title,
+          iconUrl: RenderFieldExtractor.publicationIconUrl(from: value, repoDid: viewerDid, pdsBase: pdsBase),
+          avatarUrl: nil,
+          discoveredAt: now
+        )
+      }
+    }
+
+    if results.values.contains(where: { $0 == nil }) {
+      logger.warning(
+        "Own publication discovery could not read the viewer repo",
+        metadata: ["viewerDid": .string(viewerDid)]
+      )
+      return nil
+    }
+    return []
+  }
+
+  /// Pages through one publication collection, retrying once after a fast failure (reset, 429,
+  /// 5xx). A failure that already ran into the request timeout is not retried, so an outage costs
+  /// one timeout rather than two. `nil` means unreadable.
+  private static func listOwnPublicationRecords(
+    viewerDid: String,
+    collection: String,
+    auth: AuthContext,
+    repo: ATProtoAuthenticatedRepoClient
+  ) async -> [ATProtoAuthenticatedRepoClient.RepoRecord]? {
+    let clock = ContinuousClock()
+    for attempt in 0..<2 {
+      if attempt > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+      let started = clock.now
+      do {
+        var records: [ATProtoAuthenticatedRepoClient.RepoRecord] = []
+        var cursor: String?
+        var pages = 0
+        repeat {
+          let page = try await repo.listRecords(
+            auth: auth,
+            repo: viewerDid,
+            collection: collection,
+            limit: 100,
+            cursor: cursor,
+            reverse: true,
+            requireResolvedRepository: true
+          )
+          records.append(contentsOf: page.records)
+          cursor = page.cursor
+          pages += 1
+        } while cursor != nil && pages < ownPublicationMaxPages
+        return records
+      } catch {
+        if clock.now - started > ownPublicationRetryWindow { return nil }
+      }
+    }
+    return nil
   }
 
   private static func discoverAuthor(

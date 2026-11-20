@@ -53,6 +53,33 @@ struct PublicationRefreshProjectionTests {
     }
   }
 
+  @Test("own publication discovery retries a throttled PLC, then reports the repo unreadable instead of empty")
+  func ownPublicationsUnreadableRepo() async throws {
+    let plcHits = PLCHitCounter()
+    let router = Router()
+    router.get("/{did}") { _, _ -> Response in
+      await plcHits.increment()
+      return Response(status: .serviceUnavailable)
+    }
+    let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: 0)))
+    try await app.test(.live) { client in
+      let plcURL = "http://127.0.0.1:\(try #require(client.port))"
+      let http = HTTPClient(eventLoopGroupProvider: .singleton)
+      let logger = Logger(label: "own-publications.test")
+      let rows = await PublicationFollowDiscovery.discoverOwnPublications(
+        viewerDid: auth.did,
+        auth: auth,
+        repo: ATProtoAuthenticatedRepoClient(httpClient: http, plcURL: plcURL, logger: logger),
+        httpClient: http,
+        plcURL: plcURL,
+        logger: logger
+      )
+      try await http.shutdown()
+      #expect(rows == nil)
+      #expect(await plcHits.count > PublicationLexicons.discoveryPublicationCollections.count)
+    }
+  }
+
   @Test("enrollment retains sidebar scopes and reconciles after completed and partial work",
     arguments: [EnrollmentOutcome.success, .publisherUnavailable, .pollTimedOut])
   func enrollmentPreservesSidebar(outcome: EnrollmentOutcome) async throws {
@@ -147,4 +174,9 @@ private struct PublicationRefreshTestAuth: RouterMiddleware {
     context.authContext = auth
     return try await next(request, context)
   }
+}
+
+private actor PLCHitCounter {
+  private(set) var count = 0
+  func increment() { count += 1 }
 }
