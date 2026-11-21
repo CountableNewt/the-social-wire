@@ -150,7 +150,7 @@ export const PDS_READ_STATE_REPO_SCOPES = [
 ] as const;
 
 /** Video service delegates blob upload back to the dynamically discovered viewer PDS. */
-export const BLUESKY_PODCAST_VIDEO_SCOPES = [
+export const BLUESKY_VIDEO_SCOPES = [
   "blob:video/mp4",
   "rpc:com.atproto.repo.uploadBlob?aud=*",
   // OAuth RPC audiences require a service fragment; the video JWT audience
@@ -180,6 +180,5 @@ export const AT_PROTO_OAUTH_SCOPES = [
   USER_INPUT_OAUTH_SCOPE,
   USER_INPUT_UPVOTE_OAUTH_SCOPE,
   USER_INPUT_BLOB_OAUTH_SCOPE,
-  ...BLUESKY_PODCAST_VIDEO_SCOPES,
-  "repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete",
+  ...BLUESKY_VIDEO_SCOPES,
 ].join(" ");

@@ -3,8 +3,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*",
-    "services/podcast-worker"
+    "packages/*"
   ],
   "scripts": {
     "build": "turbo build",

@@ -149,7 +149,7 @@ final class NewsShellSmokeUITests: XCTestCase {
 
     private func selectDestination(_ label: String, in app: XCUIApplication) {
         let root: String = switch label {
-        case "Finance", "Sports", "Podcasts": "Topics"
+        case "Finance", "Sports": "Topics"
         case "Subscribed", "Following", "The Wire", "Your Circle": "News"
         case "Archive", "Read Later": "Read Later"
         case "Lists": "Lists"

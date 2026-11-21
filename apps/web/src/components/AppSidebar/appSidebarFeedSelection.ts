@@ -15,7 +15,6 @@ export function currentAppSidebarFeed({
   if (pathname === "/social" || pathname.startsWith("/social/")) return "social";
   if (pathname === "/media/short-videos") return "shortVideos";
   if (pathname === "/media/photos") return "photos";
-  if (pathname.startsWith("/podcasts")) return "podcasts";
   if (pathname.startsWith("/saved")) return "readLater";
   if (pathname.startsWith("/archive")) return "archive";
   if (!pathname.startsWith("/read")) return null;

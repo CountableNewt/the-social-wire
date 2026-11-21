@@ -71,7 +71,7 @@ describe("schema readiness deployment contract", () => {
     expect(coordinator).toContain("build: indexingBuild");
     expect(coordinator).toContain('THIN_APPVIEW_WORKER_MODE: "maintenance"');
     expect(coordinator).toContain('THIN_APPVIEW_RSS_FEED_POLL_ENABLED: "true"');
-    expect(iac).toContain("projectionPool, coordinator,");
+    expect(iac).toContain("resources: [projectionPool, coordinator]");
     expect(iac).not.toContain("Ingress Controller");
   });
 
@@ -84,14 +84,5 @@ describe("schema readiness deployment contract", () => {
 
   it("does not gate the database migrator", () => {
     expect(read("services/database-migrator/Dockerfile")).not.toContain("schema-ready");
-  });
-
-  it("gates the podcast worker with the Swift schema-ready image stage", () => {
-    const dockerfile = read("services/podcast-worker/Dockerfile");
-    expect(dockerfile).toContain("--product schema-ready --static-swift-stdlib");
-    expect(dockerfile).toContain("--generate-manifest /src/database/migrations");
-    expect(dockerfile).not.toMatch(/golang|go build/);
-    const entrypoint = JSON.parse(dockerfile.match(/^ENTRYPOINT (.+)$/m)![1]);
-    expect(entrypoint.slice(0, 2)).toEqual(["/usr/local/bin/schema-ready", "--"]);
   });
 });

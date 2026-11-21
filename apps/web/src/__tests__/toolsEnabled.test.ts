@@ -2,11 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { NextRequest } from "next/server";
 import { toolsEnabled } from "@/lib/toolsEnabled";
-import { podcastsEnabled } from "@/lib/podcasts/playback";
 import { config, proxy } from "@/proxy";
 
 const env: Record<string, string | undefined> = process.env;
-const keys = ["NEXT_PUBLIC_TOOLS_ENABLED", "NEXT_PUBLIC_LIVESTREAM_ENABLED", "NEXT_PUBLIC_MEDIA_ENABLED", "NEXT_PUBLIC_PODCASTS_ENABLED", "NEXT_PUBLIC_APP_ENV", "APP_ENV", "NODE_ENV", "NEXT_PUBLIC_ENABLE_POST_SCHEDULING", "NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED"] as const;
+const keys = ["NEXT_PUBLIC_TOOLS_ENABLED", "NEXT_PUBLIC_LIVESTREAM_ENABLED", "NEXT_PUBLIC_MEDIA_ENABLED", "NEXT_PUBLIC_APP_ENV", "APP_ENV", "NODE_ENV", "NEXT_PUBLIC_ENABLE_POST_SCHEDULING", "NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED"] as const;
 const original = Object.fromEntries(keys.map(key => [key, env[key]]));
 afterEach(() => { for (const key of keys) { if (original[key] === undefined) delete env[key]; else env[key] = original[key]; } });
 
@@ -30,10 +29,10 @@ test("an explicit deployment value overrides defaults and malformed values fail 
   expect(toolsEnabled()).toBe(true);
 });
 
-test("server proxy covers all Tools trees and callbacks without intercepting Social, Podcasts or Reader", () => {
+test("server proxy covers all Tools trees and callbacks without intercepting Social or Reader", () => {
   const tools = ["articles", "live-post", "livestream", "media", "brand-accounts", "content-calendar", "analytics", "scheduling"];
   const blocked = tools.flatMap(path => ["", "/", "/nested", "?_rsc=transition"].map(suffix => `/${path}${suffix}`));
-  const allowed = ["/social", "/social/messages", "/podcasts", "/podcast-clips/one", "/read", "/me", "/articles-other"];
+  const allowed = ["/social", "/social/messages", "/podcast-clips/one", "/read", "/me", "/articles-other"];
   // Next's testing package initializes server globals. Keep it out of the shared
   // DOM test process so later route tests retain their own async storage setup.
   // Next 16.2.6 still exports this helper under its Middleware name.
@@ -125,21 +124,18 @@ test("can keep Livestream disabled while enabling Live Post and scheduling tools
   }
 });
 
-test("keeps Media routes and Podcasts off together while Social remains available", () => {
+test("keeps Media routes off while Social remains available", () => {
   environment("prod");
   env.NEXT_PUBLIC_TOOLS_ENABLED = "true";
-  env.NEXT_PUBLIC_PODCASTS_ENABLED = "true";
   const media = ["media", "media/photos", "media/short-videos"];
   env.NEXT_PUBLIC_MEDIA_ENABLED = "false";
   for (const path of media) {
     expect(proxy(new NextRequest(`https://thesocialwire.app/${path}`)).status).toBe(404);
   }
-  expect(podcastsEnabled()).toBe(false);
   expect(proxy(new NextRequest("https://thesocialwire.app/social")).headers.get("x-middleware-next")).toBe("1");
   env.NEXT_PUBLIC_MEDIA_ENABLED = "true";
   env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
   for (const path of media) {
     expect(proxy(new NextRequest(`https://thesocialwire.app/${path}`)).headers.get("x-middleware-next")).toBe("1");
   }
-  expect(podcastsEnabled()).toBe(true);
 });

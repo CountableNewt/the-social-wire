@@ -1,15 +1,12 @@
 # Standalone Reader Backend
 
 The target has two Railway services: Next.js Web and one Backend container.
-The Backend runs the Go public API, SQLite-backed reader/draft/podcast stores,
-RSS polling, retention and the embedded scheduler. When podcasts are enabled, it also supervises the
-existing Bun/FFmpeg processor on `127.0.0.1:9080`. A child exit stops the
-container; readiness checks processor startup and health. Media processing never
-holds a SQLite transaction during network access or rendering.
+The Backend runs the Go public API, SQLite-backed reader and draft stores,
+RSS polling, retention and the embedded scheduler.
 
 PDS records remain authoritative for user-owned protocol data. SQLite owns the
-local projections and private unpublished state. Existing encrypted attachment
-and podcast media buckets remain in use. No Postgres, Redis, separate Gateway,
+local projections and private unpublished state. The existing encrypted attachment
+bucket remains in use. No Postgres, Redis, separate Gateway,
 or Coordinator connection is used by standalone mode. The existing distributed
 mode remains available during the cutover/rollback window.
 
@@ -43,20 +40,18 @@ Add one persistent US-West volume mounted at `/data`, with one replica. Set
 The standalone config selects `Dockerfile.standalone`, requires the `/data`
 mount, fixes one replica in `sfo`, disables sleep and deployment overlap, and
 clears the old start/pre-deploy commands. The image also refuses startup or
-import when `/data` is only an ephemeral directory. Use the image's supervisor
+import when `/data` is only an ephemeral directory. Use the image's standalone
 entrypoint and remove the old migrator-reference variable on this service.
 Keep `/railway/appview.json`, the distributed Dockerfile and `.railway/` graph
 as rollback references; do not apply them to the consolidated AppView.
 
-Combine the current Gateway, App View and enabled Podcast Media Worker settings.
+Combine the current Gateway and App View settings.
 Preserve the exact existing values of:
 
 - Public OAuth origins, CORS policy, issuer/JWKS policy and
   `PDS_ATTESTATION_RECEIPT_SECRET`.
 - L@tr client credentials, GIF key and Pro entitlement settings.
 - `SOCIAL_DRAFT_STORAGE_KEY`, draft S3 settings and recovery keys.
-- `PODCAST_PRIVATE_STORAGE_KEY`, podcast S3 settings,
-  `PODCAST_MEDIA_INTERNAL_SECRET` and public asset origin.
 - `EMBEDDED_SCHEDULING_STORAGE_KEY` and the scheduling OAuth public origin.
   Keep `/data/scheduling.sqlite` on the same persistent volume.
 - `GATEWAY_APPVIEW_INTERNAL_SECRET`: retained as the analytics pseudonym HMAC
@@ -66,8 +61,8 @@ Keep global ingestion and Wire/Circle/Finance/Sports feed modes disabled.
 Standalone mode rejects their activation. Preserve the current provider-backed
 content discovery and retained feature settings. Stale Redis/Postgres variables
 are unused by this mode; remove them after the replacement is accepted.
-The supervisor sets the processor URL to loopback; no external media worker
-URL or public processor listener is required.
+Podcasts were retired; `PODCAST_*` variables are unused, but repoint any
+`SOCIAL_DRAFT_S3_*` references to the bucket before deleting them.
 
 ## Switching an Existing SQLite Deployment to Go
 
@@ -83,7 +78,7 @@ Development before promoting the same revision to Production.
    environment's Postgres database. Preserve its existing encrypted object
    buckets and keys. Do not delete historical ingestion/checkpoint data.
 2. Stop the old environment's writer processes before the final snapshot:
-   Gateway/App View, Coordinator and Podcast Media Worker. Keep Web in a
+   Gateway/App View and Coordinator. Keep Web in a
    maintenance window. Never let old and new writers run simultaneously.
 3. Run a temporary one-shot Railway job using the Backend image and the new
    volume mounted at `/data`. Copy that environment's combined settings and set
@@ -100,21 +95,18 @@ Development before promoting the same revision to Production.
    the normal image start command. Set its domain ports and `/readyz` check.
 6. Verify the exact deployment is `SUCCESS`, then exercise authenticated
    bootstrap, subscribed/following feeds, PDS read-state migration/recovery,
-   read/unread counts, private drafts and attachments, saved links, and enabled
-   podcast/private-feed/progress/search/clip flows. Test restart persistence
-   and processor failure/restart. Backend health alone is not acceptance.
+   read/unread counts, private drafts and attachments, and saved links. Test
+   restart persistence. Backend health alone is not acceptance.
 7. Accept Development before repeating the same change in Production.
    Preserve the previous images, Postgres database and object stores throughout
    the rollback window. Retire the old compute only after acceptance; database,
    volume and bucket deletion is a separate destructive operator action.
 
 The importer copies retained reader scopes/content, legacy read marks/floors,
-PDS authority manifests, private drafts, analytics and podcast state/jobs.
+PDS authority manifests, private drafts and analytics.
 Disposable caches/counters and algorithmic histories remain in the old database.
 Already-migrated PDS viewers start with an unready projection and rebuild from
-verified authoritative PDS records before serving read state. Running podcast
-jobs retain their lease expiry and are reclaimed by the new processor after
-expiry; the old processor must be stopped first.
+verified authoritative PDS records before serving read state.
 
 ## Backups and Rollback
 
@@ -124,7 +116,7 @@ committed WAL data, verifies integrity and refuses to overwrite a destination.
 Copy verified snapshots off the source volume and retain the matching object
 buckets and encryption keys. Never copy only the live main SQLite file.
 
-Restore only while both API and processor are stopped. Verify the snapshot,
+Restore only while the Backend is stopped. Verify the snapshot,
 restore its owner-only file permissions, and start one Backend replica. A
 rollback to the old Postgres system after new private writes requires a reverse
 migration or explicit reconciliation; swapping the image alone would hide

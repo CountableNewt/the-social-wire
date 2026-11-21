@@ -28,9 +28,6 @@ TABLES = (
     "private_social_draft_cleanup", "private_article_drafts", "private_article_draft_bindings",
     "creator_analytics_items", "creator_analytics_refresh", "creator_analytics_snapshots",
     "creator_analytics_events", "creator_analytics_tracking",
-    "podcast_shows", "podcast_episodes", "podcast_aliases", "podcast_subscriptions",
-    "podcast_viewer_state", "podcast_jobs", "podcast_clips",
-    "podcast_private_shows", "podcast_private_episodes",
 )
 
 

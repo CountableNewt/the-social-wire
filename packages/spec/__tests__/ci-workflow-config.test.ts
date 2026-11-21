@@ -82,10 +82,8 @@ describe("standalone reader CI", () => {
     expect(detector.env.GITHUB_EVENT_PULL_REQUEST_BASE_SHA).toBe("${{ github.event.pull_request.base.sha }}");
   });
 
-  it("checks real release images, SQLite migrations, and the bundled processor", () => {
+  it("checks real release images and SQLite migrations", () => {
     expect(verifier).not.toContain("backend-tests");
-    expect(verifier).toContain("PODCAST_MEDIA_ARTIFACTS=media-tests");
-    expect(backendImage).toContain("ARG PODCAST_MEDIA_ARTIFACTS=media-builder");
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
     expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
@@ -97,9 +95,9 @@ describe("standalone reader CI", () => {
     expect(backendImage).toContain("COPY --from=builder /out/AppView /usr/local/bin/AppView");
     expect(backendImage.indexOf("go mod download")).toBeLessThan(backendImage.indexOf("COPY services/appview/internal ./internal"));
     expect(backendImage).not.toMatch(/swift/i);
-    expect(backendImage).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
+    expect(backendImage).not.toMatch(/podcast|ffmpeg|oven\/bun|bun install/i);
     expect(backendImage).toContain("BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite");
-    expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/readyz', '503')");
+    expect(verifier).toContain("status('http://127.0.0.1:8081/readyz') === '200'");
     expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/livez', '200')");
   });
 

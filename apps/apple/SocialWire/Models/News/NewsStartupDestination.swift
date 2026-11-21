@@ -1,7 +1,7 @@
 import Foundation
 
 enum NewsStartupDestination: String, CaseIterable, Identifiable {
-    case lastUsed, subscribed, following, readLater, archive, podcasts, lists
+    case lastUsed, subscribed, following, readLater, archive, lists
 
     var id: String { rawValue }
 
@@ -12,7 +12,6 @@ enum NewsStartupDestination: String, CaseIterable, Identifiable {
         case .following: "Following"
         case .readLater: "Read Later"
         case .archive: "Archive"
-        case .podcasts: "Podcasts"
         case .lists: "Lists"
         }
     }
@@ -43,7 +42,6 @@ enum NewsStartupDestination: String, CaseIterable, Identifiable {
         let candidate = self == .lastUsed ? remembered ?? .subscribed : self
         switch candidate {
         case .readLater, .archive, .lists: return candidate
-        case .podcasts where availableFeeds.contains(.podcasts): return .podcasts
         case .subscribed where availableFeeds.contains(.subscribed): return .subscribed
         case .following where availableFeeds.contains(.following): return .following
         default:

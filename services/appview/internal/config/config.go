@@ -58,11 +58,8 @@ type Core struct {
 	ProGatingEnabled bool
 	ProDIDs          map[string]struct{}
 
-	PodcastsEnabled       bool
-	PodcastMediaWorkerURL string
-	PodcastMediaSecret    string
-	ToolsEnabled          bool
-	KlipyAPIKey           string
+	ToolsEnabled bool
+	KlipyAPIKey  string
 }
 
 // HasPro reports whether did holds a Pro entitlement.
@@ -142,9 +139,6 @@ func LoadCore(env Env) (Core, error) {
 		AttestationReceiptSecret:     secret,
 		ProGatingEnabled:             env.True("SOCIALWIRE_PRO_GATING_ENABLED"),
 		ProDIDs:                      env.Tokens("SOCIALWIRE_PRO_DIDS"),
-		PodcastsEnabled:              env.True("PODCASTS_ENABLED"),
-		PodcastMediaWorkerURL:        env.String("PODCAST_MEDIA_WORKER_URL"),
-		PodcastMediaSecret:           env.String("PODCAST_MEDIA_INTERNAL_SECRET"),
 		ToolsEnabled:                 tools,
 		KlipyAPIKey:                  klipy,
 	}, nil

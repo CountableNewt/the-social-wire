@@ -27,8 +27,4 @@ if [ "$(id -u)" = 0 ]; then
 fi
 if [ ! -w /data ]; then echo 'Persistent /data volume must be writable.' >&2; exit 1; fi
 # Each SQLite store migrates before the HTTP listener starts. No Postgres migration gate applies.
-if [ "${1:-}" = /usr/local/bin/migrate-from-postgres ]; then exec "$@"; fi
-case " $* " in
-  *" --initialize-only "*) exec "$@" ;;
-esac
-exec /usr/local/bin/backend-supervisor "$@"
+exec "$@"

@@ -92,8 +92,7 @@ APP_ENV=dev BACKEND_MODE=standalone \
 ```
 
 Set `NEXT_PUBLIC_SOCIALWIRE_API_URL=http://localhost:8081` in the local Web
-environment before starting the Web app. Use the standalone Docker image when
-testing the bundled podcast processor.
+environment before starting the Web app.
 
 ### Running tests
 
@@ -102,7 +101,6 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 ```bash
 (cd apps/web && bun test)
 (cd services/appview && go test -vet=all -count=1 ./...)
-bun --cwd services/podcast-worker test
 node --test scripts/ci/*.test.mjs
 bash scripts/ci/verify-runtime-images.sh appview
 
@@ -114,7 +112,7 @@ bash scripts/ci/verify-runtime-images.sh appview
 - **Protocol-first where data is portable**: folders, publication preferences, subscriptions, and read-later records live on the user's own ATProto PDS
 - **AppView-owned read state**: feed read/unread state is local-first in clients and synchronized to Social Wire AppView for counters and unread filtering
 - **Thin AppView read path**: signed-in clients load bootstrap data, feeds, and entry detail through the public AppView; standard.site bodies remain authoritative on publisher PDSes, while RSS feed bodies may be retained in the derived index (see [docs/architecture/appview.md](docs/architecture/appview.md))
-- **Local projections**: AppView keeps reader projections, private drafts, analytics, podcasts and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
+- **Local projections**: AppView keeps reader projections, private drafts, analytics and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
 - **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
 

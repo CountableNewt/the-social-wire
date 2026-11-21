@@ -17,7 +17,6 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/media"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/operations"
-	"github.com/CountableNewt/the-social-wire/services/appview/internal/podcasts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/publications"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reader"
 	scheduler "github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/backend"
@@ -72,14 +71,6 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 	if services.scheduling != nil {
 		services.scheduling.Register(router, protected)
 	}
-	if core.PodcastsEnabled {
-		service := &podcasts.Service{
-			Database: services.db, Repo: services.repo, WorkerURL: core.PodcastMediaWorkerURL,
-			WorkerSecret: core.PodcastMediaSecret, PrivateStorageKey: env.String("PODCAST_PRIVATE_STORAGE_KEY"),
-			BridgeEnabled: env.True("PODCAST_BRIDGE_ENABLED"), Background: services.context,
-		}
-		service.Register(protected, router)
-	}
 	return router, nil
 }
 
@@ -91,11 +82,6 @@ func registerHealth(router *httpx.Router, core config.Core, db *sqlitedb.DB, log
 		if err := db.Ping(ctx); err != nil {
 			logger.Warn("AppView database readiness check failed")
 			return httpx.Status(http.StatusServiceUnavailable)
-		}
-		if core.PodcastsEnabled {
-			if err := podcasts.CheckReadiness(ctx, core.PodcastMediaWorkerURL); err != nil {
-				return httpx.Status(http.StatusServiceUnavailable)
-			}
 		}
 		return healthStatus("ready")(w, r)
 	})

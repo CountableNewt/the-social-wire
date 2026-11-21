@@ -1,6 +1,6 @@
 # Live Media Development acceptance (TSW-225)
 
-The actual web routes `/media/photos` and `/media/short-videos` use the viewer's live Bluesky Following timeline. The sidebar's Media section retains Podcasts and its playback preview. Mobile More includes Photos and Short Videos. Visibility follows the existing Social display preference; Podcasts keeps its own preference/capability.
+The actual web routes `/media/photos` and `/media/short-videos` use the viewer's live Bluesky Following timeline. Mobile More includes Photos and Short Videos. Visibility follows the existing Social display preference.
 
 ## Source contract
 
@@ -20,7 +20,7 @@ Primary source schemas rechecked 2026-10-26:
 
 ## Native boundary
 
-Native includes typed request/response models and authenticated `SocialWireGatewayClient.projectMedia`, with request bounds, response validation and account fencing. There is no native Media screen in this release. Existing native Social author DTOs omit viewer mute/block state and its renderer does not implement the web moderation decisions; safely exposing these feeds requires that work first. The native shell currently disables Podcasts navigation. Do not infer native acceptance from contract tests.
+Native includes typed request/response models and authenticated `SocialWireGatewayClient.projectMedia`, with request bounds, response validation and account fencing. There is no native Media screen in this release. Existing native Social author DTOs omit viewer mute/block state and its renderer does not implement the web moderation decisions; safely exposing these feeds requires that work first. Do not infer native acceptance from contract tests.
 
 ## Authenticated Development checklist
 
@@ -29,6 +29,6 @@ Native includes typed request/response models and authenticated `SocialWireGatew
 3. Verify blocked, muted and hidden posts and configured labels stay withheld. Change accounts while a request is pending and confirm no old-account posts appear.
 4. Refresh each mode, continue through empty pages, and load overlapping pages. Confirm stable order, no duplicate posts and preserved continuation. Disconnect network, retry, and verify cached posts remain visible with an error.
 5. Exercise portrait, landscape, missing dimensions, GIF presentation, image galleries and quote-with-media. Confirm only the documented selections appear.
-6. Verify Podcasts navigation, hover/hold mini-player and ongoing playback. Check narrow widths and light/dark themes.
+6. Check narrow widths and light/dark themes.
 
 Automated tests do not prove authenticated live acceptance or hosted deployment health. Production is outside this release.

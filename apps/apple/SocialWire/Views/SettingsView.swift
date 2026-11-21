@@ -195,10 +195,6 @@ struct SettingsView: View {
                         .disabled(appModel.isSavingDiscoveryFeedVisibility)
                 }
 
-                FeedDisplayPicker(title: "Podcasts", supportsCount: false, canHide: true,
-                    selection: Binding(get: { .current(isVisible: appModel.feedPreferences.showPodcasts, showsCount: false) },
-                        set: { option in Task { await appModel.setPodcastsVisible(option != .hideFeed) } }))
-                    .disabled(appModel.isSavingDiscoveryFeedVisibility)
                 if NewsFeatureVisibility.topics {
                     Toggle("Hide Sports Scores", isOn: Binding(
                         get: { appModel.feedPreferences.hideSportsScores },

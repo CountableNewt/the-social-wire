@@ -107,9 +107,8 @@ describe("app sidebar feed selection", () => {
   });
 });
 
-it("selects actual Media routes independently from Social and Podcasts", () => {
+it("selects actual Media routes independently from Social", () => {
   const state = { feedParam: null, folderParam: null, publicationTab: "subscribed" as const };
   expect(currentAppSidebarFeed({ ...state, pathname: "/media/photos" })).toBe("photos");
   expect(currentAppSidebarFeed({ ...state, pathname: "/media/short-videos" })).toBe("shortVideos");
-  expect(currentAppSidebarFeed({ ...state, pathname: "/podcasts" })).toBe("podcasts");
 });

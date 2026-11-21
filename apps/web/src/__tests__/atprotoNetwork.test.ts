@@ -6,7 +6,7 @@ import { isAtprotoOauthScope, RepoPermission, RpcPermission, ScopePermissions } 
 import { BRAND_ACCOUNT_OAUTH_SCOPES } from "@/lib/brandAccounts/brandAccountScopes";
 import { Agent } from "@atproto/api";
 import { resolveAtprotoNetwork, atprotoScopesForNetwork, localLoopbackOAuthScopes, authorizationScopesForClient } from "@/lib/atprotoNetwork";
-import { AT_PROTO_OAUTH_SCOPES, BLUESKY_PODCAST_VIDEO_SCOPES } from "@/lib/atprotoOAuthScopes";
+import { AT_PROTO_OAUTH_SCOPES, BLUESKY_VIDEO_SCOPES } from "@/lib/atprotoOAuthScopes";
 import { LocalAppViewAgent } from "@/lib/localAppViewAgent";
 import { getBlueskySocialCatalog } from "@/lib/blueskySocialClient";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
@@ -22,10 +22,10 @@ const local = { publicAppView: "https://appview.atmosbox.test", plcDirectory: "h
 describe("local ATProto network", () => {
   it("omits unsupported public video delegation only for the isolated sandbox", () => {
     const isolated = atprotoScopesForNetwork(AT_PROTO_OAUTH_SCOPES, resolveAtprotoNetwork("local", local));
-    for (const scope of BLUESKY_PODCAST_VIDEO_SCOPES) expect(isolated.split(" ")).not.toContain(scope);
+    for (const scope of BLUESKY_VIDEO_SCOPES) expect(isolated.split(" ")).not.toContain(scope);
     for (const env of ["prod", "dev"]) {
       const hosted = atprotoScopesForNetwork(AT_PROTO_OAUTH_SCOPES, resolveAtprotoNetwork(env, local));
-      for (const scope of BLUESKY_PODCAST_VIDEO_SCOPES) expect(hosted.split(" ")).toContain(scope);
+      for (const scope of BLUESKY_VIDEO_SCOPES) expect(hosted.split(" ")).toContain(scope);
     }
     expect(isolated).toContain("repo:app.bsky.feed.post?action=create");
   });

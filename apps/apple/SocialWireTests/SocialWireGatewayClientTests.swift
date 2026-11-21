@@ -167,18 +167,6 @@ struct SocialWireGatewayClientTests {
         #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.preparedUpstreamDPoPHeaderName) == "true")
     }
 
-    @Test("Detached media download uses prepared attestation without consuming a later pool nonce")
-    func mediaRequestHasPreparedReceipt() async throws {
-        let (auth, gateway, transport) = try await fixture([
-            .init(status: 200, body: "{}", headers: [ATProtoSessionDPoP.receiptHeaderName: "download-receipt"]),
-        ])
-        defer { auth.signOut() }
-        let request = try await gateway.podcastDownloadRequest(media: "/xrpc/app.thesocialwire.podcast.getMedia?source=test", expectedViewer: "did:plc:test")
-        #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.receiptHeaderName) == "download-receipt")
-        #expect(request.value(forHTTPHeaderField: ATProtoSessionDPoP.preparedUpstreamDPoPHeaderName) == "true")
-        #expect(await transport.recordedRequests().count == 1)
-    }
-
     @Test("Post-write preference reads bypass both gateway and conditional caches")
     func postWritePreferencesRequireFreshSnapshot() {
         let request = SocialWireGatewayClient.preferencesSyncRequest(

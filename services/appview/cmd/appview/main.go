@@ -22,7 +22,6 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/drafts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/ingest"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/operations"
-	"github.com/CountableNewt/the-social-wire/services/appview/internal/podcasts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/publications"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reader"
 	scheduler "github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/backend"
@@ -223,11 +222,6 @@ func initialize(ctx context.Context, db *sqlitedb.DB, core config.Core, draftsEn
 	if core.ToolsEnabled {
 		if err := analytics.Migrate(ctx, db); err != nil {
 			return fmt.Errorf("initialize analytics schema: %w", err)
-		}
-	}
-	if core.PodcastsEnabled {
-		if err := podcasts.Migrate(ctx, db); err != nil {
-			return fmt.Errorf("initialize podcasts schema: %w", err)
 		}
 	}
 	if draftsEnabled {

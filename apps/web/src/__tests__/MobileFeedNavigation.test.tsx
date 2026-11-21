@@ -44,25 +44,6 @@ describe("MobileFeedNavigation", () => {
     fireEvent.click(social);
     expect(onSelect).toHaveBeenCalledWith("social");
   });
-  it("shows the Podcasts Beta badge in a primary mobile slot", () => {
-    const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="podcasts" visibleFeeds={new Set(["podcasts"])} onSelect={onSelect} />);
-    const podcasts = screen.getByRole("button", { name: "Podcasts, Beta" });
-    expect(podcasts.textContent).toContain("Beta");
-    expect(podcasts.getAttribute("aria-current")).toBe("page");
-    fireEvent.click(podcasts);
-    expect(onSelect).toHaveBeenCalledWith("podcasts");
-  });
-  it("keeps Podcasts Beta in an available primary slot after retired feeds are excluded", () => {
-    const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="podcasts" visibleFeeds={new Set(["podcasts", "social", "wire", "circle", "subscribed", "following"])} onSelect={onSelect} />);
-    expect(screen.queryByRole("button", { name: "More Feeds" })).toBeNull();
-    const podcasts = screen.getByRole("button", { name: "Podcasts, Beta" });
-    expect(podcasts.textContent).toContain("Beta");
-    expect(podcasts.getAttribute("aria-current")).toBe("page");
-    fireEvent.click(podcasts);
-    expect(onSelect).toHaveBeenCalledWith("podcasts");
-  });
   it.each(["finance", "sports"] as const)("keeps retired %s hidden despite an enabled visibility cache", feed => {
     const onSelect = mock(() => undefined);
     render(<MobileFeedNavigation currentFeed={feed} visibleFeeds={new Set([feed, "subscribed"])} onSelect={onSelect} />);
@@ -73,11 +54,10 @@ describe("MobileFeedNavigation", () => {
 
   it("keeps retired feeds out of primary slots and More despite stale enabled visibility", async () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "podcasts", "finance", "sports", "readLater", "archive"])} onSelect={onSelect} />);
+    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "subscribed", "following", "social", "finance", "sports", "readLater", "archive"])} onSelect={onSelect} />);
     for (const label of ["The Wire", "Your Circle", "Finance, Beta", "Sports, Beta"]) expect(screen.queryByRole("button", { name: label })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
     for (const label of ["The Wire", "Your Circle", "Finance, Beta", "Sports, Beta"]) expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
-    expect(screen.getByRole("button", { name: "Podcasts, Beta" }).textContent).toContain("Beta");
     const archive = await screen.findByRole("menuitem", { name: "Archive" });
     expect(archive.getAttribute("aria-current")).toBe("page"); fireEvent.click(archive);
     expect(onSelect).toHaveBeenCalledWith("archive");
@@ -124,10 +104,10 @@ describe("MobileFeedNavigation", () => {
   });
   it("keeps four active primary slots and places remaining destinations in More", async () => {
     const onSelect = mock(() => undefined);
-    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "finance", "podcasts", "readLater", "archive", "subscribed", "following"])} onSelect={onSelect} />);
+    render(<MobileFeedNavigation currentFeed="archive" visibleFeeds={new Set(["wire", "circle", "finance", "social", "readLater", "archive", "subscribed", "following"])} onSelect={onSelect} />);
     const navigation = screen.getByRole("navigation", { name: "Feed Navigation" });
     expect(within(navigation).getAllByRole("button").length).toBe(5);
-    expect(screen.getByRole("button", { name: "Podcasts, Beta" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Social" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Saved" })).toBeDefined();
     const more = screen.getByRole("button", { name: "More Feeds" });
     expect(more.getAttribute("aria-current")).toBe("page"); fireEvent.click(more);
@@ -172,16 +152,16 @@ describe("MobileFeedNavigation", () => {
 
 });
 
-it("keeps Short Videos and Photos reachable alongside Podcasts after retirement", async () => {
+it("keeps Short Videos and Photos reachable after retirement", async () => {
   const onSelect = mock(() => undefined);
-  render(<MobileFeedNavigation currentFeed="photos" visibleFeeds={new Set(["photos", "shortVideos", "social", "podcasts", "wire", "circle", "subscribed", "following"])} onSelect={onSelect} />);
+  render(<MobileFeedNavigation currentFeed="photos" visibleFeeds={new Set(["photos", "shortVideos", "social", "wire", "circle", "subscribed", "following"])} onSelect={onSelect} />);
   expect(screen.getByRole("button", { name: "More Feeds" }).getAttribute("aria-current")).toBe("page");
   fireEvent.click(screen.getByRole("button", { name: "Short Videos" }));
   expect(onSelect).toHaveBeenCalledWith("shortVideos");
   fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
-  const podcasts = await screen.findByRole("menuitem", { name: "Podcasts, Beta" });
-  expect(screen.getByRole("menuitem", { name: "Photos" }).getAttribute("aria-current")).toBe("page");
-  fireEvent.click(podcasts);
-  expect(onSelect).toHaveBeenCalledWith("podcasts");
+  const photos = await screen.findByRole("menuitem", { name: "Photos" });
+  expect(photos.getAttribute("aria-current")).toBe("page");
+  fireEvent.click(photos);
+  expect(onSelect).toHaveBeenCalledWith("photos");
   await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Photos" })).toBeNull());
 });

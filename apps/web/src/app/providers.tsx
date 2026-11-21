@@ -1,7 +1,6 @@
 "use client";
 
 import { AnalyticsTrafficObserver } from "@/components/AnalyticsTrafficObserver";
-import { PodcastPlayerProvider } from "@/components/Podcasts/PodcastPlayerProvider";
 import { Suspense, useState } from "react";
 import { TabUsageObserver } from "@/components/TabUsageObserver";
 import {
@@ -85,7 +84,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <Suspense fallback={null}><TabUsageObserver /></Suspense>
           <CircleViewerCacheCleanup />
           <SocialViewerCacheCleanup />
-          <SocialVerificationProvider><PodcastPlayerProvider>{children}</PodcastPlayerProvider></SocialVerificationProvider>
+          <SocialVerificationProvider>{children}</SocialVerificationProvider>
         </AuthProvider>
       </PersistQueryClientProvider>
     </AppearanceProvider>

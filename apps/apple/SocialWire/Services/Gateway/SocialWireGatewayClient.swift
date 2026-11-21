@@ -909,55 +909,6 @@ final class SocialWireGatewayClient {
         return .badResponse("\(fallback) (\(result.statusCode)).\(requestId)")
     }
 
-    func podcastDownloadRequest(media: String, expectedViewer: String, challenge: HTTPURLResponse? = nil) async throws -> URLRequest {
-        guard let url = URL(string: media, relativeTo: baseURL)?.absoluteURL,
-              url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path == "/xrpc/app.thesocialwire.podcast.getMedia" else { throw SocialWireError.invalidURL }
-        let session = try await auth.validSession()
-        guard session.did == expectedViewer else { throw ReadStateSyncFailure.accountChanged }
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL) { [self] in
-            guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
-                throw ReadStateSyncFailure.accountChanged
-            }
-            if let challenge { await captureNonces(from: challenge, session: session) }
-            let receipt = try await warmSessionAttestation(session: session)
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("audio/*", forHTTPHeaderField: "Accept")
-            try await authorize(&request, session: session)
-            if let receipt { request.setValue(receipt, forHTTPHeaderField: ATProtoSessionDPoP.receiptHeaderName) }
-            // The download dispatches later outside this client. Its attestation
-            // must not consume a nonce reserved by another feed's prepared pool.
-            request.setValue("true", forHTTPHeaderField: ATProtoSessionDPoP.preparedUpstreamDPoPHeaderName)
-            return request
-        }
-    }
-
-    func podcastAsset(url: URL, expectedViewer: String) async throws -> Data {
-        guard url.scheme == baseURL.scheme, url.host == baseURL.host,
-              url.path == "/xrpc/app.thesocialwire.podcast.getImage" else { throw SocialWireError.invalidURL }
-        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let response = try await authorizedRequest(method: "GET", path: url.path,
-            query: Dictionary(query.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last }),
-            body: nil, contentType: nil, expectedViewer: expectedViewer)
-        guard (200..<300).contains(response.statusCode), !response.body.isEmpty else {
-            throw PodcastGatewayFailure(status: response.statusCode)
-        }
-        return response.body
-    }
-
-    /// Podcast calls share the exact OAuth and nonce-retry path used by other Gateway surfaces.
-    func podcastRequest<Value: Decodable>(method: String = "GET", path: String,
-                                          query: [String: String] = [:], body: Data? = nil,
-                                          expectedViewer: String) async throws -> Value {
-        let response = try await authorizedRequest(method: method, path: path, query: query,
-            body: body, contentType: body == nil ? nil : "application/json", expectedViewer: expectedViewer)
-        guard (200..<300).contains(response.statusCode) else {
-            throw PodcastGatewayFailure(status: response.statusCode)
-        }
-        return try JSONDecoder().decode(Value.self, from: response.body)
-    }
-
     /// Classifies already moderated, viewer-scoped Bluesky post views; this does not discover content.
     /// Callers retain the upstream cursor, including when projection returns no matching URIs.
     func projectMedia(_ request: MediaProjectionRequest, expectedViewer: String) async throws -> MediaProjectionResponse {

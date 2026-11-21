@@ -78,9 +78,8 @@ describe("standalone CI path detection", () => {
   it.each([
     "services/appview/go.mod",
     "services/appview/Dockerfile.standalone",
-    "services/appview/bin/backend-supervisor",
+    "services/appview/bin/standalone-entrypoint",
     "services/appview/internal/thinstore/store.go",
-    "services/podcast-worker/src/index.ts",
     "apps/web/package.json",
     "packages/spec/openapi.yaml",
     "packages/vendor/example/package.json",

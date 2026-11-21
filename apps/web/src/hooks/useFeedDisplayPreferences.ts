@@ -90,7 +90,6 @@ export function useFeedDisplayPreferences() {
           showFinance: next.showFinance,
           showSports: next.showSports,
           showSocial: next.showSocial,
-          showPodcasts: next.showPodcasts,
           hideSportsScores: next.hideSportsScores,
           hideFinancePerformance: next.hideFinancePerformance,
           hideFinanceCrypto: next.hideFinanceCrypto,
@@ -201,11 +200,11 @@ export function useFeedDisplayPreferences() {
   );
 
   const setDiscoveryFeedVisible = useCallback(
-    (feed: "wire" | "circle" | "finance" | "sports" | "social" | "podcasts", visible: boolean) => {
+    (feed: "wire" | "circle" | "finance" | "sports" | "social", visible: boolean) => {
       if (isRetiredReaderFeed(feed)) return;
       mutatePreferences({
         ...preferences,
-        [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial", podcasts: "showPodcasts" } as const)[feed]]: visible,
+        [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial" } as const)[feed]]: visible,
       });
     },
     [mutatePreferences, preferences],

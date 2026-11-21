@@ -65,7 +65,6 @@ struct UnifiedFeedSelectionTests {
         #expect(defaults.showWire)
         #expect(defaults.showCircle)
         #expect(defaults.showSocial)
-        #expect(defaults.showPodcasts)
         let ignoresWire = ReaderFeedPreferences(
             visibleFeeds: [.wire, .following],
             feedsWithUnreadCounts: [.wire, .following]
@@ -162,7 +161,6 @@ struct UnifiedFeedSelectionTests {
         {
           "$type": "app.thesocialwire.preferences",
           "showSocial": \(visible),
-          "showPodcasts": \(visible),
           "createdAt": "2026-10-11T00:00:00Z",
           "updatedAt": "2026-10-11T00:00:00Z"
         }
@@ -170,7 +168,6 @@ struct UnifiedFeedSelectionTests {
         let record = try JSONDecoder().decode(PreferencesRecord.self, from: data)
         let preferences = ReaderFeedPreferences(record: record)
         #expect(preferences.showSocial == visible)
-        #expect(preferences.showPodcasts == visible)
         #expect(try JSONDecoder().decode(ReaderFeedPreferences.self,
             from: JSONEncoder().encode(preferences)) == preferences)
         #expect(try JSONDecoder().decode(PreferencesRecord.self,
@@ -186,7 +183,6 @@ struct UnifiedFeedSelectionTests {
         #expect(preferences.showWire)
         #expect(preferences.showCircle)
         #expect(preferences.showSocial)
-        #expect(preferences.showPodcasts)
         #expect(preferences.visibleFeeds == ReaderListSource.preferenceCases)
     }
 }

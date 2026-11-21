@@ -89,20 +89,6 @@ func metadata(path, origin string, core config.Core) (metadataDocument, error) {
 	doc.ClientURI = origin
 	doc.ClientID = origin + path
 	doc.RedirectURIs = []string{redirect}
-	if !core.PodcastsEnabled {
-		scopes := strings.Fields(doc.Scope)
-		scopes = slices.DeleteFunc(scopes, func(scope string) bool {
-			switch scope {
-			case "repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete",
-				"blob:video/mp4", "rpc:com.atproto.repo.uploadBlob?aud=*",
-				"rpc:app.bsky.video.getUploadLimits?aud=did:web:video.bsky.app",
-				"rpc:app.bsky.video.getUploadLimits?aud=*":
-				return true
-			}
-			return false
-		})
-		doc.Scope = strings.Join(scopes, " ")
-	}
 	return doc, nil
 }
 

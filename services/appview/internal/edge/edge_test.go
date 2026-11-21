@@ -26,8 +26,7 @@ func TestMetadataAndCORS(t *testing.T) {
 		reply := httptest.NewRecorder()
 		router.ServeHTTP(reply, req)
 		body := reply.Body.String()
-		if reply.Code != http.StatusOK || !strings.Contains(body, tc.clientID) || !strings.Contains(body, tc.redirect) ||
-			strings.Contains(body, "podcast.clip") {
+		if reply.Code != http.StatusOK || !strings.Contains(body, tc.clientID) || !strings.Contains(body, tc.redirect) {
 			t.Errorf("wrong metadata for %s: %d %s", tc.path, reply.Code, body)
 		}
 	}

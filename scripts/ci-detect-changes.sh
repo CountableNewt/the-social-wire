@@ -87,10 +87,9 @@ filter_changed web \
   'turbo.json' \
   '.dockerignore'
 
-# Only the consolidated backend and its bundled processor are runtime targets.
+# Only the consolidated backend is a runtime target.
 filter_changed appview \
   'services/appview/**' \
-  'services/podcast-worker/**' \
   'apps/web/package.json' \
   'apps/operations/package.json' \
   'packages/read-state/package.json' \

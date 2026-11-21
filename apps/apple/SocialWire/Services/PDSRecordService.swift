@@ -277,7 +277,7 @@ final class PDSRecordService {
             showSports: preferences.showSports,
             hideSportsScores: preferences.hideSportsScores,
             showSocial: preferences.showSocial,
-            showPodcasts: preferences.showPodcasts,
+            showPodcasts: prev?.showPodcasts,
             showTopLevelFeedUnreadCounts: !preferences.feedsWithUnreadCounts.isEmpty,
             feedsWithUnreadCounts: preferences.feedsWithUnreadCounts.map(\.preferenceKey),
             rssArticleOpenMode: preferences.articleOpenMode.rawValue,

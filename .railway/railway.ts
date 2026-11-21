@@ -1,5 +1,4 @@
 import { defineRailway, github, preserve, project, service } from "railway/iac";
-import { developmentPodcasts } from "./podcasts.ts";
 
 export const partial = "indexing-consolidation";
 
@@ -204,9 +203,6 @@ export default defineRailway((context) => {
   });
 
   return project("The Social Wire", {
-    resources: [
-      projectionPool, coordinator,
-      ...(context.isEnvironment("dev") ? developmentPodcasts() : []),
-    ],
+    resources: [projectionPool, coordinator],
   });
 });

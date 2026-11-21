@@ -1,34 +1,9 @@
 # syntax=docker/dockerfile:1
-ARG PODCAST_MEDIA_ARTIFACTS=media-builder
-
-FROM oven/bun:1.3.14-debian AS bun-toolchain
-
 FROM ubuntu:22.04 AS runtime-dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates sqlite3 util-linux tini curl ffmpeg fonts-dejavu-core python3 postgresql-client \
+  && apt-get install -y --no-install-recommends ca-certificates sqlite3 util-linux tini curl python3 postgresql-client \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --no-create-home appuser
-COPY --from=bun-toolchain /usr/local/bin/bun /usr/local/bin/bun
-
-FROM runtime-dependencies AS media-builder
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
-  && rm -rf /var/lib/apt/lists/*
-WORKDIR /media
-COPY package.json bun.lock ./
-COPY apps/web/package.json apps/web/package.json
-COPY apps/operations/package.json apps/operations/package.json
-COPY packages/read-state/package.json packages/read-state/package.json
-COPY packages/lexicons/package.json packages/lexicons/package.json
-COPY packages/spec/package.json packages/spec/package.json
-COPY packages/vendor packages/vendor
-COPY services/podcast-worker/package.json services/podcast-worker/package.json
-RUN bun install --filter @thesocialwire/podcast-worker --frozen-lockfile --ignore-scripts
-COPY services/podcast-worker services/podcast-worker
-COPY services/appview/internal/podcasts/schema.sql services/appview/internal/podcasts/schema.sql
-
-FROM media-builder AS media-tests
-RUN bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test
 
 FROM golang:1.27-bookworm AS builder
 WORKDIR /src/services/appview
@@ -41,16 +16,11 @@ COPY services/appview/internal ./internal
 # Railway rejects BuildKit cache mounts, so layer order carries the module cache.
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/AppView ./cmd/appview
 
-FROM ${PODCAST_MEDIA_ARTIFACTS} AS podcast-artifacts
-
 FROM runtime-dependencies
 ENV BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite ENABLE_THIN_APPVIEW=true BIND_HOST=0.0.0.0
 COPY --from=builder /out/AppView /usr/local/bin/AppView
-COPY --from=podcast-artifacts /media/node_modules /media/node_modules
-COPY --from=podcast-artifacts /media/services/podcast-worker /media/services/podcast-worker
 COPY services/appview/bin/standalone-entrypoint /usr/local/bin/standalone-entrypoint
 COPY services/appview/bin/sqlite-backup /usr/local/bin/sqlite-backup
-COPY services/appview/bin/backend-supervisor /usr/local/bin/backend-supervisor
 COPY services/appview/bin/migrate-from-postgres /usr/local/bin/migrate-from-postgres
 COPY scripts/migrations/postgres_to_sqlite.py /usr/local/share/social-wire/postgres_to_sqlite.py
 EXPOSE 8081

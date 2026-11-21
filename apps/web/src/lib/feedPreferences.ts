@@ -9,7 +9,7 @@ export const TOP_LEVEL_FEEDS = [
 
 export type TopLevelFeed = (typeof TOP_LEVEL_FEEDS)[number];
 /** Reader navigation also includes server-capability feeds that are not PDS preferences. */
-export type ReaderNavigationFeed = TopLevelFeed | "wire" | "circle" | "finance" | "sports" | "podcasts" | "social" | "shortVideos" | "photos";
+export type ReaderNavigationFeed = TopLevelFeed | "wire" | "circle" | "finance" | "sports" | "social" | "shortVideos" | "photos";
 export type RssArticleOpenMode = "reader" | "original";
 
 export const TOP_LEVEL_FEED_LABELS: Record<TopLevelFeed, string> = {
@@ -25,7 +25,6 @@ export type FeedDisplayPreferences = {
   showFinance: boolean;
   showSports: boolean;
   showSocial: boolean;
-  showPodcasts: boolean;
   hideSportsScores: boolean;
   hideFinancePerformance: boolean;
   hideFinanceCrypto: boolean;
@@ -41,7 +40,6 @@ export const DEFAULT_FEED_DISPLAY_PREFERENCES: FeedDisplayPreferences = {
   showFinance: true,
   showSports: true,
   showSocial: true,
-  showPodcasts: true,
   hideSportsScores: false,
   hideFinancePerformance: false,
   hideFinanceCrypto: false,
@@ -76,7 +74,6 @@ export function normalizeFeedDisplayPreferences(
         | "showFinance"
         | "showSports"
         | "showSocial"
-        | "showPodcasts"
         | "hideSportsScores"
         | "hideFinancePerformance"
         | "hideFinanceCrypto"
@@ -109,7 +106,6 @@ export function normalizeFeedDisplayPreferences(
     showFinance: value?.showFinance !== false,
     showSports: value?.showSports !== false,
     showSocial: value?.showSocial !== false,
-    showPodcasts: value?.showPodcasts !== false,
     hideSportsScores: value?.hideSportsScores === true,
     hideFinancePerformance: value?.hideFinancePerformance === true,
     hideFinanceCrypto: value?.hideFinanceCrypto === true,

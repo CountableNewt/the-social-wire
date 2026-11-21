@@ -270,8 +270,8 @@ describe("feed display preference persistence", () => {
     expect(queryClient.getQueryData<RepoRecord<PreferencesRecord>>(accountPreferencesQueryKey(did))).toEqual(initial);
   });
 
-  for (const feed of ["social", "podcasts"] as const) {
-    const field = ({ wire: "showWire", circle: "showCircle", social: "showSocial", podcasts: "showPodcasts" } as const)[feed];
+  for (const feed of ["social"] as const) {
+    const field = ({ wire: "showWire", circle: "showCircle", social: "showSocial" } as const)[feed];
     const otherField = "showWire";
 
     it(`persists hiding ${feed} and shares the committed record with another observer`, async () => {

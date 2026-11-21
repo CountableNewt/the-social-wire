@@ -19,7 +19,6 @@ services/appview/internal/
   reader/*_test.go
   publications/*_test.go
   readstate/*_test.go
-  podcasts/*_test.go
 ```
 
 ## Bruno (manual HTTP)

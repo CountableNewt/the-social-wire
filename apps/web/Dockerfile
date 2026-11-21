@@ -10,7 +10,6 @@ COPY apps/operations/package.json apps/operations/package.json
 COPY packages/read-state/package.json packages/read-state/package.json
 COPY packages/lexicons/package.json packages/lexicons/package.json
 COPY packages/spec/package.json packages/spec/package.json
-COPY services/podcast-worker/package.json services/podcast-worker/package.json
 COPY packages/vendor packages/vendor
 RUN bun install --frozen-lockfile
 COPY . .
@@ -20,7 +19,6 @@ ARG NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.testing.thesocialwire.app
 ARG NEXT_PUBLIC_USE_THIN_APPVIEW=true
 ARG NEXT_PUBLIC_PDS_READ_STATE_ENABLED=true
 ARG NEXT_PUBLIC_PDS_READ_STATE_GC_ENABLED=false
-ARG NEXT_PUBLIC_PODCASTS_ENABLED=true
 ARG NEXT_PUBLIC_MEDIA_ENABLED=true
 ARG NEXT_PUBLIC_TOOLS_ENABLED
 ARG NEXT_PUBLIC_LIVESTREAM_ENABLED=true

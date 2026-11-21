@@ -48,8 +48,6 @@ test('Web verification build arguments contain only the fixed public environment
 
 function fakeRuntime({ startup = ['200'], processExit = false, failedMetadata = false } = {}) {
   const calls = [];
-  let paused = false;
-  let resumed = false;
   const execute = (command, args) => {
     assert.equal(command, 'docker');
     calls.push(args);
@@ -57,36 +55,26 @@ function fakeRuntime({ startup = ['200'], processExit = false, failedMetadata = 
     if (args[0] === 'exec' && args[2] === 'curl') {
       const url = args.at(-1);
       if (url.endsWith('/readyz')) {
-        if (paused) return '503';
-        if (resumed) return '200';
         return startup.length > 1 ? startup.shift() : startup[0];
       }
       if (url.endsWith('/ios-client-metadata.json') && failedMetadata) return '500';
       return (url.endsWith('getSidebar') || url.endsWith('getSession')) ? '401' : '200';
-    }
-    if (args[0] === 'exec' && args[2] === 'sh') return '42';
-    if (args[0] === 'exec' && args[2] === 'kill') {
-      if (args[3] === '-STOP') paused = true;
-      if (args[3] === '-CONT') { paused = false; resumed = true; }
     }
     return '';
   };
   return { calls, execute };
 }
 
-test('runtime smoke isolates fixture resources, probes packaged services and tests media readiness loss', async () => {
+test('runtime smoke isolates fixture resources and probes packaged services', async () => {
   const fake = fakeRuntime({ startup: ['503', '200'] });
   let pauses = 0;
   await runtimeSmoke('fixture-runtime:tag', { execute: fake.execute, pause: async () => { pauses++; } });
   const launch = fake.calls.find(args => args[0] === 'run');
   assert.equal(launch[launch.indexOf('--network') + 1], 'none');
   assert.ok(!launch.includes('--publish') && !launch.includes('-p'));
-  for (const fixture of ['PODCASTS_ENABLED=true', 'SOCIAL_DRAFTS_ENABLED=true', 'TOOLS_ENABLED=true', 'EMBEDDED_SCHEDULING_ENABLED=true']) assert.ok(launch.includes(fixture));
+  for (const fixture of ['SOCIAL_DRAFTS_ENABLED=true', 'TOOLS_ENABLED=true', 'EMBEDDED_SCHEDULING_ENABLED=true']) assert.ok(launch.includes(fixture));
   assert.ok(!launch.some(value => value.startsWith('ENABLE_THIN_APPVIEW=') || value.startsWith('BIND_HOST=')), 'Smoke must exercise image defaults.');
   assert.ok(!launch.some(value => /^(GITHUB_TOKEN|GH_TOKEN|RAILWAY_TOKEN|RAILWAY_API_TOKEN)=/.test(value)));
-  assert.ok(fake.calls.some(args => args[0] === 'exec' && args[3] === '-STOP'));
-  assert.ok(fake.calls.some(args => args[0] === 'exec' && args[3] === '-CONT'));
-  assert.ok(fake.calls.some(args => args.at(-1) === 'http://127.0.0.1:9080/startupz'));
   assert.equal(pauses, 1);
   assert.ok(fake.calls.some(args => args[0] === 'rm' && args[1] === '--force'));
   assert.ok(fake.calls.some(args => args[0] === 'volume' && args[1] === 'rm'));
@@ -103,19 +91,10 @@ test('runtime smoke bounds failed startup and cleans container and volume after 
   assert.ok(metadata.calls.some(args => args[0] === 'rm'));
 });
 
-test('runtime smoke rejects an exited container and always resumes a stopped processor during failure cleanup', async () => {
+test('runtime smoke rejects an exited container', async () => {
   const exited = fakeRuntime({ startup: ['503'], processExit: true });
   await assert.rejects(() => runtimeSmoke('fixture-runtime:tag', { execute: exited.execute }), /exited/);
-  const fake = fakeRuntime();
-  let stopped = false;
-  const execute = (command, args, options) => {
-    if (args[0] === 'exec' && args[3] === '-STOP') stopped = true;
-    if (stopped && args.at(-1) === 'http://127.0.0.1:8081/readyz') return '200';
-    return fake.execute(command, args, options);
-  };
-  await assert.rejects(() => runtimeSmoke('fixture-runtime:tag', { execute }), /expected HTTP 503/);
-  assert.ok(fake.calls.some(args => args[0] === 'exec' && args[3] === '-CONT'));
-  assert.ok(fake.calls.some(args => args[0] === 'volume' && args[1] === 'rm'));
+  assert.ok(exited.calls.some(args => args[0] === 'volume' && args[1] === 'rm'));
 });
 
 function fakeVolumeGuard(exit = '1', logs = 'Standalone backend requires a persistent volume mounted at /data.') {
@@ -329,21 +308,11 @@ test('failed cached builds retain the previous cache and discard incomplete expo
   } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });
 
-test('AppView runtime verification depends on the media tests in the same Docker build', () => {
-  build({ sha, appEnvironment: 'dev' }, 'appview', undefined, {
-    environment: {}, record: () => {},
-    execute: (_command, args) => {
-      assert.ok(args.includes('PODCAST_MEDIA_ARTIFACTS=media-tests'));
-      assert.ok(!args.includes('--target'));
-    },
-  });
-});
-
 test('each kind exports only its final expensive build and imports only complete caches', () => {
   const fixture = buildCacheFixture();
   try {
     const context = { sha, appEnvironment: 'dev' };
-    for (const [kind, target] of [['appview', 'media-tests'], ['web', 'builder']]) {
+    for (const [kind, target] of [['appview', 'builder'], ['web', 'builder']]) {
       build(context, kind, target, { environment: fixture.environment, execute: (_command, args) => {
         assert.ok(!args.includes('--cache-to'));
         assert.equal(args.includes('--cache-from'), kind === 'appview');

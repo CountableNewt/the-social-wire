@@ -21,8 +21,7 @@ struct NewsShellView: View {
             wire: appModel.feedPreferences.showWire,
             circle: appModel.feedPreferences.showCircle,
             finance: appModel.feedPreferences.showFinance,
-            sports: appModel.feedPreferences.showSports,
-            podcasts: appModel.feedPreferences.showPodcasts && appModel.podcasts.available
+            sports: appModel.feedPreferences.showSports
         )
     }
 
@@ -46,7 +45,7 @@ struct NewsShellView: View {
     }
 
     private var topicDestinations: [NewsPrimaryFeed] {
-        [.finance, .sports, .podcasts].filter(isVisibleInSettings)
+        [.finance, .sports].filter(isVisibleInSettings)
     }
 
     private func isVisibleInSettings(_ feed: NewsPrimaryFeed) -> Bool {
@@ -63,8 +62,6 @@ struct NewsShellView: View {
             appModel.feedPreferences.visibleFeeds.contains(.subscribed)
         case .following:
             appModel.feedPreferences.visibleFeeds.contains(.following)
-        case .podcasts:
-            appModel.feedPreferences.showPodcasts && appModel.podcasts.available
         }
     }
 
@@ -322,7 +319,6 @@ struct NewsShellView: View {
         let legacyFeed = NewsPrimaryFeedStorage.lastFeed(viewerDID: viewerDID)
         let legacyDestination: NewsStartupDestination = switch legacyFeed {
         case .following: .following
-        case .podcasts: .podcasts
         default: .subscribed
         }
         let remembered = NewsStartupDestination.remembered(viewerDID: viewerDID) ?? legacyDestination
@@ -345,10 +341,6 @@ struct NewsShellView: View {
             appModel.selectReaderListSource(source)
             sceneModel.select(.saved, availableTabs: availableTabs)
             sceneModel.resetPath(for: .saved)
-        case .podcasts:
-            selectedSection = .topics
-            selectPrimaryFeed(.podcasts)
-            sceneModel.resetPath(for: .podcasts)
         case .lists:
             selectedSection = .lists
             selectedSlot = .standardList("")
@@ -363,7 +355,6 @@ struct NewsShellView: View {
         else if selectedSlot == .archive { destination = .archive }
         else if selectedSlot.savedListSource != nil { destination = .readLater }
         else if selectedSlot == .following { destination = .following }
-        else if selectedSlot == .podcasts { destination = .podcasts }
         else { destination = .subscribed }
         destination.remember(viewerDID: viewerDID)
     }
@@ -417,7 +408,7 @@ struct NewsShellView: View {
             topic.bind(viewer: appModel.viewerDID)
             await topic.loadCatalog()
             await topic.refresh(language: Locale.current.language.languageCode?.identifier ?? "en")
-        case .subscribed, .following, .podcasts:
+        case .subscribed, .following:
             break
         }
     }
@@ -426,7 +417,6 @@ struct NewsShellView: View {
         if slot.savedListSource != nil { return .readLater }
         if case .standardList = slot { return .lists }
         guard let feed = slot.primaryFeed else { return nil }
-        if feed == .podcasts { return .topics }
         return [.finance, .sports].contains(feed) ? .topics : .feeds
     }
 
@@ -469,8 +459,6 @@ struct NewsShellView: View {
             selectPrimaryFeed(.wire)
         case .finance:
             selectPrimaryFeed(.finance)
-        case .podcasts:
-            selectPrimaryFeed(.podcasts)
         case .sports:
             selectPrimaryFeed(.sports)
         case .circle:
@@ -575,7 +563,7 @@ struct NewsShellView: View {
         switch feed {
         case .subscribed, .following:
             return ReaderMarkReadScope.selectedFeed(appModel.feedSelection)
-        case .wire, .circle, .finance, .sports, .podcasts:
+        case .wire, .circle, .finance, .sports:
             return .unavailable
         }
     }

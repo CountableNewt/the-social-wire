@@ -16,7 +16,6 @@ final class SocialWireAppModel {
     let userInputFeedbackService: UserInputFeedbackService
     private let rss = RSSService()
     private let gateway: SocialWireGatewayClient
-    let podcasts: PodcastLibraryModel
     let sportsTopic: SportsTopicModel
     let standardReaderLists: StandardReaderListsModel
     @ObservationIgnored private var readerSessionIdentity: ReaderSessionIdentity
@@ -254,7 +253,6 @@ final class SocialWireAppModel {
         userInputFeedbackService = UserInputFeedbackService(auth: authService, xrpc: xrpc)
         gateway = SocialWireGatewayClient(auth: authService, urlSession: gatewayURLSession, transport: gatewayTransport)
         readerSessionIdentity = ReaderSessionIdentity(session: authService.session, loginIdentity: authService.loginIdentity)
-        podcasts = PodcastLibraryModel(gateway: gateway, xrpc: xrpc)
         sportsTopic = SportsTopicModel(gateway: gateway, xrpc: xrpc)
         standardReaderLists = StandardReaderListsModel(gateway: gateway, xrpc: xrpc)
         readStateSync = PDSReadStateSyncService(xrpc: xrpc, gateway: gateway)
@@ -1805,8 +1803,6 @@ final class SocialWireAppModel {
                 NewsFeatureVisibility.wire && feedPreferences.showWire && wireCatalog?.isAvailable != false
             case .finance:
                 NewsFeatureVisibility.topics && feedPreferences.showFinance && wireCatalog?.financeAvailable != false
-            case .podcasts:
-                feedPreferences.showPodcasts && podcasts.available
             case .sports:
                 NewsFeatureVisibility.topics && feedPreferences.showSports && wireCatalog?.sportsAvailable != false
             case .circle:
@@ -1849,10 +1845,6 @@ final class SocialWireAppModel {
 
     func setSocialVisible(_ visible: Bool) async {
         await setDiscoveryFeedVisible(visible, keyPath: \.showSocial)
-    }
-
-    func setPodcastsVisible(_ visible: Bool) async {
-        await setDiscoveryFeedVisible(visible, keyPath: \.showPodcasts)
     }
 
     func setSportsVisible(_ visible: Bool) async {
@@ -2136,7 +2128,6 @@ final class SocialWireAppModel {
             showSports: feedPreferences.showSports,
             hideSportsScores: feedPreferences.hideSportsScores,
             showSocial: feedPreferences.showSocial,
-            showPodcasts: feedPreferences.showPodcasts,
             articleOpenMode: feedPreferences.articleOpenMode
         )
         if let viewerDID {
@@ -2202,7 +2193,6 @@ final class SocialWireAppModel {
             showSports: feedPreferences.showSports,
             hideSportsScores: feedPreferences.hideSportsScores,
             showSocial: feedPreferences.showSocial,
-            showPodcasts: feedPreferences.showPodcasts,
             articleOpenMode: feedPreferences.articleOpenMode
         )
         if let viewerDID {
@@ -2234,7 +2224,6 @@ final class SocialWireAppModel {
             showSports: feedPreferences.showSports,
             hideSportsScores: feedPreferences.hideSportsScores,
             showSocial: feedPreferences.showSocial,
-            showPodcasts: feedPreferences.showPodcasts,
             articleOpenMode: feedPreferences.articleOpenMode
         )
         if let viewerDID {

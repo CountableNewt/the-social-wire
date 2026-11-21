@@ -3,9 +3,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
-import { podcastsEnabled } from "@/lib/podcasts/playback";
-import { useOptionalPodcastPlayer } from "@/components/Podcasts/PodcastPlayerProvider";
-import { PodcastPlaybackDefaultsFields } from "@/components/Podcasts/PodcastPlaybackDefaultsFields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrustedVerifiersSettingsSection } from "./TrustedVerifiersSettingsSection";
@@ -17,7 +14,6 @@ import { ProfileEditDialog } from "./ProfileEditDialog";
 export function AccountSettingsContent() {
   const { session, signOut } = useAuth();
   const profile = useViewerProfile();
-  const player = useOptionalPodcastPlayer();
   const [confirming, setConfirming] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +46,6 @@ export function AccountSettingsContent() {
     <FeedSettingsSection />
     <SocialModerationSettingsSection />
     <TrustedVerifiersSettingsSection />
-    {podcastsEnabled() && player ? <section aria-labelledby="podcast-settings-heading" className="border-t p-4 md:p-6">
-      <div className="mx-auto flex max-w-2xl flex-col gap-3">
-        <h2 id="podcast-settings-heading" className="text-sm font-bold">Podcasts</h2>
-        <p className="text-sm text-muted-foreground">Saved for all podcasts. Changes also apply to current playback.</p>
-        <PodcastPlaybackDefaultsFields player={player} />
-        {player.error ? <p role="alert" className="text-sm text-destructive">{player.error}</p> : null}
-      </div>
-    </section> : null}
     <OpmlImportSection />
     <Dialog open={confirming} onOpenChange={(open) => { if (!signingOut) setConfirming(open); }}>
       <DialogContent showCloseButton={!signingOut}>
