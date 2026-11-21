@@ -32,14 +32,6 @@ func beginStream(w http.ResponseWriter) func(string, any) error {
 func (s *service) bootstrap(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	auth := reqctx.AuthFrom(ctx)
-	status, err := pdsStatus(ctx, s.db.Reader(), auth.DID)
-	if err != nil {
-		return err
-	}
-	if !status.ProjectionReady {
-		s.scheduleRecovery(auth.DID, status)
-		return feedError(w, r, http.StatusServiceUnavailable, "ReadStateNotReady", "Read state is syncing. Please retry shortly.", true)
-	}
 	sidebar, err := s.publications.Cached(ctx, auth.DID)
 	if err != nil {
 		return err
