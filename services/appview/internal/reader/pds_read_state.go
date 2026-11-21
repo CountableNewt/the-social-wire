@@ -50,37 +50,7 @@ func (s *service) readStateStatus(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	s.scheduleRecovery(viewer, status)
 	return pdsJSON(w, status)
-}
-
-func (s *service) scheduleRecovery(viewer string, status readstate.Status) {
-	if status.ProjectionReady || status.ManifestCID == nil || s.generationFetcher == nil {
-		return
-	}
-	if _, running := s.recovering.LoadOrStore(viewer, struct{}{}); running {
-		return
-	}
-	select {
-	case s.recoverySlots <- struct{}{}:
-	default:
-		s.recovering.Delete(viewer)
-		return
-	}
-	go func() {
-		defer func() {
-			<-s.recoverySlots
-			s.recovering.Delete(viewer)
-		}()
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		// A newer manifest may have committed before the old projection was
-		// evicted. Confirm the viewer's current verified record in either case.
-		record, err := s.generationFetcher.Fetch(ctx, viewer, readstate.ManifestCollection, "self", nil)
-		if err == nil && record.CID != "" {
-			_, _ = s.confirmGeneration(ctx, viewer, record.CID, nil)
-		}
-	}()
 }
 
 func pdsJSON(w http.ResponseWriter, body any) error {

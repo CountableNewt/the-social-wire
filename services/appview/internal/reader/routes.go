@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
@@ -34,7 +33,7 @@ type service struct {
 	generationFetcher *readstate.LiveRecordFetcher
 	confirmationSlots chan struct{}
 	verifiedChunks    *readstate.VerifiedRecordCache
-	recovering        sync.Map
+	reconciles        reconcileState
 	recoverySlots     chan struct{}
 }
 
@@ -44,9 +43,12 @@ type Options struct {
 	RefreshScope func(context.Context, *reqctx.Auth, thinstore.PublicationScope) (int, error)
 }
 
-func Register(group *httpx.Group, db *sqlitedb.DB, publications *publications.Service, enroll EnrollFunc, options Options) {
+// Register serves reader routes and returns the read-state readiness gate for
+// other routes that serve the viewer's projection, such as the sidebar.
+func Register(group *httpx.Group, db *sqlitedb.DB, publications *publications.Service, enroll EnrollFunc, options Options) httpx.Middleware {
 	s := &service{db: db, publications: publications, enroll: enroll, verifyEntry: options.VerifyEntry, refreshScope: options.RefreshScope,
 		confirmationSlots: make(chan struct{}, 4), recoverySlots: make(chan struct{}, 2), verifiedChunks: readstate.NewDefaultVerifiedRecordCache()}
+	group = group.Use(s.requireReadState)
 	if options.Bootstrap != nil {
 		s.bootstrapHooks = []func([]thinstore.PublicationScope){options.Bootstrap}
 	}
@@ -85,6 +87,7 @@ func Register(group *httpx.Group, db *sqlitedb.DB, publications *publications.Se
 	group.Post("/xrpc/app.thesocialwire.appview.exportReadState", authenticated(s.exportReadState))
 	group.Post("/xrpc/app.thesocialwire.appview.prepareReadState", authenticated(s.prepareReadState))
 	group.Post("/xrpc/app.thesocialwire.appview.confirmReadState", authenticated(s.confirmReadState))
+	return s.requireReadState
 }
 
 func authenticated(next httpx.Handler) httpx.Handler {
