@@ -207,7 +207,10 @@ export function EntryListVirtualPane({
           break;
         }
       }
-      root.scrollTop = Math.max(0, nextOffset);
+      // Write only when rows above the anchor moved. The snapshot can trail the
+      // compositor during a fling across a long commit, so rewriting an unchanged
+      // offset (e.g. a page appended below) would snap the reader back to it.
+      if (nextOffset !== offset) root.scrollTop = Math.max(0, nextOffset);
     }
     // TanStack owns resize-only corrections; its scroll event may arrive later.
     scrollTopRef.current = root.scrollTop;

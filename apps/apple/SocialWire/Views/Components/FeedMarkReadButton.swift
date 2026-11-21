@@ -64,7 +64,7 @@ struct FeedMarkReadButton: View {
                 selectedAge = nil
                 options = []
             }
-            await refreshOptions(debounce: !contextChanged)
+            await refreshOptions(debounce: !contextChanged, keepsCurrentOptions: !contextChanged)
         }
         .onDisappear {
             refreshTask?.cancel()
@@ -72,7 +72,7 @@ struct FeedMarkReadButton: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { await refreshOptions() }
+                Task { await refreshOptions(keepsCurrentOptions: true) }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
@@ -115,27 +115,36 @@ struct FeedMarkReadButton: View {
         }
     }
 
-    private func refreshOptions(debounce: Bool = false) async {
+    /// `keepsCurrentOptions` revalidates in place: read marks and page loads bump the refresh
+    /// revision constantly, and clearing the menu each time left it disabled while reading.
+    private func refreshOptions(debounce: Bool = false, keepsCurrentOptions: Bool = false) async {
         refreshTask?.cancel()
         let requestID = UUID()
         refreshID = requestID
-        options = []
-        isLoading = true
+        let revalidating = keepsCurrentOptions && !options.isEmpty && !loadFailed
+        if !revalidating {
+            options = []
+            isLoading = true
+        }
         loadFailed = false
         let task = Task { @MainActor in
             do {
                 // Coalesce read-state updates while immediately invalidating the prior stream.
                 if debounce { try await Task.sleep(for: .milliseconds(350)) }
                 let loaded = try await loadOptions { partial in
-                    guard !Task.isCancelled, refreshID == requestID else { return }
+                    // Partial counts are lower bounds; only show them when nothing is on screen.
+                    guard !revalidating, !Task.isCancelled, refreshID == requestID else { return }
                     options = validOptions(partial)
                 }
                 guard !Task.isCancelled, refreshID == requestID else { return }
                 options = validOptions(loaded)
             } catch {
                 guard !Task.isCancelled, refreshID == requestID else { return }
-                options = []
-                loadFailed = true
+                // A failed revalidation keeps the last complete counts.
+                if !revalidating {
+                    options = []
+                    loadFailed = true
+                }
             }
             isLoading = false
         }
