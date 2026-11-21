@@ -64,8 +64,8 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 	operations.RegisterClientPerformance(protected, services.telemetry, services.operations.Environment)
 
 	publicationsService := publications.New(services.db, services.repo)
-	publications.Register(protected, publicationsService)
-	reader.Register(protected, services.db, publicationsService, services.enroll, services.readerOptions)
+	readState := reader.Register(protected, services.db, publicationsService, services.enroll, services.readerOptions)
+	publications.Register(protected.Use(readState), publicationsService)
 	if services.analytics != nil {
 		analytics.Register(protected, services.analytics, services.repo)
 	}
