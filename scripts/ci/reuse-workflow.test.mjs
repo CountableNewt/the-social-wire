@@ -19,13 +19,15 @@ function step(block, name) {
 
 test('changes exports path flags and only the proof runner can authorize target reuse', () => {
   const changes = job('changes');
-  for (const target of ['web', 'appview']) {
+  for (const [target, jobs] of [['web', ['web']], ['appview', ['appview_go', 'appview_image']]]) {
     assert.ok(changes.includes(`${target}: \${{ steps.filter.outputs.${target} }}`));
     assert.ok(changes.includes(`reuse_${target}: \${{ steps.reuse.outputs.reuse_${target} }}`));
-    const runtime = job(target === 'appview' ? 'appview_lanes' : target);
-    assert.match(runtime, /^    needs: changes$/m);
-    const expression = runtime.match(/^    if: (.+)$/m)?.[1];
-    assert.equal(expression, `needs.changes.result == 'success' && needs.changes.outputs.${target} == 'true' && needs.changes.outputs.reuse_${target} != 'true'`);
+    for (const name of jobs) {
+      const runtime = job(name);
+      assert.match(runtime, /^    needs: changes$/m);
+      const expression = runtime.match(/^    if: (.+)$/m)?.[1];
+      assert.equal(expression, `needs.changes.result == 'success' && needs.changes.outputs.${target} == 'true' && needs.changes.outputs.reuse_${target} != 'true'`);
+    }
   }
   const runner = step(changes, 'Reuse exact successful PR verification');
   assert.match(runner, /^        id: reuse$/m);
@@ -108,23 +110,26 @@ for (const proven of ['web', 'appview']) test(`partial ${proven} proof can skip 
   assert.throws(() => verifyRequiredChecks({ ...environment, [`${other}_RESULT`]: 'skipped' }));
 });
 
-test('the AppView aggregate accepts only successful results from both matrix lanes', () => {
-  const lanes = job('appview_lanes'), aggregate = job('appview');
-  assert.match(lanes, /fail-fast: false\n      matrix:\n        lane: \[tests, release\]/);
-  assert.ok(lanes.includes('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'));
-  assert.ok(lanes.includes('bash scripts/ci/benchmark-appview-swiftpm.sh "$LANE" initial'));
+test('the AppView aggregate accepts only successful Go and image verification', () => {
+  const go = job('appview_go'), image = job('appview_image'), aggregate = job('appview');
+  for (const runtime of [go, image]) assert.ok(runtime.includes('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'));
+  const verify = step(go, 'Verify AppView sources');
+  for (const command of ['gofmt -l cmd internal', 'go test -vet=all -count=1 ./...']) assert.ok(verify.includes(command), command);
+  assert.ok(step(image, 'Verify AppView image and packaged runtime').includes('bash scripts/ci/verify-runtime-images.sh appview'));
   assert.match(aggregate, /^    name: SQLite AppView$/m);
-  assert.match(aggregate, /^    needs: \[changes, appview_lanes\]$/m);
+  assert.match(aggregate, /^    needs: \[changes, appview_go, appview_image\]$/m);
   assert.match(aggregate, /^    if: always\(\) && /m);
-  assert.ok(aggregate.includes('LANES_RESULT: ${{ needs.appview_lanes.result }}'));
-  assert.ok(aggregate.includes('run: test "$LANES_RESULT" = success'));
+  assert.ok(aggregate.includes('GO_RESULT: ${{ needs.appview_go.result }}'));
+  assert.ok(aggregate.includes('IMAGE_RESULT: ${{ needs.appview_image.result }}'));
+  assert.ok(aggregate.includes('run: test "$GO_RESULT" = success && test "$IMAGE_RESULT" = success'));
 });
 
 test('only verified same-repository PR caches are published for post-merge use', () => {
-  const web = job('web'), lanes = job('appview_lanes');
+  const web = job('web'), go = job('appview_go'), image = job('appview_image');
   for (const [runtime, verify, publishName, artifact] of [
     [web, 'Verify Web image', 'Publish verified web build layers', 'docker-cache-web'],
-    [lanes, 'Verify AppView lane', 'Publish verified SwiftPM state', 'appview-swiftpm-${{ matrix.lane }}'],
+    [image, 'Verify AppView image', 'Publish verified AppView build layers', 'docker-cache-appview'],
+    [go, 'Verify AppView sources', 'Publish verified Go build cache', 'appview-go'],
   ]) {
     const publish = step(runtime, publishName);
     assert.ok(runtime.indexOf(verify) < runtime.indexOf(publishName));
@@ -135,31 +140,38 @@ test('only verified same-repository PR caches are published for post-merge use',
   }
   const trustedPR = /^        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository$/m;
   assert.match(step(web, 'Publish verified web build layers'), trustedPR);
-  assert.match(step(lanes, 'Archive verified SwiftPM state'), trustedPR);
-  assert.match(step(lanes, 'Publish verified SwiftPM state'), /^        if: steps.archive.outcome == 'success'$/m);
+  assert.match(step(image, 'Publish verified AppView build layers'), trustedPR);
+  assert.match(step(go, 'Archive verified Go build cache'), trustedPR);
+  assert.match(step(go, 'Publish verified Go build cache'), /^        if: steps.archive.outcome == 'success'$/m);
 });
 
 test('base caches are warmed only from the exact successful proof run', () => {
   const changes = job('changes'), required = job('required');
   assert.ok(changes.includes('cache_run_id: ${{ steps.reuse.outputs.cache_run_id }}'));
-  for (const [name, target, downloadName] of [
-    ['warm_base_cache', 'web', 'Download exact verified PR build layers'],
-    ['warm_appview_cache', 'appview', 'Download verified SwiftPM state'],
+  for (const [name, target, downloads] of [
+    ['warm_base_cache', 'web', ['Download exact verified PR build layers']],
+    ['warm_appview_cache', 'appview', ['Download verified Go build cache', 'Download exact verified AppView build layers']],
   ]) {
-    const warmer = job(name), download = step(warmer, downloadName);
+    const warmer = job(name);
     assert.match(warmer, /^    needs: changes$/m);
     assert.ok(warmer.includes(`if: github.event_name == 'push' && needs.changes.result == 'success' && needs.changes.outputs.cache_run_id != '' && needs.changes.outputs.reuse_${target} == 'true'`));
     assert.match(warmer, /^    continue-on-error: true$/m);
     assert.match(warmer, /^    permissions:\n      contents: read\n      actions: read$/m);
-    assert.doesNotMatch(warmer, /docker\/setup|verify-runtime-images|workflow_run|pull_request_target/);
-    assert.match(download, /^        uses: actions\/download-artifact@v8$/m);
-    assert.ok(download.includes('repository: ${{ github.repository }}'));
-    assert.ok(download.includes('run-id: ${{ needs.changes.outputs.cache_run_id }}'));
+    assert.doesNotMatch(warmer, /docker\/setup|verify-runtime-images|setup-go|go (?:build|test)|workflow_run|pull_request_target/);
+    for (const downloadName of downloads) {
+      const download = step(warmer, downloadName);
+      assert.match(download, /^        uses: actions\/download-artifact@v8$/m);
+      assert.ok(download.includes('repository: ${{ github.repository }}'));
+      assert.ok(download.includes('run-id: ${{ needs.changes.outputs.cache_run_id }}'));
+    }
     assert.ok(!required.includes(name));
   }
-  const lanes = job('appview_lanes'), warmer = job('warm_appview_cache');
-  const restoreKey = step(lanes, 'Restore SwiftPM state').match(/^          key: (.+)$/m)?.[1];
-  assert.ok(restoreKey);
-  assert.ok(step(warmer, 'Save SwiftPM state in base-branch cache scope').includes(`key: ${restoreKey}`));
-  assert.ok(step(warmer, 'Unpack verified SwiftPM state').includes('--no-same-owner --no-same-permissions'));
+  const go = job('appview_go'), image = job('appview_image'), warmer = job('warm_appview_cache');
+  const goKey = step(go, 'Restore Go build cache').match(/^          key: (.+)$/m)?.[1];
+  assert.ok(goKey);
+  assert.ok(step(warmer, 'Save Go build cache in base-branch cache scope').includes(`key: ${goKey}`));
+  const layerKey = step(image, 'Restore Docker build layers').match(/^          key: (.+)$/m)?.[1];
+  assert.ok(layerKey);
+  assert.ok(step(warmer, 'Save verified layers in base-branch cache scope').includes(`key: ${layerKey}`));
+  assert.ok(step(warmer, 'Unpack verified Go build cache').includes('--no-same-owner'));
 });

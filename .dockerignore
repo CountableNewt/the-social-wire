@@ -1,6 +1,8 @@
 .git
 **/.build
 **/.next
+**/.turbo
+.delta
 **/node_modules
 **/.env
 **/.env.*

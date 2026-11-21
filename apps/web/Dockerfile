@@ -4,8 +4,16 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
-COPY . .
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/operations/package.json apps/operations/package.json
+COPY packages/read-state/package.json packages/read-state/package.json
+COPY packages/lexicons/package.json packages/lexicons/package.json
+COPY packages/spec/package.json packages/spec/package.json
+COPY services/podcast-worker/package.json services/podcast-worker/package.json
+COPY packages/vendor packages/vendor
 RUN bun install --frozen-lockfile
+COPY . .
 ARG NEXT_PUBLIC_APP_ENV=dev
 ARG NEXT_PUBLIC_SITE_URL=https://testing.thesocialwire.app
 ARG NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.testing.thesocialwire.app

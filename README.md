@@ -11,7 +11,7 @@ Web Frontend (Next.js)       iOS/iPadOS (SwiftUI)
           │                         │
           └────── ATProto OAuth ────┘
                          │
-       User's PDS        │       Swift AppView (Railway)
+       User's PDS        │       Go AppView (Railway)
        User-owned        └────── OAuth/DPoP + Reader API
        protocol records          SQLite on persistent /data
                                  Bounded RSS + bundled media processor
@@ -35,7 +35,7 @@ the-social-wire/
     operations/      # Next.js operator console (Bun)
   services/
     gateway/         # Distributed rollback source
-    appview/         # Public Swift API, SQLite, RSS and bundled media
+    appview/         # Public Go API, SQLite, RSS and bundled media
     jetstream-ingest/ # Retired ingress source and historical contracts
     indexing-worker/ # Retained distributed worker source
     operations/      # Operations control plane (Railway)
@@ -55,8 +55,8 @@ the-social-wire/
 | Tool | Version |
 |------|---------|
 | [Bun](https://bun.sh) | Matches root [`package.json`](package.json) `packageManager` (currently 1.3.x) |
-| [Swift](https://swift.org/install) | 6.4.2 for active backend services |
-| [Go](https://go.dev/dl/) | 1.26.6 for retained Go parity suites and excluded services |
+| [Go](https://go.dev/dl/) | Matches [AppView go.mod](services/appview/go.mod) |
+| [Swift](https://swift.org/install) | 6.4.2 for retained backend sources |
 | [Railway CLI](https://docs.railway.com/guides/cli) | Latest (hosted operations and migration access) |
 | [Xcode](https://developer.apple.com/xcode/) | 16+ (for iOS) |
 
@@ -79,27 +79,21 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Full-stack local dev (optional)
 
-The service executables currently accept only `APP_ENV=dev|prod` because their
-shared Operations namespace rejects `local`. Use an isolated disposable Postgres
-database for local integration; never point these commands at a hosted
-Development or Production database.
+Run the standalone Go backend with a disposable SQLite database. The Operations
+store uses the `dev` environment for local development.
 
 ```bash
-# Apply migrations to an isolated disposable Postgres database first.
-DATABASE_URL='postgresql://…' bash scripts/apply-database-migrations.sh
-
-# Run each service in a separate terminal with the same disposable DATABASE_URL.
-# Gateway (OAuth, sync, writes)
-(cd services/gateway && APP_ENV=dev DATABASE_URL='postgresql://…' APPVIEW_BASE_URL=http://127.0.0.1:8081 GATEWAY_APPVIEW_INTERNAL_SECRET=local-development-only PDS_ATTESTATION_RECEIPT_SECRET=local-development-attestation-receipt-secret swift run Gateway)
-
-# AppView (sidebar + Thin AppView reads)
-(cd services/appview && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true GATEWAY_APPVIEW_INTERNAL_SECRET=local-development-only swift run AppView)
-
-# Replicated projection role (active AppView durable inbox)
-(cd services/indexing-worker && APP_ENV=dev DATABASE_URL='postgresql://…' ENABLE_THIN_APPVIEW=true INDEXING_WORKER_ROLE=projection THIN_APPVIEW_JETSTREAM_MODE=v2_authoritative swift run IndexingWorker)
-
-# Coordinator uses the same package with INDEXING_WORKER_ROLE=coordinator.
+cd services/appview
+APP_ENV=dev BACKEND_MODE=standalone \
+  SQLITE_DB_PATH="$(mktemp -d)/social-wire.sqlite" \
+  ENABLE_THIN_APPVIEW=true BIND_HOST=127.0.0.1 \
+  PDS_ATTESTATION_RECEIPT_SECRET=local-development-attestation-receipt-secret \
+  go run ./cmd/appview --port 8081
 ```
+
+Set `NEXT_PUBLIC_SOCIALWIRE_API_URL=http://localhost:8081` in the local Web
+environment before starting the Web app. Use the standalone Docker image when
+testing the bundled podcast processor.
 
 ### Running tests
 
@@ -107,14 +101,10 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 
 ```bash
 (cd apps/web && bun test)
-(cd apps/operations && bun test)
-(cd packages/swift/GatewayCore && swift test)
-(cd packages/swift/SocialWireRedis && swift test)
-(cd services/gateway && swift test)
-(cd services/appview && swift test)
-(cd packages/swift/ThinAppViewCore && swift test)
-(cd services/indexing-worker && swift test --force-resolved-versions)
-(cd packages/swift/OperationsCore && swift test)
+(cd services/appview && go test -vet=all -count=1 ./...)
+bun --cwd services/podcast-worker test
+node --test scripts/ci/*.test.mjs
+bash scripts/ci/verify-runtime-images.sh appview
 
 # iOS — Cmd+U in Xcode (see docs/test-plans/apple.md)
 ```
