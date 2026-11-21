@@ -54,10 +54,13 @@ export function build(context, kind, target, { execute = run, environment = proc
   const importCache = cache && existsSync(resolve(cache, 'index.json'));
   // Export once per image kind, retaining intermediate compilation layers without
   // accumulating the unreferenced blobs in BuildKit's previous local exports.
-  const exportCache = cacheRoot && ((kind === 'appview' && target === 'backend-tests') || (kind === 'web' && !target));
+  const exportCache = cacheRoot && !target;
   const args = [...(cacheRoot ? ['buildx', 'build', '--load', '--progress', 'plain'] : ['build']), '--platform', 'linux/amd64', '--file', kind === 'appview' ? 'services/appview/Dockerfile.standalone' : 'apps/web/Dockerfile', '--tag', target ? `${reference}-verify` : reference,
     '--label', `org.opencontainers.image.revision=${context.sha}`, '--label', `org.opencontainers.image.source=${canonical}`];
   if (kind === 'web') args.push(...webBuildArguments(context.appEnvironment));
+  // Make the runtime build depend on media tests so BuildKit exports their
+  // successful layer alongside the runtime layers without loading a second image.
+  if (kind === 'appview' && !target) args.push('--build-arg', 'PODCAST_MEDIA_ARTIFACTS=media-tests');
   if (target) args.push('--target', target);
   if (cacheRoot) {
     mkdirSync(cacheRoot, { recursive: true });
@@ -105,7 +108,7 @@ export async function runtimeVolumeGuardSmoke(image, { execute = run } = {}) {
   }
 }
 
-/** Exercise the final packaged processes, not just Swift/Bun build targets.
+/** Exercise the final packaged processes, not just Go/Bun build targets.
  * No host ports, network access, production credentials or existing volumes. */
 export async function runtimeSmoke(image, {
   execute = run,
@@ -120,6 +123,8 @@ export async function runtimeSmoke(image, {
     APP_ENV: 'dev', PORT: '8081',
     PODCASTS_ENABLED: 'true', SOCIAL_DRAFTS_ENABLED: 'true', TOOLS_ENABLED: 'true',
     PODCAST_BRIDGE_ENABLED: 'false',
+    EMBEDDED_SCHEDULING_ENABLED: 'true', EMBEDDED_SCHEDULING_PUBLIC_ORIGIN: 'https://smoke.invalid',
+    EMBEDDED_SCHEDULING_STORAGE_KEY: fixtureKey,
     PDS_ATTESTATION_RECEIPT_SECRET: 'smoke-fixture-attestation-secret-at-least-32-bytes',
     GATEWAY_APPVIEW_INTERNAL_SECRET: 'smoke-fixture-analytics-secret-at-least-32-bytes',
     SOCIAL_DRAFT_STORAGE_KEY: fixtureKey, PODCAST_PRIVATE_STORAGE_KEY: fixtureKey,
@@ -151,6 +156,8 @@ export async function runtimeSmoke(image, {
     await ready();
     expectStatus('http://127.0.0.1:8081/livez', '200');
     expectStatus('http://127.0.0.1:8081/ios-client-metadata.json', '200');
+    expectStatus('http://127.0.0.1:8081/oauth/scheduling/client-metadata.json', '200');
+    expectStatus('http://127.0.0.1:8081/xrpc/at.skej.actor.getSession', '401');
     expectStatus('http://127.0.0.1:8081/xrpc/app.thesocialwire.publication.getSidebar', '401');
     expectStatus('http://127.0.0.1:9080/startupz', '200');
     expectStatus('http://127.0.0.1:9080/healthz', '200');
@@ -207,7 +214,17 @@ export async function webRuntimeSmoke(image, {
 
 export function webVerificationCommand() {
   // Bun's text coverage reporter cannot reliably write directly to Docker's log pipe.
-  const coverage = '(cd apps/web; coverage_status=0; bun run test:coverage > /tmp/web-coverage.log 2>&1 || coverage_status=$?; report_status=0; python3 ../../scripts/ci/emit-log.py /tmp/web-coverage.log || report_status=$?; if [ "$coverage_status" -ne 0 ]; then exit "$coverage_status"; fi; exit "$report_status")';
+  const coverage = [
+    '(cd apps/web',
+    'coverage_log=$(mktemp "${TMPDIR:-/tmp}/tsw-web-coverage.XXXXXX")',
+    `trap 'rm -f -- "$coverage_log"' EXIT`,
+    'coverage_status=0',
+    'bun run test:coverage > "$coverage_log" 2>&1 || coverage_status=$?',
+    'report_status=0',
+    'python3 ../../scripts/ci/emit-log.py "$coverage_log" || report_status=$?',
+    'if [ "$coverage_status" -ne 0 ]; then exit "$coverage_status"; fi',
+    'exit "$report_status")',
+  ].join('; ');
   return `bunx turbo typecheck --filter=web && bunx turbo lint --filter=web && bun --cwd packages/read-state typecheck && bun --cwd packages/read-state test && ${coverage} && bun --cwd packages/lexicons test && (cd packages/spec && bun test --timeout 30000)`;
 }
 
@@ -218,15 +235,12 @@ async function verify(context, selection = 'all', environment = process.env) {
   for (const kind of ['appview', 'web']) {
     if (selection !== 'all' && selection !== kind) continue;
     if (kind === 'appview') {
-      buildImage(kind, 'backend-tests');
-      buildImage(kind, 'media-tests');
+      // Go sources are vetted and tested natively in the AppView (Go) job.
       const image = buildImage(kind);
       await runtimeVolumeGuardSmoke(image);
       await runtimeSmoke(image);
       continue;
     }
-    // Contract tests read pinned upstream source fixtures in clean checkouts.
-    run('python3', ['scripts/ci/check-out-swift-contracts.py']);
     const image = buildImage(kind, 'builder');
     run('docker', ['run', '--rm', '--init', '--platform', 'linux/amd64', '--entrypoint', 'bash', '--env', 'NEXT_PUBLIC_APP_ENV=test', image, '-euc', webVerificationCommand()]);
     await webRuntimeSmoke(buildImage(kind));

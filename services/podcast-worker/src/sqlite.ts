@@ -7,7 +7,7 @@ type StoredJob = Omit<PodcastJob,"payload_json"> & {payload_json:string};
 type ClipRow = {published_uri:string|null;clip_json:string};
 export type PodcastDatabase = SQL | SQLitePodcastDatabase;
 
-/** Swift owns schema migration. The processor opens its tables in the same local
+/** AppView owns schema migration. The processor opens its tables in the same local
  * volume; all transactions below are synchronous and contain no network I/O. */
 export class SQLitePodcastDatabase {
   readonly sqlite:Database;

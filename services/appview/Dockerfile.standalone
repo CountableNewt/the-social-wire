@@ -1,9 +1,18 @@
 # syntax=docker/dockerfile:1
-ARG APPVIEW_ARTIFACTS=builder
+ARG PODCAST_MEDIA_ARTIFACTS=media-builder
 
-FROM oven/bun:1.3.14-debian AS media-builder
+FROM oven/bun:1.3.14-debian AS bun-toolchain
+
+FROM ubuntu:22.04 AS runtime-dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates ffmpeg fonts-dejavu-core \
+  && apt-get install -y --no-install-recommends ca-certificates sqlite3 util-linux tini curl ffmpeg fonts-dejavu-core python3 postgresql-client \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --no-create-home appuser
+COPY --from=bun-toolchain /usr/local/bin/bun /usr/local/bin/bun
+
+FROM runtime-dependencies AS media-builder
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /media
 COPY package.json bun.lock ./
@@ -13,78 +22,32 @@ COPY packages/read-state/package.json packages/read-state/package.json
 COPY packages/lexicons/package.json packages/lexicons/package.json
 COPY packages/spec/package.json packages/spec/package.json
 COPY packages/vendor packages/vendor
-COPY services/podcast-worker services/podcast-worker
-COPY packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift
+COPY services/podcast-worker/package.json services/podcast-worker/package.json
 RUN bun install --filter @thesocialwire/podcast-worker --frozen-lockfile --ignore-scripts
+COPY services/podcast-worker services/podcast-worker
+COPY services/appview/internal/podcasts/schema.sql services/appview/internal/podcasts/schema.sql
 
 FROM media-builder AS media-tests
 RUN bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test
 
-FROM swift:6.4.2-jammy AS swift-toolchain
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libsqlite3-dev libxml2-dev pkg-config python3 sqlite3 \
-  && rm -rf /var/lib/apt/lists/*
-WORKDIR /src
+FROM golang:1.27-bookworm AS builder
+WORKDIR /src/services/appview
+# Download modules before copying sources so dependency layers survive source edits.
+COPY services/appview/go.mod services/appview/go.sum ./
+RUN go mod download
+COPY services/appview/cmd ./cmd
+COPY services/appview/internal ./internal
+# modernc SQLite is pure Go, so the binary is static and needs no toolchain libraries.
+# Railway rejects BuildKit cache mounts, so layer order carries the module cache.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/AppView ./cmd/appview
 
-FROM swift-toolchain AS swift-dependencies
-COPY packages/swift/thin-app-view-core/Package.swift packages/swift/thin-app-view-core/Package.resolved /src/packages/swift/thin-app-view-core/
-COPY packages/swift/thin-app-view-core/Sources /src/packages/swift/thin-app-view-core/Sources
-COPY packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources /src/packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Sources
-COPY packages/swift/skej-backend /src/packages/swift/skej-backend
-COPY services/appview/Package.swift services/appview/Package.resolved /src/services/appview/
-# Compile the unchanged dependency graph before copying frequently changing API
-# sources. Image-layer exports retain these artifacts across fresh CI builders.
-RUN mkdir -p services/appview/Sources/AppView services/appview/Tests/AppViewTests \
-      packages/swift/thin-app-view-core/Tests/ThinAppViewCoreTests/Fixtures \
-      packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests/ReadStateCoreTests \
-  && printf 'print("Dependency build placeholder")\n' > services/appview/Sources/AppView/main.swift \
-  && printf 'import Testing\n@Test func dependencyPlaceholder() {}\n' > services/appview/Tests/AppViewTests/DependencyTests.swift \
-  && swift build --package-path services/appview -c release --product AppView --build-system native --manifest-cache local --force-resolved-versions -Xswiftc -no-whole-module-optimization -Xswiftc -incremental -Xswiftc -enable-incremental-file-hashing -j 4
+FROM ${PODCAST_MEDIA_ARTIFACTS} AS podcast-artifacts
 
-FROM swift-dependencies AS test-dependencies
-# SwiftPM testability changes compiler flags, so keep a separate dependency plan.
-RUN swift build --package-path services/appview -c release --build-tests --force-resolved-versions -j 2
-
-FROM swift-dependencies AS builder
-RUN rm -rf services/appview/Sources
-COPY services/appview/Sources /src/services/appview/Sources
-RUN swift build --package-path services/appview -c release --product AppView --build-system native --manifest-cache local --force-resolved-versions -Xswiftc -no-whole-module-optimization -Xswiftc -incremental -Xswiftc -enable-incremental-file-hashing -j 4 \
-  && mkdir -p /out/lib /out/bin \
-  && cp services/appview/.build/release/AppView /out/bin/AppView \
-  && cp -a /usr/lib/swift/linux/*.so* /out/lib/ \
-  && find -L services/appview/.build/release/ -maxdepth 1 -type d \( -name '*.resources' -o -name '*.bundle' \) -exec cp -aL {} /out/bin/ \;
-
-FROM test-dependencies AS backend-tests
-# Require the optimized production build as well as the testable build.
-COPY --from=builder /out/bin/AppView /tmp/production-AppView
-RUN rm -rf services/appview/Sources services/appview/Tests
-COPY services/appview/Sources /src/services/appview/Sources
-COPY services/appview/Tests /src/services/appview/Tests
-COPY packages/swift/thin-app-view-core/Tests /src/packages/swift/thin-app-view-core/Tests
-COPY packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests /src/packages/swift/thin-app-view-core/Dependencies/ReadStateCore/Tests
-COPY packages/swift/thin-app-view-core/TestSupport /src/packages/swift/thin-app-view-core/TestSupport
-COPY packages/swift/thin-app-view-core/read-state /src/packages/swift/thin-app-view-core/read-state
-COPY scripts/ci/prepare-swift-tests.py scripts/ci/appview-test-targets.swift scripts/ci/test_prepare_swift_tests.py /src/scripts/ci/
-RUN PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/ci -p test_prepare_swift_tests.py \
-  && python3 scripts/ci/prepare-swift-tests.py /src
-COPY scripts/migrations /src/scripts/migrations
-COPY services/appview/bin/sqlite-backup /src/services/appview/bin/sqlite-backup
-RUN PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/migrations -p 'test_*.py' \
-  && swift test --package-path services/appview -c release --force-resolved-versions -j 2
-
-FROM ${APPVIEW_ARTIFACTS} AS appview-artifacts
-
-FROM ubuntu:22.04
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates libssl3 libcurl4 libsqlite3-0 libicu70 libxml2 sqlite3 util-linux tini curl ffmpeg fonts-dejavu-core python3 postgresql-client \
-  && rm -rf /var/lib/apt/lists/* \
-  && useradd --system --no-create-home appuser
-COPY --from=appview-artifacts /out/lib/ /usr/lib/swift/linux/
-ENV LD_LIBRARY_PATH=/usr/lib/swift/linux BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite ENABLE_THIN_APPVIEW=true BIND_HOST=0.0.0.0
-COPY --from=appview-artifacts /out/bin/ /usr/local/bin/
-COPY --from=media-builder /usr/local/bin/bun /usr/local/bin/bun
-COPY --from=media-builder /media/node_modules /media/node_modules
-COPY --from=media-builder /media/services/podcast-worker /media/services/podcast-worker
+FROM runtime-dependencies
+ENV BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite ENABLE_THIN_APPVIEW=true BIND_HOST=0.0.0.0
+COPY --from=builder /out/AppView /usr/local/bin/AppView
+COPY --from=podcast-artifacts /media/node_modules /media/node_modules
+COPY --from=podcast-artifacts /media/services/podcast-worker /media/services/podcast-worker
 COPY services/appview/bin/standalone-entrypoint /usr/local/bin/standalone-entrypoint
 COPY services/appview/bin/sqlite-backup /usr/local/bin/sqlite-backup
 COPY services/appview/bin/backend-supervisor /usr/local/bin/backend-supervisor

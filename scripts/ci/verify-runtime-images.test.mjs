@@ -62,7 +62,7 @@ function fakeRuntime({ startup = ['200'], processExit = false, failedMetadata = 
         return startup.length > 1 ? startup.shift() : startup[0];
       }
       if (url.endsWith('/ios-client-metadata.json') && failedMetadata) return '500';
-      return url.endsWith('getSidebar') ? '401' : '200';
+      return (url.endsWith('getSidebar') || url.endsWith('getSession')) ? '401' : '200';
     }
     if (args[0] === 'exec' && args[2] === 'sh') return '42';
     if (args[0] === 'exec' && args[2] === 'kill') {
@@ -81,7 +81,7 @@ test('runtime smoke isolates fixture resources, probes packaged services and tes
   const launch = fake.calls.find(args => args[0] === 'run');
   assert.equal(launch[launch.indexOf('--network') + 1], 'none');
   assert.ok(!launch.includes('--publish') && !launch.includes('-p'));
-  for (const fixture of ['PODCASTS_ENABLED=true', 'SOCIAL_DRAFTS_ENABLED=true', 'TOOLS_ENABLED=true']) assert.ok(launch.includes(fixture));
+  for (const fixture of ['PODCASTS_ENABLED=true', 'SOCIAL_DRAFTS_ENABLED=true', 'TOOLS_ENABLED=true', 'EMBEDDED_SCHEDULING_ENABLED=true']) assert.ok(launch.includes(fixture));
   assert.ok(!launch.some(value => value.startsWith('ENABLE_THIN_APPVIEW=') || value.startsWith('BIND_HOST=')), 'Smoke must exercise image defaults.');
   assert.ok(!launch.some(value => /^(GITHUB_TOKEN|GH_TOKEN|RAILWAY_TOKEN|RAILWAY_API_TOKEN)=/.test(value)));
   assert.ok(fake.calls.some(args => args[0] === 'exec' && args[3] === '-STOP'));
@@ -288,7 +288,7 @@ test('cached backend builds import prior layers and rotate one complete max-mode
     mkdirSync(next);
     writeFileSync(join(next, 'stale-partial-export'), 'partial');
     let invocation;
-    build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+    build({ sha, appEnvironment: 'dev' }, 'appview', undefined, {
       environment: fixture.environment,
       execute: (command, args) => {
         invocation = { command, args };
@@ -312,7 +312,7 @@ test('failed cached builds retain the previous cache and discard incomplete expo
   const fixture = buildCacheFixture();
   try {
     const next = join(fixture.root, 'appview-next');
-    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', undefined, {
       environment: fixture.environment, execute: () => {
         mkdirSync(next);
         writeFileSync(join(next, 'partial'), 'partial');
@@ -322,18 +322,28 @@ test('failed cached builds retain the previous cache and discard incomplete expo
     assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'old-index');
     assert.ok(existsSync(join(fixture.cache, 'obsolete-blob')));
     assert.ok(!existsSync(next));
-    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', 'backend-tests', {
+    assert.throws(() => build({ sha, appEnvironment: 'dev' }, 'appview', undefined, {
       environment: fixture.environment, execute: () => {},
     }), /did not export/);
     assert.equal(readFileSync(join(fixture.cache, 'index.json'), 'utf8'), 'old-index');
   } finally { rmSync(fixture.root, { recursive: true, force: true }); }
 });
 
+test('AppView runtime verification depends on the media tests in the same Docker build', () => {
+  build({ sha, appEnvironment: 'dev' }, 'appview', undefined, {
+    environment: {}, record: () => {},
+    execute: (_command, args) => {
+      assert.ok(args.includes('PODCAST_MEDIA_ARTIFACTS=media-tests'));
+      assert.ok(!args.includes('--target'));
+    },
+  });
+});
+
 test('each kind exports only its final expensive build and imports only complete caches', () => {
   const fixture = buildCacheFixture();
   try {
     const context = { sha, appEnvironment: 'dev' };
-    for (const [kind, target] of [['appview', 'media-tests'], ['appview', undefined], ['web', 'builder']]) {
+    for (const [kind, target] of [['appview', 'media-tests'], ['web', 'builder']]) {
       build(context, kind, target, { environment: fixture.environment, execute: (_command, args) => {
         assert.ok(!args.includes('--cache-to'));
         assert.equal(args.includes('--cache-from'), kind === 'appview');

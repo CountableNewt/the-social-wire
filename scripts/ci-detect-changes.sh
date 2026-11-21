@@ -91,11 +91,15 @@ filter_changed web \
 filter_changed appview \
   'services/appview/**' \
   'services/podcast-worker/**' \
-  'packages/swift/thin-app-view-core/**' \
-  'packages/swift/skej-backend/**' \
+  'apps/web/package.json' \
+  'apps/operations/package.json' \
+  'packages/read-state/package.json' \
+  'packages/lexicons/package.json' \
+  'packages/spec/package.json' \
+  'packages/spec/openapi.yaml' \
+  'packages/vendor/**' \
   'scripts/migrations/**' \
   'scripts/ci/**' \
-  'database/migrations/**' \
   'railway/appview*.json' \
   'package.json' \
   'bun.lock' \
