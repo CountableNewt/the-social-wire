@@ -238,6 +238,36 @@ describe("thinAppViewClient", () => {
     expect(snapshot.generation).toBe(42);
     expect(snapshot.accuracy).toBe("exact");
   });
+
+  it("fetchAppViewUnreadCounts splits long ID lists into URL-safe requests and merges them", async () => {
+    const publicationIds = Array.from(
+      { length: 120 },
+      (_, index) => `rss:${"https://publisher.example/feeds/".repeat(3)}${index}.xml`
+    );
+    const requested: string[][] = [];
+    const fetchHandler = mock(async (url: string) => {
+      expect(url.length).toBeLessThan(7_000);
+      const ids = new URL(url).searchParams.getAll("publicationIds");
+      requested.push(ids);
+      return Response.json({
+        counts: Object.fromEntries(ids.map((id) => [id, 1])),
+        generation: requested.length,
+        accuracy: requested.length === 1 ? "estimated" : "exact",
+        countedAt: `2026-01-0${requested.length}T00:00:00.000Z`,
+      });
+    });
+    const oauthSession = gatewayOAuthSession(fetchHandler);
+
+    const { fetchAppViewUnreadCounts } = await import("@/lib/thinAppViewClient");
+    const snapshot = await fetchAppViewUnreadCounts(oauthSession, publicationIds);
+
+    expect(requested.length).toBeGreaterThan(1);
+    expect(requested.flat().sort()).toEqual([...publicationIds].sort());
+    expect(Object.keys(snapshot.counts).length).toBe(publicationIds.length);
+    expect(snapshot.generation).toBe(requested.length);
+    expect(snapshot.accuracy).toBe("estimated");
+    expect(snapshot.countedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
 });
 
 function gatewayOAuthSession(

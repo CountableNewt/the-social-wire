@@ -204,6 +204,7 @@ describe("PublicationSidebarProvider", () => {
         old: "2026-01-01T00:00:00Z", history: "2026-01-01T00:00:00Z",
       }));
       spyOn(appview, "writeThroughReadMarkDelete").mockResolvedValue(undefined);
+      spyOn(appview, "writeThroughReadStates").mockResolvedValue(new Map());
       const gate = deferred();
       const mounted = mountProvider({ initialGate: gate, streamedEntries: true });
       const { queryClient, did, result } = mounted;
