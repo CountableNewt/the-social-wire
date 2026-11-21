@@ -68,8 +68,6 @@ export interface DiscoveredPublication {
 export interface EntryListItem {
   /** Recognized publisher self-labels; presentation only, never a content filter. */
   contentLabels?: string[];
-  sportsItem?: import("@/lib/sportsFeedClient").SportsItem;
-  financeItem?: import("@/lib/financeFeedClient").FinanceItem;
   /** AT-URI of the entry record. */
   entryId: string;
   title: string;
@@ -93,63 +91,11 @@ export interface EntryListItem {
   publicationId?: string;
   /** Authoritative AppView read state before local optimistic overrides. */
   isRead?: boolean;
-  /** The Wire presentation metadata for a globally ranked item. */
-  wireItem?: {
-    itemId: string;
-    representativeUri?: string;
-    source: {
-      name: string;
-      domain: string;
-      publication?: string;
-      author?: string;
-      publicationKey?: string;
-      homepageUrl?: string;
-      iconUrl?: string;
-    };
-    reasons: string[];
-    provenance: string[];
-    /** Omitted when the discovery item has no trustworthy publication date. */
-    publishedAt?: string;
-    /** Non-production ranking diagnostic; omitted by production responses. */
-    rankingScore?: number;
-  };
-  /** Viewer-scoped Your Circle presentation metadata. Never persisted outside viewer-keyed caches. */
-  circleItem?: {
-    storyId: string;
-    representativeUri?: string;
-    source: {
-      name: string;
-      domain: string;
-      publication?: string;
-      author?: string;
-      publicationKey?: string;
-      homepageUrl?: string;
-      iconUrl?: string;
-    };
-    reasons: string[];
-    discussionCount: number;
-    sharerCount: number;
-    sharers: Array<{
-      identity: {
-        did: string;
-        handle: string;
-        displayName?: string;
-        avatarUrl?: string;
-      };
-      relationship: "direct" | "one_hop";
-      action: "recommended" | "shared" | "discussed";
-      sourceUri: string;
-      timestamp: string;
-    }>;
-    publishedAt?: string;
-  };
 }
 
 export interface EntryDetail {
   /** Recognized publisher self-labels; presentation only, never a content filter. */
   contentLabels?: string[];
-  sportsItem?: import("@/lib/sportsFeedClient").SportsItem;
-  financeItem?: import("@/lib/financeFeedClient").FinanceItem;
   entryId: string;
   title: string;
   summary?: string;

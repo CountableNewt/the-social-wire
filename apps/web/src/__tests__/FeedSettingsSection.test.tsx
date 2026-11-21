@@ -36,7 +36,6 @@ beforeEach(() => {
     preferences: {
       ...DEFAULT_FEED_DISPLAY_PREFERENCES,
       rssArticleOpenMode: "reader",
-      showWire: true, showCircle: true, showFinance: false,
       visibleFeeds: ["readLater", "archive"],
     },
     setFeedVisible, setFeedUnreadCountVisible,
@@ -44,9 +43,6 @@ beforeEach(() => {
     setRssArticleOpenInReader,
     setAutomaticallyMarkAsRead,
     automaticReadReady: true,
-    setHideSportsScores: () => undefined,
-    setHideFinanceCrypto: () => undefined,
-    setHideFinancePerformance: () => undefined,
     isLoading: false,
     isPending: false, error: null,
   });

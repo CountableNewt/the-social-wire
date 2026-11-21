@@ -51,9 +51,7 @@ struct EntryListCard: View {
     }
 
     private var accessibilityValue: String {
-        guard showsReadState else {
-            return entry.wireMetadata?.primaryReasonLabel ?? ""
-        }
+        guard showsReadState else { return "" }
         return isRead ? "Read" : "Unread"
     }
 }

@@ -25,7 +25,7 @@ var (
 	ErrInvalidBackendMode          = errors.New("BACKEND_MODE must be standalone")
 	ErrMissingPersistentSQLitePath = errors.New("SQLITE_DB_PATH must be an absolute path outside local development")
 	ErrMissingAttestationSecret    = errors.New("PDS_ATTESTATION_RECEIPT_SECRET is required")
-	ErrRetiredIngestionEnabled     = errors.New("retired Wire, Circle, Finance, Sports, and global ingestion must stay disabled")
+	ErrRetiredIngestionEnabled     = errors.New("retired global ingestion must stay disabled")
 )
 
 // OAuthGatewayPolicy binds JWT access tokens from registered OAuth clients.
@@ -102,11 +102,6 @@ func LoadCore(env Env) (Core, error) {
 	secret := env.String("PDS_ATTESTATION_RECEIPT_SECRET")
 	if secret == "" {
 		return Core{}, ErrMissingAttestationSecret
-	}
-	for _, key := range []string{"WIRE_FEED_MODE", "CIRCLE_FEED_MODE", "FINANCE_FEED_MODE", "SPORTS_FEED_MODE"} {
-		if mode := strings.ToLower(env.String(key)); mode == "api" || mode == "visible" {
-			return Core{}, ErrRetiredIngestionEnabled
-		}
 	}
 	if env.True("GLOBAL_INGESTION_ENABLED") {
 		return Core{}, ErrRetiredIngestionEnabled

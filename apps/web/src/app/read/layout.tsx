@@ -5,7 +5,7 @@ import {
   appMobileNavigationPaddingClasses,
   appViewportHeightClasses,
 } from "@/components/shared/appViewportStyles";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppSidebar } from "@/components/AppSidebar/AppSidebar";
 import { PublicationSidebarProvider } from "@/contexts/PublicationSidebarContext";
@@ -18,8 +18,6 @@ import {
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 import { ReadArticleFilterBar } from "@/app/read/ReadArticleFilterBar";
 import { ClosePublicationsSheetOnMobilePubRoute } from "@/app/read/ClosePublicationsSheetOnMobilePubRoute";
-import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
-import { editorialFeedForReadRoute } from "@/lib/editorialFeedRoute";
 
 export default function ReadLayout({
   children,
@@ -56,7 +54,7 @@ export default function ReadLayout({
 
   return (
     <SidebarProvider
-      className={`${appViewportHeightClasses} overflow-hidden overscroll-none [--reader-shell-width:70rem] has-[[data-wire-route=true]]:[--reader-shell-width:82rem]`}
+      className={`${appViewportHeightClasses} overflow-hidden overscroll-none [--reader-shell-width:70rem]`}
     >
       <PublicationSidebarProvider>
         <ReadRouteProvider>
@@ -91,22 +89,9 @@ export default function ReadLayout({
 }
 
 function ReadContentInset({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const editorialFeed = editorialFeedForReadRoute(
-    pathname,
-    searchParams.get("feed"),
-  );
-  const editorialNewsRoute =
-    editorialFeed === "circle" ||
-    editorialFeed === "finance" ||
-    editorialFeed === "sports" ||
-    (editorialFeed === "wire" && isWireNewsEditionEnabled());
-
   return (
     <SidebarInset
-      data-wire-route={editorialNewsRoute ? "true" : undefined}
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} ${editorialFeed && !searchParams.get("list") ? "" : "lg:mr-68"}`}
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden ${appMobileNavigationPaddingClasses} lg:mr-68`}
     >
       <ReadArticleFilterBar />
       <main

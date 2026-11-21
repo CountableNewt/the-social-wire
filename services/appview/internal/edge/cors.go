@@ -13,7 +13,7 @@ import (
 var requestHeaders = strings.Join([]string{
 	"Accept", "Authorization", "Content-Type", "Origin", "If-None-Match", "DPoP",
 	"X-Request-ID", "traceparent", "Idempotency-Key", "Last-Event-ID", auth.UpstreamHeader,
-	auth.SessionProofHeader, "X-Latr-Gateway-DPoP", "X-Wire-Moderation-DPoP", "X-Circle-Graph-DPoP",
+	auth.SessionProofHeader, "X-Latr-Gateway-DPoP",
 	auth.ReceiptHeader, auth.RequiredHeader, auth.PreparedHeader,
 }, ", ")
 

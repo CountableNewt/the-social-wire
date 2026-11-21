@@ -84,27 +84,6 @@ describe("app sidebar feed selection", () => {
     ).toBe(true);
   });
 
-  it("recognizes The Wire without changing the remembered publication tab", () => {
-    expect(
-      currentAppSidebarFeed({
-        pathname: "/read",
-        feedParam: "wire",
-        folderParam: null,
-        publicationTab: "following",
-      }),
-    ).toBe("wire");
-  });
-
-  it("recognizes Your Circle without changing the remembered publication tab", () => {
-    expect(
-      currentAppSidebarFeed({
-        pathname: "/read",
-        feedParam: "circle",
-        folderParam: null,
-        publicationTab: "subscribed",
-      }),
-    ).toBe("circle");
-  });
 });
 
 it("selects actual Media routes independently from Social", () => {

@@ -1,5 +1,4 @@
 import type { ReaderFeedSelection } from "@/lib/readerFeedSelectionStorage";
-import { isRetiredReaderFeed } from "./retiredReaderFeeds";
 
 /** The /read index owns feed selection on the client; other reader paths need a route transition. */
 export function navigateReaderFeed(
@@ -7,7 +6,7 @@ export function navigateReaderFeed(
   feed: ReaderFeedSelection,
   pushRoute: (href: string) => void,
 ) {
-  const href = `/read?feed=${isRetiredReaderFeed(feed) ? "subscribed" : feed}`;
+  const href = `/read?feed=${feed}`;
   if (pathname === "/read") {
     // Next preserves its history state and synchronizes useSearchParams, including back/forward.
     window.history.pushState(null, "", href);

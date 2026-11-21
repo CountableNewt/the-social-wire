@@ -19,7 +19,6 @@ import { SocialRichText } from "./SocialRichText";
 import { SocialReplyLabel } from "./SocialReplyLabel";
 import { SocialActionGlyph } from "./SocialActionGlyph";
 import { SocialPostLabels } from "./SocialPostLabels";
-import { SocialCashtags } from "./SocialCashtags";
 import { SocialPostTimestamp } from "./SocialPostTimestamp";
 import { socialHttpsUrl, socialPostUrl } from "./socialUrls";
 import { SocialProfileLink } from "./SocialProfileLink";
@@ -156,7 +155,6 @@ export function SocialPostCard({
       </div>
       <SocialPostLabels post={post} moderation={moderation} />
       <div data-social-feed-section="body" className="min-w-0"><SocialRichText record={record.value} /></div>
-      {!media.blur && !media.filter && !media.noOverride ? <SocialCashtags record={record.value} /> : null}
       {post.embed ? <div data-social-feed-section="embed" className="min-w-0">{
         media.blur || media.filter || media.noOverride ? (
           <p className="text-sm text-muted-foreground">Media withheld.</p>

@@ -7,7 +7,6 @@ final class PDSRecordService {
     nonisolated static let preferences = "app.thesocialwire.preferences"
     nonisolated static let standardSiteSubscription = "site.standard.graph.subscription"
     nonisolated static let standardSiteRecommend = "site.standard.graph.recommend"
-    nonisolated static let wireArticleFeedback = "app.thesocialwire.wireFeedback"
     nonisolated static let skyreaderFeedSubscription = "app.skyreader.feed.subscription"
     nonisolated static let latrSavedExternal = "link.latr.saved.external"
     nonisolated static let latrSavedItem = "link.latr.saved.item"
@@ -116,57 +115,6 @@ final class PDSRecordService {
         try await xrpc.deleteRecord(collection: Self.skyreaderFeedSubscription, rkey: rkey)
     }
 
-    func listWireArticleFeedback() async throws -> [RepoRecord<WireArticleFeedbackRecord>] {
-        var records: [RepoRecord<WireArticleFeedbackRecord>] = []
-        var cursor: String?
-        repeat {
-            let page: ListRecordsResponse<WireArticleFeedbackRecord> = try await xrpc.listRecords(
-                repo: "",
-                collection: Self.wireArticleFeedback,
-                cursor: cursor,
-                authorized: true
-            )
-            records.append(contentsOf: page.records)
-            cursor = page.cursor
-        } while cursor != nil
-        return records
-    }
-
-    func toggleWireArticleFeedback(
-        canonicalURL: String,
-        subject: String?,
-        value: WireArticleFeedbackValue
-    ) async throws -> WireArticleFeedbackValue? {
-        guard let normalizedURL = WireArticleFeedbackContract.normalizeCanonicalURL(canonicalURL) else {
-            throw SocialWireError.invalidURL
-        }
-        let existing = try await listWireArticleFeedback().first { record in
-            WireArticleFeedbackContract.normalizeCanonicalURL(record.value.canonicalUrl) == normalizedURL
-        }
-        let recordKey = try WireArticleFeedbackContract.recordKey(canonicalURL: normalizedURL)
-
-        if existing?.value.value == value {
-            try await xrpc.deleteRecord(collection: Self.wireArticleFeedback, rkey: recordKey)
-            return nil
-        }
-
-        let now = DateFormatters.string()
-        let record = WireArticleFeedbackRecord(
-            type: Self.wireArticleFeedback,
-            canonicalUrl: normalizedURL,
-            subject: subject?.hasPrefix("at://") == true ? subject : nil,
-            value: value,
-            createdAt: existing?.value.createdAt ?? now,
-            updatedAt: now
-        )
-        try await xrpc.putRecord(
-            collection: Self.wireArticleFeedback,
-            rkey: recordKey,
-            record: record
-        )
-        return value
-    }
-
     func listStandardSiteRecommendations() async throws -> [RepoRecord<StandardSiteRecommendRecord>] {
         var records: [RepoRecord<StandardSiteRecommendRecord>] = []
         var cursor: String?
@@ -269,13 +217,13 @@ final class PDSRecordService {
             readLaterService: prev?.readLaterService,
             readLaterConnections: prev?.readLaterConnections,
             visibleFeeds: preferences.visibleFeeds.map(\.preferenceKey),
-            showWire: preferences.showWire,
-            showCircle: preferences.showCircle,
-            showFinance: preferences.showFinance,
-            hideFinancePerformance: preferences.hideFinancePerformance,
-            hideFinanceCrypto: preferences.hideFinanceCrypto,
-            showSports: preferences.showSports,
-            hideSportsScores: preferences.hideSportsScores,
+            showWire: prev?.showWire,
+            showCircle: prev?.showCircle,
+            showFinance: prev?.showFinance,
+            hideFinancePerformance: prev?.hideFinancePerformance,
+            hideFinanceCrypto: prev?.hideFinanceCrypto,
+            showSports: prev?.showSports,
+            hideSportsScores: prev?.hideSportsScores,
             showSocial: preferences.showSocial,
             showPodcasts: prev?.showPodcasts,
             showTopLevelFeedUnreadCounts: !preferences.feedsWithUnreadCounts.isEmpty,

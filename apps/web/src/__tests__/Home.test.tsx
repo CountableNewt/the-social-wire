@@ -5,13 +5,13 @@ afterEach(() => {
   cleanup();
 });
 describe("Landing page feature availability", () => {
-  it("features the live reader, topics and lists without retired podcasts", () => {
+  it("features the live reader and lists without retired podcasts or topics", () => {
     render(<Home />);
     const cards = screen.getAllByRole("article");
     expect(cards.map(card => within(card).getByRole("heading").textContent)).toEqual([
-      "Follow Publications", "Read Later", "Stay Organized", "Topics", "Lists",
+      "Follow Publications", "Read Later", "Stay Organized", "Lists",
     ]);
-    expect(screen.getByText(/Follow Finance and Sports news/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Finance|Sports|topic/i);
     expect(screen.getByText(/Create or follow lists of publications and creators/)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/podcast/i);
     expect(screen.getAllByRole("link").some(link => link.getAttribute("href") === "/podcasts")).toBe(false);

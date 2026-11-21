@@ -22,11 +22,4 @@ enum SocialWireXRPCMethod {
     static let enrollSources = prefix + "app.thesocialwire.appview.enrollSources"
     static let refreshFeed = prefix + "app.thesocialwire.appview.refreshFeed"
     static let purgeViewerData = prefix + "app.thesocialwire.appview.purgeViewerData"
-    static let getWire = prefix + "app.thesocialwire.discovery.getWire"
-    static let getWireEdition = prefix + "app.thesocialwire.discovery.getWireEdition"
-    static let getWireItem = prefix + "app.thesocialwire.discovery.getWireItem"
-    static let getFeedCatalog = prefix + "app.thesocialwire.discovery.getFeedCatalog"
-    static let getCircleCatalog = prefix + "app.thesocialwire.discovery.getCircleCatalog"
-    static let getCircleEdition = prefix + "app.thesocialwire.discovery.getCircleEdition"
-    static let setCircleItemHidden = prefix + "app.thesocialwire.discovery.setCircleItemHidden"
 }

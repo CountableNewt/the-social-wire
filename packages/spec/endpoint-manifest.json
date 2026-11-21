@@ -126,55 +126,6 @@
     {
       "surface": "openapi",
       "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getWire",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getWire"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getWireEdition",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getWireEdition"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getWireItem",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getWireItem"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getFeedCatalog",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getFeedCatalog"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getCircleCatalog",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getCircleCatalog"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getCircleEdition",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getCircleEdition"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/xrpc/app.thesocialwire.discovery.setCircleItemHidden",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.setCircleItemHidden"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
       "path": "/v1/subscription/entitlements",
       "classification": "first-party-rest"
     },
@@ -673,41 +624,6 @@
     {
       "surface": "openapi",
       "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getFinance",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getFinance"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getFinanceCatalog",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getFinanceCatalog"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.searchFinanceInstruments",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.searchFinanceInstruments"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getFinanceSectors",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getFinanceSectors"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/xrpc/app.thesocialwire.discovery.recordFinanceComposition",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.recordFinanceComposition"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
       "path": "/v1/lists",
       "classification": "foreign-rest"
     },
@@ -728,34 +644,6 @@
       "method": "POST",
       "path": "/v1/lists/refresh",
       "classification": "foreign-rest"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getSports",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getSports"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getSportsCatalog",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getSportsCatalog"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.searchSportsEntities",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.searchSportsEntities"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/xrpc/app.thesocialwire.discovery.getSportsEvents",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.discovery.getSportsEvents"
     },
     {
       "surface": "openapi",

@@ -491,6 +491,3 @@ html[data-bold-text="true"] {
   }
 }
 
-[data-floating-glass-shell-top] [data-wire-scroll-container] {
-  padding-top: calc(var(--floating-glass-top-extent, 0px) + var(--floating-glass-controls-extent, 0px));
-}

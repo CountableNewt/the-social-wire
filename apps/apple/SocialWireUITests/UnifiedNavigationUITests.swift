@@ -12,14 +12,15 @@ final class UnifiedNavigationUITests: XCTestCase {
         return app
     }
 
-    func testPhoneHasExactlyFourNativeTabs() throws {
+    func testPhoneHasExactlyThreeNativeTabs() throws {
         try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "Phone tab bar")
         let app = launch()
-        XCTAssertEqual(app.tabBars.buttons.count, 4)
-        for title in ["Read Later", "News", "Topics", "Lists"] {
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        for title in ["Read Later", "News", "Lists"] {
             XCTAssertTrue(app.tabBars.buttons[title].exists, title)
         }
         XCTAssertFalse(app.tabBars.buttons["More"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Topics"].exists)
         XCTAssertFalse(app.tabBars.buttons["Social"].exists)
         XCTAssertFalse(app.tabBars.buttons["Browse"].exists)
     }
@@ -73,16 +74,6 @@ final class UnifiedNavigationUITests: XCTestCase {
         XCTAssertTrue(browse.isHittable)
     }
 
-    func testRetiredTopicFeedsAreOmittedFromNativeTopicsSection() {
-        let app = launch()
-        selectRoot("Topics", in: app)
-        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Finance"].exists)
-        XCTAssertFalse(app.buttons["Sports"].exists)
-        selectRoot("News", in: app)
-        assertSelectedFeed("Subscribed", in: app)
-    }
-
     func testListFeedsSwitchWithHorizontalSwipes() {
         let app = launch(additionalArguments: ["--ui-testing-list-swipes"])
         selectRoot("Lists", in: app)
@@ -111,13 +102,9 @@ final class UnifiedNavigationUITests: XCTestCase {
     }
 
     private func assertSections(in app: XCUIApplication) {
-        for (title, content) in [("Read Later", "saved"), ("News", "library"), ("Topics", "finance"), ("Lists", "standardLists")] {
+        for (title, content) in [("Read Later", "saved"), ("News", "library"), ("Lists", "standardLists")] {
             selectRoot(title, in: app)
-            if title == "Topics" {
-                XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
-            } else {
-                XCTAssertTrue(app.descendants(matching: .any)["news-tab-content-\(content)"].waitForExistence(timeout: 5), title)
-            }
+            XCTAssertTrue(app.descendants(matching: .any)["news-tab-content-\(content)"].waitForExistence(timeout: 5), title)
         }
         XCTAssertFalse(app.buttons["news-customize-sections"].exists)
         XCTAssertFalse(app.buttons["news-social-timeline"].exists)

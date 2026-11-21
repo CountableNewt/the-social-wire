@@ -1,6 +1,5 @@
 "use client";
 
-import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -85,14 +84,7 @@ export function useFeedDisplayPreferences() {
       const saved = await actorClient.upsertPreferences(
         {
           visibleFeeds: next.visibleFeeds,
-          showWire: next.showWire,
-          showCircle: next.showCircle,
-          showFinance: next.showFinance,
-          showSports: next.showSports,
           showSocial: next.showSocial,
-          hideSportsScores: next.hideSportsScores,
-          hideFinancePerformance: next.hideFinancePerformance,
-          hideFinanceCrypto: next.hideFinanceCrypto,
           feedsWithUnreadCounts: next.feedsWithUnreadCounts,
           rssArticleOpenMode: next.rssArticleOpenMode,
           automaticallyMarkAsRead: next.automaticallyMarkAsRead,
@@ -200,11 +192,10 @@ export function useFeedDisplayPreferences() {
   );
 
   const setDiscoveryFeedVisible = useCallback(
-    (feed: "wire" | "circle" | "finance" | "sports" | "social", visible: boolean) => {
-      if (isRetiredReaderFeed(feed)) return;
+    (_feed: "social", visible: boolean) => {
       mutatePreferences({
         ...preferences,
-        [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial" } as const)[feed]]: visible,
+        showSocial: visible,
       });
     },
     [mutatePreferences, preferences],
@@ -228,9 +219,6 @@ export function useFeedDisplayPreferences() {
     setFeedUnreadCountVisible,
     setRssArticleOpenInReader,
     setAutomaticallyMarkAsRead: (enabled: boolean) => mutatePreferences({ ...preferences, automaticallyMarkAsRead: enabled }),
-    setHideSportsScores: (hidden: boolean) => mutatePreferences({ ...preferences, hideSportsScores: hidden }),
-    setHideFinanceCrypto: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinanceCrypto: hidden }),
-    setHideFinancePerformance: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinancePerformance: hidden }),
     isLoading: accountPreferences.isLoading,
     isPending: !automaticReadReady || mutation.isPending && mutation.variables?.viewerDid === viewerDid,
     error: mutation.variables?.viewerDid === viewerDid ? mutation.error : null,

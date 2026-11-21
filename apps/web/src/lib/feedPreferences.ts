@@ -9,7 +9,7 @@ export const TOP_LEVEL_FEEDS = [
 
 export type TopLevelFeed = (typeof TOP_LEVEL_FEEDS)[number];
 /** Reader navigation also includes server-capability feeds that are not PDS preferences. */
-export type ReaderNavigationFeed = TopLevelFeed | "wire" | "circle" | "finance" | "sports" | "social" | "shortVideos" | "photos";
+export type ReaderNavigationFeed = TopLevelFeed | "social" | "shortVideos" | "photos";
 export type RssArticleOpenMode = "reader" | "original";
 
 export const TOP_LEVEL_FEED_LABELS: Record<TopLevelFeed, string> = {
@@ -20,14 +20,7 @@ export const TOP_LEVEL_FEED_LABELS: Record<TopLevelFeed, string> = {
 };
 
 export type FeedDisplayPreferences = {
-  showWire: boolean;
-  showCircle: boolean;
-  showFinance: boolean;
-  showSports: boolean;
   showSocial: boolean;
-  hideSportsScores: boolean;
-  hideFinancePerformance: boolean;
-  hideFinanceCrypto: boolean;
   visibleFeeds: TopLevelFeed[];
   feedsWithUnreadCounts: TopLevelFeed[];
   rssArticleOpenMode: RssArticleOpenMode;
@@ -35,14 +28,7 @@ export type FeedDisplayPreferences = {
 };
 
 export const DEFAULT_FEED_DISPLAY_PREFERENCES: FeedDisplayPreferences = {
-  showWire: false,
-  showCircle: false,
-  showFinance: true,
-  showSports: true,
   showSocial: true,
-  hideSportsScores: false,
-  hideFinancePerformance: false,
-  hideFinanceCrypto: false,
   visibleFeeds: [...TOP_LEVEL_FEEDS],
   feedsWithUnreadCounts: [...TOP_LEVEL_FEEDS],
   rssArticleOpenMode: "original",
@@ -69,14 +55,7 @@ export function normalizeFeedDisplayPreferences(
     | Pick<
         PreferencesRecord,
         | "visibleFeeds"
-        | "showWire"
-        | "showCircle"
-        | "showFinance"
-        | "showSports"
         | "showSocial"
-        | "hideSportsScores"
-        | "hideFinancePerformance"
-        | "hideFinanceCrypto"
         | "showTopLevelFeedUnreadCounts"
         | "feedsWithUnreadCounts"
         | "rssArticleOpenMode"
@@ -100,15 +79,7 @@ export function normalizeFeedDisplayPreferences(
       : [];
   const requestedCountFeedSet = new Set(requestedCountFeeds);
   return {
-    // Keep legacy fields readable without allowing retired feeds to reappear.
-    showWire: false,
-    showCircle: false,
-    showFinance: value?.showFinance !== false,
-    showSports: value?.showSports !== false,
     showSocial: value?.showSocial !== false,
-    hideSportsScores: value?.hideSportsScores === true,
-    hideFinancePerformance: value?.hideFinancePerformance === true,
-    hideFinanceCrypto: value?.hideFinanceCrypto === true,
     visibleFeeds,
     feedsWithUnreadCounts: TOP_LEVEL_FEEDS.filter(
       (feed) =>

@@ -15,12 +15,6 @@ import { Button } from "@/components/ui/button";
 import { FeedMarkReadButton } from "./FeedMarkReadButton";
 import { ArticleReadFilter } from "@/components/FeedHeader/ArticleReadFilter";
 import { cn } from "@/lib/utils";
-import { useWireEdition } from "@/hooks/useWireEdition";
-import { useWireFeedEntries } from "@/hooks/useWireFeed";
-import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
-import { WireBetaBadge } from "@/components/Wire/WireBetaBadge";
-import { useCircleEdition } from "@/hooks/useCircleFeed";
-import { editorialFeedForReadRoute } from "@/lib/editorialFeedRoute";
 import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
 import { UnavailablePublicationActions } from "@/components/FeedHeader/UnavailablePublicationActions";
 
@@ -41,19 +35,6 @@ export function ReadArticleFilterBar() {
   const isTabletPortrait = useIsTabletPortrait();
   const clientHydrated = useClientHydrated();
   const { refresh, refreshMessage, projectionError } = useSidebarBootstrap();
-  const editorialFeed = editorialFeedForReadRoute(
-    pathname,
-    searchParams.get("feed"),
-  );
-  const isWire = editorialFeed === "wire";
-  const isCircle = editorialFeed === "circle";
-  const wireNewsEditionEnabled = isWire && isWireNewsEditionEnabled();
-  const wireEdition = useWireEdition({ enabled: wireNewsEditionEnabled });
-  const wireFeed = useWireFeedEntries({
-    enabled: isWire && !wireNewsEditionEnabled,
-  });
-  const wire = wireNewsEditionEnabled ? wireEdition : wireFeed;
-  const circle = useCircleEdition({ enabled: isCircle });
 
   const { activeFeedScope } = useReadSidebarScope();
   const { bulkDisabled, applyMarkAllRead, isMarkingRead, error: markReadError } =
@@ -75,62 +56,6 @@ export function ReadArticleFilterBar() {
   const feedTitle = activeFeedScope.displayName.trim() || routeFeedTitle;
 
   if (listURI) return <ReadListHeader uri={listURI} />;
-
-  // Topics share the route header while keeping their feed-specific controls in the pane.
-  if (editorialFeed === "finance" || editorialFeed === "sports") {
-    return <FeedHeader title={editorialFeed === "finance" ? "Finance" : "Sports"} className="xl:mr-[calc(17rem+2rem)]" />;
-  }
-
-  if (editorialFeed) {
-    const isRefreshing = isCircle
-      ? circle.isRefetching || circle.catalog.isFetching
-      : wire.isRefreshingFirstPage;
-    const isRefreshDisabled = isCircle
-      ? circle.isLoading || circle.isRefetching || circle.catalog.isFetching
-      : wire.isRefreshingFirstPage ||
-        wire.isLoading ||
-        wire.viewerModerationRetryUnavailable;
-    const title = isCircle ? "Your Circle" : "The Wire";
-    return (
-      <FeedHeader
-        className="xl:mr-[calc(19rem+3rem)]"
-        title={
-          <span
-            aria-label={`${title}, Beta`}
-            className="inline-flex items-center gap-2"
-          >
-            <span>{title}</span>
-            <WireBetaBadge />
-          </span>
-        }
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="size-11 shrink-0 rounded-md border-0 bg-transparent shadow-none hover:bg-muted/50 hover:text-foreground sm:size-8"
-          disabled={isRefreshDisabled}
-          aria-label={`Refresh ${title}`}
-          title={`Refresh ${title}`}
-          onClick={() => {
-            if (isCircle) {
-              if (
-                circle.catalog.isError ||
-                circle.catalog.data?.enabled !== true ||
-                circle.catalog.data.available !== true
-              ) void circle.catalog.refetch();
-              else void circle.refetch();
-            } else void wire.retryTheWire().catch(() => undefined);
-          }}
-        >
-          <RefreshCw
-            aria-hidden="true"
-            className={`size-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-          />
-        </Button>
-      </FeedHeader>
-    );
-  }
 
   const partialRefresh = refresh.isError && refresh.error instanceof PublicationSourceRefreshError ? refresh.error : undefined;
   const refreshStatus = refresh.isPending

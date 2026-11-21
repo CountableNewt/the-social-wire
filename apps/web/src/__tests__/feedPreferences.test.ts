@@ -9,45 +9,28 @@ import {
 } from "@/lib/feedPreferences";
 
 describe("feed display preferences", () => {
-  test("keeps retired feeds hidden despite stale preferences while preserving active feeds", () => {
-    for (const showWire of [true, false]) {
-      for (const showCircle of [true, false]) {
-        const preferences = normalizeFeedDisplayPreferences({
-          visibleFeeds: ["following"],
-          feedsWithUnreadCounts: [],
-          showWire,
-          showCircle,
-          showFinance: true,
-          showSports: true,
-          showSocial: true,
-          hideSportsScores: false,
-          hideFinancePerformance: false,
-          hideFinanceCrypto: false,
-        });
-        expect(preferences).toEqual({
-          visibleFeeds: ["following"],
-          feedsWithUnreadCounts: [],
-          rssArticleOpenMode: "original",
-          automaticallyMarkAsRead: true,
-          showWire: false,
-          showCircle: false,
-          showFinance: true,
-          showSports: true,
-          showSocial: true,
-          hideSportsScores: false,
-          hideFinancePerformance: false,
-          hideFinanceCrypto: false,
-        });
-        const cache = new Map<string, string>();
-        const storage = {
-          getItem: (key: string) => cache.get(key) ?? null,
-          setItem: (key: string, value: string) => { cache.set(key, value); },
-        };
-        saveCachedFeedDisplayPreferences(storage, "did:plc:viewer", preferences);
-        expect(loadCachedFeedDisplayPreferences(storage, "did:plc:viewer")).toEqual(preferences);
-        expect(loadCachedFeedDisplayPreferences(storage, "did:plc:other")).toBeNull();
-      }
-    }
+  test("drops retired feed fields from stale records while preserving active feeds", () => {
+    const stale = {
+      visibleFeeds: ["following"],
+      feedsWithUnreadCounts: [],
+      showSocial: true,
+    } as Parameters<typeof normalizeFeedDisplayPreferences>[0];
+    const preferences = normalizeFeedDisplayPreferences(stale);
+    expect(preferences).toEqual({
+      visibleFeeds: ["following"],
+      feedsWithUnreadCounts: [],
+      rssArticleOpenMode: "original",
+      automaticallyMarkAsRead: true,
+      showSocial: true,
+    });
+    const cache = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => cache.get(key) ?? null,
+      setItem: (key: string, value: string) => { cache.set(key, value); },
+    };
+    saveCachedFeedDisplayPreferences(storage, "did:plc:viewer", preferences);
+    expect(loadCachedFeedDisplayPreferences(storage, "did:plc:viewer")).toEqual(preferences);
+    expect(loadCachedFeedDisplayPreferences(storage, "did:plc:other")).toBeNull();
   });
 
   test("defaults absent additive fields", () => {
@@ -65,14 +48,7 @@ describe("feed display preferences", () => {
     ).toEqual({
       visibleFeeds: [],
       feedsWithUnreadCounts: [],
-      showWire: false,
-      showCircle: false,
-      showFinance: true,
-          showSports: true,
           showSocial: true,
-          hideSportsScores: false,
-      hideFinancePerformance: false,
-          hideFinanceCrypto: false,
       rssArticleOpenMode: "original",
           automaticallyMarkAsRead: true,
     });
@@ -87,14 +63,7 @@ describe("feed display preferences", () => {
     ).toEqual({
       visibleFeeds: ["following", "readLater"],
       feedsWithUnreadCounts: ["readLater", "following"],
-      showWire: false,
-      showCircle: false,
-      showFinance: true,
-          showSports: true,
           showSocial: true,
-          hideSportsScores: false,
-      hideFinancePerformance: false,
-          hideFinanceCrypto: false,
       rssArticleOpenMode: "original",
           automaticallyMarkAsRead: true,
     });
@@ -155,15 +124,6 @@ test("drops counts for every explicitly hidden feed", () => {
   expect(feedDisplaysUnreadCount(preferences, "archive")).toBe(false);
 });
 
- test("crypto hiding is explicit and cached independently per viewer", () => {
-   expect(normalizeFeedDisplayPreferences(undefined).hideFinanceCrypto).toBe(false);
-   const preferences = normalizeFeedDisplayPreferences({ hideFinanceCrypto: true });
-   const cache = new Map<string, string>();
-   const storage = { getItem: (key: string) => cache.get(key) ?? null, setItem: (key: string, value: string) => { cache.set(key, value); } };
-   saveCachedFeedDisplayPreferences(storage, "did:plc:viewer", preferences);
-   expect(loadCachedFeedDisplayPreferences(storage, "did:plc:viewer")?.hideFinanceCrypto).toBe(true);
-   expect(loadCachedFeedDisplayPreferences(storage, "did:plc:other")).toBeNull();
- });
 
  test("Social visibility survives cache restores", () => {
    const cache = new Map<string, string>();
@@ -173,7 +133,6 @@ test("drops counts for every explicitly hidden feed", () => {
      saveCachedFeedDisplayPreferences(storage, "did:plc:viewer", preferences);
      expect(loadCachedFeedDisplayPreferences(storage, "did:plc:viewer")).toEqual(preferences);
      expect(preferences.showSocial).toBe(showSocial);
-     expect(preferences.showFinance).toBe(true);
    }
  });
 

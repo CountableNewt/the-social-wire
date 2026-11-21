@@ -20,29 +20,28 @@ test("persists private feeds only with a nonempty viewer key", () => {
   }
 });
 
-test("allows public Wire feeds without a viewer but rejects unknown query kinds", () => {
-  for (const kind of ["wireEntries", "wireEditionMore"]) {
-    expect(shouldPersistEntriesQuery(query([kind]))).toBe(true);
+test("rejects retired public feeds and unknown query kinds", () => {
+  for (const kind of ["wireEntries", "wireEditionMore", "wireEdition", "circleEdition"]) {
+    expect(shouldPersistEntriesQuery(query([kind, "did:plc:viewer"]))).toBe(false);
   }
   expect(shouldPersistEntriesQuery(query(["blueskySocial", "did:plc:viewer"]))).toBe(false);
 });
 
 test("selects successful feeds even after scrolling beyond the disk bounds", () => {
-  expect(shouldPersistEntriesQuery(query(["wireEntries"], [50, 50, 50]))).toBe(true);
-  expect(shouldPersistEntriesQuery(query(["wireEntries"], [51, 50, 50]))).toBe(true);
-  expect(shouldPersistEntriesQuery(query(["wireEntries"], [1, 1, 1, 1]))).toBe(true);
-  expect(shouldPersistEntriesQuery(query(["wireEntries"], []))).toBe(false);
+  expect(shouldPersistEntriesQuery(query(["entries", "did:plc:viewer"], [50, 50, 50]))).toBe(true);
+  expect(shouldPersistEntriesQuery(query(["entries", "did:plc:viewer"], [51, 50, 50]))).toBe(true);
+  expect(shouldPersistEntriesQuery(query(["entries", "did:plc:viewer"], [1, 1, 1, 1]))).toBe(true);
+  expect(shouldPersistEntriesQuery(query(["entries", "did:plc:viewer"], []))).toBe(false);
   for (const status of ["pending", "error"] as const) {
-    expect(shouldPersistEntriesQuery(query(["wireEntries"], [1], status))).toBe(false);
+    expect(shouldPersistEntriesQuery(query(["entries", "did:plc:viewer"], [1], status))).toBe(false);
   }
 });
 
-test("restores a bounded complete prefix and its continuation after long reader/Circle sessions", () => {
-  for (const namespace of ["entries", "aggregateEntries", "wireEntries", "wireEditionMore", "wireEdition", "circleEdition"]) {
+test("restores a bounded complete prefix and its continuation after long reader sessions", () => {
+  for (const namespace of ["entries", "aggregateEntries"]) {
     const source = new QueryClient();
     const key = [namespace, "did:plc:viewer", "test"];
-    const rowsKey = namespace === "wireEdition" || namespace === "circleEdition" ? "stories" : "entries";
-    const data = { pages: Array.from({ length: 8 }, (_, i) => ({ [rowsKey]: Array.from({ length: 50 }, (_, row) => ({ id: `${i}-${row}` })), cursor: `cursor-${i}`, moreCursor: `more-${i}` })), pageParams: [undefined, ...Array.from({ length: 7 }, (_, i) => `cursor-${i}`)] };
+    const data = { pages: Array.from({ length: 8 }, (_, i) => ({ entries: Array.from({ length: 50 }, (_, row) => ({ id: `${i}-${row}` })), cursor: `cursor-${i}`, moreCursor: `more-${i}` })), pageParams: [undefined, ...Array.from({ length: 7 }, (_, i) => `cursor-${i}`)] };
     source.setQueryData(key, data);
     const snapshot = prepareEntriesQueryPersistence({ timestamp: Date.now(), buster: "", clientState: dehydrate(source, { shouldDehydrateQuery: shouldPersistEntriesQuery }) });
     const restored = new QueryClient();

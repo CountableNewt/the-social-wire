@@ -13,10 +13,6 @@ final class NewsSceneModel {
     private var boundViewerDID: String?
     private var preferredUnavailableTab: NewsTab?
 
-    private var wirePath: [NewsRoute] = []
-    private var financePath: [NewsRoute] = []
-    private var sportsPath: [NewsRoute] = []
-    private var circlePath: [NewsRoute] = []
     private var libraryPath: [NewsRoute] = []
     private var savedPath: [NewsRoute] = []
     private var searchPath: [NewsRoute] = []
@@ -49,7 +45,7 @@ final class NewsSceneModel {
             clearPaths()
             let restored = defaults.string(forKey: Self.storageKey(viewerDID: viewerDID))
                 .flatMap(NewsTab.init(rawValue:))
-            let preferred = restored ?? .wire
+            let preferred = restored ?? .library
             if availableTabs.contains(preferred) {
                 selectedTab = preferred
                 preferredUnavailableTab = nil
@@ -88,10 +84,6 @@ final class NewsSceneModel {
 
     func path(for tab: NewsTab) -> [NewsRoute] {
         switch tab {
-        case .wire: wirePath
-        case .finance: financePath
-        case .sports: sportsPath
-        case .circle: circlePath
         case .library: libraryPath
         case .saved: savedPath
         case .search: searchPath
@@ -104,10 +96,6 @@ final class NewsSceneModel {
 
     func setPath(_ path: [NewsRoute], for tab: NewsTab) {
         switch tab {
-        case .wire: wirePath = path
-        case .finance: financePath = path
-        case .sports: sportsPath = path
-        case .circle: circlePath = path
         case .library: libraryPath = path
         case .saved: savedPath = path
         case .search: searchPath = path
@@ -134,8 +122,6 @@ final class NewsSceneModel {
             resetPath(for: .saved)
         case .subscribed, .following:
             resetPath(for: .library)
-        case .wire:
-            resetPath(for: .wire)
         }
     }
 
@@ -148,10 +134,6 @@ final class NewsSceneModel {
     }
 
     private func clearPaths() {
-        wirePath = []
-        financePath = []
-        sportsPath = []
-        circlePath = []
         libraryPath = []
         savedPath = []
         searchPath = []
@@ -194,10 +176,6 @@ final class NewsSceneModel {
                 persistPath(path, for: tab)
             }
             switch tab {
-            case .wire: wirePath = path
-            case .finance: financePath = path
-        case .sports: sportsPath = path
-            case .circle: circlePath = path
             case .library: libraryPath = path
             case .saved: savedPath = path
             case .search: searchPath = path

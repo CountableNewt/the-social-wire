@@ -20,7 +20,7 @@ struct EntryListView: View {
             isLoading: appModel.isLoadingEntries || appModel.sidebarFetching,
             hasSelectedFeed: appModel.hasSelectedArticleFeed,
             isUnreadFilter: appModel.readerFilter == .unread,
-            notice: appModel.readerListSource == .wire ? appModel.wireFeedNotice : nil,
+            notice: nil,
             entries: visibleEntries,
             readAtByEntryId: appModel.readAtByEntryId,
             showsReadState: appModel.readerListSource.supportsReadState,

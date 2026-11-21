@@ -16,78 +16,6 @@ final class SocialWireGatewayClient {
     private let urlSession: URLSession
     private let transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?
 
-    nonisolated static let wireViewerModerationNSIDs = [
-        "app.bsky.actor.getPreferences",
-        "app.bsky.graph.getBlocks",
-        "app.bsky.graph.getMutes",
-        "app.bsky.graph.getListMutes",
-        "app.bsky.graph.getListBlocks",
-    ]
-
-    nonisolated static let circleViewerGraphNSIDs = wireViewerModerationNSIDs + [
-        "com.atproto.repo.listRecords",
-    ]
-
-    nonisolated static let wireModerationDPoPHeader = "X-Wire-Moderation-DPoP"
-    nonisolated static let circleGraphDPoPHeader = "X-Circle-Graph-DPoP"
-
-    nonisolated static func wireQuery(
-        language: String,
-        cursor: String?,
-        limit: Int
-    ) -> [String: String] {
-        var query = [
-            "lang": language,
-            "limit": String(limit),
-        ]
-        if let cursor, !cursor.isEmpty {
-            query["cursor"] = cursor
-        }
-        return query
-    }
-
-    nonisolated static func wireEditionQuery(
-        language: String?,
-        region: WireViewerRegion?,
-        cursor: String? = nil
-    ) -> [String: String] {
-        var query: [String: String] = [:]
-        if let language, !language.isEmpty {
-            query["lang"] = language
-        }
-        if let region {
-            query["region"] = region.rawValue
-        }
-        if let cursor, !cursor.isEmpty {
-            query["cursor"] = cursor
-        }
-        return query
-    }
-
-    nonisolated static func circleEditionQuery(
-        language: String?,
-        cursor: String?
-    ) -> [String: String] {
-        var query: [String: String] = [:]
-        if let language, !language.isEmpty {
-            query["lang"] = language
-        }
-        if let cursor, !cursor.isEmpty {
-            query["cursor"] = cursor
-        }
-        return query
-    }
-
-    nonisolated static func requiresWireModerationProofs(path: String) -> Bool {
-        path == SocialWireXRPCMethod.getWire
-            || path == SocialWireXRPCMethod.getWireEdition
-            || path == SocialWireXRPCMethod.getWireItem
-    }
-
-    nonisolated static func requiresCircleGraphProofs(path: String) -> Bool {
-        path == SocialWireXRPCMethod.getCircleEdition
-    }
-
     init(
         auth: ATProtoOAuthService,
         baseURL: URL = SocialWireAPIEnvironment.baseURL,
@@ -313,224 +241,6 @@ final class SocialWireGatewayClient {
             throw appViewFeedError(result, fallback: "Aggregate AppView feed failed")
         }
         return try JSONDecoder().decode(AppViewEntryListResponse.self, from: result.body)
-    }
-
-    func fetchFeedCatalog() async throws -> WireFeedCatalog {
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getFeedCatalog,
-            query: [:]
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Feed catalog failed")
-        }
-        return try JSONDecoder().decode(WireFeedCatalog.self, from: result.body)
-    }
-
-    func fetchSports(language: String, feed: String = "sports", cursor: String? = nil) async throws -> SportsPage {
-        var query = ["lang": language, "feed": feed, "limit": "50"]
-        if let cursor { query["cursor"] = cursor }
-        else if auth.session != nil { query["refreshSelections"] = "true" }
-        if Locale.current.region?.identifier != "US" { query["region"] = "outside-us" }
-        let result = try await sportsGET(path: "/xrpc/app.thesocialwire.discovery.getSports", query: query, moderated: true)
-        guard (200..<300).contains(result.statusCode) else { throw appViewFeedError(result, fallback: "Sports Is Unavailable") }
-        return try JSONDecoder().decode(SportsPage.self, from: result.body)
-    }
-
-    func fetchSportsCatalog() async throws -> SportsCatalog {
-        let result = try await sportsGET(path: "/xrpc/app.thesocialwire.discovery.getSportsCatalog", query: [:])
-        guard (200..<300).contains(result.statusCode) else { throw appViewFeedError(result, fallback: "Sports Catalog Is Unavailable") }
-        return try JSONDecoder().decode(SportsCatalog.self, from: result.body)
-    }
-
-    func searchSportsEntities(query: String) async throws -> [SportsEntity] {
-        struct Response: Decodable { let entities: [SportsEntity] }
-        let result = try await sportsGET(path: "/xrpc/app.thesocialwire.discovery.searchSportsEntities", query: ["q": query])
-        guard (200..<300).contains(result.statusCode) else { throw appViewFeedError(result, fallback: "Sports Search Failed") }
-        return try JSONDecoder().decode(Response.self, from: result.body).entities
-    }
-
-    func fetchSportsEvents(feed: String, teamIDs: [String]? = nil, preferredIDs: [String] = [], timeZone: String = TimeZone.current.identifier) async throws -> SportsEventsResponse {
-        var query = ["feed": feed]
-        if let teamIDs { query["teamIDs"] = teamIDs.joined(separator: ",") }
-        if !preferredIDs.isEmpty { query["preferredIDs"] = preferredIDs.joined(separator: ",") }
-        query["timeZone"] = timeZone
-        let result = try await sportsGET(path: "/xrpc/app.thesocialwire.discovery.getSportsEvents", query: query)
-        guard (200..<300).contains(result.statusCode) else { throw appViewFeedError(result, fallback: "Event Data Is Unavailable") }
-        return try JSONDecoder().decode(SportsEventsResponse.self, from: result.body)
-    }
-
-    private func sportsGET(path: String, query: [String: String], moderated: Bool = false) async throws -> GatewayHTTPResult {
-        if let viewer = auth.session?.did {
-            return try await authorizedFeedGET(path: path, query: query, includesWireModerationProofs: moderated, expectedViewer: viewer)
-        }
-        guard var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false) else { throw SocialWireError.invalidURL }
-        components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-        guard let url = components.url else { throw SocialWireError.invalidURL }
-        let (data, response) = try await urlSession.data(from: url)
-        guard let http = response as? HTTPURLResponse else { throw SocialWireError.badResponse("Missing Sports Response") }
-        return GatewayHTTPResult(statusCode: http.statusCode, etagHeader: nil, requestIdHeader: nil, body: data)
-    }
-
-    func recordFinanceComposition(event: String, suggestionCount: Int) async {
-        struct Input: Encodable { let event: String; let suggestionCount: Int }
-        guard let payload = try? JSONEncoder().encode(Input(event: event, suggestionCount: min(3, max(0, suggestionCount)))) else { return }
-        _ = try? await authorizedRequest(method: "POST",
-            path: "/xrpc/app.thesocialwire.discovery.recordFinanceComposition", query: [:],
-            body: payload, contentType: "application/json")
-    }
-
-    nonisolated static func financeQuery(language: String, feed: String, cursor: String?, hideCrypto: Bool?) -> [String: String] {
-        var query = ["lang": language, "limit": "50", "feed": feed]
-        if let cursor { query["cursor"] = cursor }
-        if let hideCrypto { query["hideCrypto"] = String(hideCrypto) }
-        return query
-    }
-
-    func fetchFinance(language: String, feed: String = "finance", cursor: String? = nil, hideCrypto: Bool? = nil) async throws -> FinancePage {
-        var query = Self.financeQuery(language: language, feed: feed, cursor: cursor, hideCrypto: hideCrypto)
-        if cursor == nil { query["refreshSelections"] = "true" }
-        if Locale.current.region?.identifier != "US" { query["region"] = "outside-us" }
-        let result = try await authorizedFeedGET(
-            path: "/xrpc/app.thesocialwire.discovery.getFinance", query: query,
-            includesWireModerationProofs: true
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Finance Is Unavailable")
-        }
-        return try JSONDecoder().decode(FinancePage.self, from: result.body)
-    }
-
-    func fetchFinanceFeeds() async throws -> [FinanceNamedFeed] {
-        struct Response: Decodable { let feeds: [FinanceNamedFeed] }
-        let result = try await authorizedFeedGET(
-            path: "/xrpc/app.thesocialwire.discovery.getFinanceCatalog", query: [:]
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Finance Feeds Are Unavailable")
-        }
-        return try JSONDecoder().decode(Response.self, from: result.body).feeds
-    }
-
-    func searchFinanceInstruments(query: String) async throws -> [FinanceInstrument] {
-        struct Response: Decodable { let instruments: [FinanceInstrument] }
-        let result = try await authorizedFeedGET(
-            path: "/xrpc/app.thesocialwire.discovery.searchFinanceInstruments", query: ["q": query]
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Instrument Search Failed")
-        }
-        return try JSONDecoder().decode(Response.self, from: result.body).instruments
-    }
-
-    func fetchFinanceSectors() async throws -> [FinanceSector] {
-        struct Response: Decodable { let sectors: [FinanceSector] }
-        let result = try await authorizedFeedGET(
-            path: "/xrpc/app.thesocialwire.discovery.getFinanceSectors", query: [:]
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Sector Loading Failed")
-        }
-        return try JSONDecoder().decode(Response.self, from: result.body).sectors
-    }
-
-    func fetchWire(
-        language: String,
-        cursor: String?,
-        limit: Int = 50
-    ) async throws -> WireFeedPage {
-        let query = Self.wireQuery(language: language, cursor: cursor, limit: limit)
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getWire,
-            query: query,
-            includesWireModerationProofs: Self.requiresWireModerationProofs(
-                path: SocialWireXRPCMethod.getWire
-            )
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "The Wire failed")
-        }
-        return try JSONDecoder().decode(WireFeedPage.self, from: result.body)
-    }
-
-    func fetchWireEdition(
-        language: String? = nil,
-        region: WireViewerRegion? = nil,
-        cursor: String? = nil
-    ) async throws -> WireEditionPage {
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getWireEdition,
-            query: Self.wireEditionQuery(
-                language: language,
-                region: region,
-                cursor: cursor
-            ),
-            includesWireModerationProofs: Self.requiresWireModerationProofs(
-                path: SocialWireXRPCMethod.getWireEdition
-            )
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "The Wire edition failed")
-        }
-        return try JSONDecoder().decode(WireEditionPage.self, from: result.body)
-    }
-
-    func fetchWireItem(itemId: String) async throws -> WireFeedItemResponse {
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getWireItem,
-            query: ["itemId": itemId],
-            includesWireModerationProofs: Self.requiresWireModerationProofs(
-                path: SocialWireXRPCMethod.getWireItem
-            )
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "The Wire item failed")
-        }
-        return try JSONDecoder().decode(WireFeedItemResponse.self, from: result.body)
-    }
-
-    func fetchCircleCatalog() async throws -> CircleFeedCatalog {
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getCircleCatalog,
-            query: [:]
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Your Circle catalog failed")
-        }
-        return try JSONDecoder().decode(CircleFeedCatalog.self, from: result.body)
-    }
-
-    func fetchCircleEdition(
-        language: String? = nil,
-        cursor: String? = nil
-    ) async throws -> CircleEditionPage {
-        let result = try await authorizedFeedGET(
-            path: SocialWireXRPCMethod.getCircleEdition,
-            query: Self.circleEditionQuery(language: language, cursor: cursor),
-            includesCircleGraphProofs: Self.requiresCircleGraphProofs(
-                path: SocialWireXRPCMethod.getCircleEdition
-            )
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Your Circle edition failed")
-        }
-        return try JSONDecoder().decode(CircleEditionPage.self, from: result.body)
-    }
-
-    func setCircleItemHidden(storyId: String, hidden: Bool) async throws -> CircleHiddenItemState {
-        let payload = try JSONEncoder().encode(
-            CircleHiddenItemInput(storyId: storyId, hidden: hidden)
-        )
-        let result = try await authorizedRequest(
-            method: "POST",
-            path: SocialWireXRPCMethod.setCircleItemHidden,
-            query: [:],
-            body: payload,
-            contentType: "application/json"
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw appViewFeedError(result, fallback: "Your Circle hide state failed")
-        }
-        return try JSONDecoder().decode(CircleHiddenItemState.self, from: result.body)
     }
 
     func fetchAppViewEntryDetail(entryId: String) async throws -> EntryDetail? {
@@ -864,25 +574,17 @@ final class SocialWireGatewayClient {
     private func authorizedFeedGET(
         path: String,
         query: [String: String],
-        includesWireModerationProofs: Bool = false,
-        includesCircleGraphProofs: Bool = false,
         expectedViewer: String? = nil
     ) async throws -> GatewayHTTPResult {
-        // A usable server snapshot needs no upstream proofs. Prepare the expensive
-        // nonce pool only after an explicit cache-miss challenge.
         let first = try await authorizedRequest(
             method: "GET", path: path, query: query, body: nil, contentType: nil,
             expectedViewer: expectedViewer
         )
-        let requiresProofs = Self.requiresUpstreamProofs(first)
-            && (includesWireModerationProofs || includesCircleGraphProofs)
         let retryable = !(200 ..< 300).contains(first.statusCode)
             && (try? JSONDecoder().decode(AppViewErrorEnvelopeDTO.self, from: first.body))?.retryable == true
-        guard requiresProofs || retryable else { return first }
+        guard retryable else { return first }
         return try await authorizedRequest(
             method: "GET", path: path, query: query, body: nil, contentType: nil,
-            includesWireModerationProofs: requiresProofs && includesWireModerationProofs,
-            includesCircleGraphProofs: requiresProofs && includesCircleGraphProofs,
             expectedViewer: expectedViewer
         )
     }
@@ -969,8 +671,6 @@ final class SocialWireGatewayClient {
         body: Data?,
         contentType: String?,
         ifNoneMatch: String? = nil,
-        includesWireModerationProofs: Bool = false,
-        includesCircleGraphProofs: Bool = false,
         expectedViewer: String? = nil
     ) async throws -> GatewayHTTPResult {
         guard var comps = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false) else {
@@ -988,110 +688,45 @@ final class SocialWireGatewayClient {
 
         let session = try await auth.validSession()
         if let expectedViewer, session.did != expectedViewer { throw ReadStateSyncFailure.accountChanged }
-        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: includesWireModerationProofs || includesCircleGraphProofs, preemptsBackground: method != "GET") { [self] in
-            let prepared = includesWireModerationProofs || includesCircleGraphProofs
-            for ceremony in 0 ..< (prepared ? 2 : 1) {
-                try Task.checkCancellation()
-                // Attest before advancing the PDS nonce chain. The receipt prevents
-                // Gateway's getSession check from consuming a route proof's nonce.
-                let receipt = prepared ? try await warmSessionAttestation(session: session) : nil
-                let wireProofs = includesWireModerationProofs
-                    ? try await wireViewerModerationProofPool(session: session) : nil
-                let circleProofs = includesCircleGraphProofs
-                    ? try await circleViewerGraphProofPool(session: session) : nil
-
-                @MainActor func signedRequest() async throws -> URLRequest {
-                    try Task.checkCancellation()
-                    guard auth.session?.did == session.did,
-                          auth.session?.accessToken == session.accessToken else {
-                        throw ReadStateSyncFailure.accountChanged
-                    }
-                    var request = URLRequest(url: url)
-                    request.httpMethod = method
-                    request.setValue("application/json", forHTTPHeaderField: "Accept")
-                    request.httpBody = body
-                    if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-                    if let tag = trimmedEntityTag(ifNoneMatch) { request.setValue(tag, forHTTPHeaderField: "If-None-Match") }
-                    try await authorize(&request, session: session)
-                    if let wireProofs { request.setValue(wireProofs, forHTTPHeaderField: Self.wireModerationDPoPHeader) }
-                    if let circleProofs { request.setValue(circleProofs, forHTTPHeaderField: Self.circleGraphDPoPHeader) }
-                    if let receipt { request.setValue(receipt, forHTTPHeaderField: ATProtoSessionDPoP.receiptHeaderName) }
-                    if prepared { request.setValue("true", forHTTPHeaderField: ATProtoSessionDPoP.preparedUpstreamDPoPHeaderName) }
-                    return request
-                }
-
-                var data: Data = Data()
-                var response: HTTPURLResponse?
-                for nonceAttempt in 0 ..< 2 {
-                    let (received, raw) = try await send(try await signedRequest())
-                    guard let http = raw as? HTTPURLResponse else { throw SocialWireError.badResponse("Missing gateway response.") }
-                    data = received; response = http
-                    await captureNonces(from: http, session: session)
-                    if nonceAttempt == 0, shouldRetryNonceChallenge(http) { continue }
-                    break
-                }
-                guard let response else { throw SocialWireError.badResponse("Missing gateway response.") }
-                if prepared, ceremony == 0, ATProtoSessionDPoP.isAttestationRequired(response) { continue }
-                return GatewayHTTPResult(statusCode: response.statusCode,
-                    etagHeader: response.value(forHTTPHeaderField: "ETag"),
-                    requestIdHeader: response.value(forHTTPHeaderField: "X-Request-ID"), body: data)
-            }
-            throw SocialWireError.badResponse("Gateway session attestation did not complete.")
-        }
-    }
-
-    private func warmSessionAttestation(session: AuthSession) async throws -> String? {
-        var components = URLComponents(url: baseURL.appending(path: "/xrpc/app.thesocialwire.appview.listEntries"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "authorDid", value: session.did), URLQueryItem(name: "limit", value: "1")]
-        guard let url = components?.url else { throw SocialWireError.invalidURL }
-        for attempt in 0 ..< 2 {
+        return try await auth.dpop.withNonceSequence(for: session.pdsURL, exclusive: false, preemptsBackground: method != "GET") { [self] in
             try Task.checkCancellation()
-            guard auth.session?.did == session.did, auth.session?.accessToken == session.accessToken else {
-                throw ReadStateSyncFailure.accountChanged
+
+            @MainActor func signedRequest() async throws -> URLRequest {
+                try Task.checkCancellation()
+                guard auth.session?.did == session.did,
+                      auth.session?.accessToken == session.accessToken else {
+                    throw ReadStateSyncFailure.accountChanged
+                }
+                var request = URLRequest(url: url)
+                request.httpMethod = method
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.httpBody = body
+                if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+                if let tag = trimmedEntityTag(ifNoneMatch) { request.setValue(tag, forHTTPHeaderField: "If-None-Match") }
+                try await authorize(&request, session: session)
+                return request
             }
-            var request = URLRequest(url: url)
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            try await authorize(&request, session: session)
-            let (_, raw) = try await send(request)
-            guard let response = raw as? HTTPURLResponse else { throw SocialWireError.badResponse("Missing session-attestation response.") }
-            await captureNonces(from: response, session: session)
-            if attempt == 0, shouldRetryNonceChallenge(response) { continue }
-            guard (200 ..< 300).contains(response.statusCode) else {
-                throw SocialWireError.badResponse("Session-attestation preflight failed (\(response.statusCode)).")
+
+            var data: Data = Data()
+            var response: HTTPURLResponse?
+            for nonceAttempt in 0 ..< 2 {
+                let (received, raw) = try await send(try await signedRequest())
+                guard let http = raw as? HTTPURLResponse else { throw SocialWireError.badResponse("Missing gateway response.") }
+                data = received; response = http
+                await captureNonces(from: http, session: session)
+                if nonceAttempt == 0, shouldRetryNonceChallenge(http) { continue }
+                break
             }
-            return ATProtoSessionDPoP.receipt(from: response)
+            guard let response else { throw SocialWireError.badResponse("Missing gateway response.") }
+            return GatewayHTTPResult(statusCode: response.statusCode,
+                etagHeader: response.value(forHTTPHeaderField: "ETag"),
+                requestIdHeader: response.value(forHTTPHeaderField: "X-Request-ID"), body: data)
         }
-        throw SocialWireError.badResponse("Gateway session attestation did not complete.")
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         if let transport { return try await transport(request) }
         return try await urlSession.data(for: request)
-    }
-
-    private func wireViewerModerationProofPool(session: AuthSession) async throws -> String {
-        try await pdsProofPool(nsids: Self.wireViewerModerationNSIDs, session: session)
-    }
-
-    private func circleViewerGraphProofPool(session: AuthSession) async throws -> String {
-        try await pdsProofPool(nsids: Self.circleViewerGraphNSIDs, session: session)
-    }
-
-    private func pdsProofPool(nsids: [String], session: AuthSession) async throws -> String {
-        var proofs: [String] = []
-        for nsid in nsids {
-            try Task.checkCancellation()
-            await auth.dpop.advancePdsDpopNonce(session: session, urlSession: urlSession, transport: transport)
-            let url = session.pdsURL.appending(path: "xrpc/\(nsid)")
-            proofs.append(
-                try await auth.dpop.proof(
-                    method: "GET",
-                    url: url,
-                    accessToken: session.accessToken
-                )
-            )
-        }
-        return proofs.joined(separator: ",")
     }
 
     private func authorize(_ request: inout URLRequest, session: AuthSession) async throws {

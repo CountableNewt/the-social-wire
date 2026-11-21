@@ -31,7 +31,6 @@ src/hooks/useSavedLinkSocialEntry.ts
 src/lib/latrGatewayDebugClient.ts
 
 # TSW-107: Existing authenticated integration surfaces awaiting rendered coverage.
-# Circle query/action provider integration with the editorial layout; feed/action contracts are covered.
 # Stateful tag dialogs and paginated mutations; tag parsing and PDS operations are covered.
 src/components/SavedLinks/SavedLinksTagToolbar.tsx
 # Semble collection query, save/retry, and detail composition; Semble client contracts are covered.

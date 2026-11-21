@@ -187,12 +187,12 @@ struct ReaderFeedReliabilityTests {
         #expect(model.errorMessage == nil)
     }
 
-    @Test("First-unread bootstrap pages never navigate an aggregate, saved, or Wire destination")
+    @Test("First-unread bootstrap pages never navigate an aggregate or saved destination")
     func passiveBootstrapNeverNavigates() async throws {
         let (model, _) = try await fixture()
         defer { model.signOut() }
         try applySidebar(model)
-        let selections: [FeedSelection] = [.folder("a"), .topLevel(.subscribed), .topLevel(.wire), .topLevel(.readLater)]
+        let selections: [FeedSelection] = [.folder("a"), .topLevel(.subscribed), .topLevel(.following), .topLevel(.readLater)]
         for selection in selections {
             model.feedSelection = selection
             model.selectedPublication = nil

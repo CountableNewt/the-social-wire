@@ -40,7 +40,7 @@ test("signed-out activity and stale-account dwell are not sent", () => {
 });
 test("canonicalization never retains handles, identifiers or unknown routes", () => {
   expect(Telemetry.canonicalUsageTab("/read/at%3Aprivate", "unknown-secret")).toBe("subscribed");
-  expect(Telemetry.canonicalUsageTab("/read", "sports")).toBe("sports");
+  expect(Telemetry.canonicalUsageTab("/read", "sports")).toBe("subscribed");
   expect(Telemetry.canonicalUsageTab("/social/messages/private-convo")).toBe("messages");
   expect(Telemetry.canonicalUsageTab("/content-calendar")).toBe("content-calendar");
   expect(Telemetry.canonicalUsageTab("/callback")).toBeUndefined();

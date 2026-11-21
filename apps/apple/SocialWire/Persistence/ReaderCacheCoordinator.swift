@@ -4,9 +4,6 @@ import SwiftData
 
 private let maxPersistedPublicationRows = 32
 private let maxPersistedEntryDetailRows = 120
-private let maxPersistedEditionRows = 24
-private let maxPersistedWireItemDetailRows = 120
-private let maxPersistedCircleItemDetailRows = 120
 private let maxPersistedGatewayKeys = 48
 private let maxStoredEntriesPerPublication = 120
 
@@ -23,31 +20,6 @@ final class ReaderCacheCoordinator {
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
-    }
-
-    /// Finance snapshots are retained for bounded persistence. Serving always
-    /// refreshes through AppView to recheck moderation and retractions.
-    func upsertFinancePage(_ page: FinancePage, contextKey: String, viewerDID: String) throws {
-        var descriptor = FetchDescriptor<PersistedFinancePage>()
-        descriptor.predicate = #Predicate<PersistedFinancePage> { $0.contextKey == contextKey }
-        let payload = try ReaderCacheCoding.encoder.encode(page)
-        if let row = try modelContext.fetch(descriptor).first {
-            row.pagePayload = payload
-            row.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedFinancePage(contextKey: contextKey, viewerDID: viewerDID,
-                                                    generationID: page.generationId, pagePayload: payload))
-        }
-        let rows = try modelContext.fetch(FetchDescriptor<PersistedFinancePage>(sortBy: [SortDescriptor(\.cachedAt, order: .reverse)]))
-        for row in rows.dropFirst(24) { modelContext.delete(row) }
-        try modelContext.save()
-    }
-
-    func clearFinanceCache(viewerDID: String) throws {
-        var descriptor = FetchDescriptor<PersistedFinancePage>()
-        descriptor.predicate = #Predicate<PersistedFinancePage> { $0.viewerDID == viewerDID }
-        for row in try modelContext.fetch(descriptor) { modelContext.delete(row) }
-        try modelContext.save()
     }
 
     // MARK: - Gateway blobs
@@ -168,196 +140,6 @@ final class ReaderCacheCoordinator {
         return ordered
     }
 
-    // MARK: - The Wire
-
-    func wireFeedPage(viewerDID: String, language: String) throws -> WireFeedPage? {
-        var descriptor = FetchDescriptor<PersistedWireFeedPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireFeedPage> {
-            $0.language == language && $0.viewerDID == viewerDID
-        }
-        guard let payload = try modelContext.fetch(descriptor).first?.pagePayload else { return nil }
-        return try ReaderCacheCoding.decoder.decode(WireFeedPage.self, from: payload)
-    }
-
-    func upsertWireFeedPage(_ page: WireFeedPage, viewerDID: String) throws {
-        let payload = try ReaderCacheCoding.encoder.encode(page)
-        let language = page.language
-        var descriptor = FetchDescriptor<PersistedWireFeedPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireFeedPage> { $0.language == language }
-        if let existing = try modelContext.fetch(descriptor).first {
-            existing.viewerDID = viewerDID
-            existing.pagePayload = payload
-            existing.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedWireFeedPage(
-                language: language,
-                viewerDID: viewerDID,
-                pagePayload: payload
-            ))
-        }
-        try modelContext.save()
-    }
-
-    func wireEditionPage(viewerDID: String, language: String) throws -> WireEditionPage? {
-        let cacheKey = Self.discoveryEditionCacheKey(viewerDID: viewerDID, language: language)
-        var descriptor = FetchDescriptor<PersistedWireEditionPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireEditionPage> { $0.cacheKey == cacheKey }
-        guard let payload = try modelContext.fetch(descriptor).first?.pagePayload else { return nil }
-        return try ReaderCacheCoding.decoder.decode(WireEditionPage.self, from: payload)
-    }
-
-    func upsertWireEditionPage(
-        _ page: WireEditionPage,
-        viewerDID: String,
-        language: String
-    ) throws {
-        let normalizedLanguage = Self.normalizeLanguage(language)
-        let cacheKey = Self.discoveryEditionCacheKey(
-            viewerDID: viewerDID,
-            language: normalizedLanguage
-        )
-        let payload = try ReaderCacheCoding.encoder.encode(page)
-        var descriptor = FetchDescriptor<PersistedWireEditionPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireEditionPage> { $0.cacheKey == cacheKey }
-        if let existing = try modelContext.fetch(descriptor).first {
-            existing.pagePayload = payload
-            existing.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedWireEditionPage(
-                cacheKey: cacheKey,
-                viewerDID: viewerDID,
-                language: normalizedLanguage,
-                pagePayload: payload
-            ))
-        }
-        try modelContext.save()
-        try pruneWireEditionsIfNeeded()
-    }
-
-    func wireItemDetail(itemId: String, viewerDID: String) throws -> EntryDetail? {
-        let cacheKey = Self.wireItemCacheKey(itemId: itemId, viewerDID: viewerDID)
-        var descriptor = FetchDescriptor<PersistedWireItemDetail>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireItemDetail> { $0.cacheKey == cacheKey }
-        guard let payload = try modelContext.fetch(descriptor).first?.detailPayload else { return nil }
-        return try ReaderCacheCoding.decoder.decode(EntryDetail.self, from: payload)
-    }
-
-    func upsertWireItemDetail(_ detail: EntryDetail, viewerDID: String) throws {
-        let itemId = detail.entryId
-        let cacheKey = Self.wireItemCacheKey(itemId: itemId, viewerDID: viewerDID)
-        let payload = try ReaderCacheCoding.encoder.encode(detail)
-        var descriptor = FetchDescriptor<PersistedWireItemDetail>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedWireItemDetail> { $0.cacheKey == cacheKey }
-        if let existing = try modelContext.fetch(descriptor).first {
-            existing.detailPayload = payload
-            existing.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedWireItemDetail(
-                cacheKey: cacheKey,
-                viewerDID: viewerDID,
-                itemId: itemId,
-                detailPayload: payload
-            ))
-        }
-        try modelContext.save()
-        try pruneWireItemDetailsIfNeeded()
-    }
-
-    // MARK: - Your Circle
-
-    func circleEditionPage(viewerDID: String, language: String) throws -> CircleEditionPage? {
-        let cacheKey = Self.discoveryEditionCacheKey(viewerDID: viewerDID, language: language)
-        var descriptor = FetchDescriptor<PersistedCircleEditionPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedCircleEditionPage> { $0.cacheKey == cacheKey }
-        guard let payload = try modelContext.fetch(descriptor).first?.pagePayload else { return nil }
-        return try ReaderCacheCoding.decoder.decode(CircleEditionPage.self, from: payload)
-    }
-
-    func upsertCircleEditionPage(
-        _ page: CircleEditionPage,
-        viewerDID: String,
-        language: String
-    ) throws {
-        let normalizedLanguage = Self.normalizeLanguage(language)
-        let cacheKey = Self.discoveryEditionCacheKey(
-            viewerDID: viewerDID,
-            language: normalizedLanguage
-        )
-        let payload = try ReaderCacheCoding.encoder.encode(page)
-        var descriptor = FetchDescriptor<PersistedCircleEditionPage>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedCircleEditionPage> { $0.cacheKey == cacheKey }
-        if let existing = try modelContext.fetch(descriptor).first {
-            existing.pagePayload = payload
-            existing.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedCircleEditionPage(
-                cacheKey: cacheKey,
-                viewerDID: viewerDID,
-                language: normalizedLanguage,
-                pagePayload: payload
-            ))
-        }
-        try modelContext.save()
-        try pruneCircleEditionsIfNeeded()
-    }
-
-    func circleItemDetail(storyId: String, viewerDID: String) throws -> EntryDetail? {
-        let cacheKey = Self.discoveryItemCacheKey(itemId: storyId, viewerDID: viewerDID)
-        var descriptor = FetchDescriptor<PersistedCircleItemDetail>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedCircleItemDetail> { $0.cacheKey == cacheKey }
-        guard let payload = try modelContext.fetch(descriptor).first?.detailPayload else { return nil }
-        return try ReaderCacheCoding.decoder.decode(EntryDetail.self, from: payload)
-    }
-
-    func upsertCircleItemDetail(
-        _ detail: EntryDetail,
-        storyId: String,
-        viewerDID: String
-    ) throws {
-        let cacheKey = Self.discoveryItemCacheKey(itemId: storyId, viewerDID: viewerDID)
-        let payload = try ReaderCacheCoding.encoder.encode(detail)
-        var descriptor = FetchDescriptor<PersistedCircleItemDetail>()
-        descriptor.fetchLimit = 1
-        descriptor.predicate = #Predicate<PersistedCircleItemDetail> { $0.cacheKey == cacheKey }
-        if let existing = try modelContext.fetch(descriptor).first {
-            existing.detailPayload = payload
-            existing.cachedAt = Date()
-        } else {
-            modelContext.insert(PersistedCircleItemDetail(
-                cacheKey: cacheKey,
-                viewerDID: viewerDID,
-                storyId: storyId,
-                detailPayload: payload
-            ))
-        }
-        try modelContext.save()
-        try pruneCircleItemDetailsIfNeeded()
-    }
-
-    func clearCircleDiscoveryCache(viewerDID: String) throws {
-        var editionDescriptor = FetchDescriptor<PersistedCircleEditionPage>()
-        editionDescriptor.predicate = #Predicate<PersistedCircleEditionPage> {
-            $0.viewerDID == viewerDID
-        }
-        try modelContext.fetch(editionDescriptor).forEach { modelContext.delete($0) }
-
-        var detailDescriptor = FetchDescriptor<PersistedCircleItemDetail>()
-        detailDescriptor.predicate = #Predicate<PersistedCircleItemDetail> {
-            $0.viewerDID == viewerDID
-        }
-        try modelContext.fetch(detailDescriptor).forEach { modelContext.delete($0) }
-        try modelContext.save()
-    }
-
     // MARK: - Pruning
 
     private func prunePublicationRowsIfNeeded() throws {
@@ -384,54 +166,6 @@ final class ReaderCacheCoordinator {
         try modelContext.save()
     }
 
-    private func pruneWireItemDetailsIfNeeded() throws {
-        var descriptor = FetchDescriptor<PersistedWireItemDetail>()
-        descriptor.sortBy = [.init(\.cachedAt)]
-        let rows = try modelContext.fetch(descriptor)
-        guard rows.count > maxPersistedWireItemDetailRows else { return }
-
-        rows.sorted { $0.cachedAt > $1.cachedAt }
-            .dropFirst(maxPersistedWireItemDetailRows)
-            .forEach { modelContext.delete($0) }
-        try modelContext.save()
-    }
-
-    private func pruneWireEditionsIfNeeded() throws {
-        var descriptor = FetchDescriptor<PersistedWireEditionPage>()
-        descriptor.sortBy = [.init(\.cachedAt)]
-        let rows = try modelContext.fetch(descriptor)
-        guard rows.count > maxPersistedEditionRows else { return }
-
-        rows.sorted { $0.cachedAt > $1.cachedAt }
-            .dropFirst(maxPersistedEditionRows)
-            .forEach { modelContext.delete($0) }
-        try modelContext.save()
-    }
-
-    private func pruneCircleEditionsIfNeeded() throws {
-        var descriptor = FetchDescriptor<PersistedCircleEditionPage>()
-        descriptor.sortBy = [.init(\.cachedAt)]
-        let rows = try modelContext.fetch(descriptor)
-        guard rows.count > maxPersistedEditionRows else { return }
-
-        rows.sorted { $0.cachedAt > $1.cachedAt }
-            .dropFirst(maxPersistedEditionRows)
-            .forEach { modelContext.delete($0) }
-        try modelContext.save()
-    }
-
-    private func pruneCircleItemDetailsIfNeeded() throws {
-        var descriptor = FetchDescriptor<PersistedCircleItemDetail>()
-        descriptor.sortBy = [.init(\.cachedAt)]
-        let rows = try modelContext.fetch(descriptor)
-        guard rows.count > maxPersistedCircleItemDetailRows else { return }
-
-        rows.sorted { $0.cachedAt > $1.cachedAt }
-            .dropFirst(maxPersistedCircleItemDetailRows)
-            .forEach { modelContext.delete($0) }
-        try modelContext.save()
-    }
-
     private func pruneGatewayResponsesIfNeeded() throws {
         var descriptor = FetchDescriptor<PersistedGatewayResponse>()
         descriptor.sortBy = [.init(\.cachedAt)]
@@ -446,22 +180,5 @@ final class ReaderCacheCoordinator {
 
     private static func normalize(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func wireItemCacheKey(itemId: String, viewerDID: String) -> String {
-        discoveryItemCacheKey(itemId: itemId, viewerDID: viewerDID)
-    }
-
-    private static func discoveryEditionCacheKey(viewerDID: String, language: String) -> String {
-        let normalizedLanguage = normalizeLanguage(language)
-        return "\(viewerDID.utf8.count):\(viewerDID)|\(normalizedLanguage)"
-    }
-
-    private static func discoveryItemCacheKey(itemId: String, viewerDID: String) -> String {
-        "\(viewerDID.utf8.count):\(viewerDID)\(itemId)"
-    }
-
-    private static func normalizeLanguage(_ language: String) -> String {
-        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

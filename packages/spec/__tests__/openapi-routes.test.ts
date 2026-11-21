@@ -391,28 +391,6 @@ describe("L@tr bookmark state transport compatibility", () => {
   });
 });
 
-describe("Selectable Finance feed contracts", () => {
-  it("keeps feed context and catalog definitions aligned with the lexicons", () => {
-    const document = Bun.YAML.parse(readFileSync(OPENAPI_PATH, "utf8")) as any;
-    const lexiconRoot = join(import.meta.dir, "../../lexicons/app/thesocialwire/discovery");
-    const query = JSON.parse(readFileSync(join(lexiconRoot, "getFinance.json"), "utf8"));
-    const defs = JSON.parse(readFileSync(join(lexiconRoot, "defs.json"), "utf8")).defs;
-    const feed = document.paths["/xrpc/app.thesocialwire.discovery.getFinance"].get.parameters.find((p: any) => p.name === "feed");
-    expect(feed.schema).toEqual(query.defs.main.parameters.properties.feed && {type:"string",maxLength:256,default:"finance"});
-    expect(document.components.schemas.FinancePage.required).toContain("feedId");
-    expect(defs.financePage.required).toContain("feedId");
-    expect(document.components.schemas.FinanceAvailability.required).toContain("feeds");
-    expect(document.components.schemas.FinanceFeedDefinition.required).toEqual(defs.financeFeedDefinition.required);
-    expect(document.components.schemas.FinanceFeedDefinition.properties.kind.enum).toEqual(defs.financeFeedDefinition.properties.kind.enum);
-    for (const service of ["gateway", "appview"]) {
-      const request = readFileSync(join(import.meta.dir, `../../../services/${service}/bruno/XRPC/app.thesocialwire.discovery.getFinance.bru`), "utf8");
-      expect(request).toContain("?feed=finance&");
-      expect(request).toContain("group:mag7");
-    }
-  });
-});
-
-
 describe("Standard Reader list interoperability", () => {
   it("returns resolved creator identity independently of public list membership", () => {
     const spec = Bun.YAML.parse(readFileSync(OPENAPI_PATH, "utf8")) as any;

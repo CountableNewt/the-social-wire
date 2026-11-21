@@ -10,19 +10,13 @@ struct NewsShellView: View {
     @State private var sectionSelections: [NewsRootSection: NewsTabSlot] = [
         .readLater: .readLater,
         .feeds: .subscribed,
-        .topics: .finance,
         .lists: .standardList("")
     ]
     @State private var slotFeeds: [NewsPrimaryFeed] = []
     @State private var isTabConfigurationLoaded = false
     @State private var isProfilePresented = false
     private var availableTabs: [NewsTab] {
-        NewsTab.available(
-            wire: appModel.feedPreferences.showWire,
-            circle: appModel.feedPreferences.showCircle,
-            finance: appModel.feedPreferences.showFinance,
-            sports: appModel.feedPreferences.showSports
-        )
+        NewsTab.available
     }
 
     private var activeNewsTab: NewsTab {
@@ -41,23 +35,11 @@ struct NewsShellView: View {
     }
 
     private var feedDestinations: [NewsPrimaryFeed] {
-        [.wire, .circle, .subscribed, .following].filter(isVisibleInSettings)
-    }
-
-    private var topicDestinations: [NewsPrimaryFeed] {
-        [.finance, .sports].filter(isVisibleInSettings)
+        [.subscribed, .following].filter(isVisibleInSettings)
     }
 
     private func isVisibleInSettings(_ feed: NewsPrimaryFeed) -> Bool {
         switch feed {
-        case .wire:
-            NewsFeatureVisibility.wire && appModel.feedPreferences.showWire
-        case .circle:
-            NewsFeatureVisibility.circle && appModel.feedPreferences.showCircle
-        case .finance:
-            NewsFeatureVisibility.topics && appModel.feedPreferences.showFinance
-        case .sports:
-            NewsFeatureVisibility.topics && appModel.feedPreferences.showSports
         case .subscribed:
             appModel.feedPreferences.visibleFeeds.contains(.subscribed)
         case .following:
@@ -81,9 +63,6 @@ struct NewsShellView: View {
             }
         }
         .task(bootstrap)
-        .task(id: NewsDestinationLoadContext(viewerDID: appModel.viewerDID, slot: selectedSlot)) {
-            await loadSelectedDestination(selectedSlot)
-        }
         .onChange(of: selectedSlot, selectedSlotChanged)
         .onChange(of: selectedSection, selectedSectionChanged)
         .onChange(of: appModel.viewerDID, viewerDidChange)
@@ -200,9 +179,6 @@ struct NewsShellView: View {
             Tab("News", systemImage: "newspaper", value: NewsRootSection.feeds) {
                 sectionPager(.feeds, items: feedDestinations.map(NewsNavigationItem.init(feed:)))
             }
-            Tab("Topics", systemImage: "square.grid.2x2", value: NewsRootSection.topics) {
-                sectionPager(.topics, items: topicDestinations.map(NewsNavigationItem.init(feed:)))
-            }
             Tab("Lists", systemImage: "list.bullet", value: NewsRootSection.lists) {
                 listsWorkspace
             }
@@ -274,8 +250,6 @@ struct NewsShellView: View {
             readLaterNavigationItems
         case .feeds:
             feedDestinations.map(NewsNavigationItem.init(feed:))
-        case .topics:
-            topicDestinations.map(NewsNavigationItem.init(feed:))
         case .lists:
             standardListNavigationItems
         }
@@ -380,44 +354,11 @@ struct NewsShellView: View {
         }
     }
 
-    private func loadSelectedDestination(_ slot: NewsTabSlot) async {
-        guard let feed = slot.primaryFeed else { return }
-        switch feed {
-        case .wire:
-            if appModel.wireCatalog == nil {
-                await appModel.refreshWireCatalog()
-            }
-            await appModel.loadWireEdition()
-        case .circle:
-            if appModel.circleCatalog == nil {
-                await appModel.refreshCircleCatalog()
-            }
-            await appModel.loadCircleEdition()
-        case .finance:
-            async let feeds: Void = appModel.loadFinanceFeeds()
-            // Resolve interests before the story request captures its preference
-            // fingerprint; a concurrent selection load can otherwise discard it.
-            guard await appModel.loadFinanceSelections(), !Task.isCancelled else { return }
-            await feeds
-            guard !Task.isCancelled else { return }
-            async let customization: Void = appModel.loadFinanceCustomization(reconcilingSelections: false)
-            async let stories: Void = appModel.loadFinance()
-            _ = await (customization, stories)
-        case .sports:
-            let topic = appModel.sportsTopic
-            topic.bind(viewer: appModel.viewerDID)
-            await topic.loadCatalog()
-            await topic.refresh(language: Locale.current.language.languageCode?.identifier ?? "en")
-        case .subscribed, .following:
-            break
-        }
-    }
-
     private func rootSection(for slot: NewsTabSlot) -> NewsRootSection? {
         if slot.savedListSource != nil { return .readLater }
         if case .standardList = slot { return .lists }
-        guard let feed = slot.primaryFeed else { return nil }
-        return [.finance, .sports].contains(feed) ? .topics : .feeds
+        guard slot.primaryFeed != nil else { return nil }
+        return .feeds
     }
 
     private func viewerDidChange(_ oldValue: String?, _ viewerDID: String?) {
@@ -455,17 +396,7 @@ struct NewsShellView: View {
     private func sceneTabChanged(_ oldValue: NewsTab, _ tab: NewsTab) {
         guard isTabConfigurationLoaded, selectedSection != .lists else { return }
         switch tab {
-        case .wire:
-            selectPrimaryFeed(.wire)
-        case .finance:
-            selectPrimaryFeed(.finance)
-        case .sports:
-            selectPrimaryFeed(.sports)
-        case .circle:
-            selectPrimaryFeed(.circle)
         case .library:
-            // A disappearing discovery tab can select Library before the reader source
-            // has changed. Never turn that fallback into a hidden Wire tab.
             let preferred: NewsPrimaryFeed = appModel.readerListSource == .following ? .following : .subscribed
             let choices = appModel.visiblePrimaryTabFeedChoices
             if choices.contains(preferred) {
@@ -548,8 +479,6 @@ struct NewsShellView: View {
 
     private func primaryFeed(for source: ReaderListSource) -> NewsPrimaryFeed? {
         switch source {
-        case .wire:
-            .wire
         case .subscribed:
             .subscribed
         case .following:
@@ -563,8 +492,6 @@ struct NewsShellView: View {
         switch feed {
         case .subscribed, .following:
             return ReaderMarkReadScope.selectedFeed(appModel.feedSelection)
-        case .wire, .circle, .finance, .sports:
-            return .unavailable
         }
     }
 }
@@ -597,12 +524,6 @@ private struct NewsFeedShellView: View {
     }
 
     private var effectiveTitle: String {
-        if tab == .finance {
-            return appModel.selectedFinanceFeed.title
-        }
-        if tab == .sports {
-            return appModel.sportsTopic.selectedTitle
-        }
         if tab == .library, let publication = appModel.selectedPublication {
             return publication.title
         }
@@ -799,10 +720,6 @@ private struct NewsFeedShellView: View {
     }
 }
 
-private struct NewsDestinationLoadContext: Equatable {
-    let viewerDID: String?
-    let slot: NewsTabSlot
-}
 
 private struct NewsSectionPager<Content: View, EmptyContent: View>: View {
     let items: [NewsNavigationItem]

@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   FolderOpen,
   List,
-  Newspaper,
   Rss,
 } from "lucide-react";
 import iconSrc from "@/app/icon.png";
@@ -33,12 +32,6 @@ const workflowItems = [
     description:
       "Group publications into folders, track unread posts, and keep your reading organized.",
     icon: FolderOpen,
-  },
-  {
-    title: "Topics",
-    description:
-      "Follow Finance and Sports news around the markets, teams, and leagues you care about.",
-    icon: Newspaper,
   },
   {
     title: "Lists",
@@ -105,7 +98,7 @@ export default function Home() {
               The Social Wire
             </h1>
             <p className="mt-5 max-w-xl text-lg font-semibold leading-8 text-foreground/78 sm:text-xl">
-              Your home for publications, saved links, topics, and lists on the open social web.
+              Your home for publications, saved links, and lists on the open social web.
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link
@@ -169,7 +162,7 @@ export default function Home() {
                 Built for Everyday Reading.
               </h2>
               <p className="mt-1 text-sm font-medium leading-6 text-muted-foreground">
-                Read a publication, explore a topic, follow a list, or return to your saved links.
+                Read a publication, follow a list, or return to your saved links.
               </p>
             </div>
           </div>

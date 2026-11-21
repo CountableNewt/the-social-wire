@@ -31,7 +31,7 @@ describe("Social Wire XRPC lexicons", () => {
     const nativeNsids = manifest.entries
       .filter((entry) => entry.classification === "first-party-xrpc")
       .map((entry) => entry.xrpcNsid!);
-    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids, ...nativeNsids].map((nsid) =>
+    const documents = ["app.thesocialwire.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids, ...nativeNsids].map((nsid) =>
       JSON.parse(readFileSync(fileForNsid(nsid), "utf8"))
     );
     expect(() => new Lexicons(documents)).not.toThrow();
@@ -53,7 +53,6 @@ describe("Social Wire XRPC lexicons", () => {
   it("declares bounded identifiers for item methods", () => {
     for (const nsid of [
       "app.thesocialwire.appview.getEntry",
-      "app.thesocialwire.discovery.getWireItem",
       "app.thesocialwire.operations.getBackfill",
       "app.thesocialwire.operations.getGapInvestigation",
       "app.thesocialwire.operations.getTrace",

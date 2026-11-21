@@ -32,7 +32,7 @@ final class ReaderNavigationReliabilityUITests: XCTestCase {
         app.buttons["fixture-refresh-preferences"].tap()
         assertScope("One Publication", in: app)
         XCTAssertTrue(app.staticTexts["A Short Headline"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Topics"].tap()
+        app.tabBars.buttons["Lists"].tap()
         app.tabBars.buttons["News"].tap()
         assertScope("One Publication", in: app)
         XCTAssertTrue(app.staticTexts["A Short Headline"].waitForExistence(timeout: 5))

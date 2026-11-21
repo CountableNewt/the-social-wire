@@ -57,8 +57,9 @@ Preserve the exact existing values of:
 - `GATEWAY_APPVIEW_INTERNAL_SECRET`: retained as the analytics pseudonym HMAC
   key, despite the removed internal network hop.
 
-Keep global ingestion and Wire/Circle/Finance/Sports feed modes disabled.
-Standalone mode rejects their activation. Preserve the current provider-backed
+Keep global ingestion disabled; standalone mode rejects its activation. The Wire,
+Your Circle, Finance and Sports were removed, so their `*_FEED_MODE` variables are
+unused. Preserve the current provider-backed
 content discovery and retained feature settings. Stale Redis/Postgres variables
 are unused by this mode; remove them after the replacement is accepted.
 Podcasts were retired; `PODCAST_*` variables are unused, but repoint any
