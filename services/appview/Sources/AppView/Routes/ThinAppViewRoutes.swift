@@ -45,19 +45,23 @@ struct ThinAppViewRoutes {
         let selector = AppViewFeedSelector(kind: kind, id: id)
         if cursor == nil, kind != .list {
           Task {
+            var indexed = 0
             if kind == .publication,
               let row = await projectionService.sidebarRow(for: auth.did, publicationId: selector.id) {
-              _ = try? await enrollService.refreshPublicContent(authorDid: row.appViewScope.authorDid,
+              indexed += (try? await enrollService.refreshPublicContent(authorDid: row.appViewScope.authorDid,
                 publicationAtUri: row.appViewScope.publicationAtUri,
                 publicationScopeAtUris: row.appViewScope.publicationScopeAtUris,
-                publicationSiteUrls: row.appViewScope.publicationSiteUrls)
+                publicationSiteUrls: row.appViewScope.publicationSiteUrls)) ?? 0
             } else if let scopes = try? await readService.publicContentScopes(auth: auth, selector: selector) {
               for scope in scopes {
-                _ = try? await enrollService.refreshPublicContent(authorDid: scope.authorDid,
+                indexed += (try? await enrollService.refreshPublicContent(authorDid: scope.authorDid,
                   publicationAtUri: scope.publicationAtUri, publicationScopeAtUris: scope.publicationScopeAtUris,
-                  publicationSiteUrls: scope.publicationSiteUrls)
+                  publicationSiteUrls: scope.publicationSiteUrls)) ?? 0
               }
             }
+            // Clients badge from these counters; without a recount, newly indexed rows only
+            // show up in the badge while they happen to be cached on the client.
+            if indexed > 0 { try? await projectionService.reconcileEnrollmentCounters(auth: auth) }
           }
         }
         if kind == .list {
@@ -358,7 +362,7 @@ struct ThinAppViewRoutes {
     return value
   }
 
-  private static func invalidRequest(_ message: String, requestId: String) -> AppViewFeedError {
+  static func invalidRequest(_ message: String, requestId: String) -> AppViewFeedError {
     feedError(.badRequest, message: message, requestId: requestId)
   }
 

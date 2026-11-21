@@ -16,6 +16,9 @@ export type SidebarUnreadControllerOptions = {
   unreadCountsByPublicationId: Map<string, number> | undefined;
   isEntryRead?: (entryId: string) => boolean;
   pendingEntryReadState?: (entryId: string) => boolean | undefined;
+  entryReadAt?: (entryId: string) => string | undefined;
+  /** When each publication's server count was taken. */
+  unreadCountedAt?: (publicationId: string) => string | undefined;
   /** From {@link useReadState}; bumps when local read map changes. */
   readEpoch?: number;
   viewerDid?: string;
@@ -28,8 +31,8 @@ export type SidebarUnreadControllerOptions = {
 export function useSidebarUnreadController(
   options: SidebarUnreadControllerOptions
 ): Map<string, number> {
-  const { publications, unreadCountsByPublicationId, isEntryRead, pendingEntryReadState, readEpoch, viewerDid } =
-    options;
+  const { publications, unreadCountsByPublicationId, isEntryRead, pendingEntryReadState, entryReadAt, unreadCountedAt,
+    readEpoch, viewerDid } = options;
   const queryClient = useQueryClient();
   const entriesEpoch = useEntriesCacheEpoch();
 
@@ -51,7 +54,12 @@ export function useSidebarUnreadController(
               viewerDid,
               pub.publicationId,
               isEntryRead,
-              { capRaiseToServerCount: knownServerCount != null, pendingEntryReadState }
+              {
+                capRaiseToServerCount: knownServerCount != null,
+                pendingEntryReadState,
+                entryReadAt,
+                countedAt: unreadCountedAt?.(pub.publicationId),
+              }
             )
           : serverCount
       );
@@ -63,6 +71,8 @@ export function useSidebarUnreadController(
     unreadCountsByPublicationId,
     isEntryRead,
     pendingEntryReadState,
+    entryReadAt,
+    unreadCountedAt,
     queryClient,
     entriesEpoch,
     readEpoch,

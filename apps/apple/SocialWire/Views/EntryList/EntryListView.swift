@@ -38,6 +38,12 @@ struct EntryListView: View {
         .refreshable {
             await refresh()
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if appModel.feedRefreshProgress != nil || appModel.feedRefreshStatus != nil {
+                FeedRefreshStatusBar()
+                    .background(.bar)
+            }
+        }
         .sensoryFeedback(.impact(flexibility: .soft), trigger: refreshFeedback)
         .sensoryFeedback(.success, trigger: saveFeedback)
         .sheet(item: $entryPendingTaggedSave) { entry in
@@ -46,7 +52,7 @@ struct EntryListView: View {
     }
 
     private func refresh() async {
-        await appModel.refreshSelectedArticleFeed()
+        await appModel.pullToRefreshSelectedArticleFeed()
         refreshFeedback += 1
     }
 

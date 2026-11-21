@@ -61,12 +61,12 @@ actor ThinAppViewEnrollService {
   }
 
   func refreshPublicContent(authorDid: String, publicationAtUri: String?, publicationScopeAtUris: [String] = [],
-    publicationSiteUrls: [String] = []) async throws -> Int {
+    publicationSiteUrls: [String] = [], waitForCapacity: Bool = false) async throws -> Int {
     guard authorDid != PublicationLexicons.rssAuthorDid else { return 0 }
     let scope = try Self.discoveryScope(authorDid: authorDid, publicationAtUri: publicationAtUri,
       publicationScopeAtUris: publicationScopeAtUris, publicationSiteUrls: publicationSiteUrls)
     await publicHistory?.schedule(authorDid: authorDid)
-    return try await publicRefresh.refresh(scope: scope)
+    return try await publicRefresh.refresh(scope: scope, waitForCapacity: waitForCapacity)
   }
 
   func refreshPublicContentFast(authorDid: String, publicationAtUri: String?, publicationScopeAtUris: [String] = [],

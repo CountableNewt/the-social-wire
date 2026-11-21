@@ -1,15 +1,16 @@
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import type { QueryClient } from "@tanstack/react-query";
 
-import { awaitWithAbort } from "@/lib/awaitWithAbort";
 import { normalizeAtRepoParam } from "@/lib/atprotoClient";
 import {
   sidebarPublicationRows,
   type PublicationSidebarProjection,
   type SidebarPublicationRow,
 } from "@/lib/publicationProjectionClient";
-import { enrollAuthorsInAppView } from "@/lib/thinAppViewClient";
+import { consumeFeedRefreshStream, type FeedRefreshSelector } from "@/lib/feedRefreshStreamClient";
 import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
+
+const RSS_AUTHOR_DID = "did:web:skyreader.rss";
 
 /** Match the visible feed; a publication refresh must not enroll the full follow graph. */
 export function readerRefreshRows(client: QueryClient, did: string, projection: PublicationSidebarProjection): SidebarPublicationRow[] {
@@ -41,7 +42,7 @@ export function readerRefreshSourcesKey(rows: SidebarPublicationRow[]): { member
   const normalizedSet = (values: string[]) => [...new Set(values)].sort();
   const sources = new Set<string>();
   for (const { appViewScope: scope } of rows) {
-    if (scope.authorDid === "did:web:skyreader.rss") {
+    if (scope.authorDid === RSS_AUTHOR_DID) {
       for (const feed of scope.publicationSiteUrls) {
         if (!feed.trim()) continue;
         sources.add(`feed:${normalizeSite(feed)}`);
@@ -63,42 +64,39 @@ export function readerRefreshSourcesKey(rows: SidebarPublicationRow[]): { member
   };
 }
 
-/** Poll mounted feeds while scoped enrollment requests ingest and recount. */
+/** The feeds the reader has mounted, as `refreshFeed` selectors. */
+export function readerRefreshSelectors(client: QueryClient, did: string): FeedRefreshSelector[] {
+  const selectors = new Map<string, FeedRefreshSelector>();
+  const add = (selector: FeedRefreshSelector) => selectors.set(`${selector.kind}:${selector.id ?? ""}`, selector);
+  for (const query of client.getQueryCache().findAll({ predicate: query => query.isActive() && query.queryKey[1] === did })) {
+    const [kind, , scope, id] = query.queryKey;
+    if (kind === "entries" && typeof scope === "string" && scope) add({ kind: "publication", id: scope });
+    if (kind !== "aggregateEntries") continue;
+    if (scope === "subscribed" || scope === "following") add({ kind: scope });
+    if ((scope === "folder" || scope === "list") && typeof id === "string" && id) add({ kind: scope, id });
+  }
+  return [...selectors.values()];
+}
+
+/** How often streamed progress may repaint mounted feeds while articles land. */
+export const SOURCE_REFRESH_PAINT_MS = 1000;
+
+/** Longest one feed's refresh stream may stay open. */
+export const FEED_REFRESH_STREAM_DEADLINE_MS = 300_000;
+
+/** Stream an explicit refresh of each mounted feed, repainting as articles land. */
 export async function refreshPublicationSources(args: {
   oauthSession: OAuthSession;
   rows: SidebarPublicationRow[];
+  selectors: FeedRefreshSelector[];
   signal: AbortSignal;
   onProgress: (completed: number, total: number) => void;
   onBatch: () => Promise<void>;
 }): Promise<void> {
   args.signal.throwIfAborted();
-  const authors = new Set<string>();
-  const feeds = new Set<string>();
-  for (const row of args.rows) {
-    const scope = row.appViewScope;
-    if (scope.authorDid === "did:web:skyreader.rss") {
-      for (const feed of scope.publicationSiteUrls) feeds.add(feed);
-    } else if (scope.authorDid) authors.add(scope.authorDid);
-  }
-  // The enroller caps authors at 500 and the lexicon caps each array at 1000;
-  // use at most 500 combined sources and the route's 1 MiB JSON body limit.
-  const requests: { authorDids: string[]; feedUrls: string[] }[] = [];
-  let request = { authorDids: [] as string[], feedUrls: [] as string[] };
-  const bytes = (value: typeof request) => new TextEncoder().encode(JSON.stringify(value)).length;
-  for (const [kind, sources] of [["authorDids", authors], ["feedUrls", feeds]] as const) {
-    for (const source of sources) {
-      const next = { ...request, [kind]: [...request[kind], source] };
-      if (request.authorDids.length + request.feedUrls.length >= 500 || bytes(next) > 1 << 20) {
-        if (request.authorDids.length + request.feedUrls.length) requests.push(request);
-        request = { authorDids: [], feedUrls: [] };
-      }
-      request[kind].push(source);
-      if (bytes(request) > 1 << 20) throw new Error("A publication source exceeds the refresh request size limit.");
-    }
-  }
-  if (request.authorDids.length + request.feedUrls.length) requests.push(request);
-  const total = authors.size + feeds.size;
-  args.onProgress(0, total);
+  let completed = 0;
+  let total = 0;
+  let dirty = false;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let paint: Promise<void> | undefined;
@@ -107,54 +105,81 @@ export async function refreshPublicationSources(args: {
     if (stopped || args.signal.aborted || paintFailure) return;
     timer = setTimeout(() => {
       if (stopped || args.signal.aborted) return;
+      if (!dirty) return schedulePaint();
+      dirty = false;
       // Schedule only after this paint settles: slow reads never accumulate work
-      // or hold up ingestion, and direct feed cache writes cannot race each other.
+      // or hold up the stream, and direct feed cache writes cannot race each other.
       paint = Promise.resolve().then(() => {
         args.signal.throwIfAborted();
         return args.onBatch();
       }).catch(error => {
         paintFailure = error;
       }).finally(schedulePaint);
-    }, 1000);
+    }, SOURCE_REFRESH_PAINT_MS);
   };
-  const sourceFailures: unknown[] = [];
-  if (total) {
+  const unavailable = new Set<string>();
+  const streamFailures: unknown[] = [];
+  if (args.selectors.length) {
+    args.onProgress(0, 0);
     schedulePaint();
     try {
-      for (const request of requests) {
+      for (const selector of args.selectors) {
         args.signal.throwIfAborted();
+        let streamTotal = 0;
+        let streamCompleted = 0;
         try {
-          // RSS polls run serially. Allow up to 25 seconds to join a poll and
-          // 20 seconds to fetch if its lease opens without a completed result.
-          const authorBudgetMs = 30_000 * Math.max(1, Math.ceil(request.authorDids.length / 4));
-          const deadlineMs = Math.min(300_000, authorBudgetMs + 45_000 * request.feedUrls.length);
-          const signal = AbortSignal.any([args.signal, AbortSignal.timeout(deadlineMs)]);
-          await awaitWithAbort(enrollAuthorsInAppView(args.oauthSession, request.authorDids, request.feedUrls, signal), signal);
+          // Every source has its own server deadline; this bounds a stalled connection.
+          const signal = AbortSignal.any([args.signal, AbortSignal.timeout(FEED_REFRESH_STREAM_DEADLINE_MS)]);
+          await consumeFeedRefreshStream({
+            oauthSession: args.oauthSession, selector, signal,
+            onEvent: event => {
+              if (event.kind === "started") {
+                streamTotal = event.total;
+                total += event.total;
+              } else if (event.kind === "publication") {
+                streamCompleted += 1;
+                completed += 1;
+                if (event.indexed > 0) dirty = true;
+                if (event.status === "unavailable") unavailable.add(event.publicationId);
+              } else return;
+              args.onProgress(completed, total);
+            },
+          });
         } catch (error) {
           args.signal.throwIfAborted();
-          sourceFailures.push(error);
+          // Count an interrupted stream's remaining sources as checked for progress only.
+          completed += Math.max(0, streamTotal - streamCompleted);
+          streamFailures.push(error);
         }
       }
     } finally {
       stopped = true;
       clearTimeout(timer);
-      // Even a failed/cancelled request must settle its started feed workers.
+      // Even a failed/cancelled stream must settle its started paint.
       await paint;
     }
   }
   args.signal.throwIfAborted();
-  // Completion may commit articles after the last poll started. Flush this dirty
-  // interval once, including partial ingestion on failure; the caller must not
-  // issue an additional unconditional feed refresh. This authoritative flush
-  // supersedes any intermediate paint failure if it succeeds.
-  if (!sourceFailures.length) args.onProgress(total, total);
+  // The server reconciles counters before `done`. Flush once, including partial
+  // results on failure; the caller must not issue another unconditional feed refresh.
+  // This authoritative flush supersedes any intermediate paint failure if it succeeds.
+  if (!streamFailures.length) args.onProgress(total, total);
   await args.onBatch();
   args.signal.throwIfAborted();
-  if (sourceFailures.length && sourceFailures.every(error => error instanceof PublicationSourceRefreshError)) {
-    throw new PublicationSourceRefreshError(
-      [...new Set(sourceFailures.flatMap(error => error.hosts))].sort(),
-      [...new Set(sourceFailures.flatMap(error => error.unavailablePublicationIds))].sort(),
-    );
+  if (streamFailures.length) {
+    throw new Error("Some publications could not be checked. Articles received so far are available. Try Refresh again.", { cause: streamFailures[0] });
   }
-  if (sourceFailures.length) throw new Error("Some publications could not be checked. Articles received so far are available. Try Refresh again.", { cause: sourceFailures[0] });
+  if (!unavailable.size) return;
+  const feedHosts = new Map<string, string[]>();
+  for (const row of args.rows) {
+    if (row.appViewScope.authorDid !== RSS_AUTHOR_DID) continue;
+    feedHosts.set(row.publicationId, row.appViewScope.publicationSiteUrls.flatMap(feed => {
+      try { return [new URL(feed).hostname]; } catch { return []; }
+    }));
+  }
+  const ids = [...unavailable];
+  if (ids.every(id => feedHosts.get(id)?.length)) {
+    throw new PublicationSourceRefreshError([...new Set(ids.flatMap(id => feedHosts.get(id)!))].sort(), ids.sort());
+  }
+  throw new Error("Some publications could not be checked. Articles received so far are available. Try Refresh again.");
 }

@@ -41,7 +41,7 @@ import { useConfiguredReadLaterService } from "@/hooks/useReadLaterPreferences";
 import { useSembleCollectionItems } from "@/hooks/useSembleReadLater";
 import { rkeyFromURI } from "@/lib/pdsClient";
 import { type DiscoveredPublication } from "@/lib/atprotoClient";
-import { sumUnreadForPublications } from "@/lib/unreadCounts";
+import { sumUnreadForPublications, unreadCountedAtLookup } from "@/lib/unreadCounts";
 import { PublicationTabs } from "./PublicationTabs";
 import { SidebarSocialSection } from "./SidebarSocialSection";
 import { SidebarAudioSection } from "./SidebarAudioSection";
@@ -131,7 +131,7 @@ export function AppSidebar({
     toggleSidebarExpandedKey,
     syncSidebarFolderExpandKeys,
   } = useSidebarChrome();
-  const { isEntryRead, pendingEntryReadState, readEpoch } = useReadState();
+  const { isEntryRead, entryReadAt, pendingEntryReadState, readEpoch } = useReadState();
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -286,6 +286,14 @@ export function AppSidebar({
       }));
   }, [publicationsForUnread]);
 
+  const unreadCountedAt = useMemo(
+    () => unreadCountedAtLookup(
+      publicationSidebarProjection?.unreadCountsFreshnessByPublicationId,
+      publicationSidebarProjection?.unreadCountsCountedAt
+    ),
+    [publicationSidebarProjection?.unreadCountsFreshnessByPublicationId, publicationSidebarProjection?.unreadCountsCountedAt]
+  );
+
   const publicationUnreadCounts = useSidebarUnreadController({
     publications: publicationsForUnread,
     unreadCountsByPublicationId: clientHydrated
@@ -293,6 +301,8 @@ export function AppSidebar({
       : SERVER_PUBLICATION_UNREAD_COUNTS,
     isEntryRead: clientHydrated ? isEntryRead : undefined,
     pendingEntryReadState: clientHydrated ? pendingEntryReadState : undefined,
+    entryReadAt: clientHydrated ? entryReadAt : undefined,
+    unreadCountedAt,
     readEpoch,
     viewerDid: session?.did,
   });

@@ -78,6 +78,10 @@ final class SocialWireAppModel {
     var isLoading = false
     var isLoadingEntries = false
     var isLoadingMoreEntries = false
+    /// Explicit feed refresh in flight (pull to refresh); `nil` when idle.
+    var feedRefreshProgress: FeedRefreshProgress?
+    /// Result of the last explicit feed refresh, shown briefly in the feed footer.
+    var feedRefreshStatus: String?
     /// Bootstrap NDJSON stream in flight (sidebar may still paint from cache).
     var sidebarFetching = false
     /// Folder publication rows not yet merged from stream phase two.
@@ -511,7 +515,9 @@ final class SocialWireAppModel {
                             previewSubjectUris: cachedIds)
                         guard viewerDID == viewer else { return }
                         let readAt = DateFormatters.date(from: selection.actedAt) ?? Date()
-                        for entryId in selection.previewSubjectUris ?? [] { readAtByEntryId[entryId] = readAt }
+                        var readMap = readAtByEntryId
+                        for entryId in selection.previewSubjectUris ?? [] { readMap[entryId] = readAt }
+                        readAtByEntryId = readMap
                     }
                     clearUnreadCounts(for: publicationsAffected(by: scope))
                     unreadDeferredEntryId = nil
@@ -525,9 +531,9 @@ final class SocialWireAppModel {
             let savedReadAtByEntryId = readAtByEntryId
 
             clearUnreadCounts(for: publicationsAffected(by: scope))
-            for entryId in entryIds {
-                readAtByEntryId[entryId] = readAt
-            }
+            var readMap = readAtByEntryId
+            for entryId in entryIds { readMap[entryId] = readAt }
+            readAtByEntryId = readMap
             unreadDeferredEntryId = nil
 
             do {
@@ -601,29 +607,43 @@ final class SocialWireAppModel {
                 try await readStateSync.setExact(viewer: viewer, subjectUris: entryIds, state: .unread,
                     actedAt: DateFormatters.string())
                 guard viewerDID == viewer else { return }
-                for entryId in entryIds {
-                    readAtByEntryId.removeValue(forKey: entryId)
-                    if let publicationId = publicationId(for: entryId) {
-                        adjustUnreadCount(publicationId: publicationId, entryId: entryId, delta: 1)
-                    }
-                }
+                // One assignment and one count pass: per-entry updates rebuilt the sidebar each time.
+                var readMap = readAtByEntryId
+                for entryId in entryIds { readMap.removeValue(forKey: entryId) }
+                readAtByEntryId = readMap
+                adjustUnreadCounts(entryIds: entryIds, delta: 1)
                 sidebarUnread.bumpReadRevision()
                 return
             }
         } catch { errorMessage = error.localizedDescription; return }
 
-        for entryId in entryIds {
-            do {
-                try await gateway.deleteReadMark(subjectUri: entryId, expectedViewer: viewer)
-                guard viewerDID == viewer else { return }
-                readAtByEntryId.removeValue(forKey: entryId)
-                if let publicationId = publicationId(for: entryId) {
-                    adjustUnreadCount(publicationId: publicationId, entryId: entryId, delta: 1)
+        // No batch delete exists, so run a bounded number of deletes concurrently.
+        let gateway = gateway
+        var deleted: [String] = []
+        await withTaskGroup(of: (String, Error?).self) { group in
+            var pending = entryIds.makeIterator()
+            func addNext() {
+                guard let entryId = pending.next() else { return }
+                group.addTask {
+                    do {
+                        try await gateway.deleteReadMark(subjectUri: entryId, expectedViewer: viewer)
+                        return (entryId, nil)
+                    } catch {
+                        return (entryId, error)
+                    }
                 }
-            } catch {
-                markAppViewUnavailableIfNeeded(error)
+            }
+            for _ in 0 ..< 8 { addNext() }
+            while let (entryId, error) = await group.next() {
+                if let error { markAppViewUnavailableIfNeeded(error) } else { deleted.append(entryId) }
+                addNext()
             }
         }
+        guard viewerDID == viewer else { return }
+        var readMap = readAtByEntryId
+        for entryId in deleted { readMap.removeValue(forKey: entryId) }
+        readAtByEntryId = readMap
+        adjustUnreadCounts(entryIds: deleted, delta: 1)
         sidebarUnread.bumpReadRevision()
         await refreshSidebarUnreadCounts(
             publicationIds: publicationsAffected(by: scope).map(\.publicationId)
@@ -653,6 +673,15 @@ final class SocialWireAppModel {
         }
     }
 
+    /// Pull to refresh: asks the server to check every publication in the feed, with progress.
+    func pullToRefreshSelectedArticleFeed() async {
+        guard useAppViewEntryTimelines, let scope = feedRefreshScope else {
+            await refreshSelectedArticleFeed()
+            return
+        }
+        await streamFeedRefresh(kind: scope.kind, id: scope.id)
+    }
+
     func refreshSelectedArticleFeed() async {
         if let publication = selectedPublication {
             await loadEntries(for: publication, forceNetworkRefresh: true)
@@ -671,6 +700,61 @@ final class SocialWireAppModel {
             await loadAggregateFeed(kind: "list", id: uri)
         default:
             break
+        }
+    }
+
+    private var feedRefreshScope: (kind: String, id: String?)? {
+        if let publication = selectedPublication { return ("publication", publication.publicationId) }
+        return Self.aggregateFeedScope(for: feedSelection)
+    }
+
+    /// Streams `refreshFeed` so the footer can show per-publication progress, repainting the
+    /// visible feed (at most once a second) as publications report new articles.
+    private func streamFeedRefresh(kind: String, id: String?) async {
+        let startingIds = Set(entries.map(\.entryId))
+        feedRefreshStatus = nil
+        feedRefreshProgress = FeedRefreshProgress()
+        defer { feedRefreshProgress = nil }
+        var lastPaint = ContinuousClock.now
+        var dirty = false
+        var unavailable = 0
+        do {
+            try await gateway.refreshFeed(kind: kind, id: id) { [self] event in
+                switch event {
+                case let .started(total):
+                    feedRefreshProgress = FeedRefreshProgress(completed: 0, total: total)
+                case let .publication(publication):
+                    feedRefreshProgress = FeedRefreshProgress(completed: publication.completed, total: publication.total)
+                    if publication.indexed > 0 { dirty = true }
+                    if dirty, ContinuousClock.now - lastPaint >= .seconds(1) {
+                        dirty = false
+                        lastPaint = .now
+                        await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+                    }
+                case let .done(_, _, count):
+                    unavailable = count
+                case .unknown:
+                    break
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            markAppViewUnavailableIfNeeded(error)
+            await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+            feedRefreshStatus = "Couldn’t Refresh — Pull to Try Again"
+            return
+        }
+        // Counters were reconciled before `done`; paint and recount once more.
+        await refreshActivePublicationFeedIfNeeded(skipEnroll: true)
+        await refreshSidebarUnreadCounts(force: true)
+        let newCount = entries.lazy.filter { !startingIds.contains($0.entryId) }.count
+        if newCount > 0 {
+            feedRefreshStatus = "\(newCount) New \(newCount == 1 ? "Article" : "Articles")"
+        } else if unavailable > 0 {
+            feedRefreshStatus = "Up to Date — Some Sources Unavailable"
+        } else {
+            feedRefreshStatus = "Up to Date"
         }
     }
 
@@ -756,6 +840,68 @@ final class SocialWireAppModel {
       return
     }
     adjustUnreadCount(publicationId: publicationId, delta: delta)
+  }
+
+  /// Bulk form of `adjustUnreadCount(publicationId:entryId:delta:)` with the same per-entry
+  /// rules, but one cache read per publication and one sidebar rebuild for the whole batch.
+  private func adjustUnreadCounts(entryIds: [String], delta: Int) {
+    guard !entryIds.isEmpty else { return }
+    var cachedIdsByKey: [String: Set<String>] = [:]
+    func cachedEntryIds(_ cacheKey: String) -> Set<String> {
+      if let hit = cachedIdsByKey[cacheKey] { return hit }
+      let ids = Set(((try? readerCacheCoordinator?.publicationEntries(cacheKey)) ?? nil)?.map(\.entryId) ?? [])
+      cachedIdsByKey[cacheKey] = ids
+      return ids
+    }
+
+    // Same precedence as `publicationId(for:)`: the selected feed, then the first sidebar
+    // row whose cached entries contain it, then the selected publication.
+    let loadedIds = Set(entries.map(\.entryId))
+    var publicationByEntry: [String: String] = [:]
+    var unresolved = Set(entryIds)
+    if let selectedPublication {
+      for entryId in unresolved where loadedIds.contains(entryId) {
+        publicationByEntry[entryId] = selectedPublication.publicationId
+      }
+      unresolved.subtract(publicationByEntry.keys)
+    }
+    for publication in gatewayAllPublicationRows where !unresolved.isEmpty {
+      let cacheKeys = [
+        publication.publicationId,
+        normalizeATRepoParam(publication.publicationId),
+        canonicalPublicationAtUriKey(publication.publicationId),
+      ].compactMap { $0 }
+      let cached = cacheKeys.reduce(into: Set<String>()) { $0.formUnion(cachedEntryIds($1)) }
+      for entryId in unresolved where cached.contains(entryId) {
+        publicationByEntry[entryId] = publication.publicationId
+      }
+      unresolved.subtract(cached)
+    }
+    if let fallback = selectedPublication?.publicationId {
+      for entryId in unresolved { publicationByEntry[entryId] = fallback }
+    }
+
+    var deltaByPublication: [String: Int] = [:]
+    var deferred = false
+    for (entryId, publicationId) in publicationByEntry {
+      // Mirrors `SidebarUnreadController.shouldDeferBaselineDelta`.
+      let isCached = PublicationUnreadCountLookup.cacheKeys(for: publicationId)
+        .contains { cachedEntryIds($0).contains(entryId) }
+      if readerCacheCoordinator != nil && isCached {
+        deferred = true
+      } else {
+        deltaByPublication[publicationId, default: 0] += delta
+      }
+    }
+    guard deferred || !deltaByPublication.isEmpty else { return }
+    if deferred { sidebarUnread.bumpReadRevision() }
+    markUnreadCountsOptimistic()
+    for (publicationId, publicationDelta) in deltaByPublication {
+      sidebarUnread.adjustCount(publicationId: publicationId, delta: publicationDelta)
+    }
+    unreadCountsByPublicationId = sidebarUnread.unreadCountsByPublicationId
+    cachedPriorityProjection = sidebarUnread.cachedPriorityProjection
+    rebuildSidebarTreeViewModel()
   }
 
   private func publicationId(for entryId: String) -> String? {
@@ -3016,8 +3162,9 @@ final class SocialWireAppModel {
             guard ownsReaderRequest(context) else { return }
             applyAuthoritativeReadState(from: page.entries)
             if readerFilter == .unread {
-                entries = page.entries
-                entriesNextCursor = page.cursor
+                (entries, entriesNextCursor) = ReaderUnreadPageMerge.merge(
+                    existing: entries, existingCursor: entriesNextCursor, fresh: page.entries, freshCursor: page.cursor
+                )
             } else {
                 entries = mergeEntryPagesAtTop(existing: entries, freshFirstPage: page.entries)
                 if entriesNextCursor == nil {
@@ -3160,8 +3307,9 @@ final class SocialWireAppModel {
             let page = try await fetchEntriesPage(for: publication, cursor: nil, requestContext: context)
             guard ownsReaderRequest(context) else { return }
             if readerFilter == .unread {
-                entries = page.entries
-                entriesNextCursor = page.cursor
+                (entries, entriesNextCursor) = ReaderUnreadPageMerge.merge(
+                    existing: entries, existingCursor: entriesNextCursor, fresh: page.entries, freshCursor: page.cursor
+                )
             } else {
                 entries = mergeEntryPagesAtTop(existing: entries, freshFirstPage: page.entries)
                 if entriesNextCursor == nil {

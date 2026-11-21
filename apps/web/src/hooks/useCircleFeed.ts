@@ -29,7 +29,7 @@ export const CIRCLE_EDITION_QUERY_KEY = (
 
 export const CIRCLE_STALE_TIME_MS = 10 * 60_000;
 
-export function useCircleCatalog() {
+export function useCircleCatalog(args: { enabled?: boolean } = {}) {
   const { session, isLoading, getOAuthSession, oauthSessionReloadSeq } =
     useAuth();
   const viewerDid = session?.did ?? "signed-out";
@@ -44,7 +44,7 @@ export function useCircleCatalog() {
       if (!oauthSession) throw new Error("Your Circle requires sign-in.");
       return getCircleCatalog({ oauthSession, signal });
     },
-    enabled: !isLoading && Boolean(session && oauthSession),
+    enabled: (args.enabled ?? true) && !isLoading && Boolean(session && oauthSession),
     staleTime: 5 * 60_000,
     retry: (count, error) => !isExpiredFeedCursor(error) && count < 1,
   });
@@ -53,7 +53,8 @@ export function useCircleCatalog() {
 export function useCircleEdition(args: { enabled: boolean }) {
   const { session, isLoading, getOAuthSession, oauthSessionReloadSeq } =
     useAuth();
-  const catalog = useCircleCatalog();
+  // Gateway only serves Circle when it is enabled; don't probe it from every read view.
+  const catalog = useCircleCatalog({ enabled: args.enabled });
   const queryClient = useQueryClient();
   const viewerDid = session?.did ?? "signed-out";
   const oauthSession = getOAuthSession();

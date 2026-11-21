@@ -293,6 +293,14 @@ enum AppViewRouterBuilder {
       listsService: listsService
     )
     BootstrapStreamRoutes(bootstrapStreamService: bootstrapStream).register(on: protected)
+    FeedRefreshStreamRoutes(feedRefreshStreamService: FeedRefreshStreamService(
+      readService: readService,
+      enrollService: enrollService,
+      projectionService: projection,
+      skyreaderIngestionService: skyreaderIngestionService,
+      listsService: listsService,
+      logger: logger
+    )).register(on: protected)
 
     return router
   }

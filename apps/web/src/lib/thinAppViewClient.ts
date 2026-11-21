@@ -296,14 +296,65 @@ export async function getEntryFromAppView(
   };
 }
 
+/** Encoded query budget per request; Safari rejects very long URLs as "bad URL". */
+const UNREAD_COUNTS_MAX_QUERY_LENGTH = 6_000;
+
+/** Split publication IDs into requests whose encoded query stays under the URL budget. */
+export function chunkUnreadCountPublicationIds(
+  publicationIds: readonly string[],
+  maxQueryLength = UNREAD_COUNTS_MAX_QUERY_LENGTH
+): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let length = 0;
+  for (const publicationId of new Set(publicationIds)) {
+    const paramLength =
+      new URLSearchParams({ publicationIds: publicationId }).toString().length + 1;
+    if (current.length > 0 && length + paramLength > maxQueryLength) {
+      chunks.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(publicationId);
+    length += paramLength;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 export async function fetchAppViewUnreadCounts(
   oauthSession: OAuthSession,
   publicationIds: string[],
   signal?: AbortSignal
 ): Promise<AppViewUnreadCountsResponse> {
-  if (publicationIds.length === 0) return { counts: {} };
-  const params = new URLSearchParams({
-  });
+  const chunks = chunkUnreadCountPublicationIds(publicationIds);
+  if (chunks.length === 0) return { counts: {} };
+  if (chunks.length === 1) {
+    return fetchAppViewUnreadCountsChunk(oauthSession, chunks[0], signal);
+  }
+  const snapshots = await Promise.all(
+    chunks.map((chunk) => fetchAppViewUnreadCountsChunk(oauthSession, chunk, signal))
+  );
+  const generations = snapshots.flatMap((s) => (s.generation == null ? [] : [s.generation]));
+  const countedAts = snapshots.flatMap((s) => (s.countedAt ? [s.countedAt] : []));
+  return {
+    counts: Object.assign({}, ...snapshots.map((s) => s.counts)),
+    generation: generations.length ? Math.max(...generations) : undefined,
+    // The combined snapshot is only exact when every chunk was.
+    accuracy: snapshots.every((s) => s.accuracy === "exact")
+      ? "exact"
+      : snapshots.find((s) => s.accuracy && s.accuracy !== "exact")?.accuracy,
+    // The oldest chunk bounds how fresh the whole snapshot is.
+    countedAt: countedAts.sort()[0],
+  };
+}
+
+async function fetchAppViewUnreadCountsChunk(
+  oauthSession: OAuthSession,
+  publicationIds: string[],
+  signal?: AbortSignal
+): Promise<AppViewUnreadCountsResponse> {
+  const params = new URLSearchParams();
   for (const publicationId of publicationIds) {
     params.append("publicationIds", publicationId);
   }
@@ -406,6 +457,47 @@ async function writeThroughReadMarkDeleteOrdered(
     }
     throw new Error(`Thin AppView read-mark delete failed (${res.status}`);
   }
+}
+
+/**
+ * Writes one read state for many entries as a single queued mutation. PDS read state takes the
+ * whole batch in one outbox operation; the AppView fallback has no batch route, so it runs a
+ * bounded number of per-entry writes. Resolves with the entries whose write failed.
+ */
+export async function writeThroughReadStates(
+  oauthSession: OAuthSession,
+  subjectUris: string[],
+  read: boolean,
+  readAt: string = new Date().toISOString()
+): Promise<Map<string, unknown>> {
+  return queueReadStateMutation(oauthSession, async assertCurrent => {
+    const failures = new Map<string, unknown>();
+    if (subjectUris.length === 0) return failures;
+    const canonical = await usesPDSReadState(oauthSession);
+    assertCurrent();
+    if (canonical) {
+      const runtime = await loadPDSReadStateSync(oauthSession);
+      assertCurrent();
+      await runtime.exact(subjectUris, read ? "read" : "unread", readAt);
+      assertCurrent();
+      return failures;
+    }
+    let next = 0;
+    const worker = async () => {
+      while (next < subjectUris.length) {
+        const subjectUri = subjectUris[next++];
+        try {
+          if (read) await writeThroughReadMarkOrdered(oauthSession, subjectUri, readAt, assertCurrent);
+          else await writeThroughReadMarkDeleteOrdered(oauthSession, subjectUri, assertCurrent);
+        } catch (error) {
+          failures.set(subjectUri, error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, subjectUris.length) }, worker));
+    assertCurrent();
+    return failures;
+  });
 }
 
 export async function enrollAuthorsInAppView(
