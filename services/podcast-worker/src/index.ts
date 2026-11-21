@@ -48,7 +48,7 @@ if(database instanceof SQLitePodcastDatabase) {
   const deadline=Date.now()+90_000;
   for(;;) {
     try {database.ready();break;} catch {
-      if(Date.now()>=deadline)throw new Error("Swift podcast schema was not ready within 90 seconds");
+      if(Date.now()>=deadline)throw new Error("AppView podcast schema was not ready within 90 seconds");
       await Bun.sleep(250);
     }
   }
