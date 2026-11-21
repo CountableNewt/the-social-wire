@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = join(import.meta.dir, "../../..");
@@ -19,36 +18,43 @@ describe("standalone reader CI", () => {
     expect(parsed.jobs.web.needs).toBe("changes");
     expect(parsed.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
     expect(parsed.jobs.appview.name).toBe("SQLite AppView");
-    expect(parsed.jobs.appview.needs).toEqual(["changes", "appview_lanes"]);
+    expect(parsed.jobs.appview.needs).toEqual(["changes", "appview_go", "appview_image"]);
     expect(parsed.jobs.appview.if).toStartWith("always()");
-    expect(parsed.jobs.appview_lanes.needs).toBe("changes");
-    expect(parsed.jobs.appview_lanes.strategy.matrix.lane).toEqual(["tests", "release"]);
-    expect(parsed.jobs.appview_lanes["timeout-minutes"]).toBeGreaterThanOrEqual(60);
-    const verify = parsed.jobs.appview_lanes.steps.find((step: any) => step.name === "Verify AppView lane");
-    expect(verify.run).toContain('bash scripts/ci/benchmark-appview-swiftpm.sh "$LANE" initial');
+    for (const name of ["appview_go", "appview_image"]) {
+      expect(parsed.jobs[name].needs).toBe("changes");
+      expect(parsed.jobs[name]["timeout-minutes"]).toBeLessThanOrEqual(30);
+    }
+    const verify = parsed.jobs.appview_go.steps.find((step: any) => step.name === "Verify AppView sources");
+    expect(verify.run).toContain("go test -vet=all -count=1 ./...");
+    expect(parsed.jobs.appview_go.defaults.run["working-directory"]).toBe("services/appview");
+    expect(parsed.jobs.appview_image.steps.some((step: any) => step.run?.includes("bash scripts/ci/verify-runtime-images.sh appview"))).toBe(true);
+    expect(workflow).not.toMatch(/swift|SwiftPM/i);
     expect(workflow).not.toMatch(/runs-on: macos-|working-directory: services\/(?:gateway|indexing-worker)/);
     expect(workflow).not.toContain("REDIS_INTEGRATION_URL");
     expect(workflow).not.toContain("DATABASE_URL");
   });
 
-  it("restores separate SwiftPM caches and warms the base branch from exact PR proof", () => {
-    const lanes = parsed.jobs.appview_lanes.steps;
-    const restore = lanes.find((step: any) => step.uses === "actions/cache/restore@v5");
-    const verify = lanes.findIndex((step: any) => step.name === "Verify AppView lane");
-    const archive = lanes.findIndex((step: any) => step.name === "Archive verified SwiftPM state");
-    expect(lanes.indexOf(restore)).toBeLessThan(verify);
+  it("restores the Go build cache and warms the base branch from exact PR proof", () => {
+    const steps = parsed.jobs.appview_go.steps;
+    const setup = steps.find((step: any) => step.uses === "actions/setup-go@v6");
+    expect(setup.with["go-version-file"]).toBe("services/appview/go.mod");
+    expect(setup.with.cache).toBe(false);
+    const restore = steps.find((step: any) => step.uses === "actions/cache/restore@v5");
+    const verify = steps.findIndex((step: any) => step.name === "Verify AppView sources");
+    const archive = steps.findIndex((step: any) => step.name === "Archive verified Go build cache");
+    expect(steps.indexOf(restore)).toBeLessThan(verify);
     expect(archive).toBeGreaterThan(verify);
-    expect(restore.with.key).toContain("appview-swiftpm-v1-");
-    expect(restore.with.key).toContain("${{ matrix.lane }}");
+    expect(restore.with.key).toContain("appview-go-v1-");
+    expect(restore.with.key).toContain("hashFiles('services/appview/go.sum')");
     expect(restore.with.key).toEndWith("${{ github.sha }}");
     const warmer = parsed.jobs.warm_appview_cache;
     expect(warmer.if).toContain("needs.changes.outputs.reuse_appview == 'true'");
     expect(warmer["continue-on-error"]).toBe(true);
     expect(parsed.jobs.required.needs).not.toContain("warm_appview_cache");
-    const download = warmer.steps.find((step: any) => step.uses === "actions/download-artifact@v8");
-    expect(download.with["run-id"]).toBe("${{ needs.changes.outputs.cache_run_id }}");
-    expect(download.with.name).toBe("appview-swiftpm-${{ matrix.lane }}");
-    const save = warmer.steps.find((step: any) => step.uses === "actions/cache/save@v5");
+    const downloads = warmer.steps.filter((step: any) => step.uses === "actions/download-artifact@v8");
+    expect(downloads.map((step: any) => step.with.name)).toEqual(["appview-go", "docker-cache-appview"]);
+    for (const download of downloads) expect(download.with["run-id"]).toBe("${{ needs.changes.outputs.cache_run_id }}");
+    const save = warmer.steps.find((step: any) => step.name === "Save Go build cache in base-branch cache scope");
     expect(save.with.key).toBe(restore.with.key);
     expect(save.with.path).toBe(restore.with.path);
   });
@@ -77,22 +83,20 @@ describe("standalone reader CI", () => {
   });
 
   it("checks real release images, SQLite migrations, and the bundled processor", () => {
-    expect(verifier).toContain("buildImage(kind, 'backend-tests')");
-    expect(verifier).toContain("buildImage(kind, 'media-tests')");
+    expect(verifier).not.toContain("backend-tests");
+    expect(verifier).toContain("PODCAST_MEDIA_ARTIFACTS=media-tests");
+    expect(backendImage).toContain("ARG PODCAST_MEDIA_ARTIFACTS=media-builder");
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
     expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
-    expect(backendImage).toContain("FROM test-dependencies AS backend-tests");
-    expect(backendImage).toContain("COPY --from=builder /out/bin/AppView /tmp/production-AppView");
-    expect(backendImage).toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
-    expect(backendImage).toContain("swift test --package-path services/appview -c release --force-resolved-versions");
-    expect(backendImage).not.toContain("swift test --package-path packages/swift/thin-app-view-core");
-    expect(backendImage).toContain("python3 scripts/ci/prepare-swift-tests.py /src");
-    expect(backendImage).toContain("swift build --package-path services/appview -c release --build-tests");
-    expect(backendImage).toContain("RUN rm -rf services/appview/Sources");
-    expect(backendImage.indexOf("AS swift-dependencies")).toBeLessThan(backendImage.indexOf("COPY services/appview/Sources"));
-    expect(backendImage.indexOf("AS test-dependencies")).toBeLessThan(backendImage.indexOf("COPY services/appview/Tests"));
-    expect(backendImage).not.toContain("-enable-testing");
+    expect(parsed.jobs.appview_go.steps.find((step: any) => step.name === "Test SQLite migration tools").run)
+      .toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
+    expect(backendImage).toContain("FROM golang:");
+    expect(backendImage).toContain("CGO_ENABLED=0");
+    expect(backendImage).toContain("-o /out/AppView ./cmd/appview");
+    expect(backendImage).toContain("COPY --from=builder /out/AppView /usr/local/bin/AppView");
+    expect(backendImage.indexOf("go mod download")).toBeLessThan(backendImage.indexOf("COPY services/appview/internal ./internal"));
+    expect(backendImage).not.toMatch(/swift/i);
     expect(backendImage).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
     expect(backendImage).toContain("BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite");
     expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/readyz', '503')");
@@ -105,7 +109,7 @@ describe("standalone reader CI", () => {
     }
     expect(verifier).toContain('coverage_status=$?');
     expect(verifier).toContain('exit "$coverage_status"');
-    expect(verifier.indexOf("run('python3', ['scripts/ci/check-out-swift-contracts.py'])")).toBeLessThan(verifier.indexOf("const image = buildImage(kind, 'builder')"));
+    expect(verifier).not.toContain("check-out-swift-contracts");
   });
 
   function runRequiredGate(overrides: Record<string, string | undefined> = {}) {
@@ -154,65 +158,4 @@ describe("standalone reader CI", () => {
     }
   });
 
-});
-
-describe("extracted Swift reference fixtures", () => {
-  it("pins offline checkouts and rejects changed, mismatched or inherited repositories", () => {
-    const root = mkdtempSync(join(tmpdir(), "swift-contract-checkout-"));
-    const git = (cwd: string, ...args: string[]) => {
-      const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
-      if (result.status !== 0) throw new Error(result.stderr);
-      return result.stdout.trim();
-    };
-    const source = join(root, "source");
-    const destination = join(root, "packages/swift/FixtureCore");
-    const manifest = join(root, "manifest.json");
-    const run = (...args: string[]) => spawnSync("python3", [
-      join(repositoryRoot, "scripts/ci/check-out-swift-contracts.py"),
-      "--root", root, "--manifest", manifest, ...args,
-    ], { encoding: "utf8" });
-    try {
-      mkdirSync(source);
-      git(source, "init", "--quiet");
-      git(source, "config", "user.name", "Contract Test");
-      git(source, "config", "user.email", "test@example.invalid");
-      git(source, "config", "commit.gpgsign", "false");
-      writeFileSync(join(source, "Package.swift"), "original\n");
-      git(source, "add", ".");
-      git(source, "commit", "--quiet", "-m", "original");
-      const revision = git(source, "rev-parse", "HEAD");
-      const pin = (value = revision) => writeFileSync(manifest, JSON.stringify({
-        schemaVersion: 1, packages: [{ name: "FixtureCore", repository: source, revision: value }],
-      }));
-      pin();
-      expect(run("--package", "UnknownCore").status).not.toBe(0);
-      expect(existsSync(destination)).toBe(false);
-      expect(run().status).toBe(0);
-      expect(git(destination, "rev-parse", "HEAD")).toBe(revision);
-      expect(run().status).toBe(0);
-      writeFileSync(join(destination, "Package.swift"), "local work\n");
-      expect(run().stderr).toContain("local changes");
-      expect(readFileSync(join(destination, "Package.swift"), "utf8")).toBe("local work\n");
-      git(destination, "checkout", "--", "Package.swift");
-      git(destination, "remote", "set-url", "origin", join(root, "wrong"));
-      expect(run().stderr).toContain("unexpected origin");
-      git(destination, "remote", "set-url", "origin", source);
-      pin("0".repeat(40));
-      expect(run().stderr).toContain("pinned revision");
-      pin("main");
-      expect(run().stderr).toContain("full immutable Git revision");
-      pin();
-      rmSync(destination, { recursive: true });
-      mkdirSync(destination);
-      writeFileSync(join(destination, "keep.txt"), "keep\n");
-      expect(run().stderr).toContain("independent Git checkout");
-      expect(readFileSync(join(destination, "keep.txt"), "utf8")).toBe("keep\n");
-      rmSync(destination, { recursive: true });
-      pin("0".repeat(40));
-      expect(run().status).not.toBe(0);
-      expect(existsSync(destination)).toBe(false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
 });

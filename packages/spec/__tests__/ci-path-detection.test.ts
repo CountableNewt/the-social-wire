@@ -76,14 +76,15 @@ function detect(
 
 describe("standalone CI path detection", () => {
   it.each([
-    "services/appview/Package.swift",
+    "services/appview/go.mod",
     "services/appview/Dockerfile.standalone",
     "services/appview/bin/backend-supervisor",
+    "services/appview/internal/thinstore/store.go",
     "services/podcast-worker/src/index.ts",
-    "packages/swift/thin-app-view-core/Sources/ThinAppViewCore/SQLiteThinAppViewStore.swift",
-  "packages/swift/skej-backend/Sources/SkejBackend/EmbeddedSkejBackend.swift",
+    "apps/web/package.json",
+    "packages/spec/openapi.yaml",
+    "packages/vendor/example/package.json",
     "scripts/migrations/postgres_to_sqlite.py",
-    "database/migrations/20990101000000_example.sql",
     "railway/appview-standalone.json",
     "package.json", "bun.lock", ".dockerignore",
   ])("checks backend runtime plus schema/source contracts for %s", path => {
@@ -97,14 +98,12 @@ describe("standalone CI path detection", () => {
     "packages/lexicons/lexicons/article.json",
     "packages/spec/__tests__/example.test.ts",
     "apps/apple/SocialWire/Feature.swift",
-    "packages/swift/extracted-swift-packages.json",
-    "services/gateway/Sources/Gateway/GatewayCommand.swift",
-    "services/indexing-worker/Tests/WorkerTests/RuntimeTests.swift",
+    "database/migrations/20990101000000_example.sql",
     "railway/web.json",
   ])("retains cross-client/source contracts without distributed runtime jobs for %s", path => {
     expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request"))).toEqual({ web: "true", appview: "false" });
   });
-  it.each(["scripts/ci/verify-runtime-images.mjs", "scripts/ci/verify-runtime-images.test.mjs", "scripts/ci/development-parity.mjs", "scripts/ci/check-out-swift-contracts.py"])("checks both packaged verifiers when %s changes", path => {
+  it.each(["scripts/ci/verify-runtime-images.mjs", "scripts/ci/verify-runtime-images.test.mjs", "scripts/ci/development-parity.mjs"])("checks both packaged verifiers when %s changes", path => {
     expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true"]);
   });
   it.each([".github/workflows/ci.yml", ".github/workflows/validated-merge.yml", "scripts/ci-detect-changes.sh"])("requires every runtime check when shared gate %s changes", path => {
@@ -114,7 +113,7 @@ describe("standalone CI path detection", () => {
     expect(Object.fromEntries(detect(repositoryWithChange("docs/wiki/Testing.md"), "push"))).toEqual({ web: "false", appview: "false" });
   });
   it.each([
-    ["services/appview/Sources/AppView/AppViewCommand.swift", { web: "true", appview: "true" }],
+    ["services/appview/cmd/appview/main.go", { web: "true", appview: "true" }],
     ["apps/web/src/app/page.tsx", { web: "true", appview: "false" }],
     [".github/workflows/ci.yml", { web: "true", appview: "true" }],
   ])("selects runtime checks from the pushed commit range for %s", (path, expected) => {

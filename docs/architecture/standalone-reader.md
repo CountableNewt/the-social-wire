@@ -1,8 +1,8 @@
 # Standalone Reader Backend
 
 The target has two Railway services: Next.js Web and one Backend container.
-The Backend runs the Swift public API, SQLite-backed reader/draft/podcast stores,
-RSS polling and retention. When podcasts are enabled, it also supervises the
+The Backend runs the Go public API, SQLite-backed reader/draft/podcast stores,
+RSS polling, retention and the embedded scheduler. When podcasts are enabled, it also supervises the
 existing Bun/FFmpeg processor on `127.0.0.1:9080`. A child exit stops the
 container; readiness checks processor startup and health. Media processing never
 holds a SQLite transaction during network access or rendering.
@@ -20,8 +20,8 @@ Build from the repository root:
 ```sh
 docker build -f apps/web/Dockerfile -t social-wire-web .
 docker build -f services/appview/Dockerfile.standalone -t social-wire-backend .
-docker build --target backend-tests -f services/appview/Dockerfile.standalone .
-docker build --target media-tests -f services/appview/Dockerfile.standalone .
+(cd services/appview && go test -vet=all -count=1 ./...)
+bash scripts/ci/verify-runtime-images.sh appview
 ```
 
 Web image public build arguments must match the destination environment; see its
@@ -57,6 +57,8 @@ Preserve the exact existing values of:
 - `SOCIAL_DRAFT_STORAGE_KEY`, draft S3 settings and recovery keys.
 - `PODCAST_PRIVATE_STORAGE_KEY`, podcast S3 settings,
   `PODCAST_MEDIA_INTERNAL_SECRET` and public asset origin.
+- `EMBEDDED_SCHEDULING_STORAGE_KEY` and the scheduling OAuth public origin.
+  Keep `/data/scheduling.sqlite` on the same persistent volume.
 - `GATEWAY_APPVIEW_INTERNAL_SECRET`: retained as the analytics pseudonym HMAC
   key, despite the removed internal network hop.
 
@@ -66,6 +68,14 @@ content discovery and retained feature settings. Stale Redis/Postgres variables
 are unused by this mode; remove them after the replacement is accepted.
 The supervisor sets the processor URL to loopback; no external media worker
 URL or public processor listener is required.
+
+## Switching an Existing SQLite Deployment to Go
+
+Back up the AppView and scheduling SQLite files before replacing the Swift image.
+Rehearse initialization against a copy of the volume with the same feature
+settings. Compare database integrity, representative reader projections,
+private drafts and the scheduled queue. Validate authenticated flows in
+Development before promoting the same revision to Production.
 
 ## Development-First Data Cutover
 

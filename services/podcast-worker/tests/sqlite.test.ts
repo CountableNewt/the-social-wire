@@ -10,11 +10,9 @@ import { upsertPodcastEpisode } from "../src/catalog";
 import { mediaRuntimeConfiguration } from "../src/runtime";
 import type { PodcastEpisode, PodcastJob } from "../src/types";
 
-// Execute the schema owned by Swift so test fixtures cannot silently drift from
-// the database shared by AppView and the in-container Bun processor.
-const source=await Bun.file(new URL("../../../packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Podcasts/SQLitePodcastStore+Schema.swift",import.meta.url)).text();
-const schema=source.match(/sql:\s*"""([\s\S]*?)"""/)?.[1];
-if(!schema)throw new Error("Swift podcast schema fixture is missing");
+// Execute the schema embedded by AppView so the Bun processor fixture uses
+// the same tables as the packaged runtime.
+const schema=await Bun.file(new URL("../../appview/internal/podcasts/schema.sql",import.meta.url)).text();
 let directory:string;let database:SQLitePodcastDatabase;let second:SQLitePodcastDatabase;
 const now=()=>Date.now()/1000;
 const episode:PodcastEpisode={id:"episode",showId:"show",title:"Episode",guid:"original-guid",publishedAt:new Date(0).toISOString(),audioUrl:"https://example.com/audio.mp3",transcripts:[]};
@@ -29,7 +27,7 @@ function seedClip() {
   return id;
 }
 
-describe("podcast processor on the shared Swift SQLite schema",()=>{
+describe("podcast processor on the shared AppView SQLite schema",()=>{
   beforeEach(()=>{
     directory=mkdtempSync(join(tmpdir(),"podcast-worker-sqlite-"));
     database=new SQLitePodcastDatabase(join(directory,"reader.sqlite"));
