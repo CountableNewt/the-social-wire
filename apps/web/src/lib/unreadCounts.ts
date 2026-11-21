@@ -48,8 +48,10 @@ export function countUnreadCachedEntries(
 export function countCachedReadEntries(
   entries: EntryListItem[],
   isEntryRead: (entryId: string) => boolean,
-  pendingEntryReadState?: (entryId: string) => boolean | undefined
+  pendingEntryReadState?: (entryId: string) => boolean | undefined,
+  baseline?: { countedAt?: string; entryReadAt?: (entryId: string) => string | undefined }
 ): number {
+  const countedAt = baseline?.countedAt ? Date.parse(baseline.countedAt) : NaN;
   const seen = new Set<string>();
   let count = 0;
   for (const entry of entries) {
@@ -58,18 +60,29 @@ export function countCachedReadEntries(
     const pending = pendingEntryReadState?.(entry.entryId);
     // Pending reads may already have optimistically patched entry.isRead.
     // Acknowledged server reads are already excluded from the count baseline.
-    if (pending === true || (pending !== false && entry.isRead !== true && isEntryRead(entry.entryId))) count += 1;
+    if (pending === true) { count += 1; continue; }
+    if (pending === false || entry.isRead === true || !isEntryRead(entry.entryId)) continue;
+    // A read synced before the server counted is already in its baseline even when
+    // this cached row predates it; subtracting it again makes the badge depend on
+    // which rows happen to be cached.
+    const readAt = baseline?.entryReadAt?.(entry.entryId);
+    if (readAt && Number.isFinite(countedAt) && Date.parse(readAt) <= countedAt) continue;
+    count += 1;
   }
   return count;
 }
 
 export type EffectivePublicationUnreadCountOptions = {
   /**
-   * When true, an AppView baseline is never exceeded by partial first-page cache
-   * (sidebar prefetch). Local read marks can still lower the badge.
+   * When true, an AppView baseline is never exceeded by partial cache (sidebar
+   * prefetch). Local read marks newer than the baseline can still lower the badge.
    */
   capRaiseToServerCount?: boolean;
   pendingEntryReadState?: (entryId: string) => boolean | undefined;
+  /** When the server baseline was counted; local reads at or before it are already included. */
+  countedAt?: string;
+  /** Local first-read timestamp, compared against {@link countedAt}. */
+  entryReadAt?: (entryId: string) => string | undefined;
 };
 
 /**
@@ -87,12 +100,25 @@ export function effectivePublicationUnreadCount(
   if (cached.length === 0) return serverCount;
 
   const cachedUnread = countUnreadCachedEntries(cached, isEntryRead, options?.pendingEntryReadState);
-  const cachedRead = countCachedReadEntries(cached, isEntryRead, options?.pendingEntryReadState);
+  const cachedRead = countCachedReadEntries(cached, isEntryRead, options?.pendingEntryReadState,
+    { countedAt: options?.countedAt, entryReadAt: options?.entryReadAt });
   const reconciled = Math.max(cachedUnread, serverCount - cachedRead);
   if (options?.capRaiseToServerCount && serverCount > 0) {
     return Math.min(reconciled, serverCount);
   }
   return reconciled;
+}
+
+/** Per-publication count timestamps, resolving publication ID aliases like the count map. */
+export function unreadCountedAtLookup(
+  freshness: Record<string, { countedAt?: string }> | undefined,
+  fallbackCountedAt: string | undefined
+): (publicationId: string) => string | undefined {
+  const byKey = new Map<string, string>();
+  for (const [publicationId, value] of Object.entries(freshness ?? {})) {
+    if (value.countedAt) byKey.set(normalizeAtRepoParam(publicationId), value.countedAt);
+  }
+  return publicationId => byKey.get(normalizeAtRepoParam(publicationId)) ?? fallbackCountedAt;
 }
 
 export function findUnreadCountInMap(

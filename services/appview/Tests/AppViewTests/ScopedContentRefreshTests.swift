@@ -74,6 +74,20 @@ import ThinAppViewCore
     #expect(try await coordinator.refresh(scope: other) == 5)
   }
 
+  @Test func explicitRefreshesQueueBehindBusyProviderJobsInsteadOfSkipping() async throws {
+    let provider = Counter()
+    let coordinator = ScopedContentRefresh(provider: Provider(counter: provider, delay: true), logger: Logger(label: "scope.test"))
+    let scopes = try (0..<6).map {
+      try PublicContentDiscoveryScope(authorDid: "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa", publicationKeys: ["https://publisher\($0).example"])
+    }
+    let total = try await withThrowingTaskGroup(of: Int.self) { group in
+      for scope in scopes { group.addTask { try await coordinator.refresh(scope: scope, waitForCapacity: true) } }
+      return try await group.reduce(0, +)
+    }
+    #expect(total == 12)
+    #expect(await provider.count == 6)
+  }
+
   @Test func providerModeIsExplicitAndDefaultsEnabledForHostedConfiguration() throws {
     #expect(try PublicContentDiscoveryMode.load([:]) == .microcosm)
     #expect(try PublicContentDiscoveryMode.load(["PUBLIC_CONTENT_DISCOVERY_MODE": "off"]) == .off)

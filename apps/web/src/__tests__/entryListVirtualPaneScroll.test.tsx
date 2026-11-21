@@ -132,6 +132,31 @@ describe("EntryListVirtualPane scroll stability", () => {
     });
   }
 
+  for (const [name, update] of [
+    ["appends a page", (entries: EntryListItem[]) => [...entries, makeEntry(100), makeEntry(101)]],
+    ["updates metadata", (entries: EntryListItem[]) => entries.map(entry => ({ ...entry, title: `${entry.title} refreshed` }))],
+  ] as const) {
+    it(`does not write the scroll offset when a refresh ${name} below the viewport`, () => {
+      const entries = Array.from({ length: 30 }, (_, index) => makeEntry(index));
+      const { container, rerender } = render(renderPane(entries), { wrapper: createWrapper() });
+      const root = container.querySelector("[data-entry-list-scroll]") as HTMLDivElement;
+      root.scrollTop = 900;
+      fireEvent.scroll(root);
+      // A fling keeps moving the compositor while the main thread is busy committing,
+      // so any write of the pre-commit offset would visibly snap the list backwards.
+      let writes = 0;
+      let live = root.scrollTop;
+      Object.defineProperty(root, "scrollTop", {
+        configurable: true,
+        get: () => live,
+        set: (value: number) => { writes += 1; live = value; },
+      });
+      rerender(renderPane(update(entries)));
+      expect(writes).toBe(0);
+      expect(root.scrollTop).toBe(900);
+    });
+  }
+
   it("keeps the top of the feed at the top when new articles arrive", () => {
     const entries = Array.from({ length: 20 }, (_, index) => makeEntry(index));
     const { container, rerender } = render(renderPane(entries), { wrapper: createWrapper() });

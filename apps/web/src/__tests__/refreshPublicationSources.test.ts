@@ -1,8 +1,9 @@
 import { afterEach, expect, it, spyOn } from "bun:test";
 import { InfiniteQueryObserver, QueryClient } from "@tanstack/react-query";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import * as appview from "@/lib/thinAppViewClient";
-import { readerRefreshRows, readerRefreshSourcesKey, refreshPublicationSources } from "@/lib/refreshPublicationSources";
+import * as stream from "@/lib/feedRefreshStreamClient";
+import type { FeedRefreshSelector, FeedRefreshStreamEvent } from "@/lib/feedRefreshStreamClient";
+import { readerRefreshRows, readerRefreshSelectors, readerRefreshSourcesKey, refreshPublicationSources } from "@/lib/refreshPublicationSources";
 import type { PublicationSidebarProjection, SidebarPublicationRow } from "@/lib/publicationProjectionClient";
 import { PublicationSourceRefreshError } from "@/lib/publicationSourceRefreshError";
 
@@ -11,37 +12,24 @@ const row = (author: string, id = author): SidebarPublicationRow => ({ publicati
 const restores: (() => void)[] = [];
 afterEach(() => { while (restores.length) restores.pop()!(); });
 
-it("reports unavailable publishers only after the authoritative article flush succeeds", async () => {
-  const upstream = new PublicationSourceRefreshError(["publisher.test"], ["rss:world"]);
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockRejectedValue(upstream);
-  restores.push(() => enroll.mockRestore());
-  let paints = 0;
-  const outcome = await refresh(async () => { paints++; }).catch(error => error);
-  expect(paints).toBe(1);
-  expect(outcome).toBeInstanceOf(PublicationSourceRefreshError);
-  expect(outcome.hosts).toEqual(["publisher.test"]);
-  expect(outcome.unavailablePublicationIds).toEqual(["rss:world"]);
-  await expect(refresh(async () => { throw new Error("feed failed"); })).rejects.toThrow("feed failed");
-});
-
-it("does not hide an infrastructure failure behind another chunk's publisher warning", async () => {
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => {
-    if (enroll.mock.calls.length === 1) throw new PublicationSourceRefreshError(["publisher.test"]);
-    throw new Error("database unavailable");
+const subscribed: FeedRefreshSelector[] = [{ kind: "subscribed" }];
+const publication = (publicationId: string, status: "updated" | "checked" | "unavailable", indexed: number, completed: number, total: number): FeedRefreshStreamEvent =>
+  ({ kind: "publication", publicationId, status, indexed, completed, total });
+/** Replays events per stream call; `gate` lets a test observe state between events. */
+function mockStream(script: (selector: FeedRefreshSelector, emit: (event: FeedRefreshStreamEvent) => void) => Promise<void>) {
+  const spy = spyOn(stream, "consumeFeedRefreshStream").mockImplementation(async ({ selector, onEvent, signal }) => {
+    signal?.throwIfAborted();
+    await script(selector, onEvent);
   });
-  restores.push(() => enroll.mockRestore());
-  const error = await refresh(async () => {}, undefined, Array.from({ length: 501 }, (_, i) => row(`did:plc:${i}`))).catch(error => error);
-  expect(error).not.toBeInstanceOf(PublicationSourceRefreshError);
-  expect(error.message).toContain("Some publications could not be checked");
-});
-
-function deferred() {
-  let resolve!: () => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
+  restores.push(() => spy.mockRestore());
+  return spy;
 }
-const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
+function refresh(args: { onBatch?: () => Promise<void>; rows?: SidebarPublicationRow[]; selectors?: FeedRefreshSelector[]; signal?: AbortSignal; onProgress?: (completed: number, total: number) => void } = {}) {
+  return refreshPublicationSources({
+    oauthSession, rows: args.rows ?? [row("did:plc:one")], selectors: args.selectors ?? subscribed,
+    signal: args.signal ?? new AbortController().signal, onBatch: args.onBatch ?? (async () => {}), onProgress: args.onProgress ?? (() => {}),
+  });
+}
 function paintClock() {
   const timers: { callback: () => void; cleared: boolean }[] = [];
   const originalSet = globalThis.setTimeout;
@@ -58,296 +46,157 @@ function paintClock() {
     else originalClear(timer);
   }) as typeof clearTimeout);
   restores.push(() => set.mockRestore(), () => clear.mockRestore());
-  return { timers, tick: async () => {
+  return { tick: async () => {
     const timer = timers.find(value => !value.cleared);
     if (!timer) throw new Error("No paint scheduled");
     timer.cleared = true;
     timer.callback();
-    await settle();
+    for (let i = 0; i < 12; i++) await Promise.resolve();
   } };
 }
-function refresh(onBatch: () => Promise<void>, signal = new AbortController().signal, rows = [row("did:plc:one")], onProgress: (completed: number, total: number) => void = () => {}) {
-  return refreshPublicationSources({ oauthSession, rows, signal, onBatch, onProgress });
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
 }
 
-it("sends 77 deduplicated sources in one RPC and flushes once after the counter barrier", async () => {
-  const events: string[] = [];
-  const gate = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => { events.push("enroll"); await gate.promise; });
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  const rss = row("did:web:skyreader.rss", "rss");
-  rss.appViewScope.publicationSiteUrls = ["https://feed.test/rss", "https://feed.test/rss"];
-  const task = refresh(async () => { events.push("paint"); }, undefined, [...Array.from({ length: 76 }, (_, i) => row(`did:plc:${i}`)), row("did:plc:0"), rss], (n, total) => events.push(`${n}/${total}`));
-  expect(enroll).toHaveBeenCalledTimes(1);
-  expect(enroll.mock.calls[0]?.[1]).toHaveLength(76);
-  expect(enroll.mock.calls[0]?.[2]).toEqual(["https://feed.test/rss"]);
-  expect(events).toEqual(["0/77", "enroll"]);
-  gate.resolve(); await task;
-  expect(events).toEqual(["0/77", "enroll", "77/77", "paint"]);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("budgets serial RSS polls separately from author enrollment and caps the request", async () => {
-  const budgets: number[] = [];
-  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(ms => { budgets.push(ms); return new AbortController().signal; });
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockResolvedValue(undefined);
-  restores.push(() => timeout.mockRestore(), () => enroll.mockRestore());
-  paintClock();
-  for (const count of [1, 4, 5, 77, 500]) {
-    await refresh(async () => {}, undefined, Array.from({ length: count }, (_, i) => row(`did:plc:${i}`)));
-  }
-  const rss = Array.from({ length: 12 }, (_, i) => {
-    const source = row("did:web:skyreader.rss", `rss:${i}`);
-    source.appViewScope.publicationSiteUrls = [`https://feed.test/${i}`];
-    return source;
+it("reports per-publication progress and flushes once after the stream completes", async () => {
+  mockStream(async (_, emit) => {
+    emit({ kind: "started", total: 3 });
+    emit(publication("a", "checked", 0, 1, 3));
+    emit(publication("b", "updated", 2, 2, 3));
+    emit(publication("c", "checked", 0, 3, 3));
+    emit({ kind: "done", total: 3, indexed: 2, unavailable: 0 });
   });
-  await refresh(async () => {}, undefined, rss.slice(0, 3));
-  await refresh(async () => {}, undefined, rss);
-  expect(budgets).toEqual([30_000, 30_000, 60_000, 300_000, 300_000, 165_000, 300_000]);
-  expect(enroll.mock.calls.map(call => [call[1].length, call[2]?.length])).toEqual([
-    [1, 0], [4, 0], [5, 0], [77, 0], [500, 0], [0, 3], [0, 12],
-  ]);
+  const progress: [number, number][] = [];
+  let paints = 0;
+  await refresh({ onBatch: async () => { paints++; }, onProgress: (completed, total) => progress.push([completed, total]) });
+  expect(progress).toEqual([[0, 0], [0, 3], [1, 3], [2, 3], [3, 3], [3, 3]]);
+  expect(paints).toBe(1);
 });
 
-it("aborts a large enrollment immediately on caller cancellation despite its longer deadline", async () => {
-  const caller = new AbortController();
-  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => new Promise<never>(() => {}));
-  restores.push(() => timeout.mockRestore(), () => enroll.mockRestore());
+it("repaints mid-stream only after a publication indexed new articles", async () => {
   const clock = paintClock();
+  const gate = deferred(), landed = deferred();
+  mockStream(async (_, emit) => {
+    emit({ kind: "started", total: 2 });
+    emit(publication("a", "checked", 0, 1, 2));
+    await gate.promise;
+    emit(publication("b", "updated", 4, 2, 2));
+    await landed.promise;
+  });
   let paints = 0;
-  const task = refresh(async () => { paints++; }, caller.signal, Array.from({ length: 77 }, (_, i) => row(`did:plc:${i}`)));
-  const outcome = task.catch(error => error);
-  expect(timeout).toHaveBeenCalledWith(300_000);
-  caller.abort();
-  expect(await outcome).toBe(caller.signal.reason);
-  expect(enroll.mock.calls[0]?.[3]?.aborted).toBe(true);
+  const done = refresh({ onBatch: async () => { paints++; } });
+  await clock.tick();
   expect(paints).toBe(0);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("settles a stalled large enrollment at its bounded deadline even if transport ignores abort", async () => {
-  const deadline = new AbortController();
-  const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => new Promise<never>(() => {}));
-  restores.push(() => timeout.mockRestore(), () => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0;
-  const task = refresh(async () => { paints++; }, undefined, Array.from({ length: 77 }, (_, i) => row(`did:plc:${i}`)));
-  const outcome = task.catch(error => error);
-  deadline.abort(new DOMException("Enrollment deadline exceeded", "TimeoutError"));
-  expect((await outcome).message).toContain("Some publications");
-  expect(enroll.mock.calls[0]?.[3]?.aborted).toBe(true);
-  expect(paints).toBe(1);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("paints early without claiming checked sources while ingestion remains pending", async () => {
-  const gate = deferred();
-  const progress: number[] = [];
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0;
-  let finished = false;
-  const task = refresh(async () => { paints++; }, undefined, undefined, n => progress.push(n)).then(() => { finished = true; });
+  gate.resolve();
+  await Promise.resolve();
   await clock.tick();
   expect(paints).toBe(1);
-  expect(progress).toEqual([0]);
-  expect(finished).toBe(false);
-  await clock.tick();
+  landed.resolve();
+  await done;
   expect(paints).toBe(2);
-  gate.resolve(); await task;
-  expect(paints).toBe(3);
-  expect(progress).toEqual([0, 1]);
 });
 
-it("bounds paints to one worker and ingestion finishes without waiting for a slow paint", async () => {
-  const gate = deferred(), slowPaint = deferred();
-  let ingested = false;
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => { await gate.promise; ingested = true; });
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0, finished = false;
-  const task = refresh(async () => { if (++paints === 1) await slowPaint.promise; }).then(() => { finished = true; });
-  await clock.tick();
-  expect(paints).toBe(1);
-  expect(clock.timers.filter(timer => !timer.cleared)).toHaveLength(0);
-  gate.resolve(); await settle();
-  expect(ingested).toBe(true);
-  expect(finished).toBe(false);
-  expect(paints).toBe(1);
-  slowPaint.resolve(); await task;
-  expect(paints).toBe(2);
-  expect(clock.timers.filter(timer => !timer.cleared)).toHaveLength(0);
+it("streams each mounted feed and accumulates their totals", async () => {
+  const calls = mockStream(async (selector, emit) => {
+    emit({ kind: "started", total: 1 });
+    emit(publication(selector.kind, "checked", 0, 1, 1));
+  });
+  const progress: [number, number][] = [];
+  await refresh({ selectors: [{ kind: "subscribed" }, { kind: "folder", id: "f" }], onProgress: (c, t) => progress.push([c, t]) });
+  expect(calls.mock.calls.map(([args]) => args.selector)).toEqual([{ kind: "subscribed" }, { kind: "folder", id: "f" }]);
+  expect(progress.at(-1)).toEqual([2, 2]);
 });
 
-it("flushes partial articles before surfacing enrollment failure without completed progress", async () => {
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockRejectedValue(new Error("upstream"));
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  const progress: number[] = [];
+it("reports unavailable RSS publishers by host only after the authoritative flush succeeds", async () => {
+  const rss = row("did:web:skyreader.rss", "rss:world");
+  rss.appViewScope.publicationSiteUrls = ["https://publisher.test/rss"];
+  mockStream(async (_, emit) => {
+    emit({ kind: "started", total: 1 });
+    emit(publication("rss:world", "unavailable", 0, 1, 1));
+  });
   let paints = 0;
-  await expect(refresh(async () => { paints++; }, undefined, undefined, n => progress.push(n))).rejects.toThrow("Some publications");
+  const outcome = await refresh({ rows: [rss], onBatch: async () => { paints++; } }).catch(error => error);
   expect(paints).toBe(1);
-  expect(progress).toEqual([0]);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
+  expect(outcome).toBeInstanceOf(PublicationSourceRefreshError);
+  expect(outcome.hosts).toEqual(["publisher.test"]);
+  expect(outcome.unavailablePublicationIds).toEqual(["rss:world"]);
+  await expect(refresh({ rows: [rss], onBatch: async () => { throw new Error("feed failed"); } })).rejects.toThrow("feed failed");
 });
 
-it("settles a started paint on cancellation and never flushes or polls afterward", async () => {
+it("does not present an unavailable non-RSS publication as a publisher warning", async () => {
+  mockStream(async (_, emit) => {
+    emit({ kind: "started", total: 1 });
+    emit(publication("did:plc:one", "unavailable", 0, 1, 1));
+  });
+  const error = await refresh().catch(error => error);
+  expect(error).not.toBeInstanceOf(PublicationSourceRefreshError);
+  expect(error.message).toContain("Some publications could not be checked");
+});
+
+it("flushes partial articles before surfacing a failed stream, continuing later feeds", async () => {
+  const calls = mockStream(async selector => {
+    if (selector.kind === "subscribed") throw new Error("Feed refresh failed (503)");
+  });
+  let paints = 0;
+  const error = await refresh({ selectors: [{ kind: "subscribed" }, { kind: "following" }], onBatch: async () => { paints++; } }).catch(error => error);
+  expect(calls).toHaveBeenCalledTimes(2);
+  expect(paints).toBe(1);
+  expect(error.message).toContain("Some publications could not be checked");
+});
+
+it("settles a started paint on cancellation and never flushes afterward", async () => {
+  const clock = paintClock();
   const controller = new AbortController();
-  const gate = deferred(), slowPaint = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0, settled = false;
-  const outcome = refresh(async () => { paints++; await slowPaint.promise; }, controller.signal).catch(error => { settled = true; return error; });
-  await clock.tick();
-  controller.abort(); await settle();
-  expect(settled).toBe(false);
-  slowPaint.resolve();
-  expect(await outcome).toBeInstanceOf(DOMException);
-  gate.resolve();
-  for (const timer of clock.timers) timer.callback();
-  await settle();
-  expect(paints).toBe(1);
-  expect(clock.timers.filter(timer => !timer.cleared)).toHaveLength(0);
-});
-
-it("recovers from an intermediate 503 when the final authoritative flush succeeds", async () => {
-  const gate = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
+  const paintGate = deferred();
+  mockStream(async (_, emit) => {
+    emit({ kind: "started", total: 1 });
+    emit(publication("a", "updated", 1, 1, 1));
+    await new Promise<void>((_, reject) => controller.signal.addEventListener("abort", () => reject(controller.signal.reason)));
+  });
   let paints = 0;
-  const progress: number[] = [];
-  const task = refresh(async () => { if (++paints === 1) throw new Error("HTTP 503: feed unavailable"); }, undefined, undefined, n => progress.push(n));
+  const done = refresh({ signal: controller.signal, onBatch: async () => { paints++; await paintGate.promise; } }).catch(error => error);
   await clock.tick();
   expect(paints).toBe(1);
-  expect(clock.timers.filter(timer => !timer.cleared)).toHaveLength(0);
-  gate.resolve();
-  await task;
-  expect(paints).toBe(2);
-  expect(progress).toEqual([0, 1]);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("surfaces the final flush failure after an intermediate 503", async () => {
-  const gate = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  const finalFailure = new Error("final feed unavailable");
-  let paints = 0;
-  const outcome = refresh(async () => {
-    if (++paints === 1) throw new Error("HTTP 503: feed unavailable");
-    throw finalFailure;
-  }).catch(error => error);
-  await clock.tick();
-  gate.resolve();
-  expect(await outcome).toBe(finalFailure);
-  expect(paints).toBe(2);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("retains source failure after recovering from an intermediate paint failure", async () => {
-  const gate = deferred();
-  const sourceFailure = new Error("source unavailable");
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0;
-  const progress: number[] = [];
-  const outcome = refresh(async () => {
-    if (++paints === 1) throw new Error("HTTP 503: feed unavailable");
-  }, undefined, undefined, n => progress.push(n)).catch(error => error);
-  await clock.tick();
-  gate.reject(sourceFailure);
-  const failure = await outcome;
-  expect(failure.message).toContain("Some publications");
-  expect(failure.cause).toBe(sourceFailure);
-  expect(paints).toBe(2);
-  expect(progress).toEqual([0]);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("drains a failing intermediate paint on cancellation without a final flush", async () => {
-  const controller = new AbortController();
-  const gate = deferred(), slowPaint = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(() => gate.promise);
-  restores.push(() => enroll.mockRestore());
-  const clock = paintClock();
-  let paints = 0, settled = false;
-  const progress: number[] = [];
-  const outcome = refresh(async () => { paints++; await slowPaint.promise; }, controller.signal, undefined, n => progress.push(n)).catch(error => { settled = true; return error; });
-  await clock.tick();
-  controller.abort(); await settle();
-  expect(settled).toBe(false);
-  slowPaint.reject(new Error("HTTP 503: feed unavailable"));
-  expect(await outcome).toBe(controller.signal.reason);
-  gate.resolve();
-  for (const timer of clock.timers) timer.callback();
-  await settle();
-  expect(paints).toBe(1);
-  expect(progress).toEqual([0]);
-  expect(clock.timers.every(timer => timer.cleared)).toBe(true);
-});
-
-it("continues large scope chunks after an upstream failure and retains partial articles", async () => {
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => { if (enroll.mock.calls.length === 1) throw new Error("first chunk"); });
-  restores.push(() => enroll.mockRestore());
-  paintClock();
-  let paints = 0;
-  await expect(refresh(async () => { paints++; }, undefined, Array.from({ length: 501 }, (_, i) => row(`did:plc:${i}`)))).rejects.toThrow("Some publications");
-  expect(enroll).toHaveBeenCalledTimes(2);
+  controller.abort();
+  paintGate.resolve();
+  expect((await done).name).toBe("AbortError");
   expect(paints).toBe(1);
 });
 
 it("does no work for an already aborted refresh", async () => {
-  const controller = new AbortController(); controller.abort();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockResolvedValue(undefined);
-  restores.push(() => enroll.mockRestore());
+  const calls = mockStream(async () => {});
+  const controller = new AbortController();
+  controller.abort();
   let paints = 0;
-  await expect(refresh(async () => { paints++; }, controller.signal)).rejects.toThrow();
-  expect(enroll).not.toHaveBeenCalled(); expect(paints).toBe(0);
+  await expect(refresh({ signal: controller.signal, onBatch: async () => { paints++; } })).rejects.toThrow();
+  expect(calls).not.toHaveBeenCalled();
+  expect(paints).toBe(0);
 });
 
-it("refreshes feeds once without an enrollment request when no sources are selected", async () => {
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockResolvedValue(undefined);
-  restores.push(() => enroll.mockRestore());
+it("refreshes feeds once without a stream when no feed is mounted", async () => {
+  const calls = mockStream(async () => {});
   let paints = 0;
-  await refresh(async () => { paints++; }, undefined, []);
-  expect(enroll).not.toHaveBeenCalled(); expect(paints).toBe(1);
+  await refresh({ selectors: [], onBatch: async () => { paints++; } });
+  expect(calls).not.toHaveBeenCalled();
+  expect(paints).toBe(1);
 });
 
-it("partitions oversized scopes into serial server-sized requests without dropping sources", async () => {
-  const first = deferred();
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockImplementation(async () => { if (enroll.mock.calls.length === 1) await first.promise; });
-  restores.push(() => enroll.mockRestore());
-  paintClock();
-  const rows = Array.from({ length: 501 }, (_, i) => row(`did:plc:${i}`));
-  const rss = row("did:web:skyreader.rss", "rss");
-  rss.appViewScope.publicationSiteUrls = Array.from({ length: 501 }, (_, i) => `https://feed.test/${i}`);
-  const task = refresh(async () => {}, undefined, [...rows, rss]);
-  expect(enroll).toHaveBeenCalledTimes(1);
-  first.resolve(); await task;
-  expect(enroll.mock.calls.map(call => call[1].length + (call[2]?.length ?? 0))).toEqual([500, 500, 2]);
-  expect(enroll.mock.calls.flatMap(call => call[1])).toEqual(rows.map(value => value.authorDid));
-  expect(enroll.mock.calls.flatMap(call => call[2] ?? [])).toEqual(rss.appViewScope.publicationSiteUrls);
-});
-
-it("partitions by the JSON body limit and rejects a single oversized source", async () => {
-  const enroll = spyOn(appview, "enrollAuthorsInAppView").mockResolvedValue(undefined);
-  restores.push(() => enroll.mockRestore());
-  paintClock();
-  const rss = row("did:web:skyreader.rss", "rss");
-  rss.appViewScope.publicationSiteUrls = ["https://feed.test/" + "a".repeat(600_000), "https://feed.test/" + "b".repeat(600_000)];
-  await refresh(async () => {}, undefined, [rss]);
-  expect(enroll).toHaveBeenCalledTimes(2);
-  rss.appViewScope.publicationSiteUrls = ["https://feed.test/" + "a".repeat(1 << 20)];
-  await expect(refresh(async () => {}, undefined, [rss])).rejects.toThrow("size limit");
-  expect(enroll).toHaveBeenCalledTimes(2);
+it("maps mounted feed queries to refresh selectors for this viewer only", () => {
+  const client = new QueryClient();
+  const observe = (queryKey: unknown[]) => new InfiniteQueryObserver(client, { queryKey, queryFn: async () => ({ entries: [] }), initialPageParam: undefined, getNextPageParam: () => undefined, staleTime: Infinity, initialData: { pages: [{ entries: [] }], pageParams: [undefined] } }).subscribe(() => {});
+  const unsubscribes = [
+    observe(["aggregateEntries", "viewer", "subscribed", "", "unread"]),
+    observe(["aggregateEntries", "viewer", "folder", "rkey", "all"]),
+    observe(["entries", "viewer", "at://did:plc:a/site.standard.publication/p", "all"]),
+    observe(["aggregateEntries", "other", "following", "", "all"]),
+  ];
+  expect(readerRefreshSelectors(client, "viewer")).toEqual([
+    { kind: "subscribed" }, { kind: "folder", id: "rkey" }, { kind: "publication", id: "at://did:plc:a/site.standard.publication/p" },
+  ]);
+  unsubscribes.forEach(unsubscribe => unsubscribe());
+  client.clear();
 });
 
 it("selects subscribed folders without enrolling the following graph or another viewer", () => {

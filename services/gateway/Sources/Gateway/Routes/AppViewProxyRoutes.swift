@@ -152,6 +152,15 @@ struct AppViewProxyRoutes {
         method: "GET"
       )
     }
+    group.post("/xrpc/app.thesocialwire.appview.refreshFeed") {
+      request, context async throws -> Response in
+      try await forwardStreaming(
+        request: request,
+        context: context,
+        path: "/xrpc/app.thesocialwire.appview.refreshFeed",
+        method: "POST"
+      )
+    }
     group.post("/v1/appview/read-marks") { request, context async throws -> Response in
       try await forward(
         request: request, context: context,
@@ -400,7 +409,15 @@ struct AppViewProxyRoutes {
     )
     let url = "\(normalizeBase(baseURL))\(pathWithQuery)"
     var fwd = HTTPClientRequest(url: url)
-    fwd.method = .GET
+    if method == "POST" {
+      // Stream procedures take a small JSON selector; the response is what streams.
+      let body = try await request.body.collect(upTo: 64 * 1024)
+      fwd.method = .POST
+      fwd.headers.add(name: "Content-Type", value: "application/json")
+      fwd.body = .bytes(body)
+    } else {
+      fwd.method = .GET
+    }
     fwd.headers.add(name: "Accept", value: "application/x-ndjson")
     fwd.headers.add(name: "Authorization", value: auth.authorizationForwardingValue)
     fwd.headers.add(name: "X-Request-ID", value: context.requestId)

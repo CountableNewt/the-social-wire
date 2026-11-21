@@ -17,6 +17,7 @@ export const socialWireXrpc = {
   putReadMark: `${XRPC_PREFIX}app.thesocialwire.appview.putReadMark`,
   deleteReadMark: `${XRPC_PREFIX}app.thesocialwire.appview.deleteReadMark`,
   enrollSources: `${XRPC_PREFIX}app.thesocialwire.appview.enrollSources`,
+  refreshFeed: `${XRPC_PREFIX}app.thesocialwire.appview.refreshFeed`,
   purgeViewerData: `${XRPC_PREFIX}app.thesocialwire.appview.purgeViewerData`,
   markAllRead: `${XRPC_PREFIX}app.thesocialwire.appview.markAllRead`,
   getReadAgeOptions: `${XRPC_PREFIX}app.thesocialwire.appview.getReadAgeOptions`,

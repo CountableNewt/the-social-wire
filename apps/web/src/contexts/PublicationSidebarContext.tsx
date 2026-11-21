@@ -52,7 +52,7 @@ import {
 import { awaitWithAbort } from "@/lib/awaitWithAbort";
 import { refreshReaderUnreadCounts } from "@/lib/refreshReaderUnreadCounts";
 import { refreshReaderFeeds } from "@/lib/refreshReaderFeeds";
-import { readerRefreshRows, readerRefreshSourcesKey, refreshPublicationSources } from "@/lib/refreshPublicationSources";
+import { readerRefreshRows, readerRefreshSelectors, readerRefreshSourcesKey, refreshPublicationSources } from "@/lib/refreshPublicationSources";
 import { fetchAppViewUnreadCounts } from "@/lib/thinAppViewClient";
 
 export type SidebarBootstrapState = {
@@ -503,10 +503,12 @@ function PublicationSidebarProviderInner({
         let releaseAuthority!: () => void;
         const authorityReady = new Promise<void>(resolve => { releaseAuthority = resolve; });
         const checkSources = (rows: typeof cachedRows) => refreshPublicationSources({
-          oauthSession: oauth, rows, signal,
+          oauthSession: oauth, rows, selectors: readerRefreshSelectors(qc, did), signal,
           onProgress: (completed, total) => {
             assertSession();
-            setRefreshMessage(authoritativeApplied && completed === total ? "Updating Articles…" : `Checking ${total} Publications…`);
+            setRefreshMessage(total === 0 ? "Checking Publications…"
+              : authoritativeApplied && completed === total ? "Updating Articles…"
+              : `Checking ${completed} of ${total} ${total === 1 ? "Publication" : "Publications"}…`);
           },
           onBatch: async () => {
             // Ingestion may start from cached sources, but every paint must read

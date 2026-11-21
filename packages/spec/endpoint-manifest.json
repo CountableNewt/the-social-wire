@@ -111,6 +111,13 @@
     },
     {
       "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.appview.refreshFeed",
+      "classification": "stream",
+      "xrpcNsid": "app.thesocialwire.appview.refreshFeed"
+    },
+    {
+      "surface": "openapi",
       "method": "GET",
       "path": "/v1/appview/feed",
       "classification": "xrpc-migration",

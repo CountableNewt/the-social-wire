@@ -3,7 +3,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Runtime from "@/lib/pdsReadStateRuntime";
 import * as Sync from "@/lib/pdsReadStateSync";
 import * as Gateway from "@/lib/socialWireGatewayClient";
-import { writeThroughReadMark, writeThroughReadMarkDelete } from "@/lib/thinAppViewClient";
+import { writeThroughReadMark, writeThroughReadMarkDelete, writeThroughReadStates } from "@/lib/thinAppViewClient";
 import { markAllReadOnGateway } from "@/lib/publicationProjectionClient";
 import { markReadBefore } from "@/lib/feedReadAgeClient";
 
@@ -24,6 +24,22 @@ test("canonical individual read and unread enqueue on the PDS runtime without le
   await writeThroughReadMarkDelete(oauth, "article");
   expect(writes).toEqual([[["article"], "read", "2026-09-08T00:00:00Z"], [["article"], "unread"]]);
   expect(gateway).not.toHaveBeenCalled();
+});
+test("canonical batch read state enqueues one PDS operation without legacy writes", async () => {
+  const { gateway } = configure(true); const writes: unknown[][] = [];
+  const runtime = spyOn(Sync, "pdsReadStateSync").mockReturnValue({ exact: async (...args: unknown[]) => { writes.push(args); } } as unknown as Sync.PDSReadStateSync);
+  cleanup.push(() => runtime.mockRestore());
+  expect((await writeThroughReadStates(oauth, ["a", "b"], true, "2026-09-08T00:00:00Z")).size).toBe(0);
+  expect(writes).toEqual([[["a", "b"], "read", "2026-09-08T00:00:00Z"]]);
+  expect(gateway).not.toHaveBeenCalled();
+});
+test("an unactivated account writes batch read state per entry and reports only the failed entries", async () => {
+  const { gateway } = configure(false);
+  gateway.mockImplementation(async (_session, _path, init) =>
+    JSON.parse(String(init?.body)).subjectUri === "b" ? new Response(null, { status: 500 }) : Response.json({}));
+  const failures = await writeThroughReadStates(oauth, ["a", "b", "c"], false);
+  expect(gateway).toHaveBeenCalledTimes(3);
+  expect([...failures.keys()]).toEqual(["b"]);
 });
 test("canonical bulk and calendar actions preserve frozen selection and report pending rather than server counts", async () => {
   const { gateway } = configure(true); const calls: unknown[][] = [];

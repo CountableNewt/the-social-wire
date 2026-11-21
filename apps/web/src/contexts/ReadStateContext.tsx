@@ -35,6 +35,7 @@ import {
   isThinAppViewEnabled,
   writeThroughReadMark,
   writeThroughReadMarkDelete,
+  writeThroughReadStates,
 } from "@/lib/thinAppViewClient";
 import { publicationEntryIsCached } from "@/lib/unreadCounts";
 import { PDS_READ_STATE_SYNC_EVENT, loadPDSReadStateSync, pdsReadStateEnabled, usesPDSReadState } from "@/lib/pdsReadStateRuntime";
@@ -54,10 +55,15 @@ type LocalReadAction = {
 const isViewerReadFeed = (key: readonly unknown[], viewer: string) =>
   key[1] === viewer && (key[0] === "entries" || key[0] === "aggregateEntries");
 
-function patchReadFeedRows(client: ReturnType<typeof useQueryClient>, viewer: string, entryId: string, read: boolean) {
+/** One cache pass for any number of entries; per-entry passes made bulk changes quadratic. */
+function patchReadFeedRows(client: ReturnType<typeof useQueryClient>, viewer: string, states: ReadonlyMap<string, boolean>) {
+  if (states.size === 0) return;
   client.setQueriesData<InfiniteData<EntriesPage>>({ predicate: query => isViewerReadFeed(query.queryKey, viewer) }, current => current ? {
     ...current,
-    pages: current.pages.map(page => ({ ...page, entries: page.entries.map(entry => entry.entryId === entryId ? { ...entry, isRead: read } : entry) })),
+    pages: current.pages.map(page => ({ ...page, entries: page.entries.map(entry => {
+      const read = states.get(entry.entryId);
+      return read === undefined ? entry : { ...entry, isRead: read };
+    }) })),
   } : current);
 }
 
@@ -78,6 +84,8 @@ export type ReadStateContextValue = {
   markEntriesUnread: (entryIds: string[], options?: MarkEntriesReadOptions) => void;
   /** Returns whether the entry is marked read in local state. */
   isEntryRead: (entryId: string) => boolean;
+  /** First-read timestamp in local state, if read. */
+  entryReadAt: (entryId: string) => string | undefined;
   pendingEntryReadState: (entryId: string) => boolean | undefined;
   /** Bumps when readMap changes; use in unread memo deps. */
   readEpoch: number;
@@ -122,72 +130,128 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     getOAuthSession() === action.oauth && actions.current.get(`${action.oauth.did}:${entryId}`) === action,
   [getOAuthSession]);
 
-  const reconcileAction = useCallback(async (entryId: string, action: LocalReadAction, error?: unknown) => {
-    if (!actionIsCurrent(entryId, action)) return;
-    const viewer = action.oauth.did;
-    invalidateReadFeedRefreshes(queryClient, action.oauth);
+  /** Settles many entries with one cancellation, cache patch, and confirmation refresh. */
+  const reconcileActions = useCallback(async (
+    settled: ReadonlyArray<readonly [entryId: string, action: LocalReadAction]>,
+    errors?: ReadonlyMap<string, unknown>,
+  ) => {
+    const current = () => settled.filter(([entryId, action]) => actionIsCurrent(entryId, action));
+    const first = current()[0];
+    if (!first) return;
+    const oauth = first[1].oauth;
+    const viewer = oauth.did;
+    invalidateReadFeedRefreshes(queryClient, oauth);
     await queryClient.cancelQueries({ predicate: query => isViewerReadFeed(query.queryKey, viewer) });
-    if (!actionIsCurrent(entryId, action)) return;
-    const baseline = acceptedStates.current.get(`${viewer}:${entryId}`) ?? { read: action.previousRead, readAt: action.previousReadAt };
-    patchReadFeedRows(queryClient, viewer, entryId, error ? baseline.read : action.read);
-    if (error) {
+    const remaining = current();
+    if (remaining.length === 0) return;
+    const states = new Map<string, boolean>();
+    const rollbacks = new Map<string, string | undefined>();
+    for (const [entryId, action] of remaining) {
+      const baseline = acceptedStates.current.get(`${viewer}:${entryId}`) ?? { read: action.previousRead, readAt: action.previousReadAt };
+      const failed = errors?.has(entryId) ?? false;
+      states.set(entryId, failed ? baseline.read : action.read);
+      if (failed) rollbacks.set(entryId, baseline.readAt);
+    }
+    patchReadFeedRows(queryClient, viewer, states);
+    if (rollbacks.size > 0) {
       setReadMap(previous => {
         const next = { ...previous };
-        if (baseline.readAt) next[entryId] = baseline.readAt;
-        else delete next[entryId];
+        for (const [entryId, readAt] of rollbacks) {
+          if (readAt) next[entryId] = readAt;
+          else delete next[entryId];
+        }
         saveReadState(window.localStorage, next, storageKey);
         return next;
       });
       setMutationError({ viewer, message: "Could not confirm this read-state change. Please try again." });
     }
-    actions.current.delete(`${viewer}:${entryId}`);
-    acceptedStates.current.delete(`${viewer}:${entryId}`);
+    for (const [entryId] of remaining) {
+      actions.current.delete(`${viewer}:${entryId}`);
+      acceptedStates.current.delete(`${viewer}:${entryId}`);
+    }
     bumpReadEpoch();
     void invalidateConfirmedReadStateQueries(queryClient, viewer).catch(() => {});
   }, [actionIsCurrent, bumpReadEpoch, queryClient, setReadMap, storageKey]);
 
-  const synchronizeEntryState = useCallback((entryId: string, read: boolean, readAt?: string) => {
-    if (!isThinAppViewEnabled()) return;
+  /** Records, paints, and writes one read state for many entries as a single batch. */
+  const synchronizeEntryStates = useCallback((entryIds: readonly string[], read: boolean, readAt?: string) => {
+    if (!isThinAppViewEnabled() || entryIds.length === 0) return;
     const oauth = getOAuthSession();
     if (!oauth) return;
-    const key = `${oauth.did}:${entryId}`;
-    const previous = actions.current.get(key);
-    const cachedRead = queryClient.getQueriesData<InfiniteData<EntriesPage>>({ predicate: query => isViewerReadFeed(query.queryKey, oauth.did) })
-      .some(([, value]) => value?.pages.some(page => page.entries.some(entry => entry.entryId === entryId && entry.isRead)));
-    const action: LocalReadAction = {
-      oauth, read, phase: "saving", previousReadAt: readMap[entryId],
-      previousRead: previous?.read ?? pendingReadStates.get(entryId) ?? (Boolean(readMap[entryId]) || cachedRead),
-    };
-    if (!acceptedStates.current.has(key)) acceptedStates.current.set(key, { read: action.previousRead, readAt: action.previousReadAt });
-    actions.current.set(key, action);
+    const targets = new Set(entryIds);
+    const cachedRead = new Set<string>();
+    for (const [, value] of queryClient.getQueriesData<InfiniteData<EntriesPage>>({ predicate: query => isViewerReadFeed(query.queryKey, oauth.did) })) {
+      for (const page of value?.pages ?? []) {
+        for (const entry of page.entries) if (entry.isRead && targets.has(entry.entryId)) cachedRead.add(entry.entryId);
+      }
+    }
+    let queue = writes.current.get(oauth);
+    if (!queue) { queue = new Map(); writes.current.set(oauth, queue); }
+    const batch: Array<readonly [string, LocalReadAction]> = [];
+    const prior: Promise<void>[] = [];
+    for (const entryId of targets) {
+      const key = `${oauth.did}:${entryId}`;
+      const previous = actions.current.get(key);
+      const action: LocalReadAction = {
+        oauth, read, phase: "saving", previousReadAt: readMap[entryId],
+        previousRead: previous?.read ?? pendingReadStates.get(entryId) ?? (Boolean(readMap[entryId]) || cachedRead.has(entryId)),
+      };
+      if (!acceptedStates.current.has(key)) acceptedStates.current.set(key, { read: action.previousRead, readAt: action.previousReadAt });
+      actions.current.set(key, action);
+      batch.push([entryId, action]);
+      const pending = queue.get(entryId);
+      if (pending) prior.push(pending.catch(() => {}));
+    }
     setMutationError(undefined);
     bumpReadEpoch();
-    recordReadEntryMutations(queryClient, oauth, [entryId]);
+    recordReadEntryMutations(queryClient, oauth, [...targets]);
     // Public read actions already retire the viewer query generation. Avoid
     // cancelling the replacement cold request while installing optimistic rows.
     void Promise.resolve().then(() => {
-      if (actionIsCurrent(entryId, action)) patchReadFeedRows(queryClient, oauth.did, entryId, read);
+      patchReadFeedRows(queryClient, oauth.did, new Map(
+        batch.filter(([entryId, action]) => actionIsCurrent(entryId, action)).map(([entryId]) => [entryId, read])));
     }).catch(() => {});
-    let queue = writes.current.get(oauth);
-    if (!queue) { queue = new Map(); writes.current.set(oauth, queue); }
-    const pending = queue.get(entryId) ?? Promise.resolve();
-    const task = pending.catch(() => {}).then(async () => {
-      if (!actionIsCurrent(entryId, action)) return;
-      if (read) await writeThroughReadMark(oauth, entryId, readAt ?? new Date().toISOString());
-      else await writeThroughReadMarkDelete(oauth, entryId);
-      if (getOAuthSession() === oauth) acceptedStates.current.set(key, { read, readAt: read ? readAt : undefined });
-      if (!actionIsCurrent(entryId, action)) return;
-      action.phase = "pds";
+    const task = Promise.all(prior).then(async () => {
+      const live = batch.filter(([entryId, action]) => actionIsCurrent(entryId, action));
+      if (live.length === 0) return;
+      let failures: Map<string, unknown>;
+      try {
+        if (live.length === 1) {
+          // A single gesture keeps the per-entry write path; only real batches use the bulk writer.
+          const [[entryId]] = live;
+          if (read) await writeThroughReadMark(oauth, entryId, readAt ?? new Date().toISOString());
+          else await writeThroughReadMarkDelete(oauth, entryId);
+          failures = new Map();
+        } else failures = await writeThroughReadStates(oauth, live.map(([entryId]) => entryId), read, readAt);
+      } catch (error) {
+        failures = new Map(live.map(([entryId]) => [entryId, error]));
+      }
+      const confirmed = live.filter(([entryId]) => !failures.has(entryId));
+      if (getOAuthSession() === oauth) {
+        for (const [entryId] of confirmed) acceptedStates.current.set(`${oauth.did}:${entryId}`, { read, readAt: read ? readAt : undefined });
+      }
+      const failed = live.filter(([entryId]) => failures.has(entryId));
+      if (failed.length > 0) await reconcileActions(failed, failures);
+      const settled = confirmed.filter(([entryId, action]) => actionIsCurrent(entryId, action));
+      for (const [, action] of settled) action.phase = "pds";
+      if (settled.length === 0) return;
       if (await usesPDSReadState(oauth)) {
         // The explicit gesture bridges the async enqueue and confirmation windows.
         // The durable outbox remains the source of retry and PDS authority rules.
         const snapshot = await (await loadPDSReadStateSync(oauth)).snapshot();
-        if (!pendingReadStateOverlay(snapshot, oauth.did).has(entryId)) await reconcileAction(entryId, action);
-      } else await reconcileAction(entryId, action);
-    }).catch(error => reconcileAction(entryId, action, error));
-    queue.set(entryId, task);
-    void task.finally(() => { if (queue.get(entryId) === task) queue.delete(entryId); }).catch(() => {});
-  }, [actionIsCurrent, bumpReadEpoch, getOAuthSession, pendingReadStates, queryClient, readMap, reconcileAction]);
+        const pending = pendingReadStateOverlay(snapshot, oauth.did);
+        await reconcileActions(settled.filter(([entryId]) => !pending.has(entryId)));
+      } else await reconcileActions(settled);
+    }).catch(error => reconcileActions(batch, new Map(batch.map(([entryId]) => [entryId, error]))));
+    for (const [entryId] of batch) queue.set(entryId, task);
+    void task.finally(() => {
+      for (const [entryId] of batch) if (queue.get(entryId) === task) queue.delete(entryId);
+    }).catch(() => {});
+  }, [actionIsCurrent, bumpReadEpoch, getOAuthSession, pendingReadStates, queryClient, readMap, reconcileActions]);
+
+  const synchronizeEntryState = useCallback((entryId: string, read: boolean, readAt?: string) => {
+    synchronizeEntryStates([entryId], read, readAt);
+  }, [synchronizeEntryStates]);
 
   const syncReadMarkToAppView = useCallback((entryId: string, readAt: string) => {
     synchronizeEntryState(entryId, true, readAt);
@@ -214,10 +278,9 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
       void loadPDSReadStateSync(oauth).then(runtime => runtime.snapshot()).then(async snapshot => {
         if (getOAuthSession() !== oauth) return;
         const pending = pendingReadStateOverlay(snapshot, oauth.did);
-        for (const [key, action] of candidates) {
-          const entryId = key.slice(oauth.did.length + 1);
-          if (!pending.has(entryId)) await reconcileAction(entryId, action);
-        }
+        await reconcileActions(candidates
+          .map(([key, action]) => [key.slice(oauth.did.length + 1), action] as const)
+          .filter(([entryId]) => !pending.has(entryId)));
         if (getOAuthSession() !== oauth || snapshot.entries.length !== 0 ||
           [...actions.current.values()].some(action => action.oauth === oauth)) return;
         setReadMap({}); saveReadState(window.localStorage, {}, storageKey); bumpReadEpoch();
@@ -226,7 +289,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener(PDS_READ_STATE_SYNC_EVENT, confirmed);
     return () => window.removeEventListener(PDS_READ_STATE_SYNC_EVENT, confirmed);
-  }, [bumpReadEpoch, getOAuthSession, queryClient, reconcileAction, setReadMap, storageKey, viewerDid]);
+  }, [bumpReadEpoch, getOAuthSession, queryClient, reconcileActions, setReadMap, storageKey, viewerDid]);
 
   const markEntryRead = useCallback(
     (entryId: string, options?: MarkEntryReadOptions) => {
@@ -344,9 +407,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
           saveReadState(window.localStorage, next, storageKey);
         }
         if (options?.syncToAppView !== false) {
-          for (const id of toSync) {
-            syncReadMarkToAppView(id, readAt);
-          }
+          synchronizeEntryStates(toSync, true, readAt);
         }
         return next;
       });
@@ -361,7 +422,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [bumpReadEpoch, queryClient, setReadMap, storageKey, syncReadMarkToAppView, viewerDid]
+    [bumpReadEpoch, queryClient, setReadMap, storageKey, synchronizeEntryStates, viewerDid]
   );
 
   const markEntriesUnread = useCallback(
@@ -370,7 +431,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
       if (viewerDid) void cancelViewerFeedRefreshes(queryClient, viewerDid);
       const unique = [...new Set(entryIds)];
       const unreadIds = new Set(unique);
-      for (const id of unique) syncUnreadMarkToAppView(id);
+      synchronizeEntryStates(unique, false);
       if (viewerDid) {
         queryClient.setQueriesData<InfiniteData<EntriesPage>>(
           {
@@ -432,7 +493,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [bumpReadEpoch, queryClient, setReadMap, storageKey, syncUnreadMarkToAppView, viewerDid]
+    [bumpReadEpoch, queryClient, setReadMap, storageKey, synchronizeEntryStates, viewerDid]
   );
 
   const isEntryRead = useCallback(
@@ -440,9 +501,12 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     [readMap, pendingEntryReadState]
   );
 
+  const entryReadAt = useCallback((entryId: string) => readMap[entryId] || undefined, [readMap]);
+
   const value = useMemo(
     (): ReadStateContextValue => ({
       isEntryRead,
+      entryReadAt,
       pendingEntryReadState,
       readEpoch,
       markEntryRead,
@@ -452,6 +516,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
     }),
     [
       isEntryRead,
+      entryReadAt,
       pendingEntryReadState,
       readEpoch,
       markEntryRead,
