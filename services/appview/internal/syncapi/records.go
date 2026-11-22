@@ -143,11 +143,13 @@ func (s service) get(r *http.Request, collection, rkey string, force bool, ttl, 
 				}
 			}
 		} else if !errors.Is(err, sql.ErrNoRows) {
+			logRecordFailure(ctx, "cache-read", err)
 			return snapshot{}, err
 		}
 	}
 	result, err := s.read(ctx, did, collection, rkey)
 	if err != nil {
+		logRecordFailure(ctx, "public-read", err)
 		return snapshot{}, err
 	}
 	result.CachedAt = now
@@ -155,6 +157,9 @@ func (s service) get(r *http.Request, collection, rkey string, force bool, ttl, 
 		_, err = s.db.Writer().ExecContext(ctx, `
 			DELETE FROM pds_repo_record_cache WHERE owner_did=? AND scope_key=? AND cached_at<=?
 		`, did, scope, isotime.Format(now))
+		if err != nil {
+			logRecordFailure(ctx, "cache-delete", err)
+		}
 		return result, err
 	}
 	_, err = s.db.Writer().ExecContext(ctx, `
@@ -163,6 +168,9 @@ func (s service) get(r *http.Request, collection, rkey string, force bool, ttl, 
 		json_body=excluded.json_body,cached_at=excluded.cached_at,expires_at=excluded.expires_at
 		WHERE pds_repo_record_cache.cached_at <= excluded.cached_at
 	`, did, scope, result.CID, string(result.Body), isotime.Format(now), isotime.Format(now.Add(retention)))
+	if err != nil {
+		logRecordFailure(ctx, "cache-upsert", err)
+	}
 	return result, err
 }
 

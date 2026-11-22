@@ -221,6 +221,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 }
 
 func feedFailure(w http.ResponseWriter, r *http.Request, err error) error {
+	logDatabaseFailure(r.Context(), "feed", err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		return feedError(w, r, http.StatusGatewayTimeout, "feed_deadline_exceeded", "The feed request exceeded its deadline.", true)
 	}
