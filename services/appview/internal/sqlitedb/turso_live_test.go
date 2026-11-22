@@ -10,8 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	turso "turso.tech/database/tursogo-serverless"
 )
 
 // This opt-in check only reads deliberately isolated probe stores. Credentials
@@ -186,4 +189,94 @@ func TestLiveTursoReadOnlySessions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Exercise cold connection expansion and write admission like the eight-action
+// dispatcher plus a separate request-scoped telemetry writer. Only isolated,
+// uniquely named probe leases are touched; no actual maintenance action runs.
+func TestLiveTursoColdMaintenanceWriteFanout(t *testing.T) {
+	dir := os.Getenv("TSW_TURSO_PROBE_DIR")
+	if dir == "" {
+		t.Skip("set TSW_TURSO_PROBE_DIR for isolated hosted-engine acceptance")
+	}
+	read := func(name string) string {
+		path := filepath.Join(dir, name)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+			t.Fatal("probe credentials must be owner-only regular files")
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal("cannot read probe credential")
+		}
+		return strings.TrimSpace(string(data))
+	}
+	endpoint, token := read("appview-url"), read("appview-token")
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() != "tsw-dev-appview-probe-countablenewt.aws-us-west-2.turso.io" {
+		t.Fatal("isolated AppView probe required")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	var failures int
+	for round := range 4 {
+		pools := make([]*DB, 2)
+		for i := range pools {
+			pools[i], err = OpenTurso(ctx, endpoint, token)
+			if err != nil {
+				t.Fatal("probe connection failed")
+			}
+		}
+		prefix := fmt.Sprintf("synthetic-fanout-%d-%d-", time.Now().UnixNano(), round)
+		start := make(chan struct{})
+		results := make(chan error, 9)
+		var group sync.WaitGroup
+		for index := range 9 {
+			group.Add(1)
+			go func() {
+				defer group.Done()
+				<-start
+				pool := pools[0]
+				if index == 8 {
+					pool = pools[1]
+				}
+				results <- pool.Write(ctx, func(tx *sql.Tx) error {
+					_, err := tx.ExecContext(ctx, "INSERT INTO http_job_leases(name,owner,expires_at_us) VALUES(?,?,?)", fmt.Sprintf("%s%d", prefix, index), "synthetic", time.Now().Add(time.Minute).UnixMicro())
+					return err
+				})
+			}()
+		}
+		close(start)
+		group.Wait()
+		close(results)
+		for err := range results {
+			if err == nil {
+				continue
+			}
+			failures++
+			var server *turso.Error
+			var httpError *turso.HTTPError
+			switch {
+			case errors.As(err, &server):
+				t.Logf("round=%d server_code=%q extended_code=%q", round, server.Code, server.ExtendedCode)
+			case errors.As(err, &httpError):
+				t.Logf("round=%d http_status=%d", round, httpError.StatusCode)
+			default:
+				t.Logf("round=%d error_type=%T", round, err)
+			}
+		}
+		cleanup, done := context.WithTimeout(context.Background(), 10*time.Second)
+		_, cleanupErr := pools[0].Writer().ExecContext(cleanup, "DELETE FROM http_job_leases WHERE name LIKE ?", prefix+"%")
+		done()
+		for _, pool := range pools {
+			_ = pool.Close()
+		}
+		if cleanupErr != nil {
+			t.Fatal("synthetic probe cleanup failed")
+		}
+	}
+	if failures != 0 {
+		t.Fatalf("cold maintenance fanout failed %d of 36 synthetic writes", failures)
+	}
+	t.Log("all 36 synthetic writes completed across four cold nine-writer rounds")
 }

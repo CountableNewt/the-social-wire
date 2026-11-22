@@ -75,6 +75,7 @@ func (r *Runner) runCadenced(ctx context.Context, name string, interval time.Dur
 	owner, key := hex.EncodeToString(token[:]), "schedule:"+name
 	claimed, err := r.claim(ctx, key, owner, now, now.Add(max(interval, r.actions[name].Timeout+30*time.Second)))
 	if err != nil || !claimed {
+		logFailure(name, "cadence-claim", err)
 		return Result{Job: name}, err
 	}
 	result, err := r.Run(ctx, name)
