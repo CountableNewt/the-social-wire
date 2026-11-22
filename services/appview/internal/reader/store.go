@@ -191,7 +191,9 @@ func listMatchedEntries(ctx context.Context, db rowsQueryer, viewer string, matc
 		return page, nil
 	}
 	now := thinstore.CursorTimestamp(time.Now())
-	batchSize := max(100, 2*limit)
+	// One extra unique row establishes whether another page exists. Full batches
+	// still advance below when duplicates or invalid renders consume that margin.
+	batchSize := limit + 1
 	seen := map[string]bool{}
 	for {
 		query, args := jsonEntryBatch(matched, migrated, viewer, now, filter, cursor, batchSize)
