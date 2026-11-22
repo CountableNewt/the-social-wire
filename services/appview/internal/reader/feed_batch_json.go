@@ -22,6 +22,14 @@ func jsonEntryBatch(scopes []feedMatch, migrated bool, viewer, now string, filte
 	args := []any{string(scopeJSON)}
 	timestamp := thinstore.FeedTimestampSQL("ci.created_at")
 	filterReadState := filter != thinstore.FilterAll
+	scopeJoins := ""
+	if filterReadState {
+		// A floor belongs to a publication, not an entry. Resolve it before the
+		// correlated candidate scan instead of probing its index for each row.
+		scopeJoins = `
+ LEFT JOIN appview_publication_read_floors floor ON floor.viewer_did=? AND floor.publication_id=scopes.pub`
+		args = append(args, viewer)
+	}
 	branch := func(index, sitePredicate string) string {
 		fields, candidateFields := "", ""
 		joins := ""
@@ -30,9 +38,8 @@ func jsonEntryBatch(scopes []feedMatch, migrated bool, viewer, now string, filte
 			candidateFields = "," + readExpression + " AS is_read"
 			joins = `
  LEFT JOIN read_marks rm ON rm.viewer_did=? AND rm.subject_uri=ci.uri
- LEFT JOIN appview_unread_overrides uo ON uo.viewer_did=? AND uo.subject_uri=ci.uri
- LEFT JOIN appview_publication_read_floors floor ON floor.viewer_did=? AND floor.publication_id=scopes.pub`
-			args = append(args, migrated, viewer, viewer, viewer)
+ LEFT JOIN appview_unread_overrides uo ON uo.viewer_did=? AND uo.subject_uri=ci.uri`
+			args = append(args, migrated, viewer, viewer)
 		}
 		query := `SELECT json_group_array(json_object('uri',uri,'position',position` + fields + `)) FROM (
  SELECT ci.uri,` + timestamp + " AS position" + candidateFields + `
@@ -75,7 +82,7 @@ FROM (SELECT json_extract(candidate.value,'$.uri') AS uri,scopes.pub,
 FROM (
  SELECT json_extract(value,'$.author') AS author,json_extract(value,'$.publication') AS pub,
  json_extract(value,'$.sites') AS sites FROM json_each(?)
-) scopes
+) scopes` + scopeJoins + `
 JOIN json_each(CASE WHEN json_array_length(scopes.sites)=1 THEN (` + singleSite + `) ELSE (` + multipleSites + `) END) candidate
 ORDER BY position DESC,uri DESC,scopes.pub ASC LIMIT ?) batch
 JOIN content_items ci ON ci.uri=batch.uri` + stateJoins + `
