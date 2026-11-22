@@ -81,7 +81,7 @@ func (s *Store) invalidateReadiness(ctx context.Context) error {
 	if exists == 0 {
 		return nil
 	}
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM scheduler_schema_readiness")
+	_, err := s.db.ExecContext(ctx, "DELETE FROM scheduler_schema_readiness")
 	return err
 }
 func (s *Store) markReady(ctx context.Context) error {

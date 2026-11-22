@@ -84,7 +84,7 @@ func (s *Store) ListManagedAccounts(ctx context.Context) ([]ManagedAccount, erro
 }
 
 func (s *Store) MarkAccountNeedsReauth(ctx context.Context, did, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "UPDATE managed_accounts SET status='needs_reauth',updated_at=? WHERE did=?", now, did)
+	_, err := s.db.ExecContext(ctx, "UPDATE managed_accounts SET status='needs_reauth',updated_at=? WHERE did=?", now, did)
 	return err
 }
 
@@ -158,6 +158,6 @@ func (s *Store) ListViewerAccounts(ctx context.Context, viewerDID string) ([]Vie
 }
 
 func (s *Store) DeleteViewerAccount(ctx context.Context, viewerDID, accountDID string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM viewer_accounts WHERE viewer_did=? AND account_did=?", viewerDID, accountDID)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM viewer_accounts WHERE viewer_did=? AND account_did=?", viewerDID, accountDID)
 	return err
 }

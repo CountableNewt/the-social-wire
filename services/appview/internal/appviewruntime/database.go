@@ -34,7 +34,7 @@ func invalidateRuntimeSchema(ctx context.Context, db *sqlitedb.DB) error {
 	if exists == 0 {
 		return nil
 	}
-	_, err := db.Writer().ExecContext(ctx, "DELETE FROM appview_schema_readiness")
+	_, err := db.ExecContext(ctx, "DELETE FROM appview_schema_readiness")
 	return err
 }
 

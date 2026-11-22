@@ -107,7 +107,7 @@ func (v *EntryVerifier) Verify(ctx context.Context, entry string) (bool, error) 
 		return true, errVerification
 	}
 	if missing {
-		deleted, err := v.content.DB.Writer().ExecContext(ctx, "DELETE FROM content_items WHERE uri=? AND cid=?", entry, indexed)
+		deleted, err := v.content.DB.ExecContext(ctx, "DELETE FROM content_items WHERE uri=? AND cid=?", entry, indexed)
 		if err != nil {
 			return true, err
 		}

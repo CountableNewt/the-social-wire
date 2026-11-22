@@ -39,7 +39,7 @@ func (s SQLiteIngestStore) writeContentItem(ctx context.Context, item IndexedCon
 	if err != nil {
 		return false, err
 	}
-	result, err := s.DB.Writer().ExecContext(ctx, `
+	result, err := s.DB.ExecContext(ctx, `
 		INSERT INTO content_items
 			(uri,cid,author_did,collection,created_at,indexed_at,created_at_us,indexed_at_us,publication_site,render_json,expires_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uri) `+conflict,
@@ -94,7 +94,7 @@ func (s SQLiteIngestStore) FetchRssFeedMetadata(ctx context.Context, feed string
 }
 
 func (s SQLiteIngestStore) StoreRssFeedMetadata(ctx context.Context, metadata RssFeedFetchMetadata) error {
-	return storeRSSMetadata(ctx, s.DB.Writer(), metadata)
+	return storeRSSMetadata(ctx, s.DB, metadata)
 }
 
 type ingestExecutor interface {
@@ -134,7 +134,7 @@ func (s SQLiteIngestStore) CompareAndSwapContent(ctx context.Context, item Index
 	if err != nil {
 		return false, err
 	}
-	result, err := s.DB.Writer().ExecContext(ctx, `
+	result, err := s.DB.ExecContext(ctx, `
 		UPDATE content_items SET cid=?,author_did=?,collection=?,created_at=?,indexed_at=?,created_at_us=?,indexed_at_us=?,
 			publication_site=?,render_json=?,expires_at=? WHERE uri=? AND cid=?
 	`, item.CID, item.AuthorDID, item.Collection, createdAt, indexedAt, createdMicros, indexedMicros,

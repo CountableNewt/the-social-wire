@@ -41,7 +41,7 @@ func (s *Store) RenewActorLease(ctx context.Context, purpose, actor, owner strin
 	if owner == "" || until <= now {
 		return ErrLeaseLost
 	}
-	result, err := s.db.Writer().ExecContext(ctx, "UPDATE scheduler_actor_leases SET expires_at_us=? WHERE purpose=? AND actor_did=? AND owner=? AND expires_at_us>?", until, purpose, actor, owner, now)
+	result, err := s.db.ExecContext(ctx, "UPDATE scheduler_actor_leases SET expires_at_us=? WHERE purpose=? AND actor_did=? AND owner=? AND expires_at_us>?", until, purpose, actor, owner, now)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (s *Store) CheckActorLease(ctx context.Context, purpose, actor, owner strin
 }
 
 func (s *Store) ReleaseActorLease(ctx context.Context, purpose, actor, owner string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM scheduler_actor_leases WHERE purpose=? AND actor_did=? AND owner=?", purpose, actor, owner)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM scheduler_actor_leases WHERE purpose=? AND actor_did=? AND owner=?", purpose, actor, owner)
 	return err
 }
 
