@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { appViewSurfaces, appViewSurfaceForPath, appViewVercelConfig, type AppViewSurface } from "../../../services/appview/scripts/vercel-config";
+import { appViewSurfaces, appViewSurfaceForPath, socialWireVercelConfig, type AppViewSurface } from "../../../scripts/vercel-config";
 import { registeredGoRoutes } from "./helpers/goRoutes";
 
 const root = join(import.meta.dir, "../../..");
-const backend = appViewVercelConfig("prod", "production");
-const frontend = JSON.parse(readFileSync(join(root, "apps/web/vercel.json"), "utf8"));
+const backend = socialWireVercelConfig("prod", "production", "main");
+
 const build = readFileSync(join(root, "services/appview/scripts/vercel-build.sh"), "utf8");
 
 function runBuildScript(surface: string, environment: Record<string, string>, verify: (result: ReturnType<typeof spawnSync>, directory: string) => void) {
@@ -40,28 +40,38 @@ chmod +x "$VERCEL_OUTPUT_FILE"
 }
 
 describe("standalone Vercel AppView contract", () => {
-  it("only automatically deploys main and dev for both projects, including denying slash-named feature branches", () => {
+  it("renders the root CLI config without changing service paths or enabling generic preview maintenance", () => {
+    const result = spawnSync(process.execPath, [join(root, "scripts/render-vercel-config.ts")], {
+      encoding: "utf8",
+      env: { ...process.env, APP_ENV: "dev", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/isolated" },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(socialWireVercelConfig("dev", "preview", "feature/isolated"));
+    expect(JSON.parse(result.stdout).schedules).toEqual({});
+  });
+
+  it("only automatically deploys main and dev for the consolidated project, including denying slash-named feature branches", () => {
     // Minimatch's * excludes path separators; ** closes the slash-branch gap.
     // Vercel gives an explicit true match precedence over matching false rules.
     const allowlist = { main: true, dev: true, "*": false, "**": false };
-    for (const config of [backend, appViewVercelConfig("dev", "preview", "dev"), frontend]) {
+    for (const config of [backend, socialWireVercelConfig("dev", "preview", "dev")]) {
       expect(config.git.deploymentEnabled).toEqual(allowlist);
     }
   });
 
   it("builds six Go surfaces with unchanged API ingress and runtime bounds", () => {
     expect(appViewSurfaces).toEqual(["reader", "publishing", "scheduling", "analytics", "integrations", "maintenance"]);
-    expect(Object.keys(backend.services)).toEqual([...appViewSurfaces]);
+    expect(Object.keys(backend.services)).toEqual(["web", ...appViewSurfaces]);
     for (const surface of appViewSurfaces) {
       const service = backend.services[surface]!;
-      expect(service.root).toBe(".");
+      expect(service.root).toBe("services/appview");
       expect(service.framework).toBe("go");
       expect(service.entrypoint).toBe(`cmd/${surface}/main.go`);
       expect(service.buildCommand).toBe(`bash scripts/vercel-build.sh ${surface}`);
       expect(service.functions[`cmd/${surface}/main.go`])
         .toEqual({ maxDuration: 300, regions: ["sfo1"] });
     }
-    expect(backend.rewrites.at(-1)).toEqual({ source: "/(.*)", destination: { service: "reader" } });
+    expect(backend.rewrites.at(-1)).toEqual({ source: "/(.*)", destination: { service: "web" } });
     expect(backend.env).toEqual({ RUNTIME_MODE: "serverless", DATABASE_BACKEND: "turso", JOBS_RUNNER_MODE: "external" });
     expect(backend).not.toHaveProperty("builds");
     expect(backend).not.toHaveProperty("experimentalServices");
@@ -101,6 +111,35 @@ describe("standalone Vercel AppView contract", () => {
     expect(appViewSurfaceForPath("/oauth-client-metadata.json")).toBe("reader");
   });
 
+  it("routes shared-origin APIs and API hosts while retaining Next pages and handlers", () => {
+    const route = (path: string, host = "preview.vercel.app") => backend.rewrites.find(rule => {
+      const hostRule = "has" in rule ? rule.has : undefined;
+      return (!hostRule || hostRule.some(condition => condition.value === host)) &&
+        (rule.source === path || (rule.source.endsWith("(.*)") && path.startsWith(rule.source.slice(0, -4))));
+    })?.destination.service;
+    for (const registered of registeredGoRoutes()) {
+      const path = registered.slice(registered.indexOf(" ") + 1);
+      const hostOwnedMetadata = ["/oauth-client-metadata.json", "/oauth/client-metadata.json", "/ios-client-metadata.json"].includes(path);
+      expect(route(path), registered).toBe(hostOwnedMetadata ? "web" : appViewSurfaceForPath(path));
+      for (const host of ["api.thesocialwire.app", "api.testing.thesocialwire.app"]) {
+        expect(route(path, host), `${host}${path}`).toBe(appViewSurfaceForPath(path));
+      }
+    }
+    for (const path of ["/", "/read", "/saved", "/callback", "/client-metadata.json", "/oauth-client-metadata.json", "/ios-client-metadata.json", "/api/oembed", "/api/latr-gateway/v1/latr/saves", "/_next/static/app.js"]) {
+      expect(route(path), path).toBe("web");
+    }
+    for (const host of ["api.thesocialwire.app", "api.testing.thesocialwire.app"]) {
+      expect(route("/unknown-native-path", host)).toBe("reader");
+    }
+    expect(backend.services.web).toEqual({
+      root: "apps/web", framework: "nextjs",
+      installCommand: "cd ../.. && bun install --frozen-lockfile", buildCommand: "bun run build",
+    });
+    expect(backend.regions).toEqual(["sfo1"]);
+    expect(existsSync(join(root, "apps/web/vercel.json"))).toBe(false);
+    expect(existsSync(join(root, "services/appview/vercel.ts"))).toBe(false);
+  });
+
   it("builds all sibling Go files and gates store initialization to explicitly authorized release builds", () => {
     expect(build).toContain("set -euo pipefail");
     expect(build).toContain('-o "$VERCEL_OUTPUT_FILE" "./cmd/$surface"');
@@ -129,7 +168,7 @@ describe("standalone Vercel AppView contract", () => {
         jitter: 15,
       },
     });
-    const development = appViewVercelConfig("dev", "preview", "dev");
+    const development = socialWireVercelConfig("dev", "preview", "dev");
     expect(development.schedules.maintenance?.schedule).toBe("0 * * * *");
     // One run per quarter-hour in Production and per hour in Development.
     const largestMonthRuns = (4 + 1) * 24 * 31;
@@ -141,7 +180,7 @@ describe("standalone Vercel AppView contract", () => {
   });
 
   it("schedules only the exact Development Preview branch and leaves other previews or local runs idle", () => {
-    expect(appViewVercelConfig("dev", "preview", "dev").schedules).toEqual({
+    expect(socialWireVercelConfig("dev", "preview", "dev").schedules).toEqual({
       maintenance: {
         schedule: "0 * * * *",
         path: "/internal/schedules/maintenance",
@@ -151,21 +190,22 @@ describe("standalone Vercel AppView contract", () => {
       },
     });
     for (const appEnvironment of ["prod", "local", "development", "typo", undefined]) {
-      expect(appViewVercelConfig(appEnvironment, "preview", "dev").schedules).toEqual({});
+      expect(socialWireVercelConfig(appEnvironment, "preview", "dev").schedules).toEqual({});
     }
     for (const branch of ["main", "feature/dev", "refs/heads/dev", "Dev", "dev ", "", undefined]) {
-      expect(appViewVercelConfig("dev", "preview", branch).schedules).toEqual({});
+      expect(socialWireVercelConfig("dev", "preview", branch).schedules).toEqual({});
     }
     for (const environment of ["development", "local", undefined]) {
-      expect(appViewVercelConfig("prod", environment, "main").schedules).toEqual({});
-      expect(appViewVercelConfig("dev", environment, "dev").schedules).toEqual({});
+      expect(socialWireVercelConfig("prod", environment, "main").schedules).toEqual({});
+      expect(socialWireVercelConfig("dev", environment, "dev").schedules).toEqual({});
     }
-    expect(appViewVercelConfig("prod", "preview", "main").schedules).toEqual({});
-    expect(appViewVercelConfig("prod", "production", "main").schedules).toEqual(backend.schedules);
-    // Missing or unexpected app environments cannot increase schedule frequency.
+    expect(socialWireVercelConfig("prod", "preview", "main").schedules).toEqual({});
+    expect(socialWireVercelConfig("prod", "production", "main").schedules).toEqual(backend.schedules);
     for (const environment of [undefined, "local", "production", "typo"]) {
-      expect(appViewVercelConfig(environment, "production").schedules.maintenance?.schedule)
-        .toBe("0 * * * *");
+      expect(socialWireVercelConfig(environment, "production", "main").schedules).toEqual({});
+    }
+    for (const branch of [undefined, "dev", "feature/test"]) {
+      expect(socialWireVercelConfig("prod", "production", branch).schedules).toEqual({});
     }
   });
 

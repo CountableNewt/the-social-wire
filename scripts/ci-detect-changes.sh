@@ -77,6 +77,8 @@ filter_changed web \
   'scripts/**' \
   'tools/**' \
   'docs/runbooks/**' \
+  'vercel.ts' \
+  'scripts/vercel-config.ts' \
   'package.json' \
   'bun.lock' \
   'turbo.json' \
@@ -92,6 +94,8 @@ filter_changed appview \
   'packages/spec/openapi.yaml' \
   'packages/vendor/**' \
   'scripts/ci/**' \
+  'vercel.ts' \
+  'scripts/vercel-config.ts' \
   'package.json' \
   'bun.lock' \
   '.dockerignore'

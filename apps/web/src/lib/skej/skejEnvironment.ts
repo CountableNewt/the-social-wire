@@ -1,5 +1,7 @@
+import { socialWireApiOrigin } from "@/lib/socialWireApiOrigin";
+
 export function getSkejEnvironment() {
-  const api = new URL(process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL ?? "https://api.thesocialwire.app");
+  const api = new URL(socialWireApiOrigin());
   return { api: api.origin, connectUrl: new URL("/oauth/scheduling/start", api).href };
 }
 

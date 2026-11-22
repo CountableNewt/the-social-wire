@@ -4,7 +4,7 @@ The Go backend owns schema migrations in `services/appview/internal`. Hosted App
 
 User-authored protocol records remain authoritative on the PDS. Application stores contain derived projections and private unpublished data. Private attachment ciphertext lives in private Blob storage; preserve its existing encryption key with the database recovery set.
 
-Local SQLite stores apply migrations before startup. Remote serving verifies schema readiness and encrypted-vault compatibility without startup DDL. Explicit `AppView --initialize-only` initializes both remote stores before serving. Development uses the `dev` branch Preview in the same two Vercel projects as Production; initialize its databases explicitly outside builds. Preview builds never initialize shared release databases.
+Local SQLite stores apply migrations before startup. Remote serving verifies schema readiness and encrypted-vault compatibility without startup DDL. Explicit `AppView --initialize-only` initializes both remote stores before serving. Development uses the `dev` branch Preview in the same retained Vercel Services project as Production (source target; #992 tracks hosted acceptance); initialize its databases explicitly outside builds. Preview builds never initialize shared release databases.
 
 The Go `services/appview/cmd/sqlite-backup` command creates verified local SQLite snapshots, including committed WAL pages, with no-overwrite and private-file protections. Run `database-preflight` on verified offline snapshots before import. Retired Postgres import scripts and the Python runtime dependency remain historical Git references. Turso exports have their own snapshot/log recovery procedure; do not treat a main file with unapplied log data as a complete SQLite backup.
 

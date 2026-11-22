@@ -17,13 +17,14 @@ Web Frontend (Next.js)       iOS/iPadOS (SwiftUI)
                                  Bounded RSS + leased scheduling
 ```
 
-The hosted target has two Vercel projects: Web and AppView. AppView
+The source target is one Vercel Services project containing Web and six Go AppView services. AppView
 retains the public XRPC and `/v1/*` compatibility contracts on the existing API
 domains. See the [standalone cutover runbook](docs/architecture/standalone-reader.md)
 for data import, key preservation, backups, and Development-first acceptance.
 
-GitHub remains origin and GitHub Actions runs required verification. Both Vercel
-projects use `main` for Production and the `dev` branch Preview for Development.
+GitHub remains origin and GitHub Actions runs required verification. The retained project
+uses `main` for Production and the `dev` branch Preview for Development.
+[Issue #992 consolidation](docs/runbooks/vercel-project-consolidation.md) tracks hosted acceptance; generic previews remain disabled until isolated resources are provisioned.
 Issue #963 records the hosted cutover and separate Railway infrastructure retirement.
 
 ## Monorepo Structure
@@ -116,11 +117,11 @@ bash scripts/ci/verify-runtime-images.sh appview
 
 | Component | Where |
 |-----------|-------|
-| Frontend | Vercel Web project, root `apps/web` |
-| AppView | Vercel backend project, root `services/appview`, six Go Functions |
+| Frontend | Retained Vercel project at repository root, Web service `apps/web` |
+| AppView | Same project, six Go services rooted at `services/appview` |
 | Data | Separate US Turso AppView/scheduling databases and private Blob storage per environment |
 | Required CI | GitHub Actions, Web/Go/Apple/source contracts and portable image checks |
-| Releases | `dev` branch Preview before `main` Production in both projects |
+| Releases | `dev` branch Preview before `main` Production in the retained project |
 
 Follow the [runtime and cutover guide](docs/architecture/standalone-reader.md)
 for explicit schema initialization, stable domains and recovery. Railway resource

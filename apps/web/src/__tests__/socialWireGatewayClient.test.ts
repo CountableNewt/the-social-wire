@@ -24,6 +24,46 @@ afterEach(() => {
 });
 
 describe("gatewayFetch", () => {
+  it("binds preview requests and nonce retries to the browser origin despite stale Production env", async () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { location: { origin: "https://preview-social-wire.vercel.app" } } });
+    process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL = "https://api.thesocialwire.app";
+    const claimsSeen: Array<Record<string, string | number>> = [];
+    const nonces = new Map<string, string>();
+    let calls = 0;
+    globalThis.fetch = mock(async (url: string) => {
+      expect(url).toBe("https://preview-social-wire.vercel.app/v1/telemetry/client-performance?source=preview");
+      return ++calls === 1
+        ? new Response("", { status: 401, headers: { "DPoP-Nonce": "preview-nonce" } })
+        : new Response("", { status: 200 });
+    }) as unknown as typeof fetch;
+    const oauth = {
+      did: "did:plc:viewer",
+      getTokenSet: async () => ({ access_token: "token", token_type: "DPoP" }),
+      getTokenInfo: async () => ({ aud: "https://pds.example" }),
+      server: {
+        dpopKey: {
+          bareJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" }, algorithms: ["ES256"],
+          createJwt: async (_header: unknown, claims: Record<string, string | number>) => { claimsSeen.push(claims); return "proof"; },
+        },
+        dpopNonces: { get: async (origin: string) => nonces.get(origin), set: async (origin: string, nonce: string) => { nonces.set(origin, nonce); } },
+        serverMetadata: { dpop_signing_alg_values_supported: ["ES256"] },
+      },
+    } as never;
+    try {
+      const { gatewayFetch } = await import("@/lib/socialWireGatewayClient");
+      expect((await gatewayFetch(oauth, "/v1/telemetry/client-performance?source=preview", { method: "POST" })).status).toBe(200);
+      const gatewayClaims = claimsSeen.filter(claims => String(claims.htu).includes("preview-social-wire"));
+      expect(gatewayClaims).toHaveLength(2);
+      expect(gatewayClaims[1]).toMatchObject({ htu: "https://preview-social-wire.vercel.app/v1/telemetry/client-performance", htm: "POST", nonce: "preview-nonce" });
+      expect(nonces.get("https://preview-social-wire.vercel.app")).toBe("preview-nonce");
+      expect(nonces.has("https://api.thesocialwire.app")).toBe(false);
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   it("fails closed on an advertised DPoP algorithm mismatch and accepts a matching algorithm", async () => {
     const jwtHeaders: Array<Record<string, unknown>> = [];
     const supportedAlgorithms = ["PS256"];
