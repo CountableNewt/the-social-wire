@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:22.04 AS runtime-dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates sqlite3 util-linux tini curl python3 postgresql-client \
+  && apt-get install -y --no-install-recommends ca-certificates sqlite3 util-linux tini curl \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --no-create-home appuser
 
@@ -14,15 +14,16 @@ COPY services/appview/cmd ./cmd
 COPY services/appview/internal ./internal
 # modernc SQLite is pure Go, so the binary is static and needs no toolchain libraries.
 # Railway rejects BuildKit cache mounts, so layer order carries the module cache.
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/AppView ./cmd/appview
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/AppView ./cmd/appview \
+  && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/sqlite-backup ./cmd/sqlite-backup \
+  && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o /out/database-preflight ./cmd/database-preflight
 
 FROM runtime-dependencies
-ENV BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite ENABLE_THIN_APPVIEW=true BIND_HOST=0.0.0.0
+ENV BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite BIND_HOST=0.0.0.0
 COPY --from=builder /out/AppView /usr/local/bin/AppView
 COPY services/appview/bin/standalone-entrypoint /usr/local/bin/standalone-entrypoint
-COPY services/appview/bin/sqlite-backup /usr/local/bin/sqlite-backup
-COPY services/appview/bin/migrate-from-postgres /usr/local/bin/migrate-from-postgres
-COPY scripts/migrations/postgres_to_sqlite.py /usr/local/share/social-wire/postgres_to_sqlite.py
+COPY --from=builder /out/sqlite-backup /usr/local/bin/sqlite-backup
+COPY --from=builder /out/database-preflight /usr/local/bin/database-preflight
 EXPOSE 8081
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/standalone-entrypoint"]
 CMD ["/usr/local/bin/AppView"]

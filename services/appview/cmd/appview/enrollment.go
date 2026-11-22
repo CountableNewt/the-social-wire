@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/ingest"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reader"
@@ -55,28 +57,47 @@ func queueKnownPublications(ctx context.Context, db *sqlitedb.DB, discovery *ing
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	scopes := []ingest.DiscoveryScope{}
 	for rows.Next() {
 		var scope ingest.DiscoveryScope
 		var keys string
 		if err := rows.Scan(&scope.Author, &keys); err != nil {
+			rows.Close()
 			return err
 		}
 		if err := json.Unmarshal([]byte(keys), &scope.Keys); err != nil {
+			rows.Close()
 			return err
 		}
-		discovery.Schedule(scope)
+		scopes = append(scopes, scope)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, scope := range scopes {
+		if err := discovery.Schedule(ctx, scope); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func bootstrapDiscovery(provider *ingest.Microcosm) func([]thinstore.PublicationScope) {
+func bootstrapDiscovery(lifecycle context.Context, provider *ingest.Microcosm, logger *slog.Logger) func([]thinstore.PublicationScope) {
 	return func(scopes []thinstore.PublicationScope) {
 		if provider == nil {
 			return
 		}
+		ctx, cancel := context.WithTimeout(lifecycle, 2*time.Second)
+		defer cancel()
 		for _, scope := range scopes[:min(len(scopes), 8)] {
-			provider.Schedule(ingest.DiscoveryScope{Author: scope.AuthorDID, Keys: scope.ScopeKeys})
+			if err := provider.Schedule(ctx, ingest.DiscoveryScope{Author: scope.AuthorDID, Keys: scope.ScopeKeys}); err != nil {
+				logger.Debug("Publication discovery enqueue deferred")
+				return
+			}
 		}
 	}
 }

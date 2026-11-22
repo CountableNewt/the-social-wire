@@ -1,6 +1,16 @@
 package scheduledata
 
 const scheduleSchema = `
+CREATE TABLE IF NOT EXISTS scheduler_actor_leases (
+    purpose TEXT NOT NULL, actor_did TEXT NOT NULL, owner TEXT NOT NULL, expires_at_us INTEGER NOT NULL,
+    PRIMARY KEY (purpose,actor_did)
+);
+CREATE INDEX IF NOT EXISTS scheduler_actor_leases_expiry ON scheduler_actor_leases(expires_at_us);
+CREATE TABLE IF NOT EXISTS oauth_refresh_leases (
+    did TEXT NOT NULL, token_hash TEXT NOT NULL, owner TEXT NOT NULL,
+    expires_at_us INTEGER NOT NULL, request_started INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(did,token_hash)
+);
 CREATE TABLE IF NOT EXISTS pending_schedule_submissions (
     did TEXT NOT NULL, rkey TEXT NOT NULL, next_check_at TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY (did, rkey)

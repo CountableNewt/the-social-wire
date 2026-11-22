@@ -1,5 +1,4 @@
 import { compactLoopbackClientId } from "@/lib/atprotoNetwork";
-import { skejScopesForEnvironment } from "@/lib/skej/skejEnvironment";
 import { afterEach, describe, expect, it } from "bun:test";
 import { atprotoLoopbackClientMetadata, buildAtprotoLoopbackClientId } from "@atproto/oauth-types";
 import { isAtprotoOauthScope, RepoPermission, RpcPermission, ScopePermissions } from "@atproto/oauth-scopes";
@@ -10,13 +9,10 @@ import { AT_PROTO_OAUTH_SCOPES, BLUESKY_VIDEO_SCOPES } from "@/lib/atprotoOAuthS
 import { LocalAppViewAgent } from "@/lib/localAppViewAgent";
 import { getBlueskySocialCatalog } from "@/lib/blueskySocialClient";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
-const original = { app: process.env.NEXT_PUBLIC_APP_ENV, dummy: process.env.NEXT_PUBLIC_USE_DUMMY_DATA };
+const original = { app: process.env.NEXT_PUBLIC_APP_ENV };
 afterEach(() => {
   if (original.app === undefined) delete process.env.NEXT_PUBLIC_APP_ENV;
   else process.env.NEXT_PUBLIC_APP_ENV = original.app;
-  if (original.dummy === undefined) delete process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
-  else process.env.NEXT_PUBLIC_USE_DUMMY_DATA = original.dummy;
 });
 const local = { publicAppView: "https://appview.atmosbox.test", plcDirectory: "https://plc.atmosbox.test", handleResolver: "https://pds1.atmosbox.test", appViewDid: "did:web:appview.atmosbox.test", appLabelers: "" };
 describe("local ATProto network", () => {
@@ -48,7 +44,7 @@ describe("local ATProto network", () => {
     expect(scopes).toContain("rpc:app.bsky.feed.getFeedSkeleton?aud=did:web:appview.atmosbox.test%23bsky_appview");
     expect(scopes).toContain("repo:app.bsky.feed.post?action=create");
     expect(scopes.split(" ").filter(s => s.startsWith("repo:"))).toEqual(AT_PROTO_OAUTH_SCOPES.split(" ").filter(s => s.startsWith("repo:")));
-    expect(atprotoScopesForNetwork(AT_PROTO_OAUTH_SCOPES, resolveAtprotoNetwork("prod"))).toBe(skejScopesForEnvironment(AT_PROTO_OAUTH_SCOPES));
+    expect(atprotoScopesForNetwork(AT_PROTO_OAUTH_SCOPES, resolveAtprotoNetwork("prod"))).toBe(AT_PROTO_OAUTH_SCOPES);
   });
   it("keeps the local loopback client within the URL budget with identical metadata and PAR scopes", () => {
     const scopes = "repo:app.example.full?action=create&action=update&action=delete repo:app.example.partial?action=create&action=delete rpc:app.example.method?aud=did:web:app.example include:app.example.authFull";
@@ -179,15 +175,7 @@ describe("local ATProto network", () => {
       else process.env.NEXT_PUBLIC_LOCAL_ATPROTO_APP_LABELERS = previous.labelers;
     }
   });
-  it("lets explicit false disable dummy local sessions", () => {
-    process.env.NEXT_PUBLIC_APP_ENV = "local";
-    delete process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
-    expect(isDummyReaderDataEnabled()).toBe(true);
-    process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "false";
-    expect(isDummyReaderDataEnabled()).toBe(false);
-    process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "true";
-    expect(isDummyReaderDataEnabled()).toBe(true);
-  });
+
 });
 
 it("compacts only safe loopback query characters without changing consent metadata", () => {

@@ -144,6 +144,10 @@ type testStore struct {
 	mu           sync.Mutex
 	session      Session
 	replacements int
+	leaseOwner   string
+	leaseHash    string
+	leaseUntil   int64
+	started      map[string]bool
 }
 
 func (s *testStore) LoadOAuthSession(ctx context.Context, did string) (*Session, error) {
@@ -153,13 +157,51 @@ func (s *testStore) LoadOAuthSession(ctx context.Context, did string) (*Session,
 	return &value, nil
 }
 
-func (s *testStore) ReplaceOAuthSessionAfterRefresh(ctx context.Context, session Session, previousAccessToken string) error {
+func (s *testStore) ClaimOAuthRefresh(ctx context.Context, did, owner, hash string, now, until int64) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var token tokenPayload
-	if json.Unmarshal([]byte(s.session.TokenJSON), &token) == nil && token.AccessToken == previousAccessToken {
+	if s.leaseOwner != "" && s.leaseUntil > now {
+		return false, nil
+	}
+	if s.started[hash] {
+		return false, ErrNotConfigured
+	}
+	s.leaseOwner, s.leaseHash, s.leaseUntil = owner, hash, until
+	return true, nil
+}
+func (s *testStore) BeginOAuthRefresh(ctx context.Context, did, owner, hash string, now int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.leaseOwner != owner || s.leaseHash != hash || s.leaseUntil <= now {
+		return ErrNotConfigured
+	}
+	if s.started == nil {
+		s.started = map[string]bool{}
+	}
+	if s.started[hash] {
+		return ErrNotConfigured
+	}
+	s.started[hash] = true
+	return nil
+}
+func (s *testStore) CompleteOAuthRefresh(ctx context.Context, session Session, previous, owner, hash string, now int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.leaseOwner != owner || s.leaseUntil <= now || s.leaseHash != hash {
+		return ErrNotConfigured
+	}
+	if s.session.TokenJSON == previous {
 		s.session = session
 		s.replacements++
+	}
+	s.leaseOwner = ""
+	return nil
+}
+func (s *testStore) ReleaseOAuthRefresh(ctx context.Context, did, owner string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.leaseOwner == owner {
+		s.leaseOwner = ""
 	}
 	return nil
 }

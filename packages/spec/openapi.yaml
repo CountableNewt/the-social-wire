@@ -4,17 +4,19 @@ x-tsw-endpoint-manifest: "./endpoint-manifest.json"
 info:
   title: The Social Wire API
   description: |
-    HTTP contract for the Social Wire **distributed backend**:
+    HTTP contract for the standalone Go backend in **`services/appview`**.
+    The public edge verifies OAuth/DPoP, serves client metadata and sync caches,
+    projects publication sidebars and reader feeds, streams bootstrap NDJSON,
+    and owns private drafts, scheduling and analytics.
 
-    - **`services/gateway`** (this spec's `servers` URLs) — OAuth client metadata, DPoP verification, sync cache, unbuffered proxy to AppView.
-    - **`services/appview`** — publication sidebar projection (`/v1/publications/*`), Thin AppView read index (`/v1/appview/*`), bootstrap stream.
-    - **Projection Pool / Coordinator** (`services/indexing-worker`) — replicated durable-inbox projection plus fenced RSS, backfill, rank, enrichment, and cleanup jobs (health surface only).
+    **OAuth client metadata** serves Web and native clients at
+    `/oauth-client-metadata.json` and `/ios-client-metadata.json`.
 
-    **OAuth client metadata** mirrors SPA + ATS clients (`/oauth-client-metadata.json`, `/ios-client-metadata.json`) with scopes from **`ATProtoOAuthScopes`**.
+    **Authenticated routes** require OAuth access tokens bound to a usable
+    `cnf.jkt` plus an RFC 9449 DPoP proof verified against that exact key.
 
-    **Authenticated routes** require `Authorization: Bearer` or `Authorization: DPoP` plus RFC 9449 `DPoP` proof binding (`cnf.jkt` when emitted by the issuer).
-
-    **Thin AppView** (`ENABLE_THIN_APPVIEW` on AppView): data-minimized entry index and detail, unread counts, bootstrap-stream NDJSON initial load, scoped mark-all-read. Projected by the **Projection Pool** and the fenced **Coordinator**.
+    **AppView** maintains a data-minimized SQLite projection of PDS records and
+    subscribed RSS feeds. User-authored PDS records remain authoritative.
 
     Native L@tr bookmark XRPC proxy routes are documented here. The web app's same-origin Next.js `/api/latr-gateway` proxy is a separate surface.
   version: "1.0.0"
@@ -34,6 +36,14 @@ servers:
 
 components:
   securitySchemes:
+    MaintenanceCronBearer:
+      type: http
+      scheme: bearer
+      description: Dedicated CRON_SECRET supplied by Vercel Cron. Distinct from viewer OAuth and JOBS_SECRET.
+    MaintenanceJobsBearer:
+      type: http
+      scheme: bearer
+      description: Dedicated JOBS_SECRET for maintenance triggers. Viewer OAuth and DPoP credentials do not authorize these endpoints. Missing configuration disables HTTP job execution.
     ATProtoOAuthDPoP:
       type: http
       scheme: bearer
@@ -51,6 +61,14 @@ components:
         apps should not rely on Social Wire production API hosts without an explicit arrangement.
 
   schemas:
+    MaintenanceJobResult:
+      type: object
+      additionalProperties: false
+      required: [job, claimed, completed]
+      properties:
+        job: {type: string, enum: [scheduling, drafts-cleanup, discovery, ttl-cleanup, rss-poll, analytics-cleanup, author-history, read-state-recovery]}
+        claimed: {type: boolean, description: False when another instance holds this job's lease.}
+        completed: {type: boolean, description: True only after this invocation's bounded action finishes.}
     ArticleDraftLocalAsset: {"type": "object", "required": ["id", "alt", "width", "height", "mimeType", "name"], "properties": {"id": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}, "alt": {"type": "string"}, "width": {"type": "integer", "minimum": 1, "maximum": 100000}, "height": {"type": "integer", "minimum": 1, "maximum": 100000}, "mimeType": {"type": "string", "enum": ["image/jpeg", "image/png", "image/gif", "image/webp"]}, "name": {"type": "string", "minLength": 1, "maxLength": 1024}}, "description": "Original image metadata. Byte length is bounded to 1000000 by the service, with a ready owner-private photo binding required for every asset.", "additionalProperties": false}
     ArticleDraftPayload: {"type": "object", "required": ["id", "title", "markdown", "excerpt", "path", "tags", "publicationUri", "createdAt", "updatedAt", "assets"], "properties": {"id": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}, "title": {"type": "string"}, "markdown": {"type": "string"}, "excerpt": {"type": "string"}, "path": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string", "maxLength": 256}, "maxItems": 100}, "publicationUri": {"type": "string"}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}, "assets": {"type": "array", "items": {"$ref": "#/components/schemas/ArticleDraftLocalAsset"}, "maxItems": 200}, "coverAssetId": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}, "publishedUri": {"type": "string", "minLength": 1, "maxLength": 4096}, "scheduleRecordKey": {"type": "string", "minLength": 1, "maxLength": 4096}, "scheduleUri": {"type": "string", "minLength": 1, "maxLength": 4096}, "publishingRecordKey": {"type": "string", "minLength": 1, "maxLength": 4096}, "publicationClaimId": {"type": "string", "format": "uuid", "minLength": 36, "maxLength": 36, "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "Private client publication/scheduling claim identity; never copied to a PDS record."}}, "description": "Private article content, at most 524288 UTF-8 JSON bytes in total; title/body/excerpt/path/publication identifiers reject NUL. String limits are enforced in UTF-8 bytes by the service. No local cache or sync revisions are included. Publication/scheduling fields only describe explicit user actions, never cause them.", "additionalProperties": false, "dependentRequired": {"publishingRecordKey": ["publicationClaimId"]}}
     ArticleDraftAttachmentRef: {"type": "object", "required": ["localAssetId", "assetId"], "properties": {"localAssetId": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}, "assetId": {"type": "string", "minLength": 36, "maxLength": 36, "description": "Canonical lowercase UUID. This private identifier is not a PDS record.", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}, "additionalProperties": false}
@@ -669,838 +687,6 @@ components:
           type: string
           nullable: true
 
-    CursorPage:
-      type: object
-      properties:
-        cursor:
-          type: string
-          description: Opaque pagination cursor. Pass to the next request to get the next page. Absent on the last page.
-
-    OperationsEnvironment:
-      type: string
-      enum: [dev, prod]
-
-    OperationsEvidenceMetadata:
-      type: object
-      additionalProperties: false
-      required: [source, accuracy, generatedAt, ageSeconds, validUntil]
-      properties:
-        source:
-          type: string
-          description: Stable name of the instrument or store that produced this evidence.
-        accuracy:
-          type: string
-          enum: [exact, sampled, estimated, unavailable]
-        generatedAt: { type: string, format: date-time }
-        indexedThrough: { type: [string, "null"], format: date-time }
-        ageSeconds: { type: number, minimum: 0 }
-        validUntil: { type: string, format: date-time }
-        coverage:
-          type: [number, "null"]
-          minimum: 0
-          maximum: 1
-        lastSuccessfulAt: { type: [string, "null"], format: date-time }
-        degradedReason:
-          type: [string, "null"]
-          description: Required by convention when accuracy is unavailable or coverage is partial.
-
-    OperationsCapability:
-      type: object
-      additionalProperties: false
-      required: [enabled]
-      properties:
-        enabled: { type: boolean }
-        disabledReason: { type: [string, "null"] }
-
-    OperationsCapabilities:
-      type: object
-      additionalProperties: false
-      required: [environment, telemetry, recovery, recoveryModes, alertDelivery, eventStream, generatedAt]
-      properties:
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        telemetry: { $ref: "#/components/schemas/OperationsCapability" }
-        recovery: { $ref: "#/components/schemas/OperationsCapability" }
-        recoveryModes: { $ref: "#/components/schemas/OperationsRecoveryModeCapabilities" }
-        alertDelivery: { $ref: "#/components/schemas/OperationsCapability" }
-        eventStream: { $ref: "#/components/schemas/OperationsEventStreamCapability" }
-        generatedAt: { type: string, format: date-time }
-
-    OperationsRecoveryModeCapabilities:
-      type: object
-      additionalProperties: false
-      required: [tapVerifiedResync, jetstreamReplay, pdsReconciliation]
-      properties:
-        tapVerifiedResync: { $ref: "#/components/schemas/OperationsCapability" }
-        jetstreamReplay: { $ref: "#/components/schemas/OperationsCapability" }
-        pdsReconciliation: { $ref: "#/components/schemas/OperationsCapability" }
-
-    OperationsEventStreamCapability:
-      type: object
-      additionalProperties: false
-      required: [enabled, path, retryMilliseconds, fallbackPollMilliseconds]
-      properties:
-        enabled: { type: boolean }
-        disabledReason: { type: [string, "null"] }
-        path: { type: string, const: /v1/operations/events/stream }
-        retryMilliseconds: { type: integer, minimum: 1000 }
-        fallbackPollMilliseconds: { type: integer, minimum: 1000 }
-
-    OperationsLifecycleCounts:
-      type: object
-      additionalProperties: false
-      required: [activeGaps, activeBackfills, attentionBackfills, completedBackfills, unresolvedAlerts]
-      properties:
-        activeGaps: { type: integer, minimum: 0 }
-        activeBackfills: { type: integer, minimum: 0 }
-        attentionBackfills: { type: integer, minimum: 0 }
-        completedBackfills: { type: integer, minimum: 0 }
-        unresolvedAlerts: { type: integer, minimum: 0 }
-
-    OperationsViewerCounts:
-      type: object
-      additionalProperties: false
-      description: >-
-        Viewers the AppView holds rebuildable projections for. Accounts live on their PDS, so this
-        is not a registration count, and activity reflects projection write recency.
-      required: [knownViewers, activeViewers7d, activeViewers30d, observedAt]
-      properties:
-        knownViewers: { type: integer, minimum: 0 }
-        activeViewers7d: { type: integer, minimum: 0 }
-        activeViewers30d: { type: integer, minimum: 0 }
-        observedAt: { type: string, format: date-time }
-
-    OperationsServiceState:
-      type: object
-      additionalProperties: false
-      required: [service, environment, instanceId, liveness, readiness, freshness, completeness, dependencyState, startedAt, heartbeatAt]
-      properties:
-        service: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        instanceId: { type: string }
-        liveness: { type: string, enum: [healthy, degraded, unhealthy, unknown] }
-        readiness: { type: string, enum: [healthy, degraded, unhealthy, unknown] }
-        freshness: { type: string, enum: [healthy, degraded, unhealthy, unknown] }
-        completeness: { type: string, enum: [healthy, degraded, unhealthy, unknown] }
-        dependencyState:
-          type: object
-          additionalProperties: { type: string }
-        version: { type: [string, "null"] }
-        startedAt: { type: string, format: date-time }
-        heartbeatAt: { type: string, format: date-time }
-
-    IngestionStreamState:
-      type: object
-      additionalProperties: false
-      required: [environment, source, connectionState, queueDepth, heartbeatAt, version]
-      properties:
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        source: { type: string }
-        connectionState: { type: string, enum: [connected, disconnected, reconnecting, unknown] }
-        connectedAt: { type: [string, "null"], format: date-time }
-        lastDisconnectAt: { type: [string, "null"], format: date-time }
-        lastDisconnectReason: { type: [string, "null"] }
-        lastReceivedCursor: { type: [integer, "null"], format: int64 }
-        lastReceivedEventAt: { type: [string, "null"], format: date-time }
-        lastReceivedAt: { type: [string, "null"], format: date-time }
-        lastCommittedCursor: { type: [integer, "null"], format: int64 }
-        lastCommittedEventAt: { type: [string, "null"], format: date-time }
-        lastCommittedAt: { type: [string, "null"], format: date-time }
-        queueDepth: { type: integer, minimum: 0 }
-        queueCapacity: { type: [integer, "null"], minimum: 0 }
-        queueOverflowTotal: { type: [integer, "null"], format: int64, minimum: 0 }
-        queueEvidence:
-          anyOf:
-            - { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-            - { type: "null" }
-        transportHeartbeatAt: { type: [string, "null"], format: date-time }
-        lastIndexedMutationAt: { type: [string, "null"], format: date-time }
-        projectionWatermark: { type: [string, "null"] }
-        validationWatermark: { type: [string, "null"] }
-        heartbeatAt: { type: string, format: date-time }
-        version: { type: integer, minimum: 0 }
-
-    JetstreamDurabilityCheckpoint:
-      type: object
-      additionalProperties: false
-      required: [environment, sourceGeneration, sourceHost, streamNSID, filterFingerprint, cursorKind, replayState, replayBytesDownloaded, replayRetryCount, replayRangeResumeCount, updatedAt]
-      properties:
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        sourceGeneration: { type: string }
-        sourceHost: { type: string }
-        streamNSID: { type: string }
-        filterFingerprint: { type: string }
-        cursorKind: { type: string, enum: [jetstream_v2_seq] }
-        lastStagedSequence: { type: [integer, "null"], format: int64, minimum: 0 }
-        lastStagedEventAt: { type: [string, "null"], format: date-time }
-        lastStagedAt: { type: [string, "null"], format: date-time }
-        lastAppliedSequence:
-          type: [integer, "null"]
-          format: int64
-          minimum: 0
-          description: Highest staged terminal prefix; every retained event at or below this boundary is applied, reconciled, or audibly filtered outside the current role-aware scope. V2 sequences are sparse.
-        lastAppliedEventAt: { type: [string, "null"], format: date-time }
-        lastAppliedAt: { type: [string, "null"], format: date-time }
-        lastReconciledRepositoryRevision: { type: [string, "null"] }
-        lastReconciledAt: { type: [string, "null"], format: date-time }
-        replayState:
-          type: string
-          enum: [idle, replaying, live, paused_budget, failed, snapshot_complete]
-          description: snapshot_complete is a healthy terminal state for a bounded replay and does not require an active intake lease.
-        replayAfterSequence: { type: [integer, "null"], format: int64, minimum: 0 }
-        replayBeforeSequence:
-          type: [integer, "null"]
-          format: int64
-          minimum: 0
-          description: Inclusive upper bound sealed for a bounded replay; snapshot_complete requires this to equal replaySealedSequence.
-        replaySealedSequence: { type: [integer, "null"], format: int64, minimum: 0 }
-        replayBytesDownloaded: { type: integer, format: int64, minimum: 0 }
-        replayRetryCount: { type: integer, minimum: 0 }
-        replayRangeResumeCount: { type: integer, minimum: 0 }
-        replayLastProgressAt: { type: [string, "null"], format: date-time }
-        intakeHeartbeatAt:
-          type: [string, "null"]
-          format: date-time
-          description: Last observed intake progress for this source generation; projection checkpoint writes do not refresh it.
-        updatedAt: { type: string, format: date-time }
-
-    IngestionInboxMetrics:
-      type: object
-      additionalProperties: false
-      required: [pending, leased, retrying, applied, filteredScope, deadLetters, total]
-      properties:
-        pending: { type: integer, minimum: 0 }
-        leased: { type: integer, minimum: 0 }
-        retrying: { type: integer, minimum: 0 }
-        applied: { type: integer, minimum: 0 }
-        filteredScope:
-          type: integer
-          minimum: 0
-          description: Commits intentionally terminalized by the current role-aware scope policy without projection or reconciliation. Current server responses require this field; rolling-deploy clients may accept its absence from an older server.
-        deadLetters: { type: integer, minimum: 0 }
-        total: { type: integer, minimum: 0 }
-        oldestPendingAt: { type: [string, "null"], format: date-time }
-        oldestPendingAgeSeconds: { type: [number, "null"], minimum: 0 }
-
-    IngestionDurabilitySnapshot:
-      type: object
-      additionalProperties: false
-      required: [environment, checkpoints, inbox, inboxBySourceGeneration, incidents, replayBytesRolling24Hours, generatedAt]
-      properties:
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        checkpoints:
-          type: array
-          items: { $ref: "#/components/schemas/JetstreamDurabilityCheckpoint" }
-        inbox: { $ref: "#/components/schemas/IngestionInboxMetrics" }
-        inboxBySourceGeneration:
-          type: object
-          additionalProperties: { $ref: "#/components/schemas/IngestionInboxMetrics" }
-        incidents:
-          type: object
-          additionalProperties: false
-          required: [open, recovering, verificationRequired, resolved, ignored]
-          properties:
-            open: { type: integer, minimum: 0 }
-            recovering: { type: integer, minimum: 0 }
-            verificationRequired: { type: integer, minimum: 0 }
-            resolved: { type: integer, minimum: 0 }
-            ignored: { type: integer, minimum: 0 }
-            latestDetectedAt: { type: [string, "null"], format: date-time }
-        replayBytesRolling24Hours: { type: integer, format: int64, minimum: 0 }
-        generatedAt: { type: string, format: date-time }
-
-    IngestionIncident:
-      type: object
-      additionalProperties: false
-      required: [id, environment, source, cursorKind, category, status, occurrenceCount, firstDetectedAt, lastDetectedAt, replayBytesDownloaded, replayRetryCount, replayRangeResumeCount, verificationEvidence, updatedAt, version]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        sourceGeneration: { type: [string, "null"] }
-        sourceHost: { type: [string, "null"] }
-        source: { type: string }
-        cursorKind: { type: string, enum: [jetstream_v1_time_us, jetstream_v2_seq, unknown] }
-        startCursor: { type: [integer, "null"], format: int64, minimum: 0 }
-        endCursor: { type: [integer, "null"], format: int64, minimum: 0 }
-        category: { type: string }
-        status: { type: string, enum: [open, recovering, verification_required, resolved, ignored] }
-        occurrenceCount: { type: integer, format: int64, minimum: 1 }
-        firstDetectedAt: { type: string, format: date-time }
-        lastDetectedAt: { type: string, format: date-time }
-        lastError: { type: [string, "null"] }
-        replayState: { type: [string, "null"], enum: [idle, replaying, live, paused_budget, failed, snapshot_complete, null] }
-        replayBytesDownloaded: { type: integer, format: int64, minimum: 0 }
-        replayRetryCount: { type: integer, minimum: 0 }
-        replayRangeResumeCount: { type: integer, minimum: 0 }
-        replaySealedSequence: { type: [integer, "null"], format: int64, minimum: 0 }
-        recoveredThroughCursor: { type: [integer, "null"], format: int64, minimum: 0 }
-        verificationEvidence:
-          type: object
-          additionalProperties: { type: [string, number, boolean, "null"] }
-        resolvedAt: { type: [string, "null"], format: date-time }
-        updatedAt: { type: string, format: date-time }
-        version: { type: integer, minimum: 0 }
-
-    JetstreamEndpointState:
-      type: object
-      additionalProperties: false
-      required: [id, environment, displayName, host, role, connectionState, connectionAttempts, failoverCount, updatedAt, version]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        displayName: { type: string }
-        host: { type: string }
-        role: { type: string, enum: [active, standby] }
-        connectionState: { type: string, enum: [connected, disconnected, reconnecting, unknown] }
-        lastConnectedAt: { type: [string, "null"], format: date-time }
-        lastDisconnectedAt: { type: [string, "null"], format: date-time }
-        lastError: { type: [string, "null"] }
-        connectionAttempts: { type: integer, minimum: 0 }
-        failoverCount: { type: integer, minimum: 0 }
-        updatedAt: { type: string, format: date-time }
-        version: { type: integer, minimum: 0 }
-
-    OperationsCommand:
-      type: object
-      additionalProperties: false
-      required: [id, environment, action, status, requestedByDid, createdAt, updatedAt, version]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        action: { type: string, enum: [reconnect_jetstream] }
-        status: { type: string, enum: [queued, running, completed, failed] }
-        requestedByDid: { type: string }
-        auditNote: { type: [string, "null"] }
-        claimedBy: { type: [string, "null"] }
-        leaseExpiresAt: { type: [string, "null"], format: date-time }
-        failureReason: { type: [string, "null"] }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        completedAt: { type: [string, "null"], format: date-time }
-        version: { type: integer, minimum: 0 }
-
-    IngestionGap:
-      type: object
-      additionalProperties: false
-      required: [id, environment, source, reason, status, collections, detectedAt, updatedAt, discoveredCount, processedCount, failedCount, reconciledCount, version]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        source: { type: string }
-        startCursor: { type: [integer, "null"], format: int64 }
-        endCursor: { type: [integer, "null"], format: int64 }
-        startTime: { type: [string, "null"], format: date-time }
-        endTime: { type: [string, "null"], format: date-time }
-        reason: { type: string }
-        status:
-          type: string
-          enum: [suspected, confirmed, backfill_queued, backfilling, verification_required, resolved, ignored]
-        collections:
-          type: array
-          items: { type: string }
-        detectedAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        backfillJobId: { type: [string, "null"] }
-        discoveredCount: { type: integer, minimum: 0 }
-        processedCount: { type: integer, minimum: 0 }
-        failedCount: { type: integer, minimum: 0 }
-        reconciledCount: { type: integer, minimum: 0 }
-        version: { type: integer, minimum: 0 }
-
-    BackfillAuthorResult:
-      type: object
-      additionalProperties: false
-      required: [did, collection, discoveredCount, processedCount, failedCount, capped, truncated, status]
-      properties:
-        did: { type: string, pattern: "^did:" }
-        collection: { type: string }
-        discoveredCount: { type: integer, minimum: 0 }
-        processedCount: { type: integer, minimum: 0 }
-        failedCount: { type: integer, minimum: 0 }
-        capped: { type: boolean }
-        truncated: { type: boolean }
-        status: { type: string, enum: [succeeded, partial, failed, cancelled, unsupported] }
-        error:
-          type: [string, "null"]
-          description: Normalized bounded error category; never a raw upstream response.
-
-    BackfillJob:
-      type: object
-      additionalProperties: false
-      required: [id, environment, sourceMode, status, collections, authorDids, authorResults, batchSize, rateLimit, maxConcurrency, estimatedCount, processedCount, failedCount, reconciledCount, requestedByDid, createdAt, updatedAt, version, verificationStatus, scopeTruncated]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        gapId: { type: [string, "null"] }
-        sourceMode: { type: string, enum: [tap_verified_resync, jetstream_replay, pds_reconciliation] }
-        status: { type: string, enum: [queued, running, paused, completed, failed, cancelled] }
-        startCursor: { type: [integer, "null"], format: int64 }
-        endCursor: { type: [integer, "null"], format: int64 }
-        checkpointCursor: { type: [integer, "null"], format: int64 }
-        collections:
-          type: array
-          items: { type: string }
-        authorDids:
-          type: array
-          items: { type: string }
-        authorResults:
-          type: array
-          items: { $ref: "#/components/schemas/BackfillAuthorResult" }
-        batchSize: { type: integer, minimum: 1 }
-        rateLimit: { type: integer, minimum: 1 }
-        maxConcurrency: { type: integer, minimum: 1 }
-        estimatedCount: { type: integer, minimum: 0 }
-        processedCount: { type: integer, minimum: 0 }
-        failedCount: { type: integer, minimum: 0 }
-        reconciledCount: { type: integer, minimum: 0 }
-        requestedByDid: { type: string }
-        auditNote: { type: [string, "null"] }
-        failureReason: { type: [string, "null"] }
-        leaseOwner: { type: [string, "null"] }
-        leaseExpiresAt: { type: [string, "null"], format: date-time }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        completedAt: { type: [string, "null"], format: date-time }
-        version: { type: integer, minimum: 0 }
-        verificationStatus: { type: string, enum: [pending, required, verified, failed] }
-        verificationReason: { type: [string, "null"] }
-        scopeTruncated: { type: boolean }
-        validationWatermark: { type: [string, "null"] }
-
-    OperationsAlert:
-      type: object
-      additionalProperties: false
-      required: [id, environment, rule, conditionKey, severity, status, summary, evidence, runbookSlug, openedAt, updatedAt, deliveryAttempts, version]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        rule: { type: string }
-        conditionKey:
-          type: string
-          description: Stable bounded key for one concrete alert condition within a rule.
-        severity: { type: string }
-        status: { type: string, enum: [open, acknowledged, resolved] }
-        summary: { type: string }
-        evidence:
-          type: object
-          additionalProperties: { type: string }
-        runbookSlug: { type: string }
-        openedAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        acknowledgedByDid: { type: [string, "null"] }
-        resolvedByDid: { type: [string, "null"] }
-        deliveryAttempts: { type: integer, minimum: 0 }
-        lastDeliveryError: { type: [string, "null"] }
-        nextDeliveryAt: { type: [string, "null"], format: date-time }
-        deliveryDeadLetteredAt: { type: [string, "null"], format: date-time }
-        version: { type: integer, minimum: 0 }
-
-    TraceSpan:
-      type: object
-      additionalProperties: false
-      required: [id, environment, traceId, service, name, startedAt, durationMs, status, attributes, expiresAt]
-      properties:
-        id: { type: string }
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        traceId: { type: string }
-        parentSpanId: { type: [string, "null"] }
-        service: { type: string }
-        name: { type: string }
-        startedAt: { type: string, format: date-time }
-        durationMs: { type: number, minimum: 0 }
-        status: { type: string }
-        attributes:
-          type: object
-          additionalProperties: { type: string }
-        expiresAt: { type: string, format: date-time }
-
-    OperationsMetricRollup:
-      type: object
-      additionalProperties: false
-      required: [environment, bucketStart, metricName, dimensions, sampleCount, valueSum]
-      properties:
-        environment: { $ref: "#/components/schemas/OperationsEnvironment" }
-        bucketStart: { type: string, format: date-time }
-        metricName: { type: string }
-        dimensions:
-          type: object
-          additionalProperties: { type: string }
-        sampleCount: { type: integer, minimum: 0 }
-        valueSum: { type: number }
-        valueMin: { type: [number, "null"] }
-        valueMax: { type: [number, "null"] }
-
-    DatabaseTableRecordCount:
-      type: object
-      additionalProperties: false
-      required: [schema, table, estimatedRecords]
-      properties:
-        schema: { type: string }
-        table: { type: string }
-        estimatedRecords: { type: integer, format: int64, minimum: 0 }
-
-    DatabaseObservabilitySnapshot:
-      type: object
-      additionalProperties: false
-      required: [databaseSizeBytes, activeConnections, maxConnections, transactionsTotal, estimatedRecords, topTables, connectedBackends, activeQueries, observedAt, evidenceAgeSeconds]
-      properties:
-        databaseSizeBytes: { type: integer, format: int64, minimum: 0 }
-        activeConnections: { type: integer, format: int64, minimum: 0 }
-        maxConnections: { type: integer, format: int64, minimum: 0 }
-        transactionsTotal: { type: integer, format: int64, minimum: 0 }
-        estimatedRecords: { type: integer, format: int64, minimum: 0 }
-        cacheHitRatio: { type: [number, "null"], minimum: 0, maximum: 1 }
-        statsResetAt: { type: [string, "null"], format: date-time }
-        topTables:
-          type: array
-          items: { $ref: "#/components/schemas/DatabaseTableRecordCount" }
-        connectedBackends: { type: integer, format: int64, minimum: 0 }
-        activeQueries: { type: integer, format: int64, minimum: 0 }
-        transactionRatePerSecond: { type: [number, "null"], minimum: 0 }
-        observedAt: { type: string, format: date-time }
-        evidenceAgeSeconds: { type: number, minimum: 0 }
-
-    OperationsOverviewEvidence:
-      type: object
-      required: [services, ingestion, database]
-      properties:
-        services: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-        ingestion: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-        database: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-      additionalProperties: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    OperationsTabUsage:
-      type: object
-      additionalProperties: false
-      required: [observedAt, trackingStart, dau, wau, mau, tabs]
-      properties:
-        sourceEnvironment: { type: string, enum: [local, dev, prod] }
-        observedAt: { type: string, format: date-time }
-        trackingStart: { type: [string, "null"], format: date-time }
-        dau: { type: integer, minimum: 0 }
-        wau: { type: integer, minimum: 0 }
-        mau: { type: integer, minimum: 0 }
-        tabs:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [tab, dau, wau, mau, opens, dwellMs]
-            properties:
-              tab: { type: string, enum: [home, explore, notifications, messages, bookmarks, lists, feeds, saved, archive, wire, circle, finance, sports, subscribed, following, podcasts, articles, live-post, livestream, brand-accounts, analytics, profile, content-calendar] }
-              dau: { type: integer, minimum: 0 }
-              wau: { type: integer, minimum: 0 }
-              mau: { type: integer, minimum: 0 }
-              opens: { type: integer, minimum: 0 }
-              dwellMs: { type: number, minimum: 0 }
-
-    OperationsOverview:
-      type: object
-      additionalProperties: false
-      required: [services, ingestionSources, jetstreamEndpoints, commands, gaps, backfills, alerts, recentTraces, metricRollups, refreshedAt, evidence, capabilities, counts]
-      properties:
-        services:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsServiceState" }
-        ingestion: { anyOf: [{ $ref: "#/components/schemas/IngestionStreamState" }, { type: "null" }] }
-        ingestionSources:
-          type: array
-          description: Source-specific Jetstream, RSS, projection repair, cache maintenance, and historical Tap evidence.
-          items: { $ref: "#/components/schemas/IngestionStreamState" }
-        jetstreamEndpoints:
-          type: array
-          items: { $ref: "#/components/schemas/JetstreamEndpointState" }
-        commands:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsCommand" }
-        gaps:
-          type: array
-          description: Active rows only; resolved and ignored gaps are excluded.
-          items: { $ref: "#/components/schemas/IngestionGap" }
-        backfills:
-          type: array
-          description: Active rows only; failed, cancelled, and completed jobs are excluded.
-          items: { $ref: "#/components/schemas/BackfillJob" }
-        alerts:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsAlert" }
-        recentTraces:
-          type: array
-          items: { $ref: "#/components/schemas/TraceSpan" }
-        metricRollups:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsMetricRollup" }
-        database: { anyOf: [{ $ref: "#/components/schemas/DatabaseObservabilitySnapshot" }, { type: "null" }] }
-        refreshedAt: { type: string, format: date-time }
-        evidence: { $ref: "#/components/schemas/OperationsOverviewEvidence" }
-        capabilities: { $ref: "#/components/schemas/OperationsCapabilities" }
-        counts: { $ref: "#/components/schemas/OperationsLifecycleCounts" }
-        tabUsage: { anyOf: [{ $ref: "#/components/schemas/OperationsTabUsage" }, { type: "null" }] }
-        viewers: { anyOf: [{ $ref: "#/components/schemas/OperationsViewerCounts" }, { type: "null" }] }
-        viewerHistory:
-          type: array
-          maxItems: 90
-          description: Latest hourly observation per UTC day for the last 90 calendar dates, oldest first. Missing days have no entry. History begins with real observations and is never backfilled from current counts.
-          items: { $ref: "#/components/schemas/OperationsViewerCounts" }
-        durability: { anyOf: [{ $ref: "#/components/schemas/IngestionDurabilitySnapshot" }, { type: "null" }] }
-
-    OperationsMutationRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedVersion, idempotencyKey]
-      properties:
-        expectedVersion: { type: integer, minimum: 0 }
-        idempotencyKey: { type: string, minLength: 1, maxLength: 128, pattern: "^\\S+$" }
-        auditNote: { type: [string, "null"], maxLength: 280 }
-        environmentConfirmation: { type: [string, "null"] }
-
-    GapMutationRequest:
-      type: object
-      additionalProperties: false
-      required: [status, expectedVersion, idempotencyKey]
-      properties:
-        status:
-          type: string
-          enum: [suspected, confirmed, backfill_queued, backfilling, verification_required, resolved, ignored]
-        expectedVersion: { type: integer, minimum: 0 }
-        idempotencyKey: { type: string, minLength: 1, maxLength: 128, pattern: "^\\S+$" }
-        auditNote: { type: [string, "null"], maxLength: 280 }
-        environmentConfirmation: { type: [string, "null"] }
-
-    BackfillDryRunRequest:
-      type: object
-      additionalProperties: false
-      required: [sourceMode, collections, authorDids, batchSize, rateLimit, maxConcurrency]
-      properties:
-        gapId: { type: [string, "null"] }
-        sourceMode: { type: string, enum: [tap_verified_resync, jetstream_replay, pds_reconciliation] }
-        startCursor: { type: [integer, "null"], format: int64 }
-        endCursor: { type: [integer, "null"], format: int64 }
-        collections:
-          type: array
-          minItems: 1
-          maxItems: 16
-          items: { type: string }
-        authorDids:
-          type: array
-          items: { type: string, pattern: "^did:" }
-        batchSize: { type: integer, minimum: 1, maximum: 10000 }
-        rateLimit: { type: integer, minimum: 1, maximum: 5000 }
-        maxConcurrency: { type: integer, minimum: 1, maximum: 16 }
-
-    BackfillDryRunResponse:
-      type: object
-      additionalProperties: false
-      required: [estimatedCount, estimatedDurationSeconds, conflicts, unresolvedDeletesWarning, requestFingerprint, validUntil, methodology, confidence, estimateKind]
-      properties:
-        estimatedCount: { type: integer, minimum: 0 }
-        estimatedDurationSeconds: { type: integer, minimum: 0 }
-        snapshotEndCursor: { type: [integer, "null"], format: int64 }
-        conflicts:
-          type: array
-          items: { type: string }
-        unresolvedDeletesWarning: { type: boolean }
-        requestFingerprint:
-          type: string
-          description: Short-lived signed fingerprint binding job creation to this dry run.
-        validUntil: { type: string, format: date-time }
-        methodology: { type: string }
-        confidence:
-          type: string
-          description: Human-readable confidence classification backed by the selected methodology.
-        estimateKind: { type: string, enum: [observed, modeled] }
-        uncertainty:
-          type: [object, "null"]
-          additionalProperties: false
-          required: [lowerBound, upperBound]
-          properties:
-            lowerBound: { type: integer, minimum: 0 }
-            upperBound: { type: integer, minimum: 0 }
-
-    CreateBackfillRequest:
-      type: object
-      additionalProperties: false
-      required: [dryRun, expectedEstimate, requestFingerprint, idempotencyKey]
-      properties:
-        dryRun: { $ref: "#/components/schemas/BackfillDryRunRequest" }
-        expectedEstimate: { type: integer, minimum: 0 }
-        requestFingerprint: { type: string }
-        idempotencyKey: { type: string, minLength: 1, maxLength: 128, pattern: "^\\S+$" }
-        expectedGapVersion: { type: [integer, "null"], minimum: 0 }
-        auditNote: { type: [string, "null"], maxLength: 280 }
-        environmentConfirmation: { type: [string, "null"] }
-
-    GapCauseAssessment:
-      type: object
-      additionalProperties: false
-      required: [title, confidence, summary, evidenceIds, limitations]
-      properties:
-        title: { type: string }
-        confidence: { type: string, enum: [high, medium, low, insufficient] }
-        summary: { type: string }
-        evidenceIds: { type: array, items: { type: string } }
-        limitations: { type: array, items: { type: string } }
-
-    GapInvestigationEvidence:
-      type: object
-      additionalProperties: false
-      required: [id, kind, occurredAt, service, title, detail, attributes]
-      properties:
-        id: { type: string }
-        kind: { type: string, enum: [gap, stream, indexing, service, alert, trace] }
-        occurredAt: { type: string, format: date-time }
-        service: { type: string }
-        title: { type: string }
-        detail: { type: string }
-        attributes:
-          type: object
-          additionalProperties: { type: string }
-        traceId: { type: [string, "null"] }
-
-    GapInvestigation:
-      type: object
-      additionalProperties: false
-      required: [gap, windowStart, windowEnd, assessment, evidence, recommendedActions]
-      properties:
-        gap: { $ref: "#/components/schemas/IngestionGap" }
-        windowStart: { type: string, format: date-time }
-        windowEnd: { type: string, format: date-time }
-        assessment: { $ref: "#/components/schemas/GapCauseAssessment" }
-        evidence:
-          type: array
-          items: { $ref: "#/components/schemas/GapInvestigationEvidence" }
-        recommendedActions: { type: array, items: { type: string } }
-
-    OperationsServiceListResponse:
-      type: object
-      additionalProperties: false
-      required: [services, evidence]
-      properties:
-        services:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsServiceState" }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    IngestionIncidentPage:
-      type: object
-      additionalProperties: false
-      required: [incidents, totalCount, evidence]
-      properties:
-        incidents:
-          type: array
-          items: { $ref: "#/components/schemas/IngestionIncident" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    OperationsIngestionResponse:
-      type: object
-      additionalProperties: false
-      required: [sources, evidence]
-      properties:
-        state:
-          anyOf:
-            - { $ref: "#/components/schemas/IngestionStreamState" }
-            - { type: "null" }
-        sources:
-          type: array
-          items: { $ref: "#/components/schemas/IngestionStreamState" }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-        durability: { anyOf: [{ $ref: "#/components/schemas/IngestionDurabilitySnapshot" }, { type: "null" }] }
-
-    OperationsAppViewResponse:
-      type: object
-      additionalProperties: false
-      required: [services, evidence]
-      properties:
-        services:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsServiceState" }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    EndpointPage:
-      type: object
-      additionalProperties: false
-      required: [endpoints, totalCount, evidence]
-      properties:
-        endpoints:
-          type: array
-          items: { $ref: "#/components/schemas/JetstreamEndpointState" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    CommandPage:
-      type: object
-      additionalProperties: false
-      required: [commands, totalCount, evidence]
-      properties:
-        commands:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsCommand" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    GapPage:
-      type: object
-      additionalProperties: false
-      required: [gaps, totalCount, evidence]
-      properties:
-        gaps:
-          type: array
-          items: { $ref: "#/components/schemas/IngestionGap" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    BackfillPage:
-      type: object
-      additionalProperties: false
-      required: [backfills, totalCount, evidence]
-      properties:
-        backfills:
-          type: array
-          items: { $ref: "#/components/schemas/BackfillJob" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    AlertPage:
-      type: object
-      additionalProperties: false
-      required: [alerts, totalCount, evidence]
-      properties:
-        alerts:
-          type: array
-          items: { $ref: "#/components/schemas/OperationsAlert" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    OperationsMetricsResponse:
-      type: object
-      additionalProperties: false
-      required: [rollups, evidence]
-      properties:
-        rollups:
-          type: array
-          description: Closed one-minute buckets only; absent buckets are not synthesized as zero.
-          items: { $ref: "#/components/schemas/OperationsMetricRollup" }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
-    TracePage:
-      type: object
-      additionalProperties: false
-      required: [traces, totalCount, truncated, evidence]
-      properties:
-        traces:
-          type: array
-          items: { $ref: "#/components/schemas/TraceSpan" }
-        nextCursor: { type: [string, "null"] }
-        totalCount: { type: integer, minimum: 0 }
-        truncated: { type: boolean }
-        evidence: { $ref: "#/components/schemas/OperationsEvidenceMetadata" }
-
     SembleCollection:
       type: object
       additionalProperties: false
@@ -1711,10 +897,266 @@ security:
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
+  /internal/jobs/scheduling:
+    post:
+      summary: Run Due Scheduling Work
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/drafts-cleanup:
+    post:
+      summary: Clean Up Expired Draft Assets
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/discovery:
+    post:
+      summary: Drain Discovery Work
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/ttl-cleanup:
+    post:
+      summary: Clean Up Expired Reader Data
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/rss-poll:
+    post:
+      summary: Poll Due RSS Feeds
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/analytics-cleanup:
+    post:
+      summary: Clean Up Analytics Retention
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/author-history:
+    post:
+      summary: Drain Scoped Author History
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/jobs/read-state-recovery:
+    post:
+      summary: Recover PDS Read State
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceJobsBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/scheduling:
+    get:
+      summary: Run Due Scheduling Work
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/drafts-cleanup:
+    get:
+      summary: Clean Up Expired Draft Assets
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/discovery:
+    get:
+      summary: Drain Discovery Work
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/ttl-cleanup:
+    get:
+      summary: Clean Up Expired Reader Data
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/rss-poll:
+    get:
+      summary: Poll Due RSS Feeds
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/analytics-cleanup:
+    get:
+      summary: Clean Up Analytics Retention
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/author-history:
+    get:
+      summary: Drain Scoped Author History
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
+  /internal/cron/read-state-recovery:
+    get:
+      summary: Recover PDS Read State
+      description: Bounded leased maintenance action shared by internal runners and authenticated HTTP triggers. A busy lease returns claimed=false. Serverless mode starts no background timers. Cron GET requires its separate secret and HEAD never executes work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Job completed or another instance owns its lease.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated bearer secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Job or secret unavailable, or bounded execution failed.}
+
   /xrpc/at.skej.actor.getSession:
     get:
       summary: Get scheduling connection
-      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      description: Available on the standalone Go edge. Uses the Social Wire OAuth session.
       x-lexicon: "../lexicons/at/skej/actor/getSession.json"
       responses:
         "200": { description: The authenticated actor's scheduling connection. }
@@ -1726,7 +1168,7 @@ paths:
   /xrpc/at.skej.schedule.list:
     get:
       summary: List schedules
-      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      description: Available on the standalone Go edge. Uses the Social Wire OAuth session.
       x-lexicon: "../lexicons/at/skej/schedule/list.json"
       parameters:
         - in: query
@@ -1743,7 +1185,7 @@ paths:
   /xrpc/at.skej.schedule.create:
     post:
       summary: Create schedule
-      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      description: Available on the standalone Go edge. Uses the Social Wire OAuth session.
       x-lexicon: "../lexicons/at/skej/schedule/create.json"
       requestBody:
         required: true
@@ -1760,7 +1202,7 @@ paths:
   /xrpc/at.skej.schedule.update:
     post:
       summary: Update schedule
-      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      description: Available on the standalone Go edge. Uses the Social Wire OAuth session.
       x-lexicon: "../lexicons/at/skej/schedule/update.json"
       requestBody:
         required: true
@@ -1777,7 +1219,7 @@ paths:
   /xrpc/at.skej.schedule.cancel:
     post:
       summary: Cancel schedule
-      description: Available on standalone AppView when embedded scheduling is enabled. Uses the Social Wire OAuth session.
+      description: Available on the standalone Go edge. Uses the Social Wire OAuth session.
       x-lexicon: "../lexicons/at/skej/schedule/cancel.json"
       requestBody:
         required: true
@@ -1878,7 +1320,7 @@ paths:
         Uses the public client's pinned-DNS SSRF restrictions; provider credentials remain server-only.
         Validates expected MIME, sniffed bytes and complete body length before returning any file bytes.
         At most 104857600 bytes per gif/mp4/webm file and 1000000 bytes per poster.
-        Shares private draft rate limits and bounded transfer admission. Not implemented by AppView.
+        Shares private draft rate limits and bounded transfer admission. Implemented by the standalone Go edge.
       security: [{ATProtoOAuthDPoP: []}]
       parameters:
         - in: query
@@ -2003,6 +1445,98 @@ paths:
               type: "string"
               format: "binary"
               maxLength: 104857600
+  /xrpc/app.thesocialwire.socialDraft.uploadAttachmentChunk:
+    post:
+      operationId: "socialDraftUploadAttachmentChunk"
+      summary: "uploadAttachmentChunk"
+      description: "Authenticated owner-only private storage, disabled by default. No public URLs; attachments remain private until explicit publication."
+      security: [{"ATProtoOAuthDPoP": []}]
+      responses:
+        "200":
+          description: "Private draft result"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                const: "private, no-store"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required: ["assetId", "part", "received"]
+                properties:
+                  assetId: {type: string, format: uuid}
+                  part: {type: integer, minimum: 0, maximum: 33}
+                  received: {type: boolean, const: true}
+        "400":
+          description: "InvalidRequest"
+        "401":
+          description: "Unauthorized"
+        "404":
+          description: "NotFound"
+        "409":
+          description: "Conflict or UploadPending"
+        "411":
+          description: "LengthRequired: known Content-Length required"
+        "413":
+          description: "Quota"
+        "503":
+          description: "Unavailable"
+      parameters: [{"in": "header", "name": "X-Social-Draft-Upload-Part", "required": true, "schema": {"type": "integer", "minimum": 0, "maximum": 33}}, {"in": "header", "name": "X-Social-Draft-Upload-Id", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 256}}, {"in": "header", "name": "Content-Length", "required": true, "schema": {"type": "integer", "minimum": 1, "maximum": 3145728}}]
+      requestBody:
+        required: true
+        content:
+          "application/octet-stream":
+            schema:
+              type: "string"
+              format: "binary"
+              maxLength: 3145728
+  /xrpc/app.thesocialwire.socialDraft.completeAttachmentUpload:
+    post:
+      operationId: "socialDraftCompleteAttachmentUpload"
+      summary: "completeAttachmentUpload"
+      description: "Authenticated owner-only private storage, disabled by default. No public URLs; attachments remain private until explicit publication."
+      security: [{"ATProtoOAuthDPoP": []}]
+      responses:
+        "200":
+          description: "Private draft result"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                const: "private, no-store"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required: ["attachment"]
+                properties:
+                  attachment:
+                    "$ref": "#/components/schemas/SocialDraftAsset"
+        "400":
+          description: "InvalidRequest"
+        "401":
+          description: "Unauthorized"
+        "404":
+          description: "NotFound"
+        "409":
+          description: "Conflict or UploadPending"
+        "411":
+          description: "LengthRequired: known Content-Length required"
+        "413":
+          description: "Quota"
+        "503":
+          description: "Unavailable"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assetId]
+              additionalProperties: false
+              properties:
+                assetId: {type: string, format: uuid}
   /xrpc/app.thesocialwire.socialDraft.getAttachment:
     get:
       operationId: "socialDraftGetAttachment"
@@ -2138,46 +1672,6 @@ paths:
           "application/json":
             schema:
               "$ref": "#/components/schemas/SocialDraftDeleteManifestInput"
-  /v1/media/project:
-    post:
-      summary: Project a viewer-authorized Bluesky Following candidate page into Media
-      description: Stateless classification only. Clients supply their existing viewer-aware timeline page, enforce moderation before display, and retain its upstream cursor, including when no candidates match. No discovery, fetching, storage, or third-party app attribution occurs here. Photos supports images and image-only galleries, including recordWithMedia. Short Videos selects known portrait video dimensions; duration is unavailable and is never verified. Unknown embeds, unsafe media URLs, GIF presentation, and unknown video dimensions fail closed. Spark, Grain and Flashes attribution are unsupported.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [mode, posts]
-              properties:
-                mode: {type: string, enum: [photos, short-videos]}
-                posts:
-                  type: array
-                  maxItems: 30
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [uri, embed]
-                    properties:
-                      uri: {type: string, maxLength: 2048}
-                      embed: {type: object, additionalProperties: true}
-      responses:
-        '200':
-          description: Matching post URIs in input order, deduplicated; no cursor is consumed
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [uris, source, selection, durationVerified, unsupportedSources]
-                properties:
-                  uris: {type: array, items: {type: string}}
-                  source: {type: string, enum: [bluesky-following]}
-                  selection: {type: string, enum: [images, portrait-video]}
-                  durationVerified: {type: boolean, enum: [false]}
-                  unsupportedSources: {type: array, items: {type: string}}
-        '400': {description: Invalid input or body exceeds 512 KiB}
-        '401': {description: Authentication required}
   /v1/media/gifs:
     get:
       summary: Search or resolve KLIPY GIFs through the authenticated Gateway
@@ -2344,13 +1838,7 @@ paths:
       operationId: readinessCheck
       summary: Serving dependency readiness
       description: |
-        Gateway requires its database and AppView to be available. Projection Pool
-        ingestion health is sampled independently and cannot block serving readiness.
-        Gateway includes cached `projection_pool` and `ingestion_completeness`
-        evidence, with `ingestion_observed_at` and `ingestion_valid_until` only after
-        an observation. Missing or stale evidence is unknown; Pool readiness alone
-        never proves complete ingestion. Worker readiness and recovery gates remain
-        independent of Gateway serving readiness.
+        The standalone Go service requires its SQLite database to answer readiness checks.
       security: []
       tags: [Health]
       responses:
@@ -2362,11 +1850,8 @@ paths:
       operationId: freshnessCheck
       summary: Data freshness and completeness
       description: |
-        Gateway reports conservative unknown/degraded ingestion evidence from its
-        bounded background health collection, not the legacy gap count. Its
-        `checkedAt` and `validUntil` describe the original observation and are absent
-        until a sample exists; `poolReadiness` identifies missing, stale, ready, or
-        failed evidence. Reading this endpoint does not launch another ingestion scan.
+        Reports unknown global ingestion freshness and completeness because the
+        standalone reader no longer follows a global ingestion stream.
       security: []
       tags: [Health]
       responses:
@@ -2415,21 +1900,6 @@ paths:
       responses:
         "200":
           description: "Native client registration JSON (`application_type: native`)."
-          content:
-            application/json:
-              schema:
-                type: object
-
-  /operations-oauth-client-metadata.json:
-    get:
-      operationId: getOAuthOperationsClientMetadata
-      summary: Operations console OAuth metadata
-      description: Public identity-only OAuth metadata for the deployment-protected Operations console.
-      security: []
-      tags: [OAuth]
-      responses:
-        "200":
-          description: "Operations web client registration JSON (`scope: atproto`)."
           content:
             application/json:
               schema:
@@ -2652,7 +2122,6 @@ paths:
       operationId: getAppViewBootstrapStream
       summary: Progressive NDJSON bootstrap for initial reader load
       description: |
-        **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
 
         Streams newline-delimited JSON events as sidebar projection, per-section sidebar
         slices, unread counts, first-unread publication selection, first feed page, and
@@ -3008,7 +2477,6 @@ paths:
       operationId: listAppViewEntries
       summary: Paginated entry timeline from the thin AppView index
       description: |
-        **`ENABLE_THIN_APPVIEW` must be `true`** or this route responds `404`.
 
         Returns Level-1 list rows (title, publishedAt, summary, thumbnail refs) for
         `standard.site` entry collections. Full entry bodies remain on the author PDS.
@@ -3784,619 +3252,6 @@ paths:
         "200": { description: Migration counts and optional continuation cursor. }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /v1/operations/overview:
-    get:
-      operationId: getOperationsOverview
-      summary: Lightweight evidence-backed operator overview
-      tags: [Operations]
-      responses:
-        "200":
-          description: Current service evidence, capabilities, and lifecycle counts with bounded active previews.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsOverview" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/capabilities:
-    get:
-      operationId: getOperationsCapabilities
-      summary: Read environment-specific telemetry, recovery, and alert-delivery capabilities
-      tags: [Operations]
-      responses:
-        "200":
-          description: Machine-readable capability flags and truthful disabled reasons.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsCapabilities" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/metrics:
-    get:
-      operationId: getOperationsMetrics
-      summary: Query bounded closed one-minute metric buckets
-      tags: [Operations]
-      parameters:
-        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
-        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
-        - name: metric
-          in: query
-          required: false
-          schema: { type: string }
-          description: Optional stable metric name; arbitrary SQL or route strings are never accepted.
-        - name: collection
-          in: query
-          required: false
-          schema: { type: string, maxLength: 256 }
-        - name: resolution
-          in: query
-          required: true
-          schema: { type: string, const: 1m }
-      responses:
-        "200":
-          description: Real metric rollups and their evidence envelope.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsMetricsResponse" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/events/stream:
-    get:
-      operationId: streamOperationsEvents
-      summary: Resume the authenticated Operations change stream
-      tags: [Operations]
-      parameters:
-        - name: after
-          in: query
-          required: false
-          schema: { type: integer, format: int64, minimum: 0 }
-          description: Last-seen durable Operations change-event cursor.
-        - name: Last-Event-ID
-          in: header
-          required: false
-          schema: { type: integer, format: int64, minimum: 0 }
-      responses:
-        "200":
-          description: Server-sent service, ingestion, job, gap, alert, command, and capability changes.
-          headers:
-            Cache-Control:
-              schema: { type: string, const: no-cache }
-          content:
-            text/event-stream:
-              schema: { type: string }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "410":
-          description: Resume cursor fell outside retained event history; refetch the visible route.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/services:
-    get:
-      operationId: getOperationsServices
-      summary: Service health states
-      tags: [Operations]
-      responses:
-        "200":
-          description: Service heartbeat and successful dependency probe states. Expired evidence is Unknown.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsServiceListResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/ingestion:
-    get:
-      operationId: getOperationsIngestion
-      summary: Source-separated ingestion state
-      tags: [Operations]
-      responses:
-        "200":
-          description: Jetstream, RSS, projection-repair, and historical Tap observations without blending trust boundaries.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsIngestionResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/ingestion/durability:
-    get:
-      operationId: getOperationsIngestionDurability
-      summary: Durable Jetstream V2 checkpoint, inbox, replay, and incident evidence
-      tags: [Operations]
-      responses:
-        "200":
-          description: Environment-scoped durability evidence. Sequence boundaries are ordered sparse cursors, never missing-event counts.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/IngestionDurabilitySnapshot" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/ingestion/incidents:
-    get:
-      operationId: listOperationsIngestionIncidents
-      summary: List consolidated durable ingestion incidents
-      tags: [Operations]
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Consolidated recovery incidents with raw legacy gap evidence retained through links.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/IngestionIncidentPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/ingestion/endpoints:
-    get:
-      operationId: listOperationsIngestionEndpoints
-      summary: List observed ingestion endpoint states
-      tags: [Operations]
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Environment-scoped endpoint state page with observed transport evidence.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/EndpointPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/commands:
-    get:
-      operationId: listOperationsCommands
-      summary: List durable operator commands
-      tags: [Operations]
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Environment-scoped command page with durable status and outcome evidence.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CommandPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/ingestion/reconnect:
-    post:
-      operationId: reconnectOperationsJetstream
-      summary: Queue an audited Jetstream reconnect and required post-connect gap assessment
-      tags: [Operations]
-      parameters:
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "202":
-          description: Reconnect command accepted; completion requires transport connection, progress, and gap assessment.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsCommand" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/appview:
-    get:
-      operationId: getOperationsAppView
-      summary: AppView operational state
-      tags: [Operations]
-      responses:
-        "200":
-          description: Current AppView and gateway service heartbeat evidence.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsAppViewResponse" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/gaps:
-    get:
-      operationId: listOperationsGaps
-      summary: List ingestion gaps
-      tags: [Operations]
-      parameters:
-        - name: view
-          in: query
-          required: false
-          schema: { type: string, enum: [active, history, all], default: active }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Environment-scoped gap page. Active excludes resolved and ignored before the SQL limit.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/GapPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/gaps/{id}:
-    patch:
-      operationId: updateOperationsGap
-      summary: Update a gap lifecycle status
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/GapMutationRequest" }
-      responses:
-        "200":
-          description: Updated gap after a legal compare-and-set transition.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/IngestionGap" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/gaps/{id}/investigation:
-    get:
-      operationId: investigateOperationsGap
-      summary: Correlate retained operational evidence around an ingestion gap
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Qualified cause assessment, evidence timeline, limitations, and next checks.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/GapInvestigation" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /v1/operations/backfills/dry-run:
-    post:
-      operationId: dryRunOperationsBackfill
-      summary: Estimate a bounded recovery job
-      tags: [Operations]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/BackfillDryRunRequest" }
-      responses:
-        "200":
-          description: Observed scope or explicitly modeled estimate, uncertainty, conflicts, and signed short-lived fingerprint.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillDryRunResponse" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/backfills:
-    get:
-      operationId: listOperationsBackfills
-      summary: List recovery jobs
-      tags: [Operations]
-      parameters:
-        - name: view
-          in: query
-          required: false
-          schema: { type: string, enum: [active, needs_attention, history, all], default: active }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Lifecycle-filtered recovery jobs, filtered before the SQL limit.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    post:
-      operationId: createOperationsBackfill
-      summary: Queue a dry-run-confirmed recovery job
-      tags: [Operations]
-      parameters:
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateBackfillRequest" }
-      responses:
-        "201":
-          description: Job, gap link, and audit record created atomically.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/backfills/{id}:
-    get:
-      operationId: getOperationsBackfill
-      summary: Get one recovery job
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Recovery job, truthful progress, and durable checkpoint.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillJob" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /v1/operations/backfills/{id}/pause:
-    post:
-      operationId: pauseOperationsBackfill
-      summary: Pause between recovery batches
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "200":
-          description: Paused recovery job after the current committed batch.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/backfills/{id}/resume:
-    post:
-      operationId: resumeOperationsBackfill
-      summary: Resume from the durable checkpoint
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "200":
-          description: Requeued recovery job from its last successfully committed event.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/backfills/{id}/cancel:
-    post:
-      operationId: cancelOperationsBackfill
-      summary: Cancel between recovery batches
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "200":
-          description: Cancelled recovery job; any linked gap is returned to an actionable state.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BackfillJob" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/alerts:
-    get:
-      operationId: listOperationsAlerts
-      summary: List persisted alerts and delivery state
-      tags: [Operations]
-      parameters:
-        - name: view
-          in: query
-          required: false
-          schema: { type: string, enum: [active, history, all], default: active }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 250, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Condition-keyed, environment-scoped alert lifecycle page.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AlertPage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/alerts/{id}/acknowledge:
-    post:
-      operationId: acknowledgeOperationsAlert
-      summary: Acknowledge an alert
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "200":
-          description: Acknowledged alert after a legal compare-and-set transition.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsAlert" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-
-  /v1/operations/alerts/{id}/resolve:
-    post:
-      operationId: resolveOperationsAlert
-      summary: Resolve an alert
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "200":
-          description: Resolved alert after a legal compare-and-set transition.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsAlert" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-
-  /v1/operations/alerts/{id}/retry:
-    post:
-      operationId: retryOperationsAlertDelivery
-      summary: Retry delivery for a failed or dead-lettered alert
-      tags: [Operations]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OperationsMutationRequest" }
-      responses:
-        "202":
-          description: Alert delivery retry queued with bounded backoff state reset.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationsAlert" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
-
-  /v1/operations/traces:
-    get:
-      operationId: listOperationsTraces
-      summary: Filter sampled traces
-      tags: [Operations]
-      parameters:
-        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
-        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
-        - { name: before, in: query, required: false, schema: { type: string } }
-      responses:
-        "200":
-          description: Environment-scoped sampled successes and retained errors.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/TracePage" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /v1/operations/traces/{traceId}:
-    get:
-      operationId: getOperationsTrace
-      summary: Get one correlated trace
-      tags: [Operations]
-      parameters:
-        - { name: traceId, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Correlated trace spans.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/TracePage" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
   /xrpc/app.thesocialwire.appview.getReadStateStatus:
     get:
       operationId: "getReadStateStatus"
@@ -4771,13 +3626,11 @@ tags:
   - name: Publications
     description: Unified sidebar projection and resolver
   - name: AppView
-    description: Data-minimized entry index gated behind `ENABLE_THIN_APPVIEW`
+    description: Data-minimized reader index and read-state projection
   - name: Latr
     description: Authenticated L@tr read-later iOS proxy (`LATR_IOS_PROXY_*` server credentials)
   - name: Semble
     description: Authenticated, viewer-owned Semble read-later projections with public-PDS link enrichment
-  - name: Operations
-    description: Operator-DID-allowlisted observability and recovery control plane
 
   - name: Analytics
     description: Creator engagement snapshots and scoped Social Wire observations

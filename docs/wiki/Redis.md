@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # Redis
 
 Redis is an optional, disposable cache and coordination layer for Gateway, AppView, and Charybdis. It never replaces an authoritative PDS or durable Postgres state.

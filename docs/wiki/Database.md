@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # Database
 
 Provider-neutral Postgres migrations for Gateway/AppView data, ingestion recovery, historical Tap parity evidence, and Operations state. Hosted Development and Production use isolated Railway Postgres services.

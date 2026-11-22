@@ -86,8 +86,8 @@ describe("app sidebar feed selection", () => {
 
 });
 
-it("selects actual Media routes independently from Social", () => {
+it("does not select retired Media routes", () => {
   const state = { feedParam: null, folderParam: null, publicationTab: "subscribed" as const };
-  expect(currentAppSidebarFeed({ ...state, pathname: "/media/photos" })).toBe("photos");
-  expect(currentAppSidebarFeed({ ...state, pathname: "/media/short-videos" })).toBe("shortVideos");
+  expect(currentAppSidebarFeed({ ...state, pathname: "/media/photos" })).toBeNull();
+  expect(currentAppSidebarFeed({ ...state, pathname: "/media/short-videos" })).toBeNull();
 });

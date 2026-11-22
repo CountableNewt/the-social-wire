@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { livestreamEnabled, mediaEnabled, toolsEnabled } from "@/lib/toolsEnabled";
+import { livestreamEnabled } from "@/lib/toolsEnabled";
 import { isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 
@@ -8,9 +8,8 @@ export function proxy(request: NextRequest) {
   const section = request.nextUrl.pathname.split("/")[1];
   // Articles and Analytics have their own authenticated layouts and entitlement checks.
   if (section === "articles" || section === "analytics") return NextResponse.next();
-  if (section === "media" && mediaEnabled()) return NextResponse.next();
   const scheduling = section === "content-calendar" || section === "scheduling";
-  if (section === "media" || !toolsEnabled() || (section === "livestream" && !livestreamEnabled()) || (section === "brand-accounts" && !brandAccountsEnabled()) || (scheduling && !isPostSchedulingEnabled())) {
+  if (section === "media" || (section === "livestream" && !livestreamEnabled()) || (section === "brand-accounts" && !brandAccountsEnabled()) || (scheduling && !isPostSchedulingEnabled())) {
     return new NextResponse("Not Found", {
       status: 404,
       headers: { "Cache-Control": "private, no-store" },

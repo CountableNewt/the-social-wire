@@ -1,4 +1,3 @@
-import * as Tools from "@/lib/toolsEnabled";
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { BrowserOAuthClient, OAuthClient, type OAuthSession } from "@atproto/oauth-client-browser";
 import { atprotoLoopbackClientMetadata, buildAtprotoLoopbackClientId } from "@atproto/oauth-types";
@@ -67,8 +66,7 @@ test("link nonce, expiry and corrupted registry fail closed", () => {
   window.localStorage.setItem("the-social-wire.brand-accounts.v1:" + owner, "not-json"); expect(listBrandAccounts(owner)).toEqual([]); expect(() => addBrandAccount(owner, brand)).toThrow(); expect(window.localStorage.getItem("the-social-wire.brand-accounts.v1:" + owner)).toBe("not-json");
 });
 test("invalidating linked brand leaves personal routing untouched", () => { Auth.invalidateOAuthSession(brand, new Error("Expired")); expect(Auth.getStoredOAuthDid()).toBe(owner); Auth.invalidateOAuthSession(owner, new Error("Expired")); expect(Auth.getStoredOAuthDid()).toBeNull(); });
-test("normal callback retains sign-in routing with Tools disabled and brand loopback metadata is an exact least-scope client", async () => {
-  const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
+test("normal callback retains sign-in routing and brand loopback metadata is an exact least-scope client", async () => {
   const previousEnv = process.env.NEXT_PUBLIC_APP_ENV; process.env.NEXT_PUBLIC_APP_ENV = "local"; restores.push(() => { if (previousEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = previousEnv; });
   const loader = spyOn(BrandAwareOAuthClient, "loadForAccounts").mockImplementation(async ({ clientId }) => ({ clientMetadata: atprotoLoopbackClientMetadata(clientId), findRedirectUrl: () => "http://127.0.0.1:3016/callback", callback: async () => ({ session: { did: "did:plc:normal" }, state: null }) }) as unknown as BrandAwareOAuthClient); restores.push(() => loader.mockRestore());
   window.history.replaceState(null, "", "/callback?state=normal-state&code=test-code");
@@ -132,9 +130,11 @@ test("Free owners can still unlink and revoke existing brand credentials", async
   expect(listBrandAccounts(owner)).toEqual([]); expect(revoke).toHaveBeenCalledWith(brand); expect(denied).not.toHaveBeenCalled();
 });
 
-test("disabled Tools rejects an already pending brand callback before exchange without changing personal credentials", async () => {
+test("disabled Delegated Accounts rejects an already pending brand callback before exchange without changing personal credentials", async () => {
   const f = clientFixture();
-  const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
+  const previous = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  restores.push(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previous; });
   await expect(f.client.callback(f.params)).rejects.toThrow("Delegated Accounts Are Not Available");
   expect(f.del).toHaveBeenCalled();
   expect(f.exchange).not.toHaveBeenCalled();
@@ -144,21 +144,10 @@ test("disabled Tools rejects an already pending brand callback before exchange w
   expect(listBrandAccounts(owner)).toEqual([]);
 });
 
-test("disabled Tools rejects direct brand linking and restoration before requesting OAuth clients", async () => {
-  addBrandAccount(owner, brand);
-  const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
-  const client = spyOn(Auth, "getOAuthClientForScopes"); restores.push(() => client.mockRestore());
-  await expect(linkBrandAccount(owner, "brand.example")).rejects.toThrow("Delegated Accounts Are Not Available");
-  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Delegated Accounts Are Not Available");
-  expect(client).not.toHaveBeenCalled();
-  expect(Auth.getStoredOAuthDid()).toBe(owner);
-});
-
-test("disabled Tools delegates personal OAuth callbacks to the regular browser client", async () => {
+test("personal OAuth callbacks delegate to the regular browser client", async () => {
   const client = new BrandAwareOAuthClient({ handleResolver: "https://bsky.social", clientMetadata: atprotoLoopbackClientMetadata(buildAtprotoLoopbackClientId({ redirect_uris: ["http://127.0.0.1:3016/callback"], scope: "atproto" })) }, () => owner);
   clients.push(client);
   Object.defineProperty(client, "stateStore", { value: { get: async () => ({ appState: "personal-login" }) } });
-  const gate = spyOn(Tools, "toolsEnabled").mockReturnValue(false); restores.push(() => gate.mockRestore());
   const session = { did: owner } as unknown as OAuthSession;
   const callback = spyOn(BrowserOAuthClient.prototype, "callback").mockResolvedValue({ session, state: "personal-login" }); restores.push(() => callback.mockRestore());
   const params = new URLSearchParams({ state: "personal-sdk-state", code: "code" });

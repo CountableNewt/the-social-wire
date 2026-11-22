@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -11,7 +10,6 @@ import {
 import { usePDSClient } from "@/hooks/usePDSClient";
 import { useAuth } from "@/hooks/useAuth";
 import type { PDSClient, PreferencesRecord, RepoRecord } from "@/lib/pdsClient";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
 import { fetchSyncPreferences } from "@/lib/syncPreferencesClient";
 import {
   DEFAULT_FEED_DISPLAY_PREFERENCES,
@@ -78,7 +76,6 @@ export function useFeedDisplayPreferences() {
     mutationFn: async (input: PreferenceMutation) => {
       const { next, viewerDid: actorDid, oauth, client: actorClient } = input;
       if (!isCurrentActor(input)) throw new Error("Your account changed. Reopen Settings.");
-      if (isDummyReaderDataEnabled()) return null;
       if (!actorClient || !actorDid || !oauth || oauth.did !== actorDid) throw new Error("PDS session required");
       const existing = queryClient.getQueryData<RepoRecord<PreferencesRecord> | null>(accountPreferencesQueryKey(actorDid)) ?? null;
       const saved = await actorClient.upsertPreferences(

@@ -94,6 +94,28 @@ describe("GET /api/bluesky-card-thumb", () => {
     expect(res.headers.get("content-type")).toBe("image/jpeg");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
   });
+  it("streams original images above the buffered Function limit without changing bytes", async () => {
+    const bytes = new Uint8Array(4_600_000);
+    bytes[0] = 7;
+    bytes[bytes.length - 1] = 9;
+    globalThis.fetch = mock(async () => new Response(bytes, { headers: { "content-type": "image/png" } })) as unknown as typeof fetch;
+    const response = await GET(requestFor("https://cdn.example/original.png", true));
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("image/png");
+    const reader = response.body!.getReader();
+    let length = 0;
+    const received: Uint8Array[] = [];
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      expect(part.value.length).toBeLessThanOrEqual(64 * 1024);
+      received.push(part.value);
+      length += part.value.length;
+    }
+    expect(length).toBe(bytes.length);
+    expect(received[0]![0]).toBe(7);
+    expect(received[received.length - 1]!.at(-1)).toBe(9);
+  });
   it("enforces the original limit from headers and streamed bytes", async () => {
     globalThis.fetch = mock(
       async () =>

@@ -10,6 +10,7 @@ import {
 } from "@/lib/rssFeedServer";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const FETCH_TIMEOUT_MS = 12_000;
 

@@ -19,10 +19,6 @@ import {
   signIn as authSignIn,
   signOut as authSignOut,
 } from "@/lib/auth";
-import {
-  DUMMY_VIEWER_DID,
-  isDummyReaderDataEnabled,
-} from "@/lib/dummyReaderData";
 
 import { observeOAuthScopeErrors, onOAuthScopeRecovery, rememberOAuthReturnPath } from "@/lib/oauthScopeRecovery";
 import { OAuthScopeRecoveryDialog } from "@/components/Auth/OAuthScopeRecoveryDialog";
@@ -81,19 +77,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
-  const [session, setSession] = useState<AuthSession | null>(() =>
-    dummyReaderDataEnabled ? { did: DUMMY_VIEWER_DID } : null
-  );
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [oauthSessionReloadSeq, setOAuthSessionReloadSeq] = useState(0);
   const [scopeRecoveryDid, setScopeRecoveryDid] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(
     () =>
-      !dummyReaderDataEnabled &&
       typeof window !== "undefined" &&
       pathnameIsOAuthCallbackRoute(window.location.pathname)
         ? false
-        : !dummyReaderDataEnabled
+        : true
   );
 
   // Store the OAuthSession in a ref — it manages its own token lifecycle
@@ -146,7 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (dummyReaderDataEnabled) return;
 
     if (pathnameIsOAuthCallbackRoute(window.location.pathname)) {
       return;
@@ -180,26 +171,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [dummyReaderDataEnabled]);
+  }, []);
 
   const handleSignIn = useCallback(async (handle: string) => {
-    if (dummyReaderDataEnabled) {
-      setSession({ did: DUMMY_VIEWER_DID });
-      setIsLoading(false);
-      return;
-    }
     await authSignIn(handle);
     // Browser redirects — no further code runs here.
-  }, [dummyReaderDataEnabled]);
+  }, []);
 
   const handleSignOut = useCallback(async () => {
     if (!session) return;
-
-    if (dummyReaderDataEnabled) {
-      setSession({ did: DUMMY_VIEWER_DID });
-      setIsLoading(false);
-      return;
-    }
 
     const did = session.did;
     clearStoredOAuthSessionHint();
@@ -215,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     await authSignOut(did);
-  }, [bumpOAuthReloadSeq, dummyReaderDataEnabled, session]);
+  }, [bumpOAuthReloadSeq, session]);
 
   const applyOAuthSession = useCallback((oauthSession: OAuthSession) => {
     oauthSessionRef.current = observeOAuthScopeErrors(oauthSession);

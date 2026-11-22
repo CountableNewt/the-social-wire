@@ -27,3 +27,12 @@ describe("GET /api/oauth/web-client-metadata", () => {
     expect(body.client_id).toBe("https://preview.example/oauth-client-metadata.json");
   });
 });
+
+for (const origin of ["https://testing.thesocialwire.app", "https://thesocialwire.app", "https://preview.vercel.app"]) {
+  it(`preserves same-origin OAuth identities at ${origin}`, async () => {
+    const response = GET(new Request(`${origin}/api/oauth/web-client-metadata`));
+    const metadata = await response.json();
+    expect(metadata.client_id).toBe(`${origin}/oauth-client-metadata.json`);
+    expect(metadata.redirect_uris).toEqual([`${origin}/callback`]);
+  });
+}

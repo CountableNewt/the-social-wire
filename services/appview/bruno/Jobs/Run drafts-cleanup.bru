@@ -1,0 +1,20 @@
+meta {
+  name: Run Clean Up Expired Draft Assets
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/internal/jobs/drafts-cleanup
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jobsSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

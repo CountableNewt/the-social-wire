@@ -3,38 +3,22 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"strconv"
 	"time"
 
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/analytics"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/atproto"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/config"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/drafts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/ingest"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/isotime"
+	jobrunner "github.com/CountableNewt/the-social-wire/services/appview/internal/jobs"
+	scheduler "github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/backend"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
+	"golang.org/x/sync/errgroup"
 )
-
-func cleanupExpired(ctx context.Context, db *sqlitedb.DB, environment string, env config.Env, logger *slog.Logger) {
-	readRetention := configuredSeconds(env, "THIN_APPVIEW_READ_MARK_TTL_SECONDS", 180*24*time.Hour)
-	for ctx.Err() == nil {
-		sweep, cancel := context.WithTimeout(ctx, 30*time.Second)
-		backlog, err := cleanupBatch(sweep, db, environment, time.Now(), readRetention)
-		for err == nil && backlog && sweep.Err() == nil {
-			backlog, err = cleanupBatch(sweep, db, environment, time.Now(), readRetention)
-		}
-		cancel()
-		if err != nil && ctx.Err() == nil {
-			logger.Warn("AppView TTL cleanup failed", "error", err)
-		}
-		delay := time.Hour
-		if backlog || err != nil {
-			delay = 10 * time.Second
-		}
-		if !waitFor(ctx, delay) {
-			return
-		}
-	}
-}
 
 func cleanupBatch(ctx context.Context, db *sqlitedb.DB, environment string, now time.Time, readRetention time.Duration) (bool, error) {
 	const limit = 1000
@@ -93,43 +77,6 @@ func configuredSeconds(env config.Env, key string, fallback time.Duration) time.
 	return time.Duration(seconds * float64(time.Second))
 }
 
-func waitFor(ctx context.Context, delay time.Duration) bool {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
-func pollRSS(ctx context.Context, db *sqlitedb.DB, service *ingest.Service, env config.Env, logger *slog.Logger) {
-	interval := configuredSeconds(env, "THIN_APPVIEW_RSS_FEED_POLL_INTERVAL_SECONDS", 30*time.Minute)
-	limit, err := strconv.Atoi(env.StringOr("THIN_APPVIEW_RSS_FEED_POLL_FEED_LIMIT", "20"))
-	if err != nil {
-		limit = 20
-	}
-	limit = max(1, min(limit, 200))
-	for ctx.Err() == nil {
-		feeds, err := indexedFeeds(ctx, db, limit)
-		if err != nil && ctx.Err() == nil {
-			logger.Warn("RSS feed poll could not load indexed feeds", "error", err)
-		}
-		for _, feed := range feeds {
-			if ctx.Err() != nil {
-				return
-			}
-			if _, err := service.RefreshFeed(ctx, feed); err != nil && ctx.Err() == nil {
-				logger.Debug("RSS feed poll did not finish", "error", err)
-			}
-		}
-		if !waitFor(ctx, interval) {
-			return
-		}
-	}
-}
-
 func indexedFeeds(ctx context.Context, db *sqlitedb.DB, limit int) ([]string, error) {
 	rows, err := db.Reader().QueryContext(ctx, `
 		SELECT content.publication_site
@@ -152,4 +99,121 @@ func indexedFeeds(ctx context.Context, db *sqlitedb.DB, limit int) ([]string, er
 		feeds = append(feeds, feed)
 	}
 	return feeds, rows.Err()
+}
+
+type maintenanceOptions struct {
+	recovery    func(context.Context) error
+	ingestion   *ingest.Service
+	analytics   *analytics.Store
+	environment string
+	env         config.Env
+}
+
+// Every interval and Cron invocation uses the same bounded leased action.
+func newMaintenanceRunner(db *sqlitedb.DB, secret string, schedulingService *scheduler.Service, draftService *drafts.Service, discovery *ingest.Microcosm, options ...maintenanceOptions) (*jobrunner.Runner, error) {
+	actions := map[string]jobrunner.Action{}
+	if schedulingService != nil {
+		actions["scheduling"] = jobrunner.Action{Run: schedulingService.RunWorkerOnce, Timeout: 150 * time.Second}
+	}
+	if draftService != nil {
+		actions["drafts-cleanup"] = jobrunner.Action{Run: draftService.CleanupOnce, Timeout: 45 * time.Second}
+	}
+	if discovery != nil {
+		actions["discovery"] = jobrunner.Action{Run: func(ctx context.Context) error {
+			// Keep the previous four-worker concurrency, while each claim and its
+			// acknowledgement remain owned by the durable discovery queue.
+			group, work := errgroup.WithContext(ctx)
+			for range 4 {
+				group.Go(func() error { _, err := discovery.RunOnce(work); return err })
+			}
+			return group.Wait()
+		}, Timeout: 30 * time.Second}
+	}
+	if len(options) > 0 {
+		option := options[0]
+		actions["ttl-cleanup"] = jobrunner.Action{Run: func(ctx context.Context) error {
+			retention := configuredSeconds(option.env, "THIN_APPVIEW_READ_MARK_TTL_SECONDS", 180*24*time.Hour)
+			for range 10 {
+				backlog, err := cleanupBatch(ctx, db, option.environment, time.Now(), retention)
+				if err != nil {
+					return err
+				}
+				if !backlog {
+					return nil
+				}
+			}
+			return nil
+		}, Timeout: 45 * time.Second}
+		if option.recovery != nil {
+			actions["read-state-recovery"] = jobrunner.Action{Run: func(ctx context.Context) error {
+				group, work := errgroup.WithContext(ctx)
+				for range 2 {
+					group.Go(func() error { return option.recovery(work) })
+				}
+				return group.Wait()
+			}, Timeout: 60 * time.Second}
+		}
+		if option.analytics != nil {
+			actions["analytics-cleanup"] = jobrunner.Action{Run: func(ctx context.Context) error { return option.analytics.Cleanup(ctx, time.Now()) }, Timeout: 45 * time.Second}
+		}
+		if option.ingestion != nil {
+			actions["rss-poll"] = jobrunner.Action{Run: func(ctx context.Context) error { return pollRSSOnce(ctx, db, option.ingestion, option.env) }, Timeout: 90 * time.Second}
+			actions["author-history"] = jobrunner.Action{Run: func(ctx context.Context) error {
+				if option.ingestion.AuthorPDS == nil {
+					return nil
+				}
+				group, work := errgroup.WithContext(ctx)
+				for range 2 {
+					group.Go(func() error { _, err := option.ingestion.RunAuthorHistoryOnce(work); return err })
+				}
+				return group.Wait()
+			}, Timeout: 90 * time.Second}
+		}
+	}
+	return jobrunner.New(db, secret, actions)
+}
+
+func runMaintenance(ctx context.Context, runner *jobrunner.Runner, name string, interval time.Duration, immediately bool, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	if !immediately {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+	for ctx.Err() == nil {
+		if _, err := runner.Run(ctx, name); err != nil && ctx.Err() == nil {
+			logger.Warn("Maintenance job deferred", "job", name)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func pollRSSOnce(ctx context.Context, db *sqlitedb.DB, service *ingest.Service, env config.Env) error {
+	if _, supplied := env.Optional("THIN_APPVIEW_RSS_FEED_POLL_ENABLED"); supplied && !env.Truthy("THIN_APPVIEW_RSS_FEED_POLL_ENABLED") {
+		return nil
+	}
+	limit, err := strconv.Atoi(env.StringOr("THIN_APPVIEW_RSS_FEED_POLL_FEED_LIMIT", "20"))
+	if err != nil {
+		limit = 20
+	}
+	feeds, err := indexedFeeds(ctx, db, max(1, min(limit, 200)))
+	if err != nil {
+		return err
+	}
+	var failure error
+	for _, feed := range feeds {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(failure, err)
+		}
+		_, err := service.RefreshFeed(ctx, feed)
+		failure = errors.Join(failure, err)
+	}
+	return failure
 }

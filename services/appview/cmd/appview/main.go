@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -21,6 +20,7 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/config"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/drafts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/ingest"
+	jobrunner "github.com/CountableNewt/the-social-wire/services/appview/internal/jobs"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/operations"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/publications"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reader"
@@ -45,7 +45,7 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 		args = args[1:]
 	}
 	opts := flag.NewFlagSet("AppView", flag.ContinueOnError)
-	initializeOnly := opts.Bool("initialize-only", false, "initialize SQLite schemas and exit")
+	initializeOnly := opts.Bool("initialize-only", false, "initialize database schemas and exit")
 	port := opts.String("port", "", "override the HTTP port")
 	host := opts.String("hostname", "", "override the HTTP bind address")
 	if err := opts.Parse(args); err != nil {
@@ -67,8 +67,16 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	if err != nil {
 		return err
 	}
-	if !env.True("ENABLE_THIN_APPVIEW") {
-		return errors.New("ENABLE_THIN_APPVIEW must be true for AppView")
+	runnerMode, err := jobrunner.ParseMode(env.String("JOBS_RUNNER_MODE"))
+	if err != nil {
+		return err
+	}
+	if runnerMode == jobrunner.External && !jobrunner.ValidSecret(env.String("JOBS_SECRET")) {
+		return errors.New("external job runner requires JOBS_SECRET")
+	}
+	serverless, err := serverlessRuntime(env, core, runnerMode)
+	if err != nil {
+		return err
 	}
 	discoveryMode := env.StringOr("PUBLIC_CONTENT_DISCOVERY_MODE", "microcosm")
 	if discoveryMode != "microcosm" && discoveryMode != "off" {
@@ -78,10 +86,7 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(core.SQLitePath), 0700); err != nil {
-		return fmt.Errorf("create SQLite directory: %w", err)
-	}
-	db, err := sqlitedb.Open(core.SQLitePath)
+	db, err := openDatabase(ctx, core)
 	if err != nil {
 		return err
 	}
@@ -90,12 +95,23 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	if err != nil {
 		return fmt.Errorf("configure draft storage: %w", err)
 	}
-	if err := initialize(ctx, db, core, draftService != nil); err != nil {
-		return err
+	if db.IsRemote() && !*initializeOnly {
+		if err := verifyRuntimeSchema(ctx, db, draftService != nil); err != nil {
+			return err
+		}
+	} else {
+		if db.IsRemote() {
+			if err := invalidateRuntimeSchema(ctx, db); err != nil {
+				return err
+			}
+		}
+		if err := initialize(ctx, db, draftService != nil); err != nil {
+			return err
+		}
 	}
 	client := publicHTTPClient()
 	defer client.CloseIdleConnections()
-	schedulingService, err := scheduler.Open(ctx, core, env, client, logger)
+	schedulingService, err := scheduler.Open(ctx, core, env, client, logger, *initializeOnly)
 	if err != nil {
 		return fmt.Errorf("initialize embedded scheduling: %w", err)
 	}
@@ -103,7 +119,12 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 		defer schedulingService.Close()
 	}
 	if *initializeOnly {
-		logger.Info("Standalone SQLite schemas initialized")
+		if db.IsRemote() {
+			if err := markRuntimeSchema(ctx, db, draftService != nil); err != nil {
+				return err
+			}
+		}
+		logger.Info("Standalone database schemas initialized")
 		return nil
 	}
 
@@ -117,17 +138,18 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	contentStore := thinstore.SQLiteIngestStore{DB: db}
 	retention := configuredSeconds(env, "THIN_APPVIEW_CONTENT_TTL_SECONDS", 30*24*time.Hour)
 	rssLimit, _ := strconv.Atoi(env.String("THIN_APPVIEW_MAX_RSS_ITEMS_PER_FEED"))
-	ingestion := &ingest.Service{Repo: repo, Store: contentStore, ContentRetention: retention, MaximumRSSItems: rssLimit}
+	ingestion := &ingest.Service{Repo: repo, Store: contentStore, ContentRetention: retention, MaximumRSSItems: rssLimit, HistoryDB: db}
 	entryVerifier := ingest.NewEntryVerifier(db, core.PLCURL, retention)
 	var discovery *ingest.Microcosm
 	if discoveryMode == "off" {
 		ingestion.AuthorPDS = repo.Resolver()
 	} else {
-		discovery = ingest.NewMicrocosm(client, contentStore)
+		discovery = ingest.NewMicrocosm(client, contentStore, db)
 	}
-	var analyticsStore *analytics.Store
-	if core.ToolsEnabled {
-		analyticsStore = analytics.NewStore(db, core.GatewayAppViewInternalSecret)
+	analyticsStore := analytics.NewStore(db, core.GatewayAppViewInternalSecret)
+	maintenance, err := newMaintenanceRunner(db, env.String("JOBS_SECRET"), schedulingService, draftService, discovery, maintenanceOptions{ingestion: ingestion, analytics: analyticsStore, environment: environment, env: env, recovery: reader.NewRecoveryWorker(db, repo).RunOnce})
+	if err != nil {
+		return err
 	}
 	background, stop := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
@@ -138,9 +160,9 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	handler, err := buildRouter(core, env, runtimeServices{
 		db: db, repo: repo, operations: ops, telemetry: telemetry,
 		enroll:        enrollment(db, ingestion, discovery),
-		readerOptions: reader.Options{Bootstrap: bootstrapDiscovery(discovery), VerifyEntry: entryVerifier.Verify, RefreshScope: refreshScope(ingestion, discovery)},
+		readerOptions: reader.Options{DurableRecovery: serverless, Bootstrap: bootstrapDiscovery(background, discovery, logger), VerifyEntry: entryVerifier.Verify, RefreshScope: refreshScope(ingestion, discovery)},
 		drafts:        draftService, analytics: analyticsStore, scheduling: schedulingService,
-		context: background, logger: logger,
+		context: background, logger: logger, maintenance: maintenance, serverless: serverless,
 	})
 	if err != nil {
 		return err
@@ -151,49 +173,36 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 		return err
 	}
 
-	if schedulingService != nil {
-		jobs.Go(func() { schedulingService.Run(background) })
-	}
-	jobs.Go(func() { cleanupExpired(background, db, environment, env, logger) })
-	if analyticsStore != nil {
-		jobs.Go(func() {
-			for background.Err() == nil {
-				if err := analyticsStore.Cleanup(background, time.Now()); err != nil && background.Err() == nil {
-					logger.Warn("Analytics cleanup failed", "error", err)
-				}
-				if !waitFor(background, 24*time.Hour) {
-					return
-				}
-			}
-		})
-	}
-	if draftService != nil {
-		jobs.Go(func() { draftService.RunCleanup(background, logger) })
-	}
-	if _, supplied := env.Optional("THIN_APPVIEW_RSS_FEED_POLL_ENABLED"); !supplied || env.Truthy("THIN_APPVIEW_RSS_FEED_POLL_ENABLED") {
-		jobs.Go(func() { pollRSS(background, db, ingestion, env, logger) })
-	}
-	if ingestion.AuthorPDS != nil {
-		jobs.Go(func() {
-			ingestion.RunAuthorHistory(background, func(err error) {
-				logger.Debug("Scoped PDS author history did not finish", "error", err)
-			})
-		})
-	}
-	if discovery != nil {
-		for range 4 {
+	if runnerMode == jobrunner.Internal {
+		if schedulingService != nil {
+			jobs.Go(func() { runMaintenance(background, maintenance, "scheduling", 30*time.Second, true, logger) })
+		}
+		if draftService != nil {
+			jobs.Go(func() { runMaintenance(background, maintenance, "drafts-cleanup", 15*time.Minute, false, logger) })
+		}
+		if discovery != nil {
+			jobs.Go(func() { runMaintenance(background, maintenance, "discovery", time.Second, true, logger) })
+		}
+		jobs.Go(func() { runMaintenance(background, maintenance, "ttl-cleanup", time.Hour, true, logger) })
+		jobs.Go(func() { runMaintenance(background, maintenance, "read-state-recovery", time.Second, true, logger) })
+		jobs.Go(func() { runMaintenance(background, maintenance, "analytics-cleanup", 24*time.Hour, true, logger) })
+		if _, supplied := env.Optional("THIN_APPVIEW_RSS_FEED_POLL_ENABLED"); !supplied || env.Truthy("THIN_APPVIEW_RSS_FEED_POLL_ENABLED") {
 			jobs.Go(func() {
-				discovery.Run(background, func(err error) {
-					logger.Debug("Publication discovery did not finish", "error", err)
-				})
+				runMaintenance(background, maintenance, "rss-poll", configuredSeconds(env, "THIN_APPVIEW_RSS_FEED_POLL_INTERVAL_SECONDS", 30*time.Minute), true, logger)
 			})
 		}
+		if ingestion.AuthorPDS != nil {
+			jobs.Go(func() { runMaintenance(background, maintenance, "author-history", time.Second, true, logger) })
+		}
 	}
-	if telemetry != nil {
-		heartbeat := operations.NewHeartbeatJob(store, "appview", environment, ops.InstanceID, dependencyProbe(db), telemetry, logger)
+	if telemetry != nil && !serverless {
 		jobs.Go(func() { telemetry.Run(background) })
-		jobs.Go(func() { heartbeat.Run(background) })
+		if runnerMode == jobrunner.Internal {
+			heartbeat := operations.NewHeartbeatJob(store, "appview", environment, ops.InstanceID, dependencyProbe(db), telemetry, logger)
+			jobs.Go(func() { heartbeat.Run(background) })
+		}
 	}
+
 	server := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -203,9 +212,18 @@ func run(ctx context.Context, args []string, env config.Env, logger *slog.Logger
 	return serve(ctx, server, listener)
 }
 
-func initialize(ctx context.Context, db *sqlitedb.DB, core config.Core, draftsEnabled bool) error {
+func initialize(ctx context.Context, db *sqlitedb.DB, draftsEnabled bool) error {
 	if err := thinstore.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("initialize reader schema: %w", err)
+	}
+	if err := ingest.MigrateAuthorHistoryQueue(ctx, db); err != nil {
+		return fmt.Errorf("initialize author history queue: %w", err)
+	}
+	if err := ingest.MigrateDiscoveryQueue(ctx, db); err != nil {
+		return fmt.Errorf("initialize discovery queue: %w", err)
+	}
+	if err := jobrunner.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("initialize maintenance leases: %w", err)
 	}
 	if err := publications.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("initialize publication schema: %w", err)
@@ -219,15 +237,16 @@ func initialize(ctx context.Context, db *sqlitedb.DB, core config.Core, draftsEn
 	if err := syncapi.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("initialize PDS cache schema: %w", err)
 	}
-	if core.ToolsEnabled {
-		if err := analytics.Migrate(ctx, db); err != nil {
-			return fmt.Errorf("initialize analytics schema: %w", err)
-		}
+	if err := analytics.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("initialize analytics schema: %w", err)
 	}
 	if draftsEnabled {
 		if err := drafts.Migrate(ctx, db); err != nil {
 			return fmt.Errorf("initialize draft schema: %w", err)
 		}
+	}
+	if err := sqlitedb.VerifyPortableSchema(ctx, db.Reader()); err != nil {
+		return fmt.Errorf("verify portable schema: %w", err)
 	}
 	return nil
 }

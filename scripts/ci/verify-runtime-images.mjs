@@ -25,7 +25,6 @@ export function webBuildArguments(appEnvironment) {
     NEXT_PUBLIC_APP_ENV: development ? 'dev' : 'prod',
     NEXT_PUBLIC_SITE_URL: development ? 'https://testing.thesocialwire.app' : 'https://thesocialwire.app',
     NEXT_PUBLIC_SOCIALWIRE_API_URL: development ? 'https://api.testing.thesocialwire.app' : 'https://api.thesocialwire.app',
-    NEXT_PUBLIC_USE_THIN_APPVIEW: 'true',
   };
   return Object.entries(values).flatMap(([key, value]) => ['--build-arg', `${key}=${value}`]);
 }
@@ -118,9 +117,9 @@ export async function runtimeSmoke(image, {
   const fixtureKey = Buffer.alloc(32, 7).toString('base64');
   const environment = {
     APP_ENV: 'dev', PORT: '8081',
-    SOCIAL_DRAFTS_ENABLED: 'true', TOOLS_ENABLED: 'true',
-    EMBEDDED_SCHEDULING_ENABLED: 'true', EMBEDDED_SCHEDULING_PUBLIC_ORIGIN: 'https://smoke.invalid',
-    EMBEDDED_SCHEDULING_STORAGE_KEY: fixtureKey,
+    SOCIAL_DRAFTS_ENABLED: 'true',
+    SCHEDULING_PUBLIC_ORIGIN: 'https://smoke.invalid',
+    SCHEDULING_STORAGE_KEY: fixtureKey,
     PDS_ATTESTATION_RECEIPT_SECRET: 'smoke-fixture-attestation-secret-at-least-32-bytes',
     GATEWAY_APPVIEW_INTERNAL_SECRET: 'smoke-fixture-analytics-secret-at-least-32-bytes',
     SOCIAL_DRAFT_STORAGE_KEY: fixtureKey,

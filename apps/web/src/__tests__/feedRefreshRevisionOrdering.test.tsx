@@ -1,3 +1,4 @@
+import * as AppView from "@/lib/thinAppViewClient";
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -6,7 +7,6 @@ import type { ReactNode } from "react";
 
 import * as Auth from "@/hooks/useAuth";
 import { ENTRIES_QUERY_KEY, useEntries, useAggregateFeedEntries, type EntriesPage } from "@/hooks/useEntries";
-import * as AppView from "@/lib/thinAppViewClient";
 import * as Telemetry from "@/lib/clientPerformanceTelemetry";
 import { refreshPublicationFeedFirstPage } from "@/lib/feedRefresh";
 import { advanceFeedRefreshRevision, getFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
@@ -30,9 +30,8 @@ beforeEach(() => {
   const auth = spyOn(Auth, "useAuth").mockReturnValue({
     session: { did: viewerDid }, getOAuthSession: () => oauth, oauthSessionReloadSeq: 0,
   } as unknown as ReturnType<typeof Auth.useAuth>);
-  const enabled = spyOn(AppView, "isThinAppViewEnabled").mockReturnValue(true);
   const telemetry = spyOn(Telemetry, "recordClientPerformance").mockResolvedValue(new Response(null, { status: 202 }));
-  restores.push(() => auth.mockRestore(), () => enabled.mockRestore(), () => telemetry.mockRestore());
+  restores.push(() => auth.mockRestore(), () => telemetry.mockRestore());
 });
 afterEach(() => {
   cleanup();

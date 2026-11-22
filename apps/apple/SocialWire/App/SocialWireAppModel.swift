@@ -154,7 +154,7 @@ final class SocialWireAppModel {
     private(set) var followingSectionUnreadCount = 0
     /// Dedupes pagination triggers when the last filtered row re-appears during fast scroll.
     private var entriesPaginationTriggeredForEntryId: String?
-    /// Set false after a 404 from `app.thesocialwire.appview.*` (API deployed without `ENABLE_THIN_APPVIEW`).
+    /// Set false when the connected API host does not expose AppView routes.
     private var appViewRoutesAvailable = true
 
     private var gatewaySubscribedUnfoldered: [DiscoveredPublication] = []

@@ -2,7 +2,7 @@ import { atprotoScopesForNetwork } from "@/lib/atprotoNetwork";
 import { AT_PROTO_OAUTH_SCOPES } from "@/lib/atprotoOAuthScopes";
 
 /**
- * Hosted OAuth `client_id` for a web origin. Railway serves the dynamic metadata
+ * Hosted OAuth `client_id` for a web origin. The Web app serves dynamic metadata
  * route from the web service itself, so discovery stays same-origin.
  */
 export function hostedOAuthClientIdForOrigin(origin: string): string {

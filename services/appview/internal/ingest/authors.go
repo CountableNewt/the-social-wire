@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -41,7 +42,11 @@ func (s *Service) RefreshAuthors(ctx context.Context, authors []string) (int, er
 			break
 		}
 		seen[did] = true
-		s.scheduleAuthorHistory(did)
+		if err := s.scheduleAuthorHistory(ctx, did); err != nil {
+			// Backfill pressure must not block the current, synchronous recent page.
+			// Report deferred work without exposing scoped identifiers or DB details.
+			slog.WarnContext(ctx, "Author history enqueue deferred")
+		}
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}

@@ -20,7 +20,7 @@ it("documents authenticated server-owned plans and paid creator reads without bl
   expect(spec.paths["/v1/analytics/summary"].get.responses["403"]).toBeDefined();
   expect(spec.paths["/v1/analytics/refresh"].post.responses["403"]).toBeDefined();
   expect(spec.paths["/v1/analytics/events"].post.responses["403"]).toBeUndefined();
-  const request = readFileSync(join(import.meta.dir, "../../../services/gateway/bruno/Subscription/Get Subscription Entitlements.bru"), "utf8");
+  const request = readFileSync(join(import.meta.dir, "../../../services/appview/bruno/Subscription/Get Subscription Entitlements.bru"), "utf8");
   expect(request).toContain("{{baseUrl}}/v1/subscription/entitlements");
   expect(request).toContain("DPoP: {{dpopProof}}");
 });

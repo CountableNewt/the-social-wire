@@ -14,7 +14,7 @@ import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { useBrandAccounts } from "@/hooks/useBrandAccounts";
 import { getStoredOAuthDid } from "@/lib/auth";
 import { listBrandAccounts, onBrandAccountsChanged, restoreBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
-import { getSkejEnvironment, usesEmbeddedScheduling } from "@/lib/skej/skejEnvironment";
+import { getSkejEnvironment } from "@/lib/skej/skejEnvironment";
 import { assertPostSchedulingEnabled, isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { cancelSkejSchedule, createSkejSchedule, createSkejArticleSchedule, getSkejSchedulingReadiness, listSkejSchedules, rescheduleSkejPost, type SkejScheduleSummary } from "@/lib/skej/skejSchedulingClient";
 
@@ -91,12 +91,7 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
     onSuccess: () => { if (current.current.mounted && current.current.ownerDid === ownerDid && current.current.actorDid === actorDid) void client.invalidateQueries({ queryKey: key }); },
   });
   const connect = new URL(getSkejEnvironment().connectUrl);
-  if (usesEmbeddedScheduling()) {
-    connect.searchParams.set("accountDid", actorDid);
-  } else {
-    connect.searchParams.set("handle", actorDid);
-    connect.searchParams.set("returnTo", "/scheduling/connected");
-  }
+  connect.searchParams.set("accountDid", actorDid);
   return { readiness, schedules, connectUrl: connect.href, pending: mutation.isPending,
     scheduleArticle: (input: ArticlePublishInput, scheduledAt: string) => mutation.mutateAsync({ kind: "article", input, scheduledAt }),
     schedule: (text: string, scheduledAt: string, linkPreview?: ComposeLinkPreview) => mutation.mutateAsync({ kind: "create", text, scheduledAt, linkPreview }),

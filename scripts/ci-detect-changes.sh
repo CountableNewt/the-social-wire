@@ -33,9 +33,7 @@ esac
 if [ "$MATCH_ALL" = "0" ] && ! git diff --quiet "$BASE" "$HEAD" -- \
   '.github/workflows/ci.yml' \
   '.github/workflows/validated-merge.yml' \
-  'scripts/ci-detect-changes.sh' \
-  'scripts/ci-prepare-postgres.sh' \
-  '.github/actions/prepare-postgres'; then
+  'scripts/ci-detect-changes.sh'; then
   MATCH_ALL=1
 fi
 
@@ -76,7 +74,6 @@ filter_changed web \
   'apps/apple/**' \
   'packages/**' \
   'services/**' \
-  'database/**' \
   'scripts/**' \
   'tools/**' \
   'railway/**' \
@@ -91,15 +88,20 @@ filter_changed web \
 filter_changed appview \
   'services/appview/**' \
   'apps/web/package.json' \
-  'apps/operations/package.json' \
   'packages/read-state/package.json' \
   'packages/lexicons/package.json' \
   'packages/spec/package.json' \
   'packages/spec/openapi.yaml' \
   'packages/vendor/**' \
-  'scripts/migrations/**' \
   'scripts/ci/**' \
   'railway/appview*.json' \
   'package.json' \
   'bun.lock' \
   '.dockerignore'
+
+# Native client and its local ReadStateCore package are verified independently.
+filter_changed apple \
+  'apps/apple/**' \
+  'packages/lexicons/**' \
+  'packages/spec/openapi.yaml' \
+  'scripts/ci/apple-test.sh'

@@ -10,7 +10,7 @@ Generate or refresh the Xcode project from **`apps/apple`**: `xcodegen generate`
 
 The repository root has no **`Package.swift`** (this target is Xcode + XcodeGen, not SPM). At the repo root the Swift VS Code extension’s **“Swift: Build All”** runs **`swift build`** and fails with *Could not find Package.swift*. Use **SweetPad: Build / Build & Run** instead, selecting **`apps/apple/The Social Wire.xcodeproj`** when needed.
 
-For **`services/gateway`**, **`services/appview`**, or **`services/appview-worker`** Swift Package Manager work inside the same window, temporarily set **`swift.disableSwiftPackageManagerIntegration`** to **`false`** in your user settings, or open the service directory as its own window / multi-root workspace entry.
+The shared native package is **`apps/apple/Packages/ReadStateCore`**. Open that directory separately for Swift Package Manager work; server packages were retired in #963.
 
 ## Project Structure
 
@@ -79,9 +79,11 @@ navigation.
 | Entry detail | `SocialWireGatewayClient.fetchAppViewEntryDetail` |
 | Mark read / unread | AppView read-mark routes with local optimistic state |
 | After discovery | `gateway.enrollAuthors` (fire-and-forget) |
-| Privacy | With `SOCIALWIRE_USE_THIN_APPVIEW` compiled in, Profile → **Purge Indexed Data** calls `app.thesocialwire.appview.purgeViewerData`; it currently removes explicit read marks and unread overrides only |
+| Privacy | Profile → **Purge Indexed Data** calls `app.thesocialwire.appview.purgeViewerData`; it currently removes explicit read marks and unread overrides only |
 
-The backend requires **`ENABLE_THIN_APPVIEW=true`**, a running worker, and applied database migrations. The testing and production API domains are stable custom domains for their Railway Gateway services; test on **`api.testing.thesocialwire.app`** before production.
+The Go backend always exposes AppView routes and requires applied database migrations. The testing and production API domains are stable custom domains; test on **`api.testing.thesocialwire.app`** before production.
+
+Public read-history protocol support is always available. Accounts retain their current read-state authority until the user explicitly confirms **Enable Public Read History**; foreground synchronization never starts that migration.
 
 See [docs/architecture/appview.md](../../docs/architecture/appview.md) and [docs/wiki/Thin-AppView.md](../../docs/wiki/Thin-AppView.md).
 
@@ -147,10 +149,7 @@ Normal builds use Gateway metadata on the Railway custom domains:
 
 Generated `*.up.railway.app` domains are deployment diagnostics, not native OAuth identities. Keeping the custom domains stable avoids adding a new reversed-host URL scheme for every deployment.
 
-For a local Gateway tunnel, run **`services/gateway`** with `APP_ENV=dev` and an
-isolated disposable Postgres `DATABASE_URL`, then expose it over HTTPS. The
-current shared Operations environment guard rejects `APP_ENV=local` even though
-a SQLite backend remains implemented. Set **`OAUTH_IOS_METADATA_ORIGIN`** when
+For a local backend tunnel, run the Go **`services/appview`** process with `APP_ENV=dev`, an absolute disposable `SQLITE_DB_PATH`, and the required scheduling/draft settings from the standalone runbook, then expose it over HTTPS. Set **`OAUTH_IOS_METADATA_ORIGIN`** when
 forwarded host headers do not match the tunnel URL (`OAUTH_PUBLIC_ORIGIN`
 applies only to web metadata), then:
 

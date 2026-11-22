@@ -11,7 +11,7 @@ it("documents authenticated creator APIs with scoped nullable metrics and matchi
     const operation = spec.paths[`/v1/analytics/${name}`][method];
     expect(operation.security).toEqual([{ ATProtoOAuthDPoP: [] }]);
     expect(operation.responses["401"]).toBeDefined();
-    for (const service of ["gateway", "appview"]) {
+    for (const service of ["appview"]) {
       const request = readFileSync(join(import.meta.dir, `../../../services/${service}/bruno/Analytics/${file}.bru`), "utf8");
       expect(request).toContain(`/v1/analytics/${name}`);
       expect(request).toContain("DPoP: {{dpopProof}}");

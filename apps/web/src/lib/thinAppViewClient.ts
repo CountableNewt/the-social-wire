@@ -15,10 +15,6 @@ import { gatewayFetch } from "@/lib/socialWireGatewayClient";
 import { socialWireXrpc } from "@/lib/socialWireXrpc";
 import { sourceRefreshErrorFromResponse } from "@/lib/publicationSourceRefreshError";
 
-export function isThinAppViewEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_USE_THIN_APPVIEW !== "false";
-}
-
 export type AppViewEntriesPage = {
   entries: EntryListItem[];
   cursor?: string;

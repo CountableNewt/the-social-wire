@@ -1,7 +1,7 @@
 "use client";
 
 import { floatingGlassClasses } from "@/components/shared/floatingChromeStyles";
-import { Images, Clapperboard, Archive, Bookmark, List, MessagesSquare, MoreHorizontal, Newspaper, Users } from "lucide-react";
+import { Archive, Bookmark, List, MessagesSquare, MoreHorizontal, Newspaper, Users } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -14,8 +14,6 @@ import { cn } from "@/lib/utils";
 
 const FEED_ITEMS = [
   { feed: "social", label: "Social", icon: MessagesSquare },
-  { feed: "shortVideos", label: "Short Videos", icon: Clapperboard },
-  { feed: "photos", label: "Photos", icon: Images },
   { feed: "readLater", label: "Saved", icon: Bookmark },
   { feed: "archive", label: "Archive", icon: Archive },
   { feed: "subscribed", label: "Subscribed", icon: Newspaper },

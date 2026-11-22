@@ -105,3 +105,13 @@ func TestLatrUsesLatrProofAndPreservesMethodAndNonce(t *testing.T) {
 		t.Errorf("wrong proxied nonce response: %d %+v", reply.Code, reply.Header())
 	}
 }
+
+func TestRetiredOperationsMetadataIsNotRegistered(t *testing.T) {
+	router := httpx.NewRouter()
+	RegisterMetadata(router, config.Core{})
+	reply := httptest.NewRecorder()
+	router.ServeHTTP(reply, httptest.NewRequest(http.MethodGet, "/operations-oauth-client-metadata.json", nil))
+	if reply.Code != http.StatusNotFound {
+		t.Fatalf("retired Operations metadata returned %d", reply.Code)
+	}
+}

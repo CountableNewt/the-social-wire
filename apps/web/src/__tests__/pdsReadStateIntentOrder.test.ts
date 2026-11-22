@@ -25,9 +25,6 @@ function fixture(cached = true) {
   const locks = Object.getOwnPropertyDescriptor(navigator, "locks");
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: () => { throw new Error("Intent creation must not acquire the publishing lock"); } } });
   restores.push(() => { if (locks) Object.defineProperty(navigator, "locks", locks); else Reflect.deleteProperty(navigator, "locks"); });
-  const enabled = process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
-  process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = "true";
-  restores.push(() => { if (enabled === undefined) delete process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED; else process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = enabled; });
   const customEvent = Object.getOwnPropertyDescriptor(globalThis, "CustomEvent");
   Object.defineProperty(globalThis, "CustomEvent", { configurable: true, value: window.CustomEvent });
   restores.push(() => { if (customEvent) Object.defineProperty(globalThis, "CustomEvent", customEvent); else Reflect.deleteProperty(globalThis, "CustomEvent"); });

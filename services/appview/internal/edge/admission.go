@@ -90,7 +90,7 @@ func (a *Admission) Middleware(next httpx.Handler) httpx.Handler {
 		if did == "" {
 			return httpx.ErrUnauthorized
 		}
-		transfer := strings.HasSuffix(path, ".uploadAttachment") || strings.HasSuffix(path, ".getAttachment")
+		transfer := (strings.HasSuffix(path, ".uploadAttachment") || strings.HasSuffix(path, ".uploadAttachmentChunk") || strings.HasSuffix(path, ".completeAttachmentUpload")) || strings.HasSuffix(path, ".getAttachment")
 		if !a.acquire(did, transfer, time.Now()) {
 			w.Header().Set("Cache-Control", "private, no-store")
 			w.Header().Set("Retry-After", "1")

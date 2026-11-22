@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { validateHttpsEmbedProbeTarget } from "@/lib/embedFramePolicy";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MAX_THUMB_BYTES = 1_000_000;
 const MAX_ORIGINAL_BYTES = 10_000_000;
@@ -103,6 +104,29 @@ export async function GET(request: Request) {
   const body = await readLimitedBody(upstream.body, maxBytes);
   if (!body) {
     return NextResponse.json({ error: "too_large" }, { status: 413 });
+  }
+
+  if (original) {
+    // Preserve the original-image limit and format while using a streamed
+    // Function response; buffered Vercel responses have a smaller size cap.
+    let offset = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset === body.byteLength) {
+          controller.close();
+          return;
+        }
+        const end = Math.min(offset + 64 * 1024, body.byteLength);
+        controller.enqueue(body.subarray(offset, end));
+        offset = end;
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "public, max-age=3600",
+        "Content-Type": contentType,
+      },
+    });
   }
 
   const arrayBuffer = new ArrayBuffer(body.byteLength);

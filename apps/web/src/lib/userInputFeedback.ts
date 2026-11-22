@@ -23,13 +23,6 @@ export interface UserInputTag {
   value: string;
 }
 
-export const LOCAL_USER_INPUT_TAGS: UserInputTag[] = [
-  { label: "Bug", value: "bug" },
-  { label: "Feature", value: "feature" },
-  { label: "Question", value: "question" },
-  { label: "Comment", value: "comment" },
-];
-
 export interface UserInputStrongRef {
   uri: string;
   cid: string;

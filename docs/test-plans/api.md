@@ -1,61 +1,12 @@
-# Gateway test plan
+# Go AppView API Test Plan
 
-**Package:** `services/gateway`  
-**Runner:** Go (`go test -race -p 1 ./...`)\
-**CI:** Not run in CI (Go services are no longer exercised by GitHub Actions)
+The public backend lives in `services/appview`. Tests colocate with Go packages and cover OAuth/DPoP admission, reader bootstrap, read-state boundaries, drafts, scheduling and SQLite migrations.
 
-## Commands
-
-```bash
-cd services/gateway
-go test -race -p 1 ./...
+```sh
+(cd services/appview && go test ./... && go vet ./...)
+(cd packages/spec && bun test)
 ```
 
-## Test layout
+API contract changes must update `packages/spec/openapi.yaml`, the endpoint manifest and matching Bruno requests under `services/appview/bruno`. Route drift inspects Go registration sources. Native and Web clients share the same API hosts and authenticated NDJSON bootstrap contract.
 
-```
-services/gateway/internal/gateway/
-  route_inventory_test.go
-  proxy_contract_test.go
-  preferences_test.go
-  postgres_test.go
-```
-
-Go authentication tests live in `packages/go/gatewaycore/` (DPoP, internal trust, OAuth policy). Shared Swift GatewayCore tests remain for native clients.
-
-## Auth matrix (manual + automated)
-
-| Case | Expected | Test |
-|------|----------|------|
-| No `Authorization` on protected `/xrpc/*` or `/v1/*` | 401 | Go GatewayCore auth tests |
-| Missing / invalid DPoP | 401 | Go GatewayCore auth tests |
-| Valid Bearer + DPoP | 200 on protected routes | Go Gateway auth-flow and proxy tests |
-
-## Bruno (manual HTTP)
-
-Import `services/gateway/bruno/` as a Bruno collection. Folders include
-**Health**, **OAuth**, **Sync**, **Publications**, **AppView**, **XRPC**,
-**Latr**, **Operations**, and **Telemetry**. Operations and AppView folders also
-contain focused XRPC requests where applicable.
-
-Populate `oauthAccessToken` and `dpopProof` from a real OAuth session. Never commit tokens.
-
-## OpenAPI drift
-
-`packages/spec/__tests__/openapi-routes.test.ts` asserts documented paths exist
-in Gateway, GatewayCore, AppView, and Operations router sources and reverse-checks
-every directly registered literal `/v1/*` path. The endpoint-manifest test
-classifies every OpenAPI operation and validates XRPC NSID mappings. CI job:
-**`spec`**.
-
-## Manual verification
-
-- [ ] `curl /health` returns 200
-- [ ] `GET /oauth-client-metadata.json` matches web scopes
-- [ ] Authenticated `GET /xrpc/app.thesocialwire.sync.getPreferences` with real token
-- [ ] AppView proxy routes return data when `APPVIEW_BASE_URL` is set
-
-## Related
-
-- [AppView test plan](./appview.md)
-- [Charybdis test plan](./worker.md)
+Before release, validate signed-in reader and authoring workflows in Development, including nonce retries, account changes, pagination, unread reconciliation and scheduling. Promote the same source to Production only after Development acceptance.

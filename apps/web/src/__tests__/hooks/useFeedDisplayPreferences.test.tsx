@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 
 import * as AuthHook from "@/hooks/useAuth";
 import * as PDSHook from "@/hooks/usePDSClient";
-import * as DummyReaderData from "@/lib/dummyReaderData";
 import * as SyncPreferencesClient from "@/lib/syncPreferencesClient";
 import * as AccountPreferences from "@/hooks/useReadLaterPreferences";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
@@ -77,10 +76,9 @@ describe("feed display preference persistence", () => {
     const pds = spyOn(PDSHook, "usePDSClient").mockReturnValue({
       upsertPreferences,
     } as unknown as PDSClient);
-    const dummy = spyOn(DummyReaderData, "isDummyReaderDataEnabled").mockReturnValue(false);
     const sync = spyOn(SyncPreferencesClient, "fetchSyncPreferences").mockImplementation(fetchPreferences);
     restoreSpies.push(() => auth.mockRestore(), () => pds.mockRestore(),
-      () => dummy.mockRestore(), () => sync.mockRestore());
+      () => sync.mockRestore());
   });
 
   afterEach(() => {

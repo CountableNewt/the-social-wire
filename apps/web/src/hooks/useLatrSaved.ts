@@ -29,10 +29,6 @@ import { buildOptimisticBookmarkRow } from "@/lib/optimisticLatrSaves";
 import { normalizeLatrHttpsUrl } from "@/lib/latrSavedUrls";
 import { createReadLaterProvider } from "@/lib/readLaterProvider";
 import { resolveReadLaterSaveTarget } from "@/lib/readLaterSaveTarget";
-import {
-  dummyLatrSavesForState,
-  isDummyReaderDataEnabled,
-} from "@/lib/dummyReaderData";
 import { useAuth } from "./useAuth";
 import { usePDSClient } from "./usePDSClient";
 import { readLaterQueryKeys } from "@/lib/semble";
@@ -82,7 +78,6 @@ export function useLatrMergedHttpsSaves(
   options?: { enabled?: boolean }
 ) {
   const clients = useReadLaterClients();
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const enabled = options?.enabled ?? true;
   const migration = useQuery({
     queryKey: [MIGRATION_QUERY_KEY, clients?.did, LATR_BOOKMARK_CONTRACT_VERSION],
@@ -94,19 +89,18 @@ export function useLatrMergedHttpsSaves(
       if (!summary.hasConflicts) window.localStorage.setItem(key, "complete");
       return summary;
     },
-    enabled: enabled && !dummyReaderDataEnabled && Boolean(clients),
+    enabled: enabled && Boolean(clients),
     retry: false,
     staleTime: Infinity,
   });
   const listQuery = useQuery({
     queryKey: latrSavesQueryKey(state, clients),
     queryFn: async (): Promise<MergedLatrSave[]> => {
-      if (dummyReaderDataEnabled) return dummyLatrSavesForState(state);
       return clients?.bookmarks.listAll(state) ?? [];
     },
     enabled:
       enabled &&
-      (dummyReaderDataEnabled || (Boolean(clients) && migration.isSuccess)),
+      (Boolean(clients) && migration.isSuccess),
     staleTime: 15_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -151,10 +145,8 @@ export function useLatrTags() {
 export function useSaveHttpsReadLaterMutation() {
   const clients = useReadLaterClients();
   const qc = useQueryClient();
-  const dummy = isDummyReaderDataEnabled();
   return useMutation({
     mutationFn: async (params: { url: string; title?: string; excerpt?: string; tags?: string[] }) => {
-      if (dummy) return;
       if (!clients) throw new Error("No read-later provider — not signed in");
       await clients.provider.saveSubject(params.url.trim(), normalizeLatrTags(params.tags ?? []));
     },
@@ -167,7 +159,7 @@ export function useSaveHttpsReadLaterMutation() {
     onError: (_error, _params, context) =>
       restoreLatrSaveQueries(qc, context, clients?.saveKeys),
     onSettled: () => {
-      if (!dummy) invalidateLatrSaveQueries(qc, clients?.saveKeys);
+      invalidateLatrSaveQueries(qc, clients?.saveKeys);
       void qc.invalidateQueries({ queryKey: clients?.tagsKey ?? LATR_TAGS_QUERY_KEY });
     },
   });
@@ -246,10 +238,8 @@ export function useDeleteLatrTagPageMutation() {
 function useBookmarkMutation(action: "delete" | "archive" | "unarchive") {
   const clients = useReadLaterClients();
   const qc = useQueryClient();
-  const dummy = isDummyReaderDataEnabled();
   return useMutation({
     mutationFn: async (bookmarkUri: string) => {
-      if (dummy) return;
       if (!clients) throw new Error("No read-later provider — not signed in");
       if (action === "delete") return clients.provider.deleteSaveItem(bookmarkUri);
       if (action === "archive") return clients.provider.archiveSaveItem(bookmarkUri);
@@ -266,7 +256,7 @@ function useBookmarkMutation(action: "delete" | "archive" | "unarchive") {
     onError: (_error, _params, context) =>
       restoreLatrSaveQueries(qc, context, clients?.saveKeys),
     onSettled: () => {
-      if (!dummy) invalidateLatrSaveQueries(qc, clients?.saveKeys);
+      invalidateLatrSaveQueries(qc, clients?.saveKeys);
     },
   });
 }

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 
 import { ReadRouteProvider, useReadRoute } from "@/contexts/ReadRouteContext";
-import { READ_STATE_STORAGE_KEY } from "@/lib/entryReadStateStorage";
+import { viewerReadStateStorageKey } from "@/lib/entryReadStateStorage";
 import * as AuthHook from "@/hooks/useAuth";
 
 let restoreAuthSpy: (() => void) | undefined;
@@ -53,7 +53,7 @@ describe("ReadRouteProvider", () => {
     });
 
     expect(result.current.isEntryRead(entryId)).toBe(true);
-    expect(window.localStorage.getItem(READ_STATE_STORAGE_KEY) ?? "").toContain(entryId);
+    expect(window.localStorage.getItem(viewerReadStateStorageKey("did:plc:viewer")) ?? "").toContain(entryId);
 
     act(() => {
       result.current.markEntryUnread(entryId, {
@@ -62,7 +62,7 @@ describe("ReadRouteProvider", () => {
     });
 
     expect(result.current.isEntryRead(entryId)).toBe(false);
-    expect(window.localStorage.getItem(READ_STATE_STORAGE_KEY)).not.toContain(entryId);
+    expect(window.localStorage.getItem(viewerReadStateStorageKey("did:plc:viewer"))).not.toContain(entryId);
   });
 
   it("persists publication tab selection", async () => {

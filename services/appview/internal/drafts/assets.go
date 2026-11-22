@@ -115,6 +115,11 @@ func (s *Service) reserve(ctx context.Context, owner string, wanted asset) (asse
 }
 
 func (s *Service) upload(ctx context.Context, owner, id string, body io.Reader, length int64) (asset, error) {
+	ctx, release, err := s.ensureTransfer(ctx, owner)
+	if err != nil {
+		return asset{}, err
+	}
+	defer release()
 	reserved, key, err := s.readAsset(ctx, s.db.Reader(), owner, id)
 	if err != nil {
 		return asset{}, err
@@ -159,10 +164,16 @@ func (s *Service) upload(ctx context.Context, owner, id string, body io.Reader, 
 	if _, err = encrypted.Seek(0, io.SeekStart); err != nil {
 		return asset{}, err
 	}
+	if err := s.checkOwner(ctx, s.db.Reader(), owner); err != nil {
+		return asset{}, err
+	}
 	if err = s.objects.Put(ctx, key, encrypted, size); err != nil {
 		return asset{}, errUnavailable
 	}
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := s.checkOwner(ctx, tx, owner); err != nil {
+			return err
+		}
 		current, currentKey, err := s.readAsset(ctx, tx, owner, id)
 		if err != nil {
 			return err
@@ -221,6 +232,11 @@ func validateUploadContent(file *os.File, media string) error {
 }
 
 func (s *Service) download(ctx context.Context, owner, id string) (*os.File, asset, error) {
+	ctx, release, err := s.ensureTransfer(ctx, owner)
+	if err != nil {
+		return nil, asset{}, err
+	}
+	defer release()
 	value, key, err := s.readAsset(ctx, s.db.Reader(), owner, id)
 	if err != nil {
 		return nil, asset{}, err

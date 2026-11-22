@@ -13,6 +13,7 @@ export type DraftAttachment = {
 export type DraftAttachmentRef = { assetId: string; role: "original" | "prepared" | "video" | "poster" | "caption" | "gif"; ref: string };
 export type DraftAttachmentManifest = { draftId: string; revision: number; deleted: boolean; attachments: (DraftAttachmentRef & { asset: DraftAttachment })[] };
 export const PRIVATE_DRAFT_FILE_LIMIT = 100 * 1024 * 1024;
+export const PRIVATE_DRAFT_UPLOAD_CHUNK_BYTES = 3 * 1024 * 1024;
 const prefix = "/xrpc/app.thesocialwire.socialDraft.";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -37,17 +38,17 @@ function validateManifest(value: DraftAttachmentManifest, draftId: string) {
   for (const ref of value.attachments) if (validateAsset(ref.asset).assetId !== ref.assetId) throw new Error("Private Draft Manifest Asset Does Not Match.");
   return value;
 }
-async function request<T>(actor: DraftAttachmentActor, method: string, init: RequestInit, decode: (response: Response) => Promise<T>, acceptNotFound = false): Promise<T> {
+async function request<T>(actor: DraftAttachmentActor, method: string, init: RequestInit, decode: (response: Response) => Promise<T>, acceptNotFound = false, timeoutMs = 60_000): Promise<T> {
   assertDraftAttachmentActor(actor);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error("Private Attachment Sync Timed Out. Your Local Copy Is Safe. Retry.")), 60_000);
+  const timer = setTimeout(() => controller.abort(new Error("Private Attachment Sync Timed Out. Your Local Copy Is Safe. Retry.")), timeoutMs);
   const signal = actor.signal ? AbortSignal.any([actor.signal, controller.signal]) : controller.signal;
   try {
     return await awaitWithAbort((async () => {
       const response = await gatewayFetch(actor.session, `${prefix}${method}`, { ...init, signal, cache: "no-store", redirect: "error" });
       assertDraftAttachmentActor(actor);
       if (!response.ok && !(acceptNotFound && response.status === 404)) {
-        const operation = ({ reserveAttachment: "Reserving the draft attachment", uploadAttachment: "Uploading the draft attachment", getAttachment: "Downloading the draft attachment", getGifFile: "Downloading the draft GIF", getManifest: "Loading draft attachments", putManifest: "Saving draft attachments", deleteManifest: "Deleting draft attachments" } as Record<string, string>)[method.split("?")[0]] ?? "Private attachment sync";
+        const operation = ({ reserveAttachment: "Reserving the draft attachment", uploadAttachment: "Uploading the draft attachment", uploadAttachmentChunk: "Uploading the draft attachment part", completeAttachmentUpload: "Completing the draft attachment upload", getAttachment: "Downloading the draft attachment", getGifFile: "Downloading the draft GIF", getManifest: "Loading draft attachments", putManifest: "Saving draft attachments", deleteManifest: "Deleting draft attachments" } as Record<string, string>)[method.split("?")[0]] ?? "Private attachment sync";
         const failure = await privateDraftRequestFailure(response, operation);
         assertDraftAttachmentActor(actor);
         throw Object.assign(new Error(failure.message), { status: response.status, error: failure.code });
@@ -72,7 +73,9 @@ function sameFile(a: DraftAttachment, b: DraftAttachment) {
 }
 export async function uploadDraftAttachment(actor: DraftAttachmentActor, asset: DraftAttachment, blob: Blob): Promise<DraftAttachment> {
   validateAsset(asset);
+  assertDraftAttachmentActor(actor);
   if (blob.size !== asset.byteLength || blob.type !== asset.contentType || await draftAttachmentSHA256(blob) !== asset.sha256) throw new Error("Private Draft File Changed. Retry Saving The Photo.");
+  assertDraftAttachmentActor(actor);
   const metadata = { assetId: asset.assetId, name: asset.name, contentType: asset.contentType, byteLength: asset.byteLength, sha256: asset.sha256, kind: asset.kind };
   const decode = async (response: Response) => {
     const result = validateAsset((await response.json()).attachment);
@@ -81,6 +84,31 @@ export async function uploadDraftAttachment(actor: DraftAttachmentActor, asset: 
   };
   const reserved = await request(actor, "reserveAttachment", json(metadata), decode);
   if (reserved.state === "ready") return reserved;
+  if (blob.size > PRIVATE_DRAFT_UPLOAD_CHUNK_BYTES) {
+    // The immutable reservation identifies a whole file. Replaying its identical
+    // parts after a lost response resumes safely without replacing the local copy.
+    for (let offset = 0, part = 0; offset < blob.size; offset += PRIVATE_DRAFT_UPLOAD_CHUNK_BYTES, part++) {
+      assertDraftAttachmentActor(actor);
+      await request(actor, "uploadAttachmentChunk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Social-Draft-Upload-Id": asset.assetId,
+          "X-Social-Draft-Upload-Part": String(part),
+        },
+        body: blob.slice(offset, Math.min(offset + PRIVATE_DRAFT_UPLOAD_CHUNK_BYTES, blob.size)),
+      }, async response => {
+        const acknowledgment = await response.json();
+        if (!acknowledgment || acknowledgment.assetId !== asset.assetId || acknowledgment.part !== part || acknowledgment.received !== true) {
+          throw new Error("Private Draft Upload Part Could Not Be Confirmed. Your Local Copy Is Safe. Retry.");
+        }
+      });
+    }
+    assertDraftAttachmentActor(actor);
+    const uploaded = await request(actor, "completeAttachmentUpload", json({ assetId: asset.assetId }), decode, false, 120_000);
+    if (uploaded.state !== "ready") throw new Error("Private Draft Photo Upload Is Pending. Retry Before Closing.");
+    return uploaded;
+  }
   // Blob bodies let the browser set Content-Length without a forbidden header.
   const uploaded = await request(actor, "uploadAttachment", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Social-Draft-Upload-Id": asset.assetId }, body: blob }, decode);
   if (uploaded.state !== "ready") throw new Error("Private Draft Photo Upload Is Pending. Retry Before Closing.");

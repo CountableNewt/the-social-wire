@@ -11,7 +11,7 @@ import (
 )
 
 var requestHeaders = strings.Join([]string{
-	"Accept", "Authorization", "Content-Type", "Origin", "If-None-Match", "DPoP",
+	"X-Social-Draft-Upload-Id", "X-Social-Draft-Upload-Part", "Accept", "Authorization", "Content-Type", "Origin", "If-None-Match", "DPoP",
 	"X-Request-ID", "traceparent", "Idempotency-Key", "Last-Event-ID", auth.UpstreamHeader,
 	auth.SessionProofHeader, "X-Latr-Gateway-DPoP",
 	auth.ReceiptHeader, auth.RequiredHeader, auth.PreparedHeader,
@@ -23,13 +23,10 @@ var exposedHeaders = strings.Join([]string{
 
 // CORS lets configured web origins present OAuth and read session nonce headers.
 func CORS(core config.Core) httpx.Middleware {
-	origins := make(map[string]struct{}, len(core.CORSAllowedOrigins)+5)
+	origins := make(map[string]struct{}, len(core.CORSAllowedOrigins)+4)
 	maps.Copy(origins, core.CORSAllowedOrigins)
 	if len(origins) == 0 && core.OAuthPublicOrigin != "" {
 		origins[core.OAuthPublicOrigin] = struct{}{}
-	}
-	if core.OAuthOperationsOrigin != "" {
-		origins[core.OAuthOperationsOrigin] = struct{}{}
 	}
 	if core.AppEnv == config.Local {
 		for _, origin := range []string{"http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"} {

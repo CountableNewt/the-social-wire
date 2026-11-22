@@ -17,7 +17,8 @@ func TestInitializeOnlyIsRepeatable(t *testing.T) {
 		"APP_ENV":                           "dev",
 		"BACKEND_MODE":                      "standalone",
 		"SQLITE_DB_PATH":                    path,
-		"ENABLE_THIN_APPVIEW":               "true",
+		"SCHEDULING_PUBLIC_ORIGIN":          "https://routing-fixture.example",
+		"SCHEDULING_STORAGE_KEY":            base64.StdEncoding.EncodeToString(make([]byte, 32)),
 		"PDS_ATTESTATION_RECEIPT_SECRET":    "startup-fixture-attestation-secret",
 		"SOCIAL_DRAFTS_ENABLED":             "true",
 		"SOCIAL_DRAFT_STORAGE_KEY":          base64.StdEncoding.EncodeToString(make([]byte, 32)),
@@ -38,7 +39,7 @@ func TestInitializeOnlyIsRepeatable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for _, table := range []string{"content_items", "operations_service_state", "private_social_draft_accounts"} {
+	for _, table := range []string{"content_items", "operations_service_state", "private_social_draft_accounts", "creator_analytics_items"} {
 		var name string
 		if err := db.Reader().QueryRowContext(ctx, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?", table).Scan(&name); err != nil {
 			t.Errorf("missing %s schema: %v", table, err)

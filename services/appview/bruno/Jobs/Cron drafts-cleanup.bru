@@ -1,0 +1,20 @@
+meta {
+  name: Cron Clean Up Expired Draft Assets
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/internal/cron/drafts-cleanup
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{cronSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

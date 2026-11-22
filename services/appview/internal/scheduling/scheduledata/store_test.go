@@ -3,6 +3,7 @@ package scheduledata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -94,12 +95,19 @@ func TestOAuthSessionRefreshIgnoresSupersededToken(t *testing.T) {
 	}
 	replacement := old
 	replacement.TokenJSON = `{"accessToken":"new"}`
-	if err := store.ReplaceOAuthSessionAfterRefresh(ctx, replacement, "old", now); err != nil {
+	if ok, err := store.ClaimOAuthRefresh(ctx, old.DID, "owner", "token-hash", 1, 10); err != nil || !ok {
+		t.Fatalf("claim: %t %v", ok, err)
+	}
+	if err := store.BeginOAuthRefresh(ctx, old.DID, "owner", "token-hash", 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ReplaceOAuthSessionAfterRefresh(ctx, old, "old", now); err != nil {
+	if err := store.CompleteOAuthRefresh(ctx, replacement, old.TokenJSON, "owner", "token-hash", now, 3); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.CompleteOAuthRefresh(ctx, old, old.TokenJSON, "owner", "token-hash", now, 4); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale refresh overwrite: %v", err)
+	}
+
 	latest, err := store.OAuthSession(ctx, old.DID)
 	if err != nil || latest == nil || latest.TokenJSON != replacement.TokenJSON {
 		t.Fatalf("superseded token overwrote session: %v", err)

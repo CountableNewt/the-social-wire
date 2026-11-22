@@ -67,3 +67,14 @@ describe("standalone Railway Frontend contract", () => {
     expect(web.build.watchPatterns).not.toContain("/scripts/go/**");
   });
 });
+
+it("keeps remote Turso deployment separate from the persistent SQLite target", () => {
+  const remote = JSON.parse(readFileSync(join(root, "railway/appview-turso.json"), "utf8"));
+  expect(remote.build.dockerfilePath).toBe(config.build.dockerfilePath);
+  expect(remote.deploy.requiredMountPath).toBeUndefined();
+  expect(remote.deploy.preDeployCommand).toBe("/usr/local/bin/AppView --initialize-only");
+  expect(remote.deploy.numReplicas).toBe(1);
+  expect(remote.deploy.healthcheckPath).toBe("/readyz");
+  expect(config.deploy.requiredMountPath).toBe("/data");
+  expect(config.deploy.preDeployCommand).toBeNull();
+});

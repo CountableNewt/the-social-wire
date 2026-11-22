@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # AppView architecture
 
 > **Wiki summary:** [docs/wiki/Thin-AppView.md](../wiki/Thin-AppView.md). The

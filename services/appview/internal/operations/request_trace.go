@@ -76,7 +76,7 @@ func RequestTrace(service, environment, instanceID string, telemetry *TelemetryB
 					recorder.Header().Del("traceparent")
 				}
 			}
-			recordRequest(telemetry, service, environment, instanceID, r, path, requestID, trace,
+			recordRequest(telemetryFor(ctx, telemetry), service, environment, instanceID, r, path, requestID, trace,
 				startedAt, duration, status, errorType)
 			return err
 		}

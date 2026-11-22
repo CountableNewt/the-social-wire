@@ -1,81 +1,16 @@
-# Deployment and environments
+# Deployment and Environments
 
-Development and Production are isolated Railway environments. GitHub Actions validates source changes; Railway deploys linked revisions through its GitHub integration after the required checks pass.
+Development tracks `dev`; Production tracks `main`. Required CI enforces Development-first patch parity. Railway currently builds the protected branches through its GitHub integration; GitHub Actions does not deploy or mutate hosted databases.
 
-| Environment | Branch | Web | Gateway | Operations console |
-|-------------|--------|-----|---------|--------------------|
-| Development | `dev` | `testing.thesocialwire.app` | `api.testing.thesocialwire.app` | `operations.testing.thesocialwire.app` |
-| Production | `main` | `thesocialwire.app` | `api.thesocialwire.app` | `operations.thesocialwire.app` |
+| Environment | Web | Go AppView |
+|-------------|-----|------------|
+| Development | `testing.thesocialwire.app` | `api.testing.thesocialwire.app` |
+| Production | `thesocialwire.app` | `api.thesocialwire.app` |
 
-Generated `*.up.railway.app` domains are deployment diagnostics. OAuth client IDs, redirect URIs, CORS origins, and public documentation use the stable custom domains.
+Use `railway/web-standalone.json` and `railway/appview-standalone.json`. The Go backend uses one US West replica with a persistent `/data` volume holding AppView and scheduling SQLite databases. The retired distributed Swift services, Operations Web, Postgres migrator, Redis package and infrastructure graph are removed from source.
 
-## Deployed services
+Hosted service, database, volume and bucket deletion remains a separate environment-scoped operator action. Preserve backups and encryption keys; source removal does not delete them.
 
-Grandfathered Railway config files under `railway/` define the public and
-compatibility services. The scoped `/.railway/railway.ts` partial defines the
-three replicated Development indexing service classes. Snapshot jobs are
-temporary operator-created services:
+Issue #963 tracks the remaining database portability, durable coordination, Turso and Vercel steps. Do not describe those future targets as deployed. Preserve OAuth client IDs, redirect hosts and existing API domains during the eventual cutover.
 
-| Service | Config |
-|---------|--------|
-| Web | `railway/web.json` |
-| Operations Web | `railway/operations-web.json` |
-| Gateway | `railway/gateway.json` |
-| AppView | `railway/appview.json` |
-| Charybdis | `railway/charybdis.json` |
-| Operations | `railway/operations.json` |
-| Jetstream V2 Ingest | `railway/jetstream-ingest.json` |
-| Ingress Controller | `.railway/railway.ts` |
-| Projection Pool | `.railway/railway.ts` |
-| Coordinator | `.railway/railway.ts` |
-| Database Migrator | `railway/database-migrator.json` |
-
-Railway Postgres is the canonical hosted database. Database Migrator applies
-the provider-neutral migration history; database consumers reference its
-service ID so Railway orders their startup behind successful migration. GitHub
-Actions never deploys services or mutates hosted databases.
-
-The repository-owned Tap deployment was retired on 2026-08-16. Removing a
-pre-existing hosted service or secret remains a separate, environment-scoped
-operator action and is not performed by the source change.
-
-## Internal networking and regions
-
-Gateway, AppView, Ingress Controller, Projection Pool, Coordinator, Operations, Database Migrator,
-and their databases communicate over Railway private networking. Database-bound
-compute and its Postgres service must remain co-located in the same US West
-region. The hosted data-residency scope is the United States.
-
-## Redis rollout status
-
-Redis is architecturally optional and selected independently with
-`GATEWAY_PDS_CACHE_BACKEND` and `APPVIEW_CACHE_BACKEND`. As verified on
-2026-08-12, Gateway, AppView, and the compatible AppView worker select Redis in both Development and
-Production. Postgres remains durable and its cache tables remain the rollback
-backend. Future Redis changes must still be exercised and soaked in Development
-before Production. See [[Redis]].
-
-## Configuration safety
-
-Before billing integration, Gateway reads `SOCIALWIRE_PRO_DIDS` as a comma-separated
-allowlist of exact OAuth viewer DIDs (for example, `did:plc:account,did:web:brand.example`).
-An unset or empty value grants everyone the Free plan. Configure grants on Gateway
-in the intended environment; clients read authenticated `/v1/subscription/entitlements`
-and cannot grant themselves Pro. Tools require Pro, including Gateway analytics
-summary and refresh. Linked brands authenticate as their own DID, so creator
-analytics for a brand requires an explicit brand grant even when its owner has Pro.
-Ordinary Reader/Social observation ingestion remains available to Free viewers.
-
-- Set the exact config path on each Railway service; repository files are inactive until selected in Railway.
-- Keep Development on `dev` and Production on `main`.
-- Store secrets and Railway reference variables only in the matching environment.
-- Validate testing Web, Gateway, OAuth metadata, and native sign-in before production changes.
-- Do not advertise an environment as healthy based on a successful build alone; verify health, TLS, OAuth, and a signed-in user flow.
-
-Canonical deployment reference: [railway/README.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/railway/README.md).
-
-Related: [[Service-API]], [[Operations]], [[Testing]].
-
-### Composer GIF Provider
-
-Gateway accepts `KLIPY_API_KEY` (legacy `KLIPPY_API_KEY` fallback) for KLIPY’s Tenor-compatible `/v2` API. Confirm partner API compatibility, production access and attribution before rollout. The web client never receives the key. Authenticated `GET /v1/media/gifs` supports search/featured pagination and asset-ID resolution. `GET /v1/media/gifs/thumbnail?id=…` resolves a verified poster bounded to 1 MB. Missing configuration returns 503. Scheduled and brand-account media remain gated until their publishing contracts support attachments.
+See the [standalone backend runbook](https://github.com/CountableNewt/the-social-wire/blob/main/docs/architecture/standalone-reader.md) for configuration and recovery.

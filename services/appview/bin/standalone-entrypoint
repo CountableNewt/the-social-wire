@@ -1,6 +1,22 @@
 #!/bin/sh
 set -eu
 umask 077
+case "${DATABASE_BACKEND:-sqlite}" in
+  turso)
+    if [ "${BACKEND_MODE:-}" != standalone ]; then
+      echo 'Remote backend requires BACKEND_MODE=standalone.' >&2
+      exit 1
+    fi
+    # Remote stores must never create or use an ephemeral local database.
+    # Go validates both endpoint/token pairs and schema readiness before serving.
+    if [ "$(id -u)" = 0 ]; then
+      exec runuser -u appuser -- "$@"
+    fi
+    exec "$@"
+    ;;
+  sqlite) ;;
+  *) echo 'DATABASE_BACKEND must be sqlite or turso.' >&2; exit 1 ;;
+esac
 # The standalone image has one fixed persistent mount. Do not use the ephemeral root filesystem.
 if [ "${BACKEND_MODE:-}" != standalone ] || [ "${SQLITE_DB_PATH:-}" != /data/social-wire.sqlite ]; then
   echo 'Standalone backend requires BACKEND_MODE=standalone and SQLITE_DB_PATH=/data/social-wire.sqlite.' >&2
@@ -14,8 +30,7 @@ if ! mountpoint -q /data; then
 fi
 if [ "$(id -u)" = 0 ]; then
   install -d -m 0700 -o appuser -g appuser /data
-  databases="social-wire.sqlite"
-  if [ "${EMBEDDED_SCHEDULING_ENABLED:-}" = true ]; then databases="$databases scheduling.sqlite"; fi
+  databases="social-wire.sqlite scheduling.sqlite"
   for database in $databases; do
     for suffix in '' -wal -shm; do
       file="/data/${database}${suffix}"

@@ -6,10 +6,9 @@ import ReadStateCore
 @MainActor @Observable
 final class PDSReadStateSyncService {
     static let publicHistoryNotice = "Your read and unread history will be public on your PDS. This includes your existing history and future changes."
-    static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["SOCIALWIRE_PDS_READ_STATE_ENABLED"] == "true"
-            || Bundle.main.object(forInfoDictionaryKey: "PDSReadStateEnabled") as? Bool == true
-    }
+    /// Protocol support is always available; publishing history still requires
+    /// explicit confirmation and the account authority returned by the backend.
+    static let isEnabled = true
     var onSynchronized: ((String) async -> Void)?
     var onPendingChanged: ((String) -> Void)?
     private let xrpc: XRPCClient

@@ -39,7 +39,7 @@ test('Web verification build arguments contain only the fixed public environment
   assert.ok(args.includes('NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.testing.thesocialwire.app'));
   assert.ok(webBuildArguments('prod').includes('NEXT_PUBLIC_SITE_URL=https://thesocialwire.app'));
   assert.ok(webBuildArguments('prod').includes('NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.thesocialwire.app'));
-  assert.equal(args.length, 8);
+  assert.equal(args.length, 6);
   for (let index = 0; index < args.length; index += 2) {
     assert.equal(args[index], '--build-arg');
     assert.match(args[index + 1], /^NEXT_PUBLIC_[A-Z0-9_]+=/);
@@ -72,7 +72,7 @@ test('runtime smoke isolates fixture resources and probes packaged services', as
   const launch = fake.calls.find(args => args[0] === 'run');
   assert.equal(launch[launch.indexOf('--network') + 1], 'none');
   assert.ok(!launch.includes('--publish') && !launch.includes('-p'));
-  for (const fixture of ['SOCIAL_DRAFTS_ENABLED=true', 'TOOLS_ENABLED=true', 'EMBEDDED_SCHEDULING_ENABLED=true']) assert.ok(launch.includes(fixture));
+  for (const fixture of ['SOCIAL_DRAFTS_ENABLED=true', 'SCHEDULING_PUBLIC_ORIGIN=https://smoke.invalid']) assert.ok(launch.includes(fixture));
   assert.ok(!launch.some(value => value.startsWith('ENABLE_THIN_APPVIEW=') || value.startsWith('BIND_HOST=')), 'Smoke must exercise image defaults.');
   assert.ok(!launch.some(value => /^(GITHUB_TOKEN|GH_TOKEN|RAILWAY_TOKEN|RAILWAY_API_TOKEN)=/.test(value)));
   assert.equal(pauses, 1);

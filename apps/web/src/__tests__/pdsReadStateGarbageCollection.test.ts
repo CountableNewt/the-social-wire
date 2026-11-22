@@ -11,8 +11,7 @@ function session(fetchHandler:OAuthSession["fetchHandler"],scope=`repo:${CHUNK_C
   return {did,fetchHandler,getTokenInfo:async()=>({scope})} as unknown as OAuthSession;
 }
 test("cleanup is default OFF and unavailable proof support sends no requests",async()=>{
-  const previous=process.env.NEXT_PUBLIC_PDS_READ_STATE_GC_ENABLED;delete process.env.NEXT_PUBLIC_PDS_READ_STATE_GC_ENABLED;
-  try{expect(pdsReadStateGarbageCollectionEnabled()).toBe(false);}finally{if(previous!==undefined)process.env.NEXT_PUBLIC_PDS_READ_STATE_GC_ENABLED=previous;}
+  expect(pdsReadStateGarbageCollectionEnabled()).toBe(false);
   let requests=0;const repo=new OAuthReadStateGarbageCollection(session(async()=>{requests++;return Response.json({});}),()=>{});
   await expect(repo.verifiedRecord(MANIFEST_COLLECTION,"self")).rejects.toThrow("proof support");expect(requests).toBe(0);
 });

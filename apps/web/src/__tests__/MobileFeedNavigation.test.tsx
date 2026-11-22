@@ -119,17 +119,3 @@ describe("MobileFeedNavigation", () => {
   });
 
 });
-
-it("keeps Short Videos and Photos reachable after retirement", async () => {
-  const onSelect = mock(() => undefined);
-  render(<MobileFeedNavigation currentFeed="photos" visibleFeeds={new Set(["photos", "shortVideos", "social", "subscribed", "following"])} onSelect={onSelect} />);
-  expect(screen.getByRole("button", { name: "More Feeds" }).getAttribute("aria-current")).toBe("page");
-  fireEvent.click(screen.getByRole("button", { name: "Short Videos" }));
-  expect(onSelect).toHaveBeenCalledWith("shortVideos");
-  fireEvent.click(screen.getByRole("button", { name: "More Feeds" }));
-  const photos = await screen.findByRole("menuitem", { name: "Photos" });
-  expect(photos.getAttribute("aria-current")).toBe("page");
-  fireEvent.click(photos);
-  expect(onSelect).toHaveBeenCalledWith("photos");
-  await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Photos" })).toBeNull());
-});

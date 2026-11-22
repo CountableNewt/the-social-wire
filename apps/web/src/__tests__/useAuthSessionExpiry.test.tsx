@@ -1,45 +1,36 @@
+import { useEffect } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "bun:test";
+import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
+import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import { invalidateOAuthSession } from "@/lib/auth";
+import * as Auth from "@/lib/auth";
 
-const originalDummyData = process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
-
+const did = "did:plc:expiry-viewer";
+let apply: ReturnType<typeof useAuth>["applyOAuthSession"];
+const restores: (() => void)[] = [];
 function AuthStateProbe() {
-  const { session } = useAuth();
-  return <p>{session ? `signed-in:${session.did}` : "signed-out"}</p>;
+  const auth = useAuth();
+  useEffect(() => { apply = auth.applyOAuthSession; }, [auth.applyOAuthSession]);
+  return <p>{auth.session ? `signed-in:${auth.session.did}` : "signed-out"}</p>;
 }
-
-afterEach(() => {
-  cleanup();
-  if (originalDummyData === undefined) {
-    delete process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
-  } else {
-    process.env.NEXT_PUBLIC_USE_DUMMY_DATA = originalDummyData;
-  }
+beforeEach(() => {
+  const callback = spyOn(Auth, "pathnameIsOAuthCallbackRoute").mockReturnValue(true);
+  restores.push(() => callback.mockRestore());
 });
-
+afterEach(() => { cleanup(); restores.splice(0).forEach(restore => restore()); });
+async function mountSignedIn() {
+  render(<AuthProvider><AuthStateProbe /></AuthProvider>);
+  await act(async () => apply({ did, fetchHandler: globalThis.fetch } as unknown as OAuthSession));
+}
 it("clears provider auth state when the OAuth session expires", async () => {
-  process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "true";
-  render(
-    <AuthProvider>
-      <AuthStateProbe />
-    </AuthProvider>,
-  );
-
-  expect(screen.getByText(/^signed-in:/)).toBeTruthy();
-
-  await act(async () => {
-    invalidateOAuthSession("did:plc:socialwire-dummy-viewer", new Error("expired"));
-  });
-
+  await mountSignedIn();
+  expect(screen.getByText(`signed-in:${did}`)).toBeTruthy();
+  await act(async () => { Auth.invalidateOAuthSession(did, new Error("expired")); });
   expect(screen.getByText("signed-out")).toBeTruthy();
 });
-
 it("does not sign out the personal provider when a linked account expires", async () => {
-  process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "true";
-  render(<AuthProvider><AuthStateProbe /></AuthProvider>);
-  await act(async () => { invalidateOAuthSession("did:plc:linked-brand", new Error("expired")); });
-  expect(screen.getByText("signed-in:did:plc:socialwire-dummy-viewer")).toBeTruthy();
+  await mountSignedIn();
+  await act(async () => { Auth.invalidateOAuthSession("did:plc:linked-brand", new Error("expired")); });
+  expect(screen.getByText(`signed-in:${did}`)).toBeTruthy();
 });

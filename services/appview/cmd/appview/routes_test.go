@@ -20,11 +20,11 @@ import (
 
 func TestStandaloneRouterMountsDocumentedProtectedRoutes(t *testing.T) {
 	env := config.Env{
-		"APP_ENV": "dev", "EMBEDDED_SCHEDULING_ENABLED": "true",
-		"SQLITE_DB_PATH":                    filepath.Join(t.TempDir(), "social-wire.sqlite"),
-		"PDS_ATTESTATION_RECEIPT_SECRET":    "routing-fixture-attestation-key-at-least-32",
-		"EMBEDDED_SCHEDULING_PUBLIC_ORIGIN": "https://routing-fixture.example",
-		"EMBEDDED_SCHEDULING_STORAGE_KEY":   base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"APP_ENV":                        "dev",
+		"SQLITE_DB_PATH":                 filepath.Join(t.TempDir(), "social-wire.sqlite"),
+		"PDS_ATTESTATION_RECEIPT_SECRET": "routing-fixture-attestation-key-at-least-32",
+		"SCHEDULING_PUBLIC_ORIGIN":       "https://routing-fixture.example",
+		"SCHEDULING_STORAGE_KEY":         base64.StdEncoding.EncodeToString(make([]byte, 32)),
 	}
 	core, err := config.LoadCore(env)
 	if err != nil {

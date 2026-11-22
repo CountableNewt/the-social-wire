@@ -33,21 +33,25 @@ type service struct {
 	generationFetcher *readstate.LiveRecordFetcher
 	confirmationSlots chan struct{}
 	verifiedChunks    *readstate.VerifiedRecordCache
+	recoveryClaim     *recoveryClaim
+	durableRecovery   bool
 	reconciles        reconcileState
 	recoverySlots     chan struct{}
 }
 
 type Options struct {
-	Bootstrap    func([]thinstore.PublicationScope)
-	VerifyEntry  func(context.Context, string) (bool, error)
-	RefreshScope func(context.Context, *reqctx.Auth, thinstore.PublicationScope) (int, error)
+	// DurableRecovery queues public PDS recovery instead of detaching request work.
+	DurableRecovery bool
+	Bootstrap       func([]thinstore.PublicationScope)
+	VerifyEntry     func(context.Context, string) (bool, error)
+	RefreshScope    func(context.Context, *reqctx.Auth, thinstore.PublicationScope) (int, error)
 }
 
 // Register serves reader routes and returns the read-state readiness gate for
 // other routes that serve the viewer's projection, such as the sidebar.
 func Register(group *httpx.Group, db *sqlitedb.DB, publications *publications.Service, enroll EnrollFunc, options Options) httpx.Middleware {
 	s := &service{db: db, publications: publications, enroll: enroll, verifyEntry: options.VerifyEntry, refreshScope: options.RefreshScope,
-		confirmationSlots: make(chan struct{}, 4), recoverySlots: make(chan struct{}, 2), verifiedChunks: readstate.NewDefaultVerifiedRecordCache()}
+		durableRecovery: options.DurableRecovery, confirmationSlots: make(chan struct{}, 4), recoverySlots: make(chan struct{}, 2), verifiedChunks: readstate.NewDefaultVerifiedRecordCache()}
 	group = group.Use(s.requireReadState)
 	if options.Bootstrap != nil {
 		s.bootstrapHooks = []func([]thinstore.PublicationScope){options.Bootstrap}
@@ -505,17 +509,6 @@ func (s *service) purge(w http.ResponseWriter, r *http.Request) error {
 			"appview_unread_counters", "sidebar_projection_cache"} {
 			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE viewer_did = ?", viewer); err != nil {
 				return err
-			}
-		}
-		for _, table := range []string{"appview_circle_graph_snapshots", "appview_circle_hidden_items", "appview_circle_edition_cache"} {
-			var exists bool
-			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table).Scan(&exists); err != nil {
-				return err
-			}
-			if exists {
-				if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE viewer_did = ?", viewer); err != nil {
-					return err
-				}
 			}
 		}
 		return invalidateCaches(ctx, tx, viewer)

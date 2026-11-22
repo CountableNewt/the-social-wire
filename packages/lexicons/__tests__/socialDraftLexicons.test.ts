@@ -10,9 +10,9 @@ const schemas = new Lexicons(documents);
 const main = (name: string) => documents.find((doc) => doc.id === prefix + name).defs.main;
 const defs = documents.find((doc) => doc.id === prefix + "defs").defs;
 
-test("private social drafts expose six storage XRPC methods and the Gateway GIF file query", () => {
+test("private social drafts expose eight storage XRPC methods and the Gateway GIF file query", () => {
   expect(documents.filter((doc) => doc.defs.main).map((doc) => doc.id.slice(prefix.length)).sort()).toEqual([
-    "deleteManifest", "getAttachment", "getGifFile", "getManifest", "putManifest", "reserveAttachment", "uploadAttachment",
+    "completeAttachmentUpload", "deleteManifest", "getAttachment", "getGifFile", "getManifest", "putManifest", "reserveAttachment", "uploadAttachment", "uploadAttachmentChunk",
   ]);
   for (const doc of documents.filter((doc) => doc.defs.main)) {
     expect(doc.defs.main.description).toContain("Authentication required");
@@ -29,6 +29,20 @@ test("binary transfers explicitly document private headers and bounds", () => {
   expect(main("uploadAttachment").description).toContain("104857600");
   expect(main("getAttachment").output).toEqual({ encoding: "*/*" });
   expect(main("getAttachment").description).toContain("private, no-store");
+});
+
+test("chunk transfers bind bounded part acknowledgments and explicit completion", () => {
+  const chunk = main("uploadAttachmentChunk");
+  expect(chunk.input.encoding).toBe("application/octet-stream");
+  expect(chunk.description).toContain("X-Social-Draft-Upload-Part");
+  expect(chunk.description).toContain("3145728");
+  const ack = { assetId: "00000000-0000-0000-0000-000000000001", part: 33, received: true };
+  expect(() => schemas.assertValidXrpcOutput(prefix + "uploadAttachmentChunk", ack)).not.toThrow();
+  for (const invalid of [{ ...ack, part: 34 }, { ...ack, part: -1 }, { ...ack, received: false }]) {
+    expect(() => schemas.assertValidXrpcOutput(prefix + "uploadAttachmentChunk", invalid)).toThrow();
+  }
+  expect(main("completeAttachmentUpload").input.schema.required).toEqual(["assetId"]);
+  expect(main("completeAttachmentUpload").output.schema.properties.attachment.ref).toBe("lex:" + prefix + "defs#asset");
 });
 
 test("manifests preserve concurrency and enriched attachment bindings", () => {

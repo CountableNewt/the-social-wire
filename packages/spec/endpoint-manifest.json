@@ -5,8 +5,98 @@
     {
       "surface": "openapi",
       "method": "POST",
-      "path": "/v1/media/project",
-      "classification": "first-party-rest"
+      "path": "/internal/jobs/scheduling",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/drafts-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/discovery",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/ttl-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/rss-poll",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/analytics-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/author-history",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/internal/jobs/read-state-recovery",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/scheduling",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/drafts-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/discovery",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/ttl-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/rss-poll",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/analytics-cleanup",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/author-history",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/cron/read-state-recovery",
+      "classification": "operational"
     },
     {
       "surface": "openapi",
@@ -55,12 +145,6 @@
       "surface": "openapi",
       "method": "GET",
       "path": "/ios-client-metadata.json",
-      "classification": "oauth-metadata"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/operations-oauth-client-metadata.json",
       "classification": "oauth-metadata"
     },
     {
@@ -339,201 +423,6 @@
       "xrpcNsid": "link.latr.bookmarks.migrateLegacy"
     },
     {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/overview",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getOverview"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/capabilities",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getCapabilities"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/metrics",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listMetrics"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/events/stream",
-      "classification": "stream"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/services",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listServices"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/ingestion",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getIngestion"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/ingestion/durability",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getIngestionDurability"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/ingestion/incidents",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listIngestionIncidents"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/ingestion/endpoints",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listIngestionEndpoints"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/commands",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listCommands"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/ingestion/reconnect",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.reconnectIngestion"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/appview",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getAppView"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/gaps",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listGaps"
-    },
-    {
-      "surface": "openapi",
-      "method": "PATCH",
-      "path": "/v1/operations/gaps/{id}",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.updateGap"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/gaps/{id}/investigation",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getGapInvestigation"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/backfills/dry-run",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.dryRunBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/backfills",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listBackfills"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/backfills",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.createBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/backfills/{id}",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/backfills/{id}/pause",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.pauseBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/backfills/{id}/resume",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.resumeBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/backfills/{id}/cancel",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.cancelBackfill"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/alerts",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listAlerts"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/alerts/{id}/acknowledge",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.acknowledgeAlert"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/alerts/{id}/resolve",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.resolveAlert"
-    },
-    {
-      "surface": "openapi",
-      "method": "POST",
-      "path": "/v1/operations/alerts/{id}/retry",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.retryAlert"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/traces",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.listTraces"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/operations/traces/{traceId}",
-      "classification": "xrpc-migration",
-      "xrpcNsid": "app.thesocialwire.operations.getTrace"
-    },
-    {
       "surface": "nextjs",
       "method": "GET",
       "path": "/api/rss-feed",
@@ -670,6 +559,20 @@
       "path": "/xrpc/app.thesocialwire.socialDraft.uploadAttachment",
       "classification": "xrpc-migration",
       "xrpcNsid": "app.thesocialwire.socialDraft.uploadAttachment"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.socialDraft.uploadAttachmentChunk",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.socialDraft.uploadAttachmentChunk"
+    },
+    {
+      "surface": "openapi",
+      "method": "POST",
+      "path": "/xrpc/app.thesocialwire.socialDraft.completeAttachmentUpload",
+      "classification": "xrpc-migration",
+      "xrpcNsid": "app.thesocialwire.socialDraft.completeAttachmentUpload"
     },
     {
       "surface": "openapi",
