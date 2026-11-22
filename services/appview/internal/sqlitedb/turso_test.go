@@ -57,14 +57,14 @@ func TestTursoTransactionsKeepImmediateWritesAndRejectAmbiguousReads(t *testing.
 	session := &fakeTursoSession{readable: true}
 	connection := &tursoConnection{remoteSession: session}
 	tx, err := connection.BeginTx(context.Background(), driver.TxOptions{})
-	if err != nil || session.queries[0] != "BEGIN IMMEDIATE" {
+	if err != nil || session.queries[0] != "BEGIN IMMEDIATE; SELECT 1" {
 		t.Fatalf("write admission: %v %v", session.queries, err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	tx, err = connection.BeginTx(context.Background(), driver.TxOptions{ReadOnly: true})
-	if err != nil || session.queries[2] != "BEGIN" {
+	if err != nil || session.queries[2] != "BEGIN; SELECT 1" {
 		t.Fatalf("read snapshot: %v %v", session.queries, err)
 	}
 	for _, query := range []string{"SELECT 1; DELETE FROM private_drafts", "COMMIT", "PRAGMA query_only=OFF", "", "SELECT ';'"} {
@@ -153,6 +153,7 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 				var request struct {
 					Requests []struct {
 						Type string `json:"type"`
+						SQL  string `json:"sql"`
 					}
 					Batch struct {
 						Steps []struct {
@@ -169,6 +170,9 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 				if r.URL.Path == "/v3/pipeline" {
 					results := []map[string]any{}
 					for _, q := range request.Requests {
+						if q.Type == "sequence" {
+							queries = append(queries, q.SQL)
+						}
 						response := map[string]any{"type": q.Type}
 						if q.Type == "get_autocommit" {
 							response["is_autocommit"] = true
@@ -208,7 +212,7 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 			if !db.IsRemote() || db.Reader() != db.Writer() || db.Path != "" {
 				t.Fatal("remote store retained a local file/read pool")
 			}
-			if len(queries) < 3 || queries[0] != "PRAGMA foreign_keys=ON" || queries[1] != "PRAGMA foreign_keys" {
+			if len(queries) < 3 || queries[0] != "PRAGMA foreign_keys=ON; SELECT 1" || queries[1] != "PRAGMA foreign_keys" {
 				t.Fatalf("FK setup missing: %v", queries)
 			}
 		})
