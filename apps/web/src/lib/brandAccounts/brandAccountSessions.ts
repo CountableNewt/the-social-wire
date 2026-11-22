@@ -1,7 +1,6 @@
 import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
 import { OAuthClient, type OAuthSession } from "@atproto/oauth-client-browser";
 import { getOAuthClientForScopes, getSession, getStoredOAuthDid, localLoopbackCanonicalHref } from "@/lib/auth";
-import { requirePro } from "@/lib/proEntitlements";
 import { atprotoScopesForNetwork, authorizationScopesForClient } from "@/lib/atprotoNetwork";
 import { observeOAuthScopeErrors } from "@/lib/oauthScopeRecovery";
 import { BRAND_ACCOUNT_OAUTH_SCOPES } from "./brandAccountScopes";
@@ -9,18 +8,16 @@ import { BRAND_LINK_STATE_PREFIX, cancelBrandLinkIntent, createBrandLinkIntent, 
 export { onBrandAccountsChanged } from "./brandAccountStorage";
 export function listBrandAccounts(ownerDid: string): string[] { return brandAccountsEnabled() ? storedBrandAccounts(ownerDid) : []; }
 function requireOwner(ownerDid: string): void { if (!brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available In This Environment."); if (getStoredOAuthDid() !== ownerDid) throw new Error("Your Personal Account Changed. Reopen Delegated Accounts."); }
-async function requireOwnerPro(ownerDid: string): Promise<void> {
+async function requireOwnerSession(ownerDid: string): Promise<void> {
   requireOwner(ownerDid);
   const ownerSession = await getSession();
   requireOwner(ownerDid);
   if (!ownerSession || ownerSession.did !== ownerDid) throw new Error("Your Personal Account Changed. Reopen Delegated Accounts.");
-  await requirePro(ownerSession);
-  requireOwner(ownerDid);
 }
 export async function restoreBrandAccount(ownerDid: string, brandDid: string): Promise<OAuthSession> {
   requireOwner(ownerDid);
   if (brandDid === ownerDid || !listBrandAccounts(ownerDid).includes(brandDid)) throw new Error("This Delegated Account Is Not Linked To Your Personal Account.");
-  await requireOwnerPro(ownerDid);
+  await requireOwnerSession(ownerDid);
   const client = await getOAuthClientForScopes(BRAND_ACCOUNT_OAUTH_SCOPES); requireOwner(ownerDid);
   // BrowserOAuthClient.restore changes the global active-account hint. The public
   // core method restores the same SDK-managed DID session without switching it.
@@ -31,7 +28,7 @@ export async function restoreBrandAccount(ownerDid: string, brandDid: string): P
 }
 export async function linkBrandAccount(ownerDid: string, handle: string): Promise<void> {
   requireOwner(ownerDid); if (!handle.trim() || handle.trim() === ownerDid) throw new Error("Enter A Different Delegated Account Handle Or DID.");
-  await requireOwnerPro(ownerDid);
+  await requireOwnerSession(ownerDid);
   const canonical = localLoopbackCanonicalHref(window.location.href);
   if (canonical) { window.location.replace(canonical); return; }
   const client = await getOAuthClientForScopes(BRAND_ACCOUNT_OAUTH_SCOPES); requireOwner(ownerDid);

@@ -3,7 +3,6 @@ import { BrowserOAuthClient, OAuthClient, type OAuthSession } from "@atproto/oau
 import { atprotoLoopbackClientMetadata, buildAtprotoLoopbackClientId } from "@atproto/oauth-types";
 import { indexedDB } from "fake-indexeddb";
 import * as Auth from "@/lib/auth";
-import * as Pro from "@/lib/proEntitlements";
 import { BrandAwareOAuthClient } from "@/lib/brandAccounts/BrandAwareOAuthClient";
 import { addBrandAccount, assertBrandAccountAvailable, BRAND_LINK_STATE_PREFIX, cancelBrandLinkIntent, completeBrandLinkIntent, createBrandLinkIntent, listBrandAccounts, onBrandAccountsChanged } from "@/lib/brandAccounts/brandAccountStorage";
 import { linkBrandAccount, restoreBrandAccount, unlinkBrandAccount } from "@/lib/brandAccounts/brandAccountSessions";
@@ -15,9 +14,8 @@ beforeEach(() => {
   window.localStorage.clear(); window.sessionStorage.clear();
   for (const [key, value] of Object.entries({ localStorage: window.localStorage, sessionStorage: window.sessionStorage, indexedDB })) { const prior = Object.getOwnPropertyDescriptor(globalThis, key); Object.defineProperty(globalThis, key, { configurable: true, value }); restores.push(() => { if (prior) Object.defineProperty(globalThis, key, prior); else Reflect.deleteProperty(globalThis, key); }); }
   window.localStorage.setItem(hint, owner);
-  const entitlement = spyOn(Pro, "requirePro").mockResolvedValue(undefined);
   const personal = spyOn(Auth, "getSession").mockResolvedValue({ did: owner } as unknown as OAuthSession);
-  restores.push(() => entitlement.mockRestore(), () => personal.mockRestore());
+  restores.push(() => personal.mockRestore());
 });
 afterEach(async () => { for (const client of clients.splice(0)) await client[Symbol.asyncDispose](); restores.splice(0).reverse().forEach(restore => restore()); window.localStorage.clear(); window.sessionStorage.clear(); });
 function clientFixture(sub = brand) {
@@ -87,47 +85,24 @@ test("owner switch during code exchange rejects new grant before storing or revo
 
 test("present empty issuer rejects before token exchange", async () => { const f = clientFixture(); f.params.set("iss", ""); await expect(f.client.callback(f.params)).rejects.toThrow("Issuer Mismatch"); expect(f.exchange).not.toHaveBeenCalled(); expect(f.stored).not.toHaveBeenCalled(); });
 
-test("Free owners cannot link or restore a brand session", async () => {
+
+
+
+test("owner change during session restoration prevents brand access", async () => {
   addBrandAccount(owner, brand);
-  const denied = spyOn(Pro, "requirePro").mockRejectedValue(new Error(Pro.PRO_REQUIRED_MESSAGE));
-  const client = spyOn(Auth, "getOAuthClientForScopes").mockResolvedValue({} as BrandAwareOAuthClient);
-  restores.push(() => denied.mockRestore(), () => client.mockRestore());
-  await expect(linkBrandAccount(owner, "brand.example.com")).rejects.toThrow(Pro.PRO_REQUIRED_MESSAGE);
-  await expect(restoreBrandAccount(owner, brand)).rejects.toThrow(Pro.PRO_REQUIRED_MESSAGE);
-  expect(client).not.toHaveBeenCalled();
-  expect(listBrandAccounts(owner)).toEqual([brand]);
-});
-
-test("Free additive callback rejects before exchanging a grant", async () => {
-  const f = clientFixture();
-  const denied = spyOn(Pro, "requirePro").mockRejectedValue(new Error(Pro.PRO_REQUIRED_MESSAGE)); restores.push(() => denied.mockRestore());
-  await expect(f.client.callback(f.params)).rejects.toThrow(Pro.PRO_REQUIRED_MESSAGE);
-  expect(f.exchange).not.toHaveBeenCalled(); expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled();
-});
-
-test("entitlement loss during callback revokes the new grant without replacing credentials", async () => {
-  const f = clientFixture();
-  const access = spyOn(Pro, "requirePro").mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error(Pro.PRO_REQUIRED_MESSAGE)); restores.push(() => access.mockRestore());
-  await expect(f.client.callback(f.params)).rejects.toThrow(Pro.PRO_REQUIRED_MESSAGE);
-  expect(f.exchange).toHaveBeenCalledTimes(1); expect(f.stored).not.toHaveBeenCalled(); expect(f.revokeOld).not.toHaveBeenCalled(); expect(f.revokeNew).toHaveBeenCalledWith("new-test-refresh");
-});
-
-test("owner change during Pro lookup prevents brand session restoration", async () => {
-  addBrandAccount(owner, brand);
-  const access = spyOn(Pro, "requirePro").mockImplementation(async () => { window.localStorage.setItem(hint, "did:plc:other"); });
+  const access = spyOn(Auth, "getSession").mockImplementation(async () => { window.localStorage.setItem(hint, "did:plc:other"); return { did: owner } as unknown as OAuthSession; });
   const restore = spyOn(OAuthClient.prototype, "restore").mockResolvedValue({ did: brand } as unknown as OAuthSession);
   restores.push(() => access.mockRestore(), () => restore.mockRestore());
   await expect(restoreBrandAccount(owner, brand)).rejects.toThrow("Personal Account Changed"); expect(restore).not.toHaveBeenCalled();
 });
 
-test("Free owners can still unlink and revoke existing brand credentials", async () => {
+test("owners can unlink and revoke existing brand credentials", async () => {
   addBrandAccount(owner, brand);
-  const denied = spyOn(Pro, "requirePro").mockRejectedValue(new Error(Pro.PRO_REQUIRED_MESSAGE));
   const client = spyOn(Auth, "getOAuthClientForScopes").mockResolvedValue({} as BrandAwareOAuthClient);
   const revoke = spyOn(OAuthClient.prototype, "revoke").mockResolvedValue(undefined);
-  restores.push(() => denied.mockRestore(), () => client.mockRestore(), () => revoke.mockRestore());
+  restores.push(() => client.mockRestore(), () => revoke.mockRestore());
   await unlinkBrandAccount(owner, brand);
-  expect(listBrandAccounts(owner)).toEqual([]); expect(revoke).toHaveBeenCalledWith(brand); expect(denied).not.toHaveBeenCalled();
+  expect(listBrandAccounts(owner)).toEqual([]); expect(revoke).toHaveBeenCalledWith(brand);
 });
 
 test("disabled Delegated Accounts rejects an already pending brand callback before exchange without changing personal credentials", async () => {

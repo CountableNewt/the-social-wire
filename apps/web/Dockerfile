@@ -17,7 +17,6 @@ ARG NEXT_PUBLIC_SITE_URL=https://testing.thesocialwire.app
 ARG NEXT_PUBLIC_SOCIALWIRE_API_URL=https://api.testing.thesocialwire.app
 ARG NEXT_PUBLIC_LIVESTREAM_ENABLED=true
 ARG NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED=false
-ARG NEXT_PUBLIC_PRO_GATING_ENABLED=false
 ARG NEXT_PUBLIC_ENABLE_POST_SCHEDULING=false
 ENV NEXT_STANDALONE=true
 RUN bun run turbo run build --filter=web... --env-mode=loose

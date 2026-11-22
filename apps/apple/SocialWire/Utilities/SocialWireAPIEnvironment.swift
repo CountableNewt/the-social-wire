@@ -36,11 +36,11 @@ enum SocialWireAPIEnvironment {
         baseURL.appendingPathComponent("ios-client-metadata.json")
     }
 
-    /// Native Pro workflows are unreleased, regardless of entitlement or billing flags.
+    /// Native tool workflows remain unreleased until their client implementation is ready.
     /// Enable deliberately when the native release is ready; no runtime preference can bypass this gate.
-    static let proFeaturesReleased = false
+    static let toolsFeaturesReleased = false
 
-    /// Delegated Accounts remains independently disabled when other Pro tools are released.
+    /// Delegated Accounts remains independently disabled when other tools are released.
     static var brandAccountsEnabled: Bool {
         #if SOCIALWIRE_BRAND_ACCOUNTS_ENABLED
         return true
@@ -49,12 +49,4 @@ enum SocialWireAPIEnvironment {
         #endif
     }
 
-    /// Controls entitlement enforcement after native Pro workflows have been released.
-    static var proGatingEnabled: Bool {
-        #if SOCIALWIRE_PRO_GATING_ENABLED
-        return true
-        #else
-        return false
-        #endif
-    }
 }

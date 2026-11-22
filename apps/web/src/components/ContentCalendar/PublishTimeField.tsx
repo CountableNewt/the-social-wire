@@ -23,16 +23,17 @@ export function PublishTimeField({ label = "Publish At", value, disabled, onChan
   });
   return <div className="space-y-2">
     <label className="block space-y-1 text-sm">
-      <span>Publish At</span>
-      <input aria-label={label} aria-describedby={id} type="datetime-local" min={instant && minimum && value < minimum ? value : minimum} value={value}
+      <span>{label}</span>
+      <input aria-label={label} aria-describedby={id} type="datetime-local" step={900} min={instant && minimum && value < minimum ? value : minimum} value={value}
         disabled={disabled} onChange={event => onChange(event.target.value)}
         className="w-full rounded-xl border bg-background px-3 py-2" />
     </label>
     <p id={id} className="text-xs text-muted-foreground">Browser Time Zone · {localTime.resolvedOptions().timeZone}</p>
+    <p className="text-xs text-muted-foreground">Choose :00, :15, :30, or :45. Publishing times are approximate and may be delayed by 15–30 minutes.</p>
     {instant
-      ? <p className="text-xs text-muted-foreground">Publishes {localTime.format(new Date(instant))}</p>
+      ? <p className="text-xs text-muted-foreground">Scheduled For {localTime.format(new Date(instant))}</p>
       : <p role={value ? "alert" : undefined} className={value ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-          Choose a Local Time At Least One Minute From Now.
+          Choose a Quarter-Hour Time At Least One Minute From Now.
         </p>}
   </div>;
 }

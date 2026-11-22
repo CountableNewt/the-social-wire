@@ -5,8 +5,6 @@ import { listArticlePublications } from "@/lib/articles/articlePublishingClient"
 import { prepareScheduledArticle } from "@/lib/articles/articleSchedulingPreparation";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import type { ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
-import { useProEntitlements } from "@/hooks/useProEntitlements";
-import { requirePro } from "@/lib/proEntitlements";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,9 +18,6 @@ import { cancelSkejSchedule, createSkejSchedule, createSkejArticleSchedule, getS
 
 export function useSkejScheduling(ownerDid: string, actorDid: string, options: { enabled?: boolean; includeSchedules?: boolean } = {}) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
-  const { isPro } = useProEntitlements();
-  const access = useRef(isPro);
-  useLayoutEffect(() => { access.current = isPro; }, [isPro]);
   const accounts = useBrandAccounts(ownerDid);
   const brandsAvailable = brandAccountsEnabled();
   const client = useQueryClient();
@@ -38,7 +33,6 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
   }, [ownerDid, actorDid, generation]);
   function assertCurrentActor() {
     assertPostSchedulingEnabled();
-    if (!access.current) throw new Error("This Feature Requires Social Wire Pro.");
     const identity = current.current;
     if (linkage.current !== revision || identity.generation !== generation || !identity.mounted || identity.ownerDid !== ownerDid || identity.actorDid !== actorDid || session?.did !== ownerDid || getOAuthSession()?.did !== ownerDid || getStoredOAuthDid() !== ownerDid) throw new Error("Your Account Changed. Reopen the Content Calendar.");
     if (actorDid !== ownerDid && !brandAccountsEnabled()) throw new Error("Delegated Accounts Are Not Available.");
@@ -46,15 +40,13 @@ export function useSkejScheduling(ownerDid: string, actorDid: string, options: {
   }
   async function requireActor() {
     assertCurrentActor();
-    await requirePro(getOAuthSession()!);
-    assertCurrentActor();
     const oauth = actorDid === ownerDid ? getOAuthSession()! : await restoreBrandAccount(ownerDid, actorDid);
     assertCurrentActor();
     if (oauth.did !== actorDid) throw new Error("The Scheduling Account Does Not Match.");
     return { session: oauth, assertCurrentActor };
   }
   const key = ["skejScheduling", ownerDid, actorDid, oauthSessionReloadSeq, revision, brandsAvailable] as const;
-  const enabled = isPostSchedulingEnabled() && isPro && options.enabled !== false && !!ownerDid && !!actorDid && session?.did === ownerDid && (actorDid === ownerDid || brandsAvailable && accounts.includes(actorDid));
+  const enabled = isPostSchedulingEnabled() && options.enabled !== false && !!ownerDid && !!actorDid && session?.did === ownerDid && (actorDid === ownerDid || brandsAvailable && accounts.includes(actorDid));
   const readiness = useQuery({ queryKey: [...key, "readiness"], enabled, retry: false, staleTime: 30_000,
     queryFn: async ({ signal }) => getSkejSchedulingReadiness(await requireActor(), signal) });
   const schedules = useQuery({ queryKey: [...key, "schedules"], enabled: enabled && options.includeSchedules !== false && readiness.data?.connected === true, retry: false, staleTime: 15_000,

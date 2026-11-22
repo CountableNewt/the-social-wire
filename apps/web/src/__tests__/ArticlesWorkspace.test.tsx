@@ -6,7 +6,6 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import * as Scheduling from "@/hooks/useSkejScheduling";
 import * as Semble from "@/hooks/useSembleReadLater";
-import * as Entitlements from "@/hooks/useProEntitlements";
 import * as Auth from "@/hooks/useAuth";
 import * as Drafts from "@/hooks/articles/useArticleDrafts";
 import * as Images from "@/components/Articles/ArticleImageInput";
@@ -52,7 +51,6 @@ beforeEach(() => {
   publishedRows = [];
   extraDrafts = [];
   scheduleArticle.mockReset(); scheduleArticle.mockResolvedValue({ scheduleUri: `at://${did}/at.skej.schedule/current` });
-  const pro = spyOn(Entitlements, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Entitlements.useProEntitlements>); restores.push(() => pro.mockRestore());
   const schedules = spyOn(Scheduling, "useSkejScheduling").mockReturnValue({ readiness: { data: { connected: true }, refetch: async () => {} }, schedules: { data: scheduleRows, refetch: async () => ({ data: scheduleRows }) }, scheduleArticle, cancel: async () => {}, reschedule: async () => {}, connectUrl: "https://skej.test", pending: false } as unknown as ReturnType<typeof Scheduling.useSkejScheduling>); restores.push(() => schedules.mockRestore());
   storedDraft = seed;
   createDraft.mockClear();

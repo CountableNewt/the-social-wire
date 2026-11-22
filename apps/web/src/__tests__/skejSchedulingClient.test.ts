@@ -104,6 +104,14 @@ test("published posts and invalid dates are rejected before making a request", a
   expect(f.requests).toHaveLength(0);
 });
 
+test("new and edited schedules reject off-grid times before any request", async () => {
+  const f = fixture();
+  await expect(createSkejSchedule(f.actor, "Post", "2099-01-01T12:07:00Z")).rejects.toThrow("Quarter-Hour");
+  await expect(rescheduleSkejPost(f.actor, item(), "2099-01-01T12:15:01Z")).rejects.toThrow("Quarter-Hour");
+  await expect(createSkejSchedule(f.actor, "Post", "2099-01-01T12:15:00.001Z")).rejects.toThrow("Quarter-Hour");
+  expect(f.requests).toHaveLength(0);
+});
+
 test("stores external previews in the scheduled publication payload", async () => {
   const f = fixture();
   const linkPreview = { uri: "https://example.com/story", title: "Scheduled Story", description: "Summary" };

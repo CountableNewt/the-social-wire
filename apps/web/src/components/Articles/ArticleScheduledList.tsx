@@ -12,12 +12,11 @@ import { RescheduleDialog } from "@/components/ContentCalendar/RescheduleDialog"
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-export function ArticleScheduledList({ did, scheduler, isPro, onCanceled, publications = [] }: { did: string; publications?: ArticlePublication[]; scheduler: ReturnType<typeof useSkejScheduling>; isPro: boolean; onCanceled: (item: SkejScheduleSummary) => Promise<void> }) {
+export function ArticleScheduledList({ did, scheduler, onCanceled, publications = [] }: { did: string; publications?: ArticlePublication[]; scheduler: ReturnType<typeof useSkejScheduling>; onCanceled: (item: SkejScheduleSummary) => Promise<void> }) {
   const [editing, setEditing] = useState<SkejScheduleSummary>();
   const [canceling, setCanceling] = useState<SkejScheduleSummary>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  if (!isPro) return <p className="text-sm">Article Scheduling Requires Social Wire Pro.</p>;
   const items = (scheduler.schedules.data ?? []).filter(isSkejArticleSchedule);
   async function cancel() {
     if (!canceling || busy) return;

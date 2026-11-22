@@ -13,13 +13,13 @@ enum NewsSidebarTool: String, CaseIterable, Identifiable {
 
     static var availableTools: [Self] {
         availableTools(
-            proFeaturesReleased: SocialWireAPIEnvironment.proFeaturesReleased,
+            toolsFeaturesReleased: SocialWireAPIEnvironment.toolsFeaturesReleased,
             brandAccountsEnabled: SocialWireAPIEnvironment.brandAccountsEnabled
         )
     }
 
-    static func availableTools(proFeaturesReleased: Bool, brandAccountsEnabled: Bool) -> [Self] {
-        guard proFeaturesReleased else { return [] }
+    static func availableTools(toolsFeaturesReleased: Bool, brandAccountsEnabled: Bool) -> [Self] {
+        guard toolsFeaturesReleased else { return [] }
         return allCases.filter { $0 != .brandAccounts || brandAccountsEnabled }
     }
 

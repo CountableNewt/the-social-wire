@@ -37,7 +37,7 @@ describe("creator analytics", () => {
       fetch.mockResolvedValue(new Response("private upstream details", { status: 401 }));
       await expect(getPublicationAnalytics(session)).rejects.toThrow("Log in again");
       fetch.mockResolvedValue(new Response("private upstream details", { status: 403 }));
-      await expect(getPublicationAnalytics(session)).rejects.toThrow("requires Pro access");
+      await expect(getPublicationAnalytics(session)).rejects.toThrow("is not available");
       fetch.mockResolvedValue(new Response("private upstream details", { status: 503 }));
       await expect(getPublicationAnalytics(session)).rejects.toThrow("Publication analytics could not be loaded (503)");
     } finally { fetch.mockRestore(); }

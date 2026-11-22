@@ -118,7 +118,6 @@
 		2A4F5DFEA828F5071A427A05 /* ReaderBootstrapRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E5FEDE39E6308EDED446048 /* ReaderBootstrapRequests.swift */; };
 		2A56F38050E15C3AD2C8E3E3 /* NewsSidebarToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B88A29AA8CC8B6FB5A7967E /* NewsSidebarToolTests.swift */; };
 		2A8A3B11D71B9A10C022E2E0 /* LoginActorTypeaheadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD4D9E2E5A10E6AF07BC34CC /* LoginActorTypeaheadTests.swift */; };
-		2AF75AA93773DAAD5B9994F7 /* SocialCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6885E0B9158A538DA66630BB /* SocialCoreTests.swift */; };
 		2B188794777197A715988F31 /* ApplePlatformAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031EDB0D369585F464CE3B57 /* ApplePlatformAdapters.swift */; };
 		2C9C246359AB24A34776EEDD /* XRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6DB13A8544C5DF8ADB3C0F3 /* XRPCClient.swift */; };
 		2D9B3C165308FEEEF570FFB2 /* LatrRecordParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434E7A421704B13C564BFB59 /* LatrRecordParsing.swift */; };
@@ -207,7 +206,6 @@
 		4FABFA33BD72FDB8258CF16D /* ImageFailureCooldownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC05580B9DAB5549B3E49A7 /* ImageFailureCooldownTests.swift */; };
 		5001A4B1D412EFD54BE8E9CB /* ATProtoSessionDPoPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B8A8063426455E5AF6825D /* ATProtoSessionDPoPTests.swift */; };
 		51842B3FB4BDE2C1DB3FAB51 /* SocialWireUtilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3130A8F5508FDC17BA1F4D7 /* SocialWireUtilityTests.swift */; };
-		52CF3C3CA261532F17576413 /* SocialProEntitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600DF0E22411494AD1D7B0B /* SocialProEntitlement.swift */; };
 		530F23682571658D1B2A40CC /* FeedReadAgeResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96D53B2D7E28DC74F865164 /* FeedReadAgeResponse.swift */; };
 		53412F34B59927360CF75C7B /* StandardReaderListsWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E2B30DCA356277DB640739 /* StandardReaderListsWorkspace.swift */; };
 		5342BDEA981F96C4304AE92D /* DateFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04601E3F42F4B3DE385B1526 /* DateFormatters.swift */; };
@@ -350,7 +348,6 @@
 		88302E67B22E6E2EB4E0CD57 /* NewsShellUITestTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F655FDAC65E18542F08C1E2D /* NewsShellUITestTransport.swift */; };
 		8947A951751CD8FABD0E14F5 /* LoginGlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76205E41F707EF01627D91DF /* LoginGlassModifiers.swift */; };
 		89DC915723C1C6581F643E92 /* PublicationSubscriptionMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B1FAE3FEDFE1191035EA8A /* PublicationSubscriptionMatchTests.swift */; };
-		8A68AA5846B3ED1F3493BECE /* SocialCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6885E0B9158A538DA66630BB /* SocialCoreTests.swift */; };
 		8A8D67DE88A96ECCA8135718 /* LoginMotionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E49C0C0FB5FA8CFE1F995A4 /* LoginMotionSource.swift */; };
 		8AE0848AEDBBDB0B6D52647A /* ReaderCacheCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CAFC79E27ABE86D4437EAA /* ReaderCacheCoordinatorTests.swift */; };
 		8B17C5E751F222BF89C32AA3 /* LatrKit in Frameworks */ = {isa = PBXBuildFile; productRef = 50D4E6BC3ADBBB37D3677C37 /* LatrKit */; };
@@ -422,7 +419,6 @@
 		A2B8EABD9FA22CC2D84C91CE /* OPMLFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4331A05710EF603CBD819038 /* OPMLFeed.swift */; };
 		A3FD9731080238D593F72F57 /* SocialWireGatewayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218C32E74FE8B1620069DD2 /* SocialWireGatewayClientTests.swift */; };
 		A419867473C72DCE6DC64FEA /* StandardReaderListPublication.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2FBB7099C1ACE9989132B2 /* StandardReaderListPublication.swift */; };
-		A466BED0C6A9AB680661E16E /* SocialProEntitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600DF0E22411494AD1D7B0B /* SocialProEntitlement.swift */; };
 		A4C50721746343DED9BBAB2F /* ReadStateConfirmInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B32F8B1AE81B7BF7B4B1A902 /* ReadStateConfirmInput.swift */; };
 		A5A9D7926AEA082206B154C0 /* ReadLaterLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A44B49819E90204B20B16C1 /* ReadLaterLoadingTests.swift */; };
 		A65BA1229474562EC5E58C9A /* OAuthTestTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE4674C79C13AA6657B59EA /* OAuthTestTransport.swift */; };
@@ -716,7 +712,6 @@
 		210C545B05ADF78496BCD002 /* OPMLImportFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPMLImportFailure.swift; sourceTree = "<group>"; };
 		24A9E7EEF05DB40A331F4D2B /* StandardSiteRecommendationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardSiteRecommendationContract.swift; sourceTree = "<group>"; };
 		24FC407028814D45CD6C851E /* GenericRepoRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenericRepoRecord.swift; sourceTree = "<group>"; };
-		2600DF0E22411494AD1D7B0B /* SocialProEntitlement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialProEntitlement.swift; sourceTree = "<group>"; };
 		2868ECE4B6B10A2DECE1F578 /* OPMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPMLParser.swift; sourceTree = "<group>"; };
 		28A546164890391695D4E9DE /* StandardSiteSocialEmbedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardSiteSocialEmbedTests.swift; sourceTree = "<group>"; };
 		29512604F4C25F90D78E2966 /* PublicationSidebarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicationSidebarRow.swift; sourceTree = "<group>"; };
@@ -802,7 +797,6 @@
 		62DAE1DD995A0F87498A8EE7 /* AppViewEntryListResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewEntryListResponse.swift; sourceTree = "<group>"; };
 		64EED50CC2244B5FEBDAACC4 /* ArticleListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleListRow.swift; sourceTree = "<group>"; };
 		67A0014371879F96F385D2CD /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		6885E0B9158A538DA66630BB /* SocialCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialCoreTests.swift; sourceTree = "<group>"; };
 		6926CAF2E6EE43B8FAB1B976 /* MacPlatformSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPlatformSupport.swift; sourceTree = "<group>"; };
 		6A798A98ADA455756237711F /* FeedSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedSelection.swift; sourceTree = "<group>"; };
 		6B7D4D5242B9B320956834EF /* ActorProfileResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorProfileResponse.swift; sourceTree = "<group>"; };
@@ -1091,7 +1085,6 @@
 				CA398073C2BD8F2185AAB84B /* SavedLinkSessionOwnershipTests.swift */,
 				D59FD19B743FE1214CEEB73D /* SavedTagSupportTests.swift */,
 				7E8A99E9DFD1D462917E7C34 /* SembleSupportTests.swift */,
-				6885E0B9158A538DA66630BB /* SocialCoreTests.swift */,
 				F218C32E74FE8B1620069DD2 /* SocialWireGatewayClientTests.swift */,
 				F3130A8F5508FDC17BA1F4D7 /* SocialWireUtilityTests.swift */,
 				83A73D5CF8D305D80037880E /* StandardReaderListTests.swift */,
@@ -1549,7 +1542,6 @@
 			children = (
 				2EE7F3AE305149362F6A0757 /* SocialEmbedViewerState.swift */,
 				2D010F1EE0667A717C969EE7 /* SocialPostReference.swift */,
-				2600DF0E22411494AD1D7B0B /* SocialProEntitlement.swift */,
 				D37EBA083B5ADF965AD3B521 /* StandardSiteSocialEmbed.swift */,
 			);
 			path = Social;
@@ -2138,7 +2130,6 @@
 				8C935131F4EC37EEECFCD50F /* SkyreaderFeedSubscriptionRecord.swift in Sources */,
 				D5F8843B6EB84A5D69F67F73 /* SocialEmbedViewerState.swift in Sources */,
 				482FD453AB77AF10729AFA16 /* SocialPostReference.swift in Sources */,
-				52CF3C3CA261532F17576413 /* SocialProEntitlement.swift in Sources */,
 				93A96C0182C3435495B139EE /* SocialWireAPIEnvironment.swift in Sources */,
 				77BBF1188559B4E81A81B3EB /* SocialWireApp.swift in Sources */,
 				2000522BEA4FD358298BE637 /* SocialWireAppModel.swift in Sources */,
@@ -2226,7 +2217,6 @@
 				708BFC9F92E2CFBAA8448899 /* SavedLinkSessionOwnershipTests.swift in Sources */,
 				868E2D963F580404F92A147B /* SavedTagSupportTests.swift in Sources */,
 				A965E13039AF54FA32425DFE /* SembleSupportTests.swift in Sources */,
-				2AF75AA93773DAAD5B9994F7 /* SocialCoreTests.swift in Sources */,
 				938876155892B266A171BF3B /* SocialWireGatewayClientTests.swift in Sources */,
 				4AA2042D8B90FC19A63942FD /* SocialWireUtilityTests.swift in Sources */,
 				7DD0747F85DD28992B50D12D /* StandardReaderListTests.swift in Sources */,
@@ -2474,7 +2464,6 @@
 				805922E12856566AC15FAB35 /* SkyreaderFeedSubscriptionRecord.swift in Sources */,
 				9F1418C321A6607F0F6DEF94 /* SocialEmbedViewerState.swift in Sources */,
 				F1A63B3A26836BF426EBEC5A /* SocialPostReference.swift in Sources */,
-				A466BED0C6A9AB680661E16E /* SocialProEntitlement.swift in Sources */,
 				1D0EABA6327087365AB11DE7 /* SocialWireAPIEnvironment.swift in Sources */,
 				60C2C91F06F52341912E4254 /* SocialWireApp.swift in Sources */,
 				B2CF6B09EED045A6254FCD05 /* SocialWireAppModel.swift in Sources */,
@@ -2552,7 +2541,6 @@
 				6AC65BFA52410C92DB1F7423 /* SavedLinkSessionOwnershipTests.swift in Sources */,
 				170639BF9938F6717068FC61 /* SavedTagSupportTests.swift in Sources */,
 				B36F61DEC955215FB89DE787 /* SembleSupportTests.swift in Sources */,
-				8A68AA5846B3ED1F3493BECE /* SocialCoreTests.swift in Sources */,
 				A3FD9731080238D593F72F57 /* SocialWireGatewayClientTests.swift in Sources */,
 				51842B3FB4BDE2C1DB3FAB51 /* SocialWireUtilityTests.swift in Sources */,
 				58525A75CF6E09DB618413EF /* StandardReaderListTests.swift in Sources */,
