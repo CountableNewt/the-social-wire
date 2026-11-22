@@ -16,7 +16,7 @@ test("Retired Media projection is absent while Social composer GIF routes remain
     entries: { path: string }[];
   };
   expect(manifest.entries.some(entry => entry.path === "/v1/media/project")).toBe(false);
-  expect(read("services/appview/cmd/appview/router.go")).not.toContain("internal/media");
+  expect(read("services/appview/internal/appviewruntime/router.go")).not.toContain("internal/media");
   expect(read("services/appview/internal/edge/gif_routes.go")).toContain('"/v1/media/gifs"');
   for (const service of ["appview", "gateway"]) {
     expect(existsSync(join(root, `services/${service}/bruno/Media/Project Media.bru`))).toBe(false);

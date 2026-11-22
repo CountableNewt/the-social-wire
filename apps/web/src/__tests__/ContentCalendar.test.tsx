@@ -18,7 +18,7 @@ let state: ReturnType<typeof Scheduling.useSkejScheduling>;
 let delegated: typeof state;
 const restores: (() => void)[] = [];
 const owner = "did:plc:owner", brand = "did:plc:brand";
-const time = new Date(Date.now() + 3_600_000);
+const time = new Date(Math.ceil((Date.now() + 3_600_000) / 900_000) * 900_000);
 const delegatedTime = new Date(time.getTime() + 60_000);
 const item = { did: owner, rkey: "post", scheduleUri: `at://${owner}/app.skej.schedule/post`, scheduledAt: time.toISOString(), status: "scheduled", record: { posts: [{ text: "Planned Content" }] }, attempts: 0 } as unknown as SkejScheduleSummary;
 const delegatedItem = {
@@ -64,7 +64,7 @@ test("reschedules in local time and refreshes the server-backed list", async () 
   mount();
   if (localCalendarDate(time) !== localCalendarDate(new Date())) fireEvent.click(screen.getByRole("button", { name: new RegExp(time.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })) }));
   fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
-  const future = new Date(Date.now() + 86_400_000);
+  const future = new Date(Math.ceil((Date.now() + 86_400_000) / 900_000) * 900_000);
   fireEvent.change(screen.getByLabelText("Publish At"), { target: { value: localDateTimeValue(future) } });
   fireEvent.click(screen.getByRole("button", { name: "Save Time" }));
   await waitFor(() => expect(state.reschedule).toHaveBeenCalledWith(item, new Date(localDateTimeValue(future)).toISOString()));
@@ -96,7 +96,7 @@ test("shows personal and delegated schedules together and uses the owning accoun
   expect(state.cancel).not.toHaveBeenCalled();
 
   fireEvent.click(within(cards[0]).getByRole("button", { name: "Reschedule" }));
-  const future = new Date(Date.now() + 86_400_000);
+  const future = new Date(Math.ceil((Date.now() + 86_400_000) / 900_000) * 900_000);
   fireEvent.change(screen.getByLabelText("Publish At"), { target: { value: localDateTimeValue(future) } });
   fireEvent.click(screen.getByRole("button", { name: "Save Time" }));
   await waitFor(() => expect(delegated.reschedule).toHaveBeenCalledWith(earlier, new Date(localDateTimeValue(future)).toISOString()));

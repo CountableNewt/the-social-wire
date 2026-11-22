@@ -202,8 +202,8 @@ func (s *Service) create(ctx context.Context, did string, value scheduling.Recor
 	if err := scheduling.ValidateRecord(value); err != nil {
 		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", err.Error())
 	}
-	if parseErr != nil || !scheduled.After(now) || value.Status() != scheduling.StatusScheduled {
-		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future schedule time")
+	if parseErr != nil || !scheduling.IsQuarterHour(scheduled) || !scheduled.After(now) || value.Status() != scheduling.StatusScheduled {
+		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future quarter-hour schedule time (:00, :15, :30, or :45)")
 	}
 	publishKey := value.Text("publishRkey")
 	schedules, err := s.loadSchedules(ctx, did)
@@ -315,9 +315,9 @@ func (s *Service) edit(ctx context.Context, did, key string, update scheduling.R
 		value["status"] = scheduling.StatusCanceled
 	} else {
 		date, err := time.Parse(time.RFC3339Nano, update.ScheduledAt())
-		if err != nil || !date.After(now) || update.Text("publishRkey") != existing.Value.Text("publishRkey") ||
+		if err != nil || !scheduling.IsQuarterHour(date) || !date.After(now) || update.Text("publishRkey") != existing.Value.Text("publishRkey") ||
 			update.Collection() != existing.Value.Collection() {
-			return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future time for this schedule")
+			return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future quarter-hour time for this schedule (:00, :15, :30, or :45)")
 		}
 		value["scheduledAt"], value["status"] = update.ScheduledAt(), scheduling.StatusScheduled
 		if document := value.Object("shadowRecord"); value.Collection() == scheduling.DocumentCollection && document != nil {

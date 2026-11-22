@@ -48,7 +48,7 @@ Preserve the exact existing values of:
 
 - Public OAuth origins, CORS policy, issuer/JWKS policy and
   `PDS_ATTESTATION_RECEIPT_SECRET`.
-- L@tr client credentials, GIF key and Pro entitlement settings.
+- L@tr client credentials and the GIF key.
 - `SOCIAL_DRAFT_STORAGE_KEY`, draft S3 settings and recovery keys.
 - `SCHEDULING_STORAGE_KEY` and the scheduling OAuth public origin.
   Keep `/data/scheduling.sqlite` on the same persistent volume.
@@ -91,20 +91,20 @@ Before release, rehearse against copies of both environment databases, compare r
 
 The discovery queue persists normalized publication scopes, deduplicates requests, and uses owner-fenced claims with expiry and bounded retry/backoff. Scheduling creation uses an actor lease; OAuth refresh additionally records a hashed token intent before exchange so an uncertain or consumed refresh token cannot be retried by another instance. An uncertain refresh may require reconnecting the scheduling account.
 
-`RUNTIME_MODE=server` and `JOBS_RUNNER_MODE=internal` are the local/Railway defaults. Server timers call the same bounded, leased actions exposed by the manual POST endpoints and dedicated Cron GET adapters:
+`RUNTIME_MODE=server` and `JOBS_RUNNER_MODE=internal` are the local/Railway defaults. Server timers call the same bounded, leased actions exposed by the manual POST endpoints, legacy Cron GET adapters, and consolidated Schedule dispatcher:
 
-| Job Suffix | Internal Interval | Vercel Cron | Execution Bound |
+| Job Suffix | Internal Interval | Production Maintenance Cadence | Execution Bound |
 |------------|-------------------|-------------|-----------------|
-| `scheduling` | 30 seconds | Every minute | 150 seconds |
+| `scheduling` | 30 seconds | Every 15 minutes | 150 seconds |
 | `drafts-cleanup` | 15 minutes | Every 15 minutes | 45 seconds |
-| `discovery` | 1 second between waves | Every minute | 30 seconds, up to four claims |
+| `discovery` | 1 second between waves | Every 15 minutes | 30 seconds, up to four claims |
 | `ttl-cleanup` | 1 hour | Hourly | 45 seconds, up to ten batches |
 | `rss-poll` | 30 minutes, configurable | Every 30 minutes | 90 seconds |
-| `analytics-cleanup` | 24 hours | Daily at 00:00 UTC | 45 seconds |
-| `author-history` | 1 second between waves | Every minute | 90 seconds, up to two claims |
-| `read-state-recovery` | 1 second between waves | Every minute | 60 seconds, up to two claims |
+| `analytics-cleanup` | 24 hours | Every 24 hours | 45 seconds |
+| `author-history` | 1 second between waves | Every 15 minutes | 90 seconds, up to two claims |
+| `read-state-recovery` | 1 second between waves | Every 15 minutes | 60 seconds, up to two claims |
 
-Manual `POST /internal/jobs/<suffix>` calls require `Authorization: Bearer <JOBS_SECRET>`. Dedicated `GET /internal/cron/<suffix>` calls require a distinct `CRON_SECRET`; Vercel Cron supplies that Bearer header. Cron credentials cannot authorize manual POST jobs, and viewer credentials authorize neither adapter. Use unique server-only secrets of 32–512 non-whitespace characters; never put them in query strings, public Web build arguments, or native clients. An active lease makes duplicate invocations return without running the action again.
+Manual `POST /internal/jobs/<suffix>` calls require `Authorization: Bearer <JOBS_SECRET>`. The consolidated `GET /internal/schedules/maintenance` dispatcher and legacy `GET /internal/cron/<suffix>` calls require a distinct `CRON_SECRET`; Vercel path schedules supply that Bearer header. One Production schedule invokes the dispatcher every 15 minutes, with per-action durable cadence fences limiting slower cleanup and RSS work. Development invokes the same dispatcher hourly. These are delivery windows rather than exact publishing deadlines: Hobby adds up to 15 minutes of jitter, and missed or failed invocations can delay work further. Cron credentials cannot authorize manual POST jobs, and viewer credentials authorize neither adapter. Use unique server-only secrets of 32–512 non-whitespace characters; never put them in query strings, public Web build arguments, or native clients. An active lease makes duplicate invocations return without running the action again.
 
 `JOBS_RUNNER_MODE=external` disables all eight timers and the process heartbeat and requires `JOBS_SECRET`. `RUNTIME_MODE=serverless` additionally requires remote Turso and a valid distinct `CRON_SECRET`; any Vercel runtime must explicitly select serverless. Serverless starts no maintenance, history, heartbeat or telemetry export loops. Request telemetry flushes synchronously within a bounded request scope. Author history and public PDS read-state recovery persist their work and checkpoints for later invocations. Shared-store concurrency and request lifecycle acceptance remain unverified.
 
@@ -140,11 +140,11 @@ Development and Production each need separate AppView and scheduling databases. 
 
 ## Vercel Source Configuration
 
-Create separate frontend and backend projects with Root Directory `apps/web` and `services/appview`, respectively. The backend config uses **Vercel Services (Beta)** with one Go service rooted at `.` and explicit `cmd/appview/main.go` entrypoint. Its build script compiles the entire package to `VERCEL_OUTPUT_FILE`; catch-all ingress preserves API paths. The Function has a 300-second limit in `sfo1`, and the eight Cron GET schedules above are declared in `services/appview/vercel.json`. Vercel Cron runs on production-target deployments, so a Development project must use `dev` as its production branch. Keep the Production project on `main`; accept Development before promoting the same source.
+Create separate frontend and backend projects with Root Directory `apps/web` and `services/appview`, respectively. The backend config uses **Vercel Services (Beta)** with six Go Function services: reader, publishing, scheduling, analytics, integrations and maintenance. Each is rooted at `.` with its own `cmd/<surface>/main.go` entrypoint. The allowlisted build script compiles that package to `VERCEL_OUTPUT_FILE`; service-targeted ingress preserves existing API paths. Each Function has a 300-second limit in `sfo1`. `services/appview/vercel.ts` declares one consolidated Vercel Schedule targeting the authenticated `GET /internal/schedules/maintenance` adapter. Production (`APP_ENV=prod`) runs every 15 minutes; Development runs hourly, using at most 3,720 scheduled runs together in a 31-day month against Hobby's shared 5,000-run allowance. Hobby delivery can arrive up to 15 minutes after each scheduled occurrence. Preview and local builds declare no schedules. A Development project must use `dev` as its production branch; keep the Production project on `main` and accept Development before promoting the same source.
 
 The backend config selects `RUNTIME_MODE=serverless`, `DATABASE_BACKEND=turso` and `JOBS_RUNNER_MODE=external`. Supply existing OAuth, draft, scheduling and telemetry settings, both distinct Turso database/token pairs, `JOBS_SECRET` and a different `CRON_SECRET` through backend project variables. Keep frontend credentials and public origins scoped to the frontend project. Do not copy backend secrets into frontend variables.
 
-Serving performs readiness checks without startup DDL. The supported Services schema has no `preDeployCommand`; instead `scripts/vercel-build.sh` has an explicit final build step for release initialization. It runs the compiled `--initialize-only` command only when `DEPLOY_SCHEMA_INITIALIZATION=true`, `VERCEL_ENV=production`, and the pair `APP_ENV:VERCEL_GIT_COMMIT_REF` is `dev:dev` or `prod:main`. An explicitly requested initialization with any other environment or branch fails the build. Leave the opt-in disabled unless schema initialization is authorized for that release. Failure prevents activation; a successful build does not prove engine compatibility or authenticated acceptance.
+Serving performs readiness checks without startup DDL. The supported Services schema has no `preDeployCommand`; instead `scripts/vercel-build.sh` has an explicit final build step for release initialization, executed only by the maintenance build so parallel surface builds cannot initialize stores concurrently. It runs the compiled `--initialize-only` command only when `DEPLOY_SCHEMA_INITIALIZATION=true`, `VERCEL_ENV=production`, and the pair `APP_ENV:VERCEL_GIT_COMMIT_REF` is `dev:dev` or `prod:main`. An explicitly requested initialization with any other environment or branch fails the build. Leave the opt-in disabled unless schema initialization is authorized for that release. Failure prevents activation; a successful build does not prove engine compatibility or authenticated acceptance.
 
 Preview builds never initialize shared Development or Production stores. Give previews their own databases and initialize those explicitly outside the build; absent current readiness markers, the remote runtime cannot become ready. Avoid sharing private preview writes with either release environment.
 

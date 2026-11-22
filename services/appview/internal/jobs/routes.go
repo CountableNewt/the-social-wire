@@ -34,6 +34,7 @@ func Register(router *httpx.Router, runner *Runner, cronSecrets ...string) {
 	group.Get("/internal/cron/analytics-cleanup", cronHandler(runner, "analytics-cleanup", cronSecret))
 	group.Get("/internal/cron/author-history", cronHandler(runner, "author-history", cronSecret))
 	group.Get("/internal/cron/read-state-recovery", cronHandler(runner, "read-state-recovery", cronSecret))
+	group.Get("/internal/schedules/maintenance", cronHandler(runner, "maintenance", cronSecret))
 }
 
 // Cron authenticates a separate secret; accepting a viewer or manual-job token
@@ -67,6 +68,13 @@ func authorizedHandler(runner *Runner, name, secret string, cron bool) httpx.Han
 		expected := sha256.Sum256([]byte(secret))
 		if subtle.ConstantTimeCompare(provided[:], expected[:]) != 1 {
 			return httpx.Status(http.StatusUnauthorized)
+		}
+		if cron && name == "maintenance" {
+			result, err := runner.RunMaintenance(r.Context())
+			if err != nil {
+				return httpx.Status(http.StatusServiceUnavailable)
+			}
+			return httpx.OK(w, result)
 		}
 		result, err := runner.Run(r.Context(), name)
 		if errors.Is(err, ErrUnavailable) {

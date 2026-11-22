@@ -1,5 +1,3 @@
-import { LockKeyhole } from "lucide-react";
-import { useProEntitlements } from "@/hooks/useProEntitlements";
 import { isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { livestreamEnabled } from "@/lib/toolsEnabled";
 import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
@@ -16,13 +14,12 @@ const tools = [
 ] as const;
 
 export function SidebarToolsSection({ pathname, onNavigate }: { pathname: string; onNavigate: (href: string) => void }) {
-  const { isPro } = useProEntitlements();
   return <SidebarGroup className="pb-1 pt-1">
-    <SidebarGroupLabel>Tools {!isPro ? <span className="ml-2 text-[10px]">Pro</span> : null}</SidebarGroupLabel>
+    <SidebarGroupLabel>Tools</SidebarGroupLabel>
     <SidebarMenu className="gap-0.5" aria-label="Tools">
       {tools.filter(tool => (tool.href === "/articles" || tool.href === "/analytics") || (tool.href !== "/livestream" || livestreamEnabled()) && (tool.href !== "/brand-accounts" || brandAccountsEnabled()) && (tool.href !== "/content-calendar" || isPostSchedulingEnabled())).map(({ title, href, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
-        return <SidebarMenuItem key={href}><SidebarMenuButton type="button" tooltip={title} isActive={active} aria-current={active ? "page" : undefined} onClick={() => onNavigate(href)}><Icon aria-hidden="true" /><span>{title}</span>{!isPro ? <LockKeyhole aria-hidden="true" className="ml-auto size-3" /> : null}</SidebarMenuButton></SidebarMenuItem>;
+        return <SidebarMenuItem key={href}><SidebarMenuButton type="button" tooltip={title} isActive={active} aria-current={active ? "page" : undefined} onClick={() => onNavigate(href)}><Icon aria-hidden="true" /><span>{title}</span></SidebarMenuButton></SidebarMenuItem>;
       })}
     </SidebarMenu>
   </SidebarGroup>;

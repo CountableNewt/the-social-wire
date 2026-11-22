@@ -38,10 +38,6 @@ func (s *Service) metadata(w http.ResponseWriter, _ *http.Request) error {
 	})
 }
 
-func (s *Service) canConnect(did string) bool {
-	return !s.core.ProGatingEnabled || s.core.HasPro(did)
-}
-
 func (s *Service) start(w http.ResponseWriter, r *http.Request) error {
 	setOAuthHeaders(w)
 	query, err := schedulingQuery(r, "accountDid")
@@ -51,9 +47,6 @@ func (s *Service) start(w http.ResponseWriter, r *http.Request) error {
 	did := query.Get("accountDid")
 	if !validAccountDID(did) {
 		return oauthFailure(w, http.StatusBadRequest, "InvalidActor", "An account DID is required")
-	}
-	if !s.canConnect(did) {
-		return oauthFailure(w, http.StatusForbidden, "ProRequired", "A Pro subscription is required")
 	}
 	select {
 	case s.oauthAdmission <- struct{}{}:
@@ -101,9 +94,6 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) error {
 		return invalidState(w)
 	}
 	did := *pending.InitiatorDID
-	if !s.canConnect(did) {
-		return oauthFailure(w, http.StatusForbidden, "ProRequired", "A Pro subscription is required")
-	}
 	session, err := s.client.Complete(ctx, oauthclient.State{
 		Handle: pending.Handle, InitiatorDID: did, PKCEVerifier: pending.PKCEVerifier, AuthServer: *pending.AuthServer,
 		TokenEndpoint: *pending.TokenEndpoint, PDSEndpoint: *pending.PDSEndpoint, DPoPKeyJSON: *pending.DPoPKeyJSON,

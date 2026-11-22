@@ -1025,6 +1025,28 @@ paths:
         '405': {description: Unsupported method; HEAD never invokes maintenance.}
         '503': {description: Job or secret unavailable, or bounded execution failed.}
 
+  /internal/schedules/maintenance:
+    get:
+      summary: Run Consolidated Maintenance
+      description: Runs enabled leased actions concurrently within a four-minute budget. Frequent work runs on every dispatch; durable cadence leases limit RSS, expiry cleanup and analytics cleanup. Uses the dedicated scheduler secret. HEAD never runs work.
+      security:
+        - MaintenanceCronBearer: []
+      responses:
+        '200':
+          description: Due maintenance completed or competing workers own its leases.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobs]
+                properties:
+                  jobs:
+                    type: array
+                    items: {$ref: '#/components/schemas/MaintenanceJobResult'}
+        '401': {description: Dedicated scheduler secret is missing or invalid.}
+        '405': {description: Unsupported method; HEAD never invokes maintenance.}
+        '503': {description: Scheduler unavailable or bounded execution failed.}
+
   /internal/cron/scheduling:
     get:
       summary: Run Due Scheduling Work
@@ -1161,7 +1183,7 @@ paths:
       responses:
         "200": { description: The authenticated actor's scheduling connection. }
         "401": { description: Authentication is required. }
-        "403": { description: Account mismatch or Pro access required. }
+        "403": { description: Account mismatch. }
         "409": { description: Scheduling connection or record state requires attention. }
         "404": { description: Scheduling is unavailable or the record is missing. }
 
@@ -1178,7 +1200,7 @@ paths:
       responses:
         "200": { description: The authenticated actor's schedules. }
         "401": { description: Authentication is required. }
-        "403": { description: Account mismatch or Pro access required. }
+        "403": { description: Account mismatch. }
         "409": { description: Scheduling connection or record state requires attention. }
         "404": { description: Scheduling is unavailable or the record is missing. }
 
@@ -1195,7 +1217,7 @@ paths:
       responses:
         "201": { description: The created schedule and its canonical PDS record. }
         "401": { description: Authentication is required. }
-        "403": { description: Account mismatch or Pro access required. }
+        "403": { description: Account mismatch. }
         "409": { description: Scheduling connection or record state requires attention. }
         "404": { description: Scheduling is unavailable or the record is missing. }
 
@@ -1212,7 +1234,7 @@ paths:
       responses:
         "200": { description: The updated schedule. }
         "401": { description: Authentication is required. }
-        "403": { description: Account mismatch or Pro access required. }
+        "403": { description: Account mismatch. }
         "409": { description: Scheduling connection or record state requires attention. }
         "404": { description: Scheduling is unavailable or the record is missing. }
 
@@ -1229,7 +1251,7 @@ paths:
       responses:
         "200": { description: The canceled schedule. }
         "401": { description: Authentication is required. }
-        "403": { description: Account mismatch or Pro access required. }
+        "403": { description: Account mismatch. }
         "409": { description: Scheduling connection or record state requires attention. }
         "404": { description: Scheduling is unavailable or the record is missing. }
 
@@ -2322,28 +2344,6 @@ paths:
 
 
 
-  /v1/subscription/entitlements:
-    get:
-      operationId: getSubscriptionEntitlements
-      summary: Read Verified Viewer Subscription Entitlements
-      tags: [Subscription]
-      security: [{ATProtoOAuthDPoP: []}]
-      description: Server-owned subscription plan for the authenticated viewer DID. Until billing is integrated, Gateway grants Pro only to exact DIDs configured in SOCIALWIRE_PRO_DIDS; unset configuration defaults everyone to Free. Pro enforcement defaults off; enable SOCIALWIRE_PRO_GATING_ENABLED on Gateway together with NEXT_PUBLIC_PRO_GATING_ENABLED on Web to enforce paid access. Plans still reflect grants when enforcement is disabled. Linked brand identities require their own grant when enforcement is enabled. Request parameters and client storage cannot grant entitlements.
-      responses:
-        '200':
-          description: Viewer Subscription Plan
-          headers:
-            Cache-Control:
-              schema: {type: string, const: 'private, no-store'}
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [viewerDid, plan]
-                properties:
-                  viewerDid: {type: string}
-                  plan: {type: string, enum: [free, pro]}
-        '401': {$ref: '#/components/responses/Unauthorized'}
 
   /v1/analytics/bluesky:
     get:
@@ -2351,14 +2351,13 @@ paths:
       summary: Read Viewer-Owned Bluesky Account And Article Sharing Analysis
       tags: [Analytics]
       security: [{ATProtoOAuthDPoP: []}]
-      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Reads current profile counts and a bounded author-feed sample from the Bluesky AppView. Ranks posts published during the selected period by current cumulative engagement, not engagement gained during that period. Searches up to five cached viewer-owned article URLs for recently published shares. Search is incomplete by definition; no network totals, impressions, reach, clicks, follower history, or background collection are inferred. Partial provider failures are represented with nullable metrics and availability flags. Refresh Creator Analytics first to populate article URL inventory.
+      description: Reads current profile counts and a bounded author-feed sample from the Bluesky AppView. Ranks posts published during the selected period by current cumulative engagement, not engagement gained during that period. Searches up to five cached viewer-owned article URLs for recently published shares. Search is incomplete by definition; no network totals, impressions, reach, clicks, follower history, or background collection are inferred. Partial provider failures are represented with nullable metrics and availability flags. Refresh Creator Analytics first to populate article URL inventory.
       parameters:
         - {in: query, name: days, schema: {type: integer, enum: [7, 30, 90], default: 30}}
       responses:
         '200': {description: Bounded Bluesky Analysis With Explicit Coverage, content: {application/json: {schema: {$ref: '#/components/schemas/BlueskyAnalyticsSummary'}}}}
         '400': {description: Invalid Period}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
         '429': {description: Request Limit Reached}
         '503': {description: Analytics Unavailable}
   /v1/analytics/publications:
@@ -2367,11 +2366,10 @@ paths:
       summary: Read Viewer-Owned Standard.site Publication Analytics
       tags: [Analytics]
       security: [{ATProtoOAuthDPoP: []}]
-      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Reads viewer-owned Standard.site publications and a bounded public document inventory. Counts distinct public subscribers per publication and sums distinct public recommenders per document. Counts are current observations from the public backlink index and are independent of the Bluesky date range.
+      description: Reads viewer-owned Standard.site publications and a bounded public document inventory. Counts distinct public subscribers per publication and sums distinct public recommenders per document. Counts are current observations from the public backlink index and are independent of the Bluesky date range.
       responses:
         '200': {description: Publication Analytics With Explicit Coverage, content: {application/json: {schema: {$ref: '#/components/schemas/PublicationAnalyticsSummary'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
         '429': {description: Request Limit Reached}
         '502': {description: Publication Analytics Provider Unavailable}
         '503': {description: Analytics Unavailable}
@@ -2381,14 +2379,13 @@ paths:
       summary: Read Viewer-Owned Creator Analytics
       tags: [Analytics]
       security: [{ATProtoOAuthDPoP: []}]
-      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Current known platform engagement and separately scoped Social Wire traffic. No historical platform impressions or external blog traffic are inferred. Daily snapshots begin on refresh. Views and clicks from the author are excluded.
+      description: Current known platform engagement and separately scoped Social Wire traffic. No historical platform impressions or external blog traffic are inferred. Daily snapshots begin on refresh. Views and clicks from the author are excluded.
       parameters: &creatorAnalyticsParameters
         - {in: query, name: days, schema: {type: integer, minimum: 1, maximum: 90, default: 30}}
         - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
         - {in: query, name: cursor, schema: {type: string}, description: Viewer-owned canonical subject URI.}
       responses:
         '200': {description: Account-Scoped Analytics, content: {application/json: {schema: {$ref: '#/components/schemas/CreatorAnalyticsSummary'}}}}
-        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
         '400': {description: Invalid Range Or Cursor}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '429': {description: Request Limit Reached}
@@ -2399,11 +2396,10 @@ paths:
       summary: Refresh Platform Inventory And Engagement Snapshot
       tags: [Analytics]
       security: [{ATProtoOAuthDPoP: []}]
-      description: Requires Pro for the authenticated viewer DID only when SOCIALWIRE_PRO_GATING_ENABLED is true (defaults off). Refreshes bounded public PDS inventory and AppView counters for the authenticated author. Coverage identifies partial inventory; cumulative snapshots never imply historic daily interactions. Limited to one refresh per minute per viewer.
+      description: Refreshes bounded public PDS inventory and AppView counters for the authenticated author. Coverage identifies partial inventory; cumulative snapshots never imply historic daily interactions. Limited to one refresh per minute per viewer.
       parameters: *creatorAnalyticsParameters
       responses:
         '200': {description: Refreshed Analytics, content: {application/json: {schema: {$ref: '#/components/schemas/CreatorAnalyticsSummary'}}}}
-        '403': {description: Pro Subscription Required (ProRequired) When Pro Enforcement Is Enabled}
         '400': {description: Invalid Range Or Cursor}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '429': {description: Refresh Limit Reached}

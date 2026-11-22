@@ -7,6 +7,7 @@ import { GeistSerif } from "geist/font/serif/variable";
 import "./globals.css";
 import { Providers } from "./providers";
 import { EnvironmentBanner } from "@/components/shared/EnvironmentBanner";
+import { VercelAnalytics } from "@/components/shared/VercelAnalytics";
 import { metadataSiteUrl } from "@/lib/metadataSiteUrl";
 import {
   environmentBannerHeight,
@@ -120,6 +121,9 @@ export default function RootLayout({
           <EnvironmentBanner appEnv={appEnv} />
           {children}
         </Providers>
+        {process.env.VERCEL === "1" && (
+          <VercelAnalytics speedInsights={appEnv === "prod"} />
+        )}
       </body>
     </html>
   );

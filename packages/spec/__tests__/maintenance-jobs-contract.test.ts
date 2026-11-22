@@ -23,3 +23,15 @@ test("maintenance jobs use dedicated authentication and matching operational req
     }
   }
 });
+
+ test("consolidated schedule retains dedicated auth and an operational request", () => {
+  const document = Bun.YAML.parse(read("packages/spec/openapi.yaml")) as any;
+  const path = "/internal/schedules/maintenance";
+  const operation = document.paths[path].get;
+  expect(operation.security).toEqual([{ MaintenanceCronBearer: [] }]);
+  expect(operation.responses["405"]).toBeDefined();
+  expect(operation.responses["503"]).toBeDefined();
+  const bruno = read("services/appview/bruno/Jobs/Schedule maintenance.bru");
+  expect(bruno).toContain(path);
+  expect(bruno).toContain("Authorization: Bearer {{cronSecret}}");
+});

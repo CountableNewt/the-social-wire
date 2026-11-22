@@ -35,8 +35,8 @@ describe("Bluesky analytics client", () => {
       await expect(getBlueskyAnalytics({} as OAuthSession, { days: 30 })).rejects.toThrow("Bluesky analytics could not be loaded (503)");
       fetch.mockResolvedValue(new Response("private auth details", { status: 401 }));
       await expect(getBlueskyAnalytics({} as OAuthSession, { days: 30 })).rejects.toThrow("Log in again");
-      fetch.mockResolvedValue(new Response("private entitlement details", { status: 403 }));
-      await expect(getBlueskyAnalytics({} as OAuthSession, { days: 30 })).rejects.toThrow("requires Pro access");
+      fetch.mockResolvedValue(new Response("private denial details", { status: 403 }));
+      await expect(getBlueskyAnalytics({} as OAuthSession, { days: 30 })).rejects.toThrow("is not available");
     } finally { fetch.mockRestore(); }
   });
 });

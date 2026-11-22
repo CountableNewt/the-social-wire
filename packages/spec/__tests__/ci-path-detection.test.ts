@@ -77,7 +77,8 @@ function detect(
 describe("standalone CI path detection", () => {
   it.each([
     "services/appview/go.mod",
-    "services/appview/vercel.json",
+    "services/appview/vercel.ts",
+    "services/appview/scripts/vercel-config.ts",
     "services/appview/scripts/vercel-build.sh",
     "services/appview/Dockerfile.standalone",
     "services/appview/bin/standalone-entrypoint",

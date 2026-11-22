@@ -28,18 +28,6 @@ final class SocialWireGatewayClient {
         self.transport = transport
     }
 
-    func fetchProEntitlement() async throws -> SocialProEntitlement {
-        let result = try await authorizedGET(
-            path: "/v1/subscription/entitlements",
-            query: [:],
-            ifNoneMatch: nil
-        )
-        guard (200 ..< 300).contains(result.statusCode) else {
-            throw SocialWireError.badResponse("Pro access check failed (\(result.statusCode)).")
-        }
-        return try JSONDecoder().decode(SocialProEntitlement.self, from: result.body)
-    }
-
     nonisolated static func preferencesSyncRequest(
         ifNoneMatch: String?,
         forceRefresh: Bool

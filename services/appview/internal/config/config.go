@@ -58,16 +58,7 @@ type Core struct {
 	// AttestationReceiptSecret keys ATProtoSessionAttestationReceipt.
 	AttestationReceiptSecret string
 
-	ProGatingEnabled bool
-	ProDIDs          map[string]struct{}
-
 	KlipyAPIKey string
-}
-
-// HasPro reports whether did holds a Pro entitlement.
-func (c Core) HasPro(did string) bool {
-	_, ok := c.ProDIDs[did]
-	return ok
 }
 
 // LoadCore validates and returns the shared configuration.
@@ -132,8 +123,6 @@ func LoadCore(env Env) (Core, error) {
 		GatewayAppViewInternalSecret: env.String("GATEWAY_APPVIEW_INTERNAL_SECRET"),
 		CORSAllowedOrigins:           env.Tokens("CORS_ALLOWED_ORIGINS"),
 		AttestationReceiptSecret:     secret,
-		ProGatingEnabled:             env.True("SOCIALWIRE_PRO_GATING_ENABLED"),
-		ProDIDs:                      env.Tokens("SOCIALWIRE_PRO_DIDS"),
 		KlipyAPIKey:                  klipy,
 	}, nil
 }

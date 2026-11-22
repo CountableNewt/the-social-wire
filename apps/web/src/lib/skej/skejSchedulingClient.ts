@@ -1,3 +1,4 @@
+import { isQuarterHour } from "@/components/ContentCalendar/calendarDates";
 import { compilePostText, resolvePostText } from "@/lib/composePostText";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
@@ -81,6 +82,7 @@ function summary(value: unknown, did: string): SkejScheduleSummary {
 export function validateScheduledAt(value: string, now = Date.now()): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) || date.getTime() < now + 60_000) throw new Error("Choose a Time At Least One Minute From Now.");
+  if (!isQuarterHour(date)) throw new Error("Choose a Quarter-Hour Time (:00, :15, :30, or :45).");
   return date.toISOString();
 }
 export async function getSkejSchedulingReadiness(actor: SkejSchedulingActor, signal?: AbortSignal) {

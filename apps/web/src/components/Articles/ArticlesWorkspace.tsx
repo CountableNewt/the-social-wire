@@ -8,7 +8,6 @@ import { ArrowLeft, ChevronDown, PanelRight, Plus } from "lucide-react";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
 import { assertPostSchedulingEnabled, isPostSchedulingEnabled } from "@/lib/postScheduling";
 import { useSkejScheduling } from "@/hooks/useSkejScheduling";
-import { useProEntitlements } from "@/hooks/useProEntitlements";
 import { isSkejArticleSchedule } from "@/lib/skej/skejSchedulingClient";
 import { ArticleScheduleDialog } from "./ArticleScheduleDialog";
 import { ArticleScheduledList } from "./ArticleScheduledList";
@@ -56,7 +55,6 @@ function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?:
     } };
   }, [did, getOAuthSession, oauthSessionReloadSeq]);
   const local = useArticleDrafts(did, draftActor);
-  const { isPro } = useProEntitlements();
   const scheduler = useSkejScheduling(did, did);
   const [scheduling, setScheduling] = useState(false);
   const actionLock = useRef(false);
@@ -253,7 +251,7 @@ function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?:
       const active = draftRef.current;
       if (!active || !publication || active.publishedUri || active.scheduleRecordKey || active.publishingRecordKey) throw new Error("This Draft Cannot Be Scheduled Again. Review Its Schedule First.");
       assertArticlePublicationEditable(publication);
-      if (!isPro || !scheduler.readiness.data?.connected) throw new Error("Connect Skej With Social Wire Pro Before Scheduling.");
+      if (!scheduler.readiness.data?.connected) throw new Error("Connect Skej Before Scheduling.");
       if (active.coverAssetId || (active.assets ?? []).some(asset => active.markdown.includes(`article-asset://${asset.id}`)) || /!\[.*?\]\(/.test(active.markdown) || publication.host === "offprint") throw new Error("Scheduling Supports Text Articles in Leaflet, Markpub, and Generic Publications. Remove Images Before Scheduling.");
       const snapshot = structuredClone(active);
       await local.persist({ requireRemote: true });
@@ -334,14 +332,14 @@ function ArticlesViewer({ did, initialDraftId }: { did: string; initialDraftId?:
       published={history.data ?? []} publishedPending={history.isPending} publishedFetching={history.isFetching} publishedError={history.error} onRetryPublished={() => { void history.refetch(); }} onOpenPublished={article => { setPublishedArticle(article); setEditingPublished(false); setMetadataVisible(true); }}
       onEditPublished={article => { setFailure(undefined); setPublishedArticle(article); setEditingPublished(true); }}
       onDeletePublished={article => { setFailure(undefined); setPublishedDeletion(article); }}
-      research={<ResearchWorkspace did={did} />} scheduled={<ArticleScheduledList did={did} publications={publications.data ?? []} scheduler={scheduler} isPro={isPro} onCanceled={async item => {
+      research={<ResearchWorkspace did={did} />} scheduled={<ArticleScheduledList did={did} publications={publications.data ?? []} scheduler={scheduler} onCanceled={async item => {
         if (isSkejArticleSchedule(item) && draftRef.current?.scheduleRecordKey === item.record.publishRkey && draftRef.current?.scheduleUri === item.scheduleUri) { local.update({ scheduleRecordKey: undefined, scheduleUri: undefined, publicationClaimId: undefined }); await local.persist(); }
       }} />} /> : publishedArticle && editingPublished && publishedEditCapability !== "none" ? <PublishedArticleEditor key={publishedArticle.cid} article={publishedArticle} capability={publishedEditCapability} busy={busy} onCancel={() => setEditingPublished(false)} onSave={edit => { void savePublished(edit); }} />
       : publishedArticle ? <PublishedArticleView article={publishedArticle} publications={publications.data ?? []} metadataVisible={metadataVisible} metadataWidth={metadataWidth} onMetadataWidthChange={setMetadataWidth} busy={busy} onEdit={publishedEditCapability === "none" ? undefined : () => { setFailure(undefined); setEditingPublished(true); }} onDelete={publishedDeletable ? () => { setFailure(undefined); setPublishedDeletion(publishedArticle); } : undefined} /> : <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
       {!draft ? <div className="flex min-h-60 flex-1 items-center justify-center p-6 text-muted-foreground">Select a Draft or Create an Article.</div> : <div className="flex min-w-0 shrink-0 flex-col md:min-h-0 md:flex-1 lg:flex-row">
         <section aria-label="Article Editor" aria-busy={busy} className="min-w-0 shrink-0 p-4 sm:p-6 md:min-h-0 md:flex-1 md:overflow-y-auto">
-          <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={editingDisabled} onClick={() => { if (!publicationDisabledReason) void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button>{isPostSchedulingEnabled() ? <Button size="sm" variant="outline" disabled={busy || !isPro || !scheduler.readiness.data?.connected || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button> : null}</div>
-          {isPostSchedulingEnabled() && !isPro ? <p className="mb-3 text-xs text-muted-foreground">Article Scheduling Requires Social Wire Pro.</p> : isPostSchedulingEnabled() && !scheduler.readiness.data?.connected ? <p className="mb-3 text-xs text-muted-foreground">Open Scheduled to Connect Skej.</p> : null}
+          <div className="mb-4 flex flex-wrap items-center gap-2"><ArticleDraftSaveStatus status={local.status} syncing={local.syncing} /><Button variant="outline" size="sm" disabled={editingDisabled} onClick={() => { if (!publicationDisabledReason) void perform(local.persist); }}>Save Draft</Button><Button size="sm" disabled={busy || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setPublishing(true)}>Publish Article</Button>{isPostSchedulingEnabled() ? <Button size="sm" variant="outline" disabled={busy || !scheduler.readiness.data?.connected || !publication || !!publicationDisabledReason || !draft.title.trim() || !draft.markdown.trim() || !!draft.publishedUri || !!draft.scheduleRecordKey || !!draft.publishingRecordKey} onClick={() => setScheduling(true)}>Schedule Article</Button> : null}</div>
+          {isPostSchedulingEnabled() && !scheduler.readiness.data?.connected ? <p className="mb-3 text-xs text-muted-foreground">Open Scheduled to Connect Skej.</p> : null}
           {draft.publishingRecordKey ? <p role="status" className="mb-4 rounded-lg bg-muted p-3 text-sm">Publication May Have Completed. Check Published Articles Before Taking Further Action.</p> : null}
           {draft.publishingRecordKey ? <div className="mb-4">{pendingArticleUrl ? <a href={pendingArticleUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline", className: "h-auto px-4 py-2" })} onClick={() => { void perform(() => checkPendingResult("publish")); }}>Open Article</a> : <Button variant="outline" disabled={busy} className="h-auto px-4 py-2" onClick={() => { void perform(() => checkPendingResult("publish")); }}>Check Publication</Button>}</div> : null}
           {isPostSchedulingEnabled() && draft.scheduleRecordKey && !draft.scheduleUri ? <Button variant="outline" size="sm" disabled={busy} onClick={() => { void perform(() => checkPendingResult("schedule")); }}>Check Schedule</Button> : null}

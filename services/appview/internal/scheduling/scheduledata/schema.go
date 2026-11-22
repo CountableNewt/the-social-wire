@@ -135,17 +135,6 @@ CREATE TABLE IF NOT EXISTS team_invites (
 );
 CREATE INDEX IF NOT EXISTS team_invites_owner_idx
     ON team_invites (owner_did, team_uri, status, created_at DESC);
-CREATE TABLE IF NOT EXISTS pro_entitlements (
-    viewer_did TEXT PRIMARY KEY,
-    scope_type TEXT NOT NULL DEFAULT 'actor',
-    scope_value TEXT,
-    status TEXT NOT NULL,
-    source TEXT NOT NULL,
-    granted_by_did TEXT,
-    expires_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS audit_events (
     id TEXT PRIMARY KEY,
     did TEXT NOT NULL,

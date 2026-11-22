@@ -23,7 +23,7 @@ export type BlueskyAnalyticsSummary = {
 export async function getBlueskyAnalytics(session: OAuthSession, options: { days: number; signal?: AbortSignal }): Promise<BlueskyAnalyticsSummary> {
   const response = await gatewayFetch(session, `/v1/analytics/bluesky?${new URLSearchParams({ days: String(options.days) })}`, { signal: options.signal });
   if (!response.ok) {
-    throw new Error(response.status === 401 ? "Log in again to allow Analytics to access your account." : response.status === 403 ? "Bluesky analytics requires Pro access for this account." : `Bluesky analytics could not be loaded (${response.status}). Please try again.`);
+    throw new Error(response.status === 401 ? "Log in again to allow Analytics to access your account." : response.status === 403 ? "Bluesky analytics is not available for this account." : `Bluesky analytics could not be loaded (${response.status}). Please try again.`);
   }
   return await response.json() as BlueskyAnalyticsSummary;
 }
