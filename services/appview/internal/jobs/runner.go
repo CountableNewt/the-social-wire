@@ -118,6 +118,7 @@ func (r *Runner) Run(ctx context.Context, name string) (Result, error) {
 	now := time.Now()
 	claimed, err := r.claim(ctx, name, owner, now, now.Add(action.Timeout+30*time.Second))
 	if err != nil || !claimed {
+		logFailure(name, "claim", err)
 		return result, err
 	}
 	result.Claimed = true
@@ -129,9 +130,11 @@ func (r *Runner) Run(ctx context.Context, name string) (Result, error) {
 	work, cancel := context.WithTimeout(ctx, action.Timeout)
 	defer cancel()
 	if err := action.Run(work); err != nil {
+		logFailure(name, "action", err)
 		return result, err
 	}
 	if err := work.Err(); err != nil {
+		logFailure(name, "context", err)
 		return result, err
 	}
 	result.Completed = true

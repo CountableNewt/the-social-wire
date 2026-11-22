@@ -21,6 +21,10 @@ func OpenTurso(ctx context.Context, endpoint, token string) (*DB, error) {
 }
 
 func openTurso(ctx context.Context, endpoint, token string, client *http.Client) (*DB, error) {
+	return openTursoWithLifetime(ctx, endpoint, token, client, 15*time.Second)
+}
+
+func openTursoWithLifetime(ctx context.Context, endpoint, token string, client *http.Client, lifetime time.Duration) (*DB, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
 		(parsed.Path != "" && parsed.Path != "/") || parsed.ForceQuery || (parsed.Scheme != "turso" && parsed.Scheme != "https") ||
@@ -40,7 +44,11 @@ func openTurso(ctx context.Context, endpoint, token string, client *http.Client)
 	pool.SetMaxOpenConns(8)
 	pool.SetMaxIdleConns(4)
 	pool.SetConnMaxIdleTime(time.Minute)
-	pool.SetConnMaxLifetime(5 * time.Minute)
+	// Retained backend sessions expire after a short idle gap. A serverless
+	// instance can freeze its idle-cleanup timer, so use the lifetime checked
+	// synchronously on checkout to discard old sessions before any SQL runs.
+	// Never retry a mutation whose result may already have been committed.
+	pool.SetConnMaxLifetime(lifetime)
 	if err := pool.PingContext(ctx); err != nil {
 		_ = pool.Close()
 		return nil, remoteError(err)

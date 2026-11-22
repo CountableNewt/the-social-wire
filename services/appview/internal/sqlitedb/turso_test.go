@@ -6,10 +6,12 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	turso "turso.tech/database/tursogo-serverless"
 )
@@ -220,5 +222,73 @@ func TestTursoEndpointAndTransportFailClosed(t *testing.T) {
 	request, _ := http.NewRequest(http.MethodPost, "https://another.turso.io/v3/pipeline", nil)
 	if _, err := transport.RoundTrip(request); err == nil || called {
 		t.Fatal("credential-bearing request crossed origins")
+	}
+}
+
+func TestExpiredRetainedSessionIsReplacedBeforeMutation(t *testing.T) {
+	var opened, staleSQL, mutations int
+	expiredSession := ""
+	client := &http.Client{Transport: tursoRoundTrip(func(r *http.Request) (*http.Response, error) {
+		var request struct {
+			Baton    *string `json:"baton"`
+			Requests []struct {
+				Type string `json:"type"`
+			} `json:"requests"`
+			Batch struct {
+				Steps []struct {
+					Stmt struct {
+						SQL string `json:"sql"`
+					} `json:"stmt"`
+				} `json:"steps"`
+			} `json:"batch"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		baton := ""
+		if request.Baton == nil {
+			opened++
+			baton = fmt.Sprintf("session-%d", opened)
+		} else {
+			baton = *request.Baton
+		}
+		closing := len(request.Requests) > 0 && request.Requests[0].Type == "close"
+		if !closing && baton == expiredSession {
+			staleSQL++
+			return &http.Response{StatusCode: 404, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":"expired synthetic session"}`))}, nil
+		}
+		var body string
+		if r.URL.Path == "/v3/pipeline" {
+			results := []map[string]any{}
+			for _, q := range request.Requests {
+				response := map[string]any{"type": q.Type}
+				if q.Type == "get_autocommit" {
+					response["is_autocommit"] = true
+				}
+				results = append(results, map[string]any{"type": "ok", "response": response})
+			}
+			encoded, _ := json.Marshal(map[string]any{"baton": baton, "results": results})
+			body = string(encoded)
+		} else {
+			if strings.HasPrefix(request.Batch.Steps[0].Stmt.SQL, "INSERT") {
+				mutations++
+			}
+			body = fmt.Sprintf(`{"baton":%q}`, baton) + "\n" + `{"type":"step_begin","step":0,"cols":[{"name":"value","decltype":"INTEGER"}]}` + "\n" + `{"type":"row","row":[{"type":"integer","value":"1"}]}` + "\n" + `{"type":"step_end","affected_row_count":1}` + "\n" + `{"type":"step_begin","step":1,"cols":[]}` + "\n" + `{"type":"step_end","affected_row_count":0}` + "\n"
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	db, err := openTursoWithLifetime(t.Context(), "https://database.turso.io", "private-token", client, 10*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// Less than the idle-cleaner minimum tick: replacement must happen on checkout.
+	time.Sleep(40 * time.Millisecond)
+	expiredSession = fmt.Sprintf("session-%d", opened)
+	if _, err := db.Writer().ExecContext(t.Context(), "INSERT INTO synthetic VALUES(1)"); err != nil {
+		t.Fatal(err)
+	}
+	if staleSQL != 0 || mutations != 1 || opened < 2 || db.Writer().Stats().MaxLifetimeClosed == 0 {
+		t.Fatalf("stale session reached SQL or mutation replayed: stale=%d mutations=%d opened=%d", staleSQL, mutations, opened)
 	}
 }
