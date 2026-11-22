@@ -6,6 +6,14 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/thinstore"
 )
 
+// Lists do not use article HTML. Keep malformed JSON and invalid contentHtml
+// types intact so the existing decoder still rejects the same records. Detail
+// routes continue reading the full stored render document.
+const listRenderSQL = `CASE WHEN json_valid(ci.render_json) THEN
+ CASE WHEN json_type(ci.render_json,'$.contentHtml')='text'
+ THEN json_remove(ci.render_json,'$.contentHtml') ELSE ci.render_json END
+ ELSE ci.render_json END`
+
 // jsonEntryBatch keeps SQL size independent of subscription count. Each scope
 // performs its own bounded ordered index scan; only compact candidate metadata
 // crosses the JSON table function before the final merge loads render bodies.
@@ -40,7 +48,7 @@ func jsonEntryBatch(scopes []feedMatch, migrated bool, viewer, now string, filte
 	singleSite := branch("idx_content_items_author_site_timestamp_uri", "ci.publication_site=json_extract(scopes.sites,'$[0]')")
 	multipleSites := branch("idx_content_items_author_timestamp_uri", "(scopes.sites IS NULL OR ci.publication_site IN (SELECT value FROM json_each(scopes.sites)))")
 	args = append(args, limit)
-	return `SELECT ci.uri,ci.render_json,ci.created_at,batch.pub,batch.is_read
+	return `SELECT ci.uri,` + listRenderSQL + ` AS render_json,ci.created_at,batch.pub,batch.is_read
 FROM (SELECT json_extract(candidate.value,'$.uri') AS uri,scopes.pub,
  json_extract(candidate.value,'$.isRead') AS is_read,json_extract(candidate.value,'$.position') AS position
 FROM (
