@@ -11,7 +11,11 @@ import (
 	turso "turso.tech/database/tursogo-serverless"
 )
 
-type tursoConnector struct{ connector *turso.Connector }
+type tursoConnector struct {
+	connector *turso.Connector
+	maxIdle   time.Duration
+	now       func() time.Time
+}
 
 func (c *tursoConnector) Driver() driver.Driver { return c.connector.Driver() }
 
@@ -34,7 +38,9 @@ func (c *tursoConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err != nil || closeErr != nil || values[0] != int64(1) {
 		return fail(errors.New("Turso foreign key enforcement unavailable"))
 	}
-	return &tursoConnection{remoteSession: raw}, nil
+	connection := &tursoConnection{remoteSession: raw, maxIdle: c.maxIdle, now: c.now}
+	connection.markActivity()
+	return connection, nil
 }
 
 // The upstream BeginTx currently ignores TxOptions and uses deferred BEGIN.
@@ -52,8 +58,11 @@ type remoteSession interface {
 
 type tursoConnection struct {
 	remoteSession
-	readOnly bool
-	broken   bool
+	readOnly     bool
+	broken       bool
+	maxIdle      time.Duration
+	now          func() time.Time
+	lastActivity time.Time
 }
 
 func (c *tursoConnection) IsValid() bool { return !c.broken && c.remoteSession.IsValid() }
@@ -61,6 +70,9 @@ func (c *tursoConnection) Begin() (driver.Tx, error) {
 	return c.BeginTx(context.Background(), driver.TxOptions{})
 }
 func (c *tursoConnection) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if options.Isolation != driver.IsolationLevel(sql.LevelDefault) {
 		return nil, errors.New("Turso transaction isolation option is unsupported")
 	}
@@ -68,6 +80,7 @@ func (c *tursoConnection) BeginTx(ctx context.Context, options driver.TxOptions)
 	if options.ReadOnly {
 		query = "BEGIN"
 	}
+	defer c.markActivity()
 	if _, err := c.remoteSession.ExecContext(ctx, query, nil); err != nil {
 		return nil, remoteError(err)
 	}
@@ -95,6 +108,7 @@ func (c *tursoConnection) allow(ctx context.Context, query string) error {
 		return errors.New("read-only Turso transaction requires one query statement")
 	}
 	description, err := c.remoteSession.DescribeContext(ctx, query)
+	c.markActivity()
 	if err != nil {
 		return remoteError(err)
 	}
@@ -109,13 +123,17 @@ func (c *tursoConnection) ExecContext(ctx context.Context, query string, args []
 		return nil, err
 	}
 	result, err := c.remoteSession.ExecContext(ctx, query, args)
+	c.markActivity()
 	return result, remoteError(err)
 }
 func (c *tursoConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if err := c.allow(ctx, query); err != nil {
 		return nil, err
 	}
+	// The official driver buffers remote rows before returning. Iteration and
+	// Rows.Close perform no network activity, so they must not renew backend idle time.
 	rows, err := c.remoteSession.QueryContext(ctx, query, args)
+	c.markActivity()
 	return rows, remoteError(err)
 }
 func (c *tursoConnection) Prepare(query string) (driver.Stmt, error) {
@@ -126,12 +144,17 @@ func (c *tursoConnection) PrepareContext(ctx context.Context, query string) (dri
 		return nil, err
 	}
 	statement, err := c.remoteSession.PrepareContext(ctx, query)
+	c.markActivity()
 	if err != nil {
 		return nil, remoteError(err)
 	}
 	return &tursoStatement{Stmt: statement, connection: c, query: query}, nil
 }
 func (c *tursoConnection) Ping(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	defer c.markActivity()
 	return remoteError(c.remoteSession.Ping(ctx))
 }
 func (c *tursoConnection) Close() error { return remoteError(c.remoteSession.Close()) }
@@ -169,6 +192,7 @@ type tursoTransaction struct {
 
 func (t *tursoTransaction) Commit() error {
 	_, err := t.connection.remoteSession.ExecContext(t.ctx, "COMMIT", nil)
+	t.connection.markActivity()
 	t.connection.readOnly = false
 	if err != nil {
 		// The commit outcome is unknown. Invalidate, do not replay the write or
@@ -182,6 +206,7 @@ func (t *tursoTransaction) Rollback() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := t.connection.remoteSession.ExecContext(ctx, "ROLLBACK", nil)
+	t.connection.markActivity()
 	t.connection.readOnly = false
 	if err != nil {
 		t.connection.broken = true

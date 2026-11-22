@@ -277,18 +277,19 @@ func TestExpiredRetainedSessionIsReplacedBeforeMutation(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}
-	db, err := openTursoWithLifetime(t.Context(), "https://database.turso.io", "private-token", client, 10*time.Millisecond)
+	clock := time.Date(2026, 11, 22, 0, 0, 0, 0, time.UTC)
+	db, err := openTursoWithIdlePolicy(t.Context(), "https://database.turso.io", "private-token", client, 15*time.Second, func() time.Time { return clock })
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	// Less than the idle-cleaner minimum tick: replacement must happen on checkout.
-	time.Sleep(40 * time.Millisecond)
+	clock = clock.Add(16 * time.Second)
 	expiredSession = fmt.Sprintf("session-%d", opened)
 	if _, err := db.Writer().ExecContext(t.Context(), "INSERT INTO synthetic VALUES(1)"); err != nil {
 		t.Fatal(err)
 	}
-	if staleSQL != 0 || mutations != 1 || opened < 2 || db.Writer().Stats().MaxLifetimeClosed == 0 {
+	if staleSQL != 0 || mutations != 1 || opened < 2 || db.Writer().Stats().MaxLifetimeClosed != 0 {
 		t.Fatalf("stale session reached SQL or mutation replayed: stale=%d mutations=%d opened=%d", staleSQL, mutations, opened)
 	}
 }

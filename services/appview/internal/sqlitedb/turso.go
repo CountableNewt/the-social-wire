@@ -21,10 +21,10 @@ func OpenTurso(ctx context.Context, endpoint, token string) (*DB, error) {
 }
 
 func openTurso(ctx context.Context, endpoint, token string, client *http.Client) (*DB, error) {
-	return openTursoWithLifetime(ctx, endpoint, token, client, 15*time.Second)
+	return openTursoWithIdlePolicy(ctx, endpoint, token, client, retainedSessionMaxIdle, time.Now)
 }
 
-func openTursoWithLifetime(ctx context.Context, endpoint, token string, client *http.Client, lifetime time.Duration) (*DB, error) {
+func openTursoWithIdlePolicy(ctx context.Context, endpoint, token string, client *http.Client, maxIdle time.Duration, now func() time.Time) (*DB, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
 		(parsed.Path != "" && parsed.Path != "/") || parsed.ForceQuery || (parsed.Scheme != "turso" && parsed.Scheme != "https") ||
@@ -40,15 +40,14 @@ func openTursoWithLifetime(ctx context.Context, endpoint, token string, client *
 	protectedClient.Transport = &tursoTransport{origin: parsed.Host, next: transport}
 	protectedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return ErrRemoteDatabase }
 	connector := turso.NewConnector(parsed.String(), token).WithHTTPClient(&protectedClient).WithSessionRetention()
-	pool := sql.OpenDB(&tursoConnector{connector: connector})
+	pool := sql.OpenDB(&tursoConnector{connector: connector, maxIdle: maxIdle, now: now})
 	pool.SetMaxOpenConns(8)
-	pool.SetMaxIdleConns(4)
+	pool.SetMaxIdleConns(8)
 	pool.SetConnMaxIdleTime(time.Minute)
-	// Retained backend sessions expire after a short idle gap. A serverless
-	// instance can freeze its idle-cleanup timer, so use the lifetime checked
-	// synchronously on checkout to discard old sessions before any SQL runs.
-	// Never retry a mutation whose result may already have been committed.
-	pool.SetConnMaxLifetime(lifetime)
+	// ResetSession checks backend idle time synchronously before reuse, including
+	// after a serverless freeze. Keep active sessions warm across requests;
+	// total lifetime is only a longer fallback, not the idle-expiry policy.
+	pool.SetConnMaxLifetime(5 * time.Minute)
 	if err := pool.PingContext(ctx); err != nil {
 		_ = pool.Close()
 		return nil, remoteError(err)
