@@ -2,6 +2,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { LATR_UPSTREAM_DPOP_HEADER } from "latr-packages/gateway-client";
 
 import { enqueueForGatewayOrigin } from "@/lib/gatewayOriginQueue";
+import { socialWireApiOrigin } from "@/lib/socialWireApiOrigin";
 import {
   createUpstreamDpopProof,
   pdsXrpcMethodForSocialWireGatewayRequest,
@@ -25,9 +26,7 @@ import {
 } from "@/lib/pdsSessionAttestation";
 
 export function gatewayBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL ?? "https://api.thesocialwire.app"
-  ).replace(/\/$/, "");
+  return socialWireApiOrigin();
 }
 
 type OAuthSessionWithManualDpop = OAuthSession & {

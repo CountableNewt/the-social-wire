@@ -77,8 +77,8 @@ function detect(
 describe("standalone CI path detection", () => {
   it.each([
     "services/appview/go.mod",
-    "services/appview/vercel.ts",
-    "services/appview/scripts/vercel-config.ts",
+    "vercel.ts",
+    "scripts/vercel-config.ts",
     "services/appview/scripts/vercel-build.sh",
     "services/appview/Dockerfile.standalone",
     "services/appview/bin/standalone-entrypoint",
@@ -92,7 +92,6 @@ describe("standalone CI path detection", () => {
   });
   it.each([
     "apps/web/src/app/page.tsx",
-    "apps/web/vercel.json",
     "packages/read-state/src/index.ts",
     "packages/spec/__tests__/example.test.ts",
   ])("retains cross-client/source contracts without distributed runtime jobs for %s", path => {

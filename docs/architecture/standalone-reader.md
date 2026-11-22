@@ -4,24 +4,21 @@ Next.js Web and Go AppView run on Vercel, with US Turso databases and private Bl
 
 PDS records remain authoritative for user-owned protocol data. AppView owns reader projections, private unpublished state, analytics and embedded scheduling. No retired Swift backend, global firehose, Postgres, Redis, separate Gateway or Coordinator is required. Web and Apple remain thin consumers of the existing API domains and authenticated unbuffered NDJSON bootstrap.
 
-## Two Vercel Projects
+## One Vercel Services Project
 
-| Project root | Production | Development |
-| --- | --- | --- |
-| `apps/web` | `main`, Production target | `dev` branch Preview |
-| `services/appview` | `main`, Production target | `dev` branch Preview |
+Root `vercel.ts` and `scripts/vercel-config.ts` target the retained Web project at repository root. Seven services ship and roll back together: Next.js Web at `apps/web`, and reader, publishing, scheduling, analytics, integrations and maintenance at `services/appview`. Shared Go wiring and allowlisted builds remain unchanged, with 300-second limits in `sfo1`.
 
-Development uses `https://testing.thesocialwire.app` and `https://api.testing.thesocialwire.app`; Production uses `https://thesocialwire.app` and `https://api.thesocialwire.app`. Preserve these stable OAuth identities. Configure branch-specific Preview variables, domains and credentials for `dev`; do not create separate Development projects or let arbitrary previews share either release environment's private data.
+`main` targets Production and branch-scoped `dev` Preview targets Development. Generic branches remain disabled until isolated credentials, two Turso databases and a private Blob store are provisioned. No generic preview schedules maintenance or initializes shared databases. See the [#992 cutover procedure](../runbooks/vercel-project-consolidation.md); this source target does not establish hosted acceptance.
 
-The Web config installs the root Bun workspace with the frozen lockfile and builds Next.js. Keep source files outside the Root Directory enabled for workspace dependencies. Backend Services Beta has six independently routed Go Functions: reader, publishing, scheduling, analytics, integrations and maintenance. Shared wiring lives in `internal/appviewruntime`; the allowlisted build script compiles each `cmd/<surface>` package. Functions have 300-second limits in `sfo1` and preserve existing route paths.
+Development retains `testing.thesocialwire.app` and `api.testing.thesocialwire.app`; Production retains `thesocialwire.app`, `www.thesocialwire.app` and `api.thesocialwire.app`. Browser API calls use their current origin directly, preserving unbuffered NDJSON and attachment streaming. API-host metadata remains Go-owned; Web metadata and `/api/*` handlers remain Next-owned. Native identities and scheduling OAuth origins stay unchanged.
 
-Native CLI deployments render the pure config helper into a private archive's sole `vercel.json`; `--local-config` does not parse TypeScript. Checked-in branch allowlists permit `main` and `dev`. GitHub remains the canonical source; readonly required CI and the Development-first parity gate precede release.
+Web installs the frozen root Bun workspace. CLI deployments render `scripts/render-vercel-config.ts` into a private complete-workspace archive's sole root `vercel.json`. Keep generic Git deployments disabled. Required readonly CI and Development-first parity remain release gates.
 
 ## Environment and Admission
 
 Hosted AppView explicitly selects `BACKEND_MODE=standalone`, `RUNTIME_MODE=serverless`, `DATABASE_BACKEND=turso` and `JOBS_RUNNER_MODE=external`. Set canonical `APP_ENV=dev|prod` for the matching branch/target. Local server mode remains available without Vercel.
 
-Keep credentials only on the owning project/target. Web's server-only L@tr settings belong to Web; backend database, scheduling, draft and job secrets belong to AppView. No backend tokens or encryption keys belong in public build variables or native clients.
+Keep credentials in the matching retained-project environment. Web's server-only L@tr settings and backend database, scheduling, draft and job secrets must preserve their values and Production/Development isolation. No backend tokens or encryption keys belong in public build variables or native clients.
 
 Set `OAUTH_PUBLIC_ORIGIN` to the stable **API** origin. Set `CORS_ALLOWED_ORIGINS` explicitly to **frontend** origins:
 
@@ -66,7 +63,7 @@ All eight actions use durable leases and bounded runs. Manual `POST /internal/jo
 | `author-history` | Each dispatcher window | 90 seconds |
 | `read-state-recovery` | Each dispatcher window | 60 seconds |
 
-`vercel.ts` declares one Production dispatcher every 15 minutes and one hourly Development dispatcher only for `APP_ENV=dev`, Preview target, branch `dev`. Other previews/local declare no schedules. Together these use at most 3,720 scheduled runs in a 31-day month against Hobby's shared 5,000-run allowance. Delivery can arrive up to 15 minutes late, and failures can delay work further. New/edited posts use quarter-hour times and visible approximate-publishing copy; existing off-grid queued posts remain publishable.
+Root `vercel.ts` declares one Production dispatcher every 15 minutes only for `APP_ENV=prod`, Production target, branch `main` and one hourly Development dispatcher only for `APP_ENV=dev`, Preview target, branch `dev`. Other previews/local declare no schedules. Together these use at most 3,720 scheduled runs in a 31-day month against Hobby's shared 5,000-run allowance. Delivery can arrive up to 15 minutes late, and failures can delay work further. New/edited posts use quarter-hour times and visible approximate-publishing copy; existing off-grid queued posts remain publishable.
 
 `JOBS_RUNNER_MODE=external` disables internal maintenance timers and heartbeat. Serverless mode also starts no history or telemetry export loops; request telemetry flushes within a bounded request scope. Author history and public PDS read-state recovery persist work/checkpoints for later invocations. Duplicate maintenance invocations do not bypass action leases or durable cadence fences.
 

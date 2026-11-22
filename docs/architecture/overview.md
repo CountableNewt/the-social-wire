@@ -23,7 +23,7 @@ The viewer's PDS remains authoritative for user-authored protocol records. Publi
 
 ## Hosting and Releases
 
-Exactly two Vercel projects host Web (`apps/web`) and AppView (`services/appview`). Both use `main` for Production and the `dev` branch Preview for Development. Environment-specific domains, database tokens, private Blob stores and credentials stay isolated. Other preview branches do not inherit Development scheduling or shared database initialization.
+Root source configuration targets one retained Vercel Services project with Web (`apps/web`) and six Go AppView services (`services/appview`), using `main` for Production and the `dev` branch Preview for Development. Environment-specific domains, database tokens, private Blob stores and credentials stay isolated. Other preview branches do not inherit Development scheduling or shared database initialization.
 
 Functions run in `sfo1`; database and object placement must remain in the United States. The maintenance Function uses a consolidated authenticated schedule with durable per-action leases and cadence fences. Production runs every 15 minutes and Development hourly; delivery is approximate. Serving never applies remote schema DDL. Initialize remote stores explicitly, with Development Preview initialization outside builds.
 
@@ -34,3 +34,5 @@ GitHub remains the canonical remote. Readonly GitHub Actions checks and the Deve
 `cmd/appview` runs the combined backend with local SQLite. Portable Web and AppView Docker images, the persistent-volume guard, non-root entrypoint, verified SQLite backup and offline preflight commands remain supported. No local Postgres/Redis stack or retired Swift backend is required.
 
 See the [runtime guide](standalone-reader.md) for configuration, schema initialization and recovery, and [test plans](../test-plans/README.md) for checks. The old [distributed AppView](appview.md), [indexing](indexing-services.md) and [Redis](redis.md) designs are historical references.
+
+Issue #992 tracks hosted consolidation acceptance; see the [cutover procedure](../runbooks/vercel-project-consolidation.md). Generic previews remain disabled until isolated resources are provisioned.
