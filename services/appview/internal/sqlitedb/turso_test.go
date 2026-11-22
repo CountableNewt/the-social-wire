@@ -188,7 +188,12 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 				}
 				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 			})}
+			suppliedTransport := &tursoCustomTransport{RoundTripper: client.Transport}
+			client.Transport = suppliedTransport
 			db, err := openTurso(context.Background(), "turso://database.turso.io", "private-token", client)
+			if client.Transport != suppliedTransport || client.CheckRedirect != nil {
+				t.Fatal("caller-supplied HTTP client was mutated")
+			}
 			if foreignKeys == "0" {
 				if err == nil {
 					db.Close()

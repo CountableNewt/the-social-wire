@@ -113,7 +113,7 @@ func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation strin
 	if costOperation != "" {
 		budgetDuration := 15 * time.Second
 		if costOperation == "feed" {
-			budgetDuration = 2 * time.Second
+			budgetDuration = readerQueryBudget(true)
 		}
 		budget, stop := context.WithTimeout(ctx, budgetDuration)
 		defer stop()
@@ -222,13 +222,13 @@ func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation strin
 			if err != nil {
 				fail("offline feed reference", err)
 			}
-			budget, stop := context.WithTimeout(ctx, 2*time.Second)
+			budget, stop := readerQueryContext(ctx, true)
 			started := time.Now()
 			actual, err := readPage(budget, remote)
 			elapsed := time.Since(started)
 			stop()
 			if err != nil {
-				fail("two-second hosted feed budget", err)
+				fail("bounded remote feed budget", err)
 			}
 			if !reflect.DeepEqual(actual, expected) {
 				t.Fatal("hosted page/cursor differs from offline reference; values withheld")
