@@ -1,0 +1,20 @@
+meta {
+  name: Run Drain Scoped Author History
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/internal/jobs/author-history
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jobsSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

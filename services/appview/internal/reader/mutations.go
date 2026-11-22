@@ -32,7 +32,7 @@ func Migrate(ctx context.Context, db *sqlitedb.DB) error {
 			CREATE TABLE IF NOT EXISTS appview_pds_read_state_boundaries(
 				viewer_did TEXT NOT NULL, sequence INTEGER NOT NULL, rule_key TEXT NOT NULL,
 				is_read INTEGER NOT NULL, acted_at TEXT NOT NULL, author_did TEXT NOT NULL,
-				scope_keys TEXT NOT NULL, boundary_at TEXT NOT NULL, boundary_uri TEXT,
+				scope_keys TEXT NOT NULL, boundary_at TEXT NOT NULL, boundary_uri TEXT, boundary_at_us INTEGER,
 				PRIMARY KEY(viewer_did,sequence,rule_key));
 			CREATE INDEX IF NOT EXISTS appview_pds_boundary_lookup
 				ON appview_pds_read_state_boundaries(viewer_did,author_did,boundary_at);
@@ -43,6 +43,9 @@ func Migrate(ctx context.Context, db *sqlitedb.DB) error {
 				viewer_did TEXT NOT NULL, publication_id TEXT NOT NULL, json_body TEXT NOT NULL,
 				cached_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY(viewer_did,publication_id));
 		`); err != nil {
+			return err
+		}
+		if err := migrateBoundaryMicroseconds(ctx, tx); err != nil {
 			return err
 		}
 		for _, table := range []string{"read_marks", "appview_unread_overrides", "appview_publication_read_floors"} {
@@ -66,6 +69,9 @@ func Migrate(ctx context.Context, db *sqlitedb.DB) error {
 					return err
 				}
 			}
+		}
+		if err := migrateRecoveryJobs(ctx, tx); err != nil {
+			return err
 		}
 		return migrateReadStateProjectionTriggers(ctx, tx)
 	})
@@ -102,6 +108,9 @@ func migrateReadStateProjectionTriggers(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	for _, operation := range []string{"INSERT", "UPDATE"} {
+		if _, err := tx.ExecContext(ctx, "DROP TRIGGER IF EXISTS pds_content_"+operation); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `CREATE TRIGGER IF NOT EXISTS pds_content_`+operation+" AFTER "+operation+` ON content_items
 			WHEN (SELECT active FROM appview_pds_projection_write WHERE singleton=1)=0
 			BEGIN
@@ -119,8 +128,8 @@ func migrateReadStateProjectionTriggers(ctx context.Context, tx *sql.Tx) error {
 						SELECT b.is_read,b.sequence FROM appview_pds_read_state_boundaries b
 							WHERE b.viewer_did=a.viewer_did AND b.author_did=NEW.author_did
 							AND (json_array_length(b.scope_keys)=0 OR EXISTS(SELECT 1 FROM json_each(b.scope_keys) WHERE value=NEW.publication_site))
-							AND (tsw_timestamp_us(NEW.created_at)<tsw_timestamp_us(b.boundary_at)
-								OR (tsw_timestamp_us(NEW.created_at)=tsw_timestamp_us(b.boundary_at) AND (b.boundary_uri IS NULL OR NEW.uri<=b.boundary_uri)))
+							AND (NEW.created_at_us<b.boundary_at_us
+								OR (NEW.created_at_us=b.boundary_at_us AND (b.boundary_uri IS NULL OR NEW.uri<=b.boundary_uri)))
 						) ORDER BY sequence DESC LIMIT 1),0)=1;
 				UPDATE appview_unread_counters SET dirty=1 WHERE viewer_did IN
 					(SELECT viewer_did FROM appview_pds_read_state_authority WHERE manifest_cid IS NOT NULL);
@@ -153,8 +162,20 @@ func changeReadMark(ctx context.Context, db *sqlitedb.DB, viewer, subject string
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+remove+" WHERE viewer_did = ? AND subject_uri = ?", viewer, subject); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO "+add+" (viewer_did,subject_uri,created_at) VALUES(?,?,?) "+
-			"ON CONFLICT(viewer_did,subject_uri) DO NOTHING", viewer, subject, thinstore.CursorTimestamp(actedAt)); err != nil {
+		columns, values := "viewer_did,subject_uri,created_at", "?,?,?"
+		actedAtRaw := thinstore.CursorTimestamp(actedAt)
+		args := []any{viewer, subject, actedAtRaw}
+		if !read {
+			columns += ",created_at_us"
+			values += ",?"
+			micros, err := sqlitedb.TimestampMicroseconds(actedAtRaw)
+			if err != nil {
+				return err
+			}
+			args = append(args, micros)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO "+add+" ("+columns+") VALUES("+values+") "+
+			"ON CONFLICT(viewer_did,subject_uri) DO NOTHING", args...); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE appview_unread_counters SET dirty=1
@@ -276,19 +297,27 @@ func setReadFloor(ctx context.Context, tx *sql.Tx, viewer string, scope thinstor
 		return boundary, err
 	}
 	floor := thinstore.CursorTimestamp(boundary.CreatedAt)
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO appview_publication_read_floors(viewer_did,publication_id,read_floor_at,read_floor_uri,generation,updated_at)
-		VALUES(?,?,?,?,?,?) ON CONFLICT(viewer_did,publication_id) DO UPDATE SET read_floor_at=excluded.read_floor_at,
-			read_floor_uri=excluded.read_floor_uri,generation=excluded.generation,updated_at=excluded.updated_at`,
-		viewer, scope.PublicationID, floor, boundary.EntryID, generation, thinstore.CursorTimestamp(now))
+	floorMicros, err := sqlitedb.TimestampMicroseconds(floor)
 	if err != nil {
 		return boundary, err
 	}
-	args := append([]any{viewer, thinstore.CursorTimestamp(now)}, scopeArgs...)
-	args = append(args, floor, floor, boundary.EntryID, boundary.EntryID)
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO appview_publication_read_floors(viewer_did,publication_id,read_floor_at,read_floor_uri,generation,updated_at,read_floor_at_us)
+		VALUES(?,?,?,?,?,?,?) ON CONFLICT(viewer_did,publication_id) DO UPDATE SET read_floor_at=excluded.read_floor_at,
+			read_floor_uri=excluded.read_floor_uri,generation=excluded.generation,updated_at=excluded.updated_at,read_floor_at_us=excluded.read_floor_at_us`,
+		viewer, scope.PublicationID, floor, boundary.EntryID, generation, thinstore.CursorTimestamp(now), floorMicros)
+	if err != nil {
+		return boundary, err
+	}
+	nowMicros, err := sqlitedb.TimestampMicroseconds(thinstore.CursorTimestamp(now))
+	if err != nil {
+		return boundary, err
+	}
+	args := append([]any{viewer, nowMicros}, scopeArgs...)
+	args = append(args, floorMicros, floorMicros, boundary.EntryID, boundary.EntryID)
 	_, err = tx.ExecContext(ctx, `DELETE FROM appview_unread_overrides WHERE viewer_did = ?
-		AND tsw_timestamp_us(created_at) <= tsw_timestamp_us(?) AND subject_uri IN
-		(SELECT ci.uri FROM content_items ci WHERE `+scopePredicate+` AND (tsw_timestamp_us(ci.created_at) < tsw_timestamp_us(?)
-			OR (tsw_timestamp_us(ci.created_at) = tsw_timestamp_us(?) AND (? IS NULL OR ci.uri <= ?))))`, args...)
+		AND created_at_us <= ? AND subject_uri IN
+		(SELECT ci.uri FROM content_items ci WHERE `+scopePredicate+` AND (ci.created_at_us < ?
+			OR (ci.created_at_us = ? AND (? IS NULL OR ci.uri <= ?))))`, args...)
 	return boundary, err
 }

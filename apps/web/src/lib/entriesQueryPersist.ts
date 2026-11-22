@@ -13,14 +13,11 @@ export function shouldPersistEntriesQuery(query: {
   const key = query.queryKey;
   if (!Array.isArray(key) || (query.state.status !== "success" && !(query.state.status === "error" && (query.state.dataUpdatedAt ?? 0) > 0))) return false;
 
-  const isPublicFeed = key[0] === "wireEntries" || key[0] === "wireEditionMore" || key[0] === "wireEdition";
-  const isViewerFeed = key[0] === "entries" || key[0] === "aggregateEntries" || key[0] === "circleEdition";
-  if (!isPublicFeed && !isViewerFeed) return false;
-  if (isViewerFeed && (typeof key[1] !== "string" || !key[1].startsWith("did:"))) return false;
+  if (key[0] !== "entries" && key[0] !== "aggregateEntries") return false;
+  if (typeof key[1] !== "string" || !key[1].startsWith("did:")) return false;
 
   const data = query.state.data as InfiniteData<EntryListPage> | undefined;
-  const rowsKey = key[0] === "wireEdition" || key[0] === "circleEdition" ? "stories" : "entries";
-  return Boolean(data?.pages?.length && Array.isArray(data.pageParams) && data.pages.every(page => Array.isArray(page?.[rowsKey])));
+  return Boolean(data?.pages?.length && Array.isArray(data.pageParams) && data.pages.every(page => Array.isArray(page?.entries)));
 }
 
 /** Bound the disk snapshot without evicting a feed after the user scrolls farther. */
@@ -28,17 +25,16 @@ export function prepareEntriesQueryPersistence(client: PersistedClient): Persist
   return { ...client, clientState: { ...client.clientState, queries: client.clientState.queries.map(query => {
     if (!shouldPersistEntriesQuery(query)) return query;
     const data = query.state.data as InfiniteData<EntryListPage>;
-    const rowsKey = query.queryKey[0] === "wireEdition" || query.queryKey[0] === "circleEdition" ? "stories" : "entries";
     const pages: EntryListPage[] = [];
     let remaining = MAX_PERSISTED_ROWS;
     let truncatedPage = false;
     for (const page of data.pages.slice(0, MAX_PERSISTED_PAGES)) {
-      const rows = page[rowsKey]!;
+      const rows = page.entries!;
       if (rows.length > remaining) {
         if (pages.length === 0) {
           // No cursor identifies a position inside this page. Require a fresh
           // first-page read before continuing rather than skipping omitted rows.
-          pages.push({ ...page, [rowsKey]: rows.slice(0, remaining), cursor: undefined, moreCursor: undefined });
+          pages.push({ ...page, entries: rows.slice(0, remaining), cursor: undefined, moreCursor: undefined });
           truncatedPage = true;
         }
         break;

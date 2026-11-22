@@ -28,9 +28,9 @@ func TestSchedulePublishesArticleOnceAndCannotBeCanceled(t *testing.T) {
 	fixture := &repoFixture{records: map[string]storedRecord{}}
 	service := &Service{
 		store: store, pds: pds{rpc: fixture.call, isNotFound: func(err error) bool { return err == errMissing }},
-		activeCreates: map[string]bool{}, submissionSecret: sha256.Sum256([]byte("test-secret")), logger: slog.Default(),
+		submissionSecret: sha256.Sum256([]byte("test-secret")), logger: slog.Default(),
 	}
-	future := time.Now().Add(30 * time.Minute)
+	future := time.Now().Add(30 * time.Minute).Truncate(15 * time.Minute)
 	stamp := scheduling.ScheduleTimestamp(future)
 	record := func() scheduling.Record {
 		return scheduling.Record{

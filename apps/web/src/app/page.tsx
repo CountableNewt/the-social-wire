@@ -7,15 +7,12 @@ import {
   Bookmark,
   CheckCircle2,
   FolderOpen,
-  Headphones,
   List,
-  Newspaper,
   Rss,
 } from "lucide-react";
 import iconSrc from "@/app/icon.png";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { podcastsEnabled } from "@/lib/podcasts/playback";
 
 const workflowItems = [
   {
@@ -37,12 +34,6 @@ const workflowItems = [
     icon: FolderOpen,
   },
   {
-    title: "Topics",
-    description:
-      "Follow Finance and Sports news around the markets, teams, and leagues you care about.",
-    icon: Newspaper,
-  },
-  {
     title: "Lists",
     description:
       "Create or follow lists of publications and creators, and keep their writing together.",
@@ -51,14 +42,6 @@ const workflowItems = [
 ];
 
 export default function Home() {
-  const listeningEnabled = podcastsEnabled();
-  const features = [...workflowItems, {
-    title: "Podcasts",
-    description: listeningEnabled
-      ? "Listen to RSS and AT Protocol podcasts with chapters, transcripts, playback controls, and offline downloads."
-      : "Podcast listening is in development, with RSS and AT Protocol subscriptions, chapters, transcripts, and offline downloads.",
-    icon: Headphones,
-  }];
   return (
     <main className="min-h-[calc(100svh-var(--environment-banner-height,0px))] overflow-hidden text-foreground">
       <section className="relative flex min-h-[min(760px,calc(100svh-var(--environment-banner-height,0px)))] flex-col">
@@ -115,9 +98,7 @@ export default function Home() {
               The Social Wire
             </h1>
             <p className="mt-5 max-w-xl text-lg font-semibold leading-8 text-foreground/78 sm:text-xl">
-              {listeningEnabled
-                ? "Your home for reading and listening across publications, topics, lists, and podcasts."
-                : "Your home for publications, saved links, topics, and lists on the open social web. Podcast listening is in development."}
+              Your home for publications, saved links, and lists on the open social web.
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link
@@ -132,14 +113,14 @@ export default function Home() {
                 <ArrowRight data-icon="inline-end" />
               </Link>
               <Link
-                href={listeningEnabled ? "/podcasts" : "/login"}
+                href="/login"
                 className={buttonVariants({
                   variant: "outline",
                   size: "lg",
                   className: "h-12",
                 })}
               >
-                {listeningEnabled ? "Start Listening" : "Continue with ATProto"}
+                Continue with ATProto
               </Link>
             </div>
           </div>
@@ -148,7 +129,7 @@ export default function Home() {
 
       <section className="border-t bg-background/82 px-4 py-10 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="mx-auto grid w-full max-w-6xl gap-4 md:grid-cols-3">
-          {features.map((item) => {
+          {workflowItems.map((item) => {
             const Icon = item.icon;
             return (
               <article
@@ -160,18 +141,10 @@ export default function Home() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-black tracking-tight">{item.title}</h2>
-                  {item.title === "Podcasts" && !listeningEnabled ? (
-                    <span className="rounded-full border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">In Development</span>
-                  ) : null}
                 </div>
                 <p className="mt-2 text-sm font-medium leading-6 text-muted-foreground">
                   {item.description}
                 </p>
-                {item.title === "Podcasts" && listeningEnabled ? (
-                  <Link href="/podcasts" className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary hover:underline">
-                    Explore Podcasts <ArrowRight aria-hidden className="size-4" />
-                  </Link>
-                ) : null}
               </article>
             );
           })}
@@ -186,12 +159,10 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               <h2 className="text-xl font-black tracking-tight">
-                {listeningEnabled ? "Built for Reading and Listening." : "Built for Everyday Reading."}
+                Built for Everyday Reading.
               </h2>
               <p className="mt-1 text-sm font-medium leading-6 text-muted-foreground">
-                {listeningEnabled
-                  ? "Read a publication, explore a topic, follow a list, or pick up your next podcast episode."
-                  : "Read a publication, explore a topic, follow a list, or return to your saved links."}
+                Read a publication, follow a list, or return to your saved links.
               </p>
             </div>
           </div>

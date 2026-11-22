@@ -7,8 +7,6 @@ const webScopes = "repo:app.thesocialwire.readState?action=create&action=update 
 	"repo:app.thesocialwire.publicationPrefs?action=create&action=update&action=delete " +
 	"repo:app.thesocialwire.preferences?action=create&action=update " +
 	"repo:app.thesocialwire.liveEvent?action=create&action=update " +
-	"repo:app.thesocialwire.finance.selection?action=create&action=update&action=delete " +
-	"repo:app.thesocialwire.sports.selection?action=create&action=update&action=delete " +
 	"repo:site.standard.document?action=create&action=update&action=delete " +
 	"repo:app.offprint.document.article?action=create&action=update&action=delete " +
 	"repo:blog.pckt.document?action=create&action=update " +
@@ -86,18 +84,13 @@ const webScopes = "repo:app.thesocialwire.readState?action=create&action=update 
 	"repo:network.cosmik.collectionLink?action=create&action=delete " +
 	"repo:network.cosmik.collectionLinkRemoval?action=create " +
 	"repo:network.cosmik.connection?action=create&action=update " +
-	"repo:app.thesocialwire.wireFeedback?action=create&action=update&action=delete " +
 	"include:site.standard.authSocial " +
 	"repo:app.skyreader.feed.subscription?action=create&action=update&action=delete " +
 	"repo:app.standard-reader.listSave?action=create&action=update&action=delete " +
 	"repo:app.standard-reader.list?action=create&action=delete " +
 	"repo:app.userinput.discussion?action=create " +
 	"repo:app.userinput.upvote?action=create&action=update " +
-	"blob:image/* " +
-	"blob:video/mp4 " +
-	"rpc:com.atproto.repo.uploadBlob?aud=* " +
-	"rpc:app.bsky.video.getUploadLimits?aud=* " +
-	"repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete"
+	"blob:image/*"
 
 const nativeScopes = "atproto " +
 	"repo:app.thesocialwire.readState?action=create&action=update " +
@@ -184,14 +177,10 @@ const nativeScopes = "atproto " +
 	"repo:network.cosmik.collectionLink?action=create&action=update&action=delete " +
 	"repo:network.cosmik.collectionLinkRemoval?action=create&action=update&action=delete " +
 	"repo:network.cosmik.connection?action=create&action=update&action=delete " +
-	"repo:app.thesocialwire.finance.selection?action=create&action=update&action=delete " +
-	"repo:app.thesocialwire.sports.selection?action=create&action=update&action=delete " +
 	"repo:app.standard-reader.list?action=create&action=delete " +
 	"repo:app.standard-reader.listSave?action=create&action=update&action=delete " +
-	"repo:app.thesocialwire.wireFeedback?action=create&action=update&action=delete " +
 	"include:site.standard.authSocial " +
 	"repo:app.skyreader.feed.subscription?action=create&action=update&action=delete " +
-	"repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete " +
 	"include:app.userinput.authFull " +
 	"blob:*/* " +
 	"repo:site.standard.graph.subscription?action=create&action=update&action=delete " +

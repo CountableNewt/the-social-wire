@@ -18,7 +18,7 @@ func (s SQLiteIngestStore) UpsertContentItem(ctx context.Context, item IndexedCo
 	_, err := s.writeContentItem(ctx, item, `
 		DO UPDATE SET
 			cid=excluded.cid,author_did=excluded.author_did,collection=excluded.collection,
-			created_at=excluded.created_at,indexed_at=excluded.indexed_at,publication_site=excluded.publication_site,
+			created_at=excluded.created_at,indexed_at=excluded.indexed_at,created_at_us=excluded.created_at_us,indexed_at_us=excluded.indexed_at_us,publication_site=excluded.publication_site,
 			render_json=excluded.render_json,expires_at=excluded.expires_at
 		WHERE (content_items.cid,content_items.author_did,content_items.collection,content_items.created_at,
 			content_items.publication_site,content_items.render_json,content_items.expires_at)
@@ -33,12 +33,21 @@ func (s SQLiteIngestStore) InsertContentItemIfAbsent(ctx context.Context, item I
 }
 
 func (s SQLiteIngestStore) writeContentItem(ctx context.Context, item IndexedContentItem, conflict string) (bool, error) {
+	createdAt, indexedAt := pdsTimestamp(item.CreatedAt), isoString(item.IndexedAt)
+	createdMicros, err := sqlitedb.TimestampMicroseconds(createdAt)
+	if err != nil {
+		return false, err
+	}
+	indexedMicros, err := sqlitedb.TimestampMicroseconds(indexedAt)
+	if err != nil {
+		return false, err
+	}
 	result, err := s.DB.Writer().ExecContext(ctx, `
 		INSERT INTO content_items
-			(uri,cid,author_did,collection,created_at,indexed_at,publication_site,render_json,expires_at)
-		VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(uri) `+conflict,
-		item.URI, item.CID, item.AuthorDID, item.Collection, pdsTimestamp(item.CreatedAt),
-		isoString(item.IndexedAt), item.PublicationSite, item.Render.EncodedJSON(), isoString(item.ExpiresAt))
+			(uri,cid,author_did,collection,created_at,indexed_at,created_at_us,indexed_at_us,publication_site,render_json,expires_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uri) `+conflict,
+		item.URI, item.CID, item.AuthorDID, item.Collection, createdAt,
+		indexedAt, createdMicros, indexedMicros, item.PublicationSite, item.Render.EncodedJSON(), isoString(item.ExpiresAt))
 	if err != nil {
 		return false, err
 	}
@@ -98,10 +107,19 @@ func optionalTimestamp(value *time.Time, format func(time.Time) string) *string 
 
 // CompareAndSwapContent updates only the exact version observed before a PDS check.
 func (s SQLiteIngestStore) CompareAndSwapContent(ctx context.Context, item IndexedContentItem, previousCID string) (bool, error) {
+	createdAt, indexedAt := pdsTimestamp(item.CreatedAt), isoString(item.IndexedAt)
+	createdMicros, err := sqlitedb.TimestampMicroseconds(createdAt)
+	if err != nil {
+		return false, err
+	}
+	indexedMicros, err := sqlitedb.TimestampMicroseconds(indexedAt)
+	if err != nil {
+		return false, err
+	}
 	result, err := s.DB.Writer().ExecContext(ctx, `
-		UPDATE content_items SET cid=?,author_did=?,collection=?,created_at=?,indexed_at=?,
+		UPDATE content_items SET cid=?,author_did=?,collection=?,created_at=?,indexed_at=?,created_at_us=?,indexed_at_us=?,
 			publication_site=?,render_json=?,expires_at=? WHERE uri=? AND cid=?
-	`, item.CID, item.AuthorDID, item.Collection, pdsTimestamp(item.CreatedAt), isoString(item.IndexedAt),
+	`, item.CID, item.AuthorDID, item.Collection, createdAt, indexedAt, createdMicros, indexedMicros,
 		item.PublicationSite, item.Render.EncodedJSON(), isoString(item.ExpiresAt), item.URI, previousCID)
 	if err != nil {
 		return false, err

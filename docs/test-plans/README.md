@@ -1,81 +1,18 @@
-# Test plans
+# Test Plans
 
-Verification guides for each surface in the monorepo. Tests live **in the owning package** (never a root-level `tests/` folder).
+Tests live in the owning package. Run verification before release; #963 source preparation currently defers execution at the user's request.
 
-| Surface | Plan | Command | CI job |
-|---------|------|---------|--------|
-| Web | [web.md](./web.md) | `cd apps/web && bun run test:coverage` | `web` |
-| Operations UI | [operations.md](./operations.md) | `cd apps/operations && bun run test:coverage` | `operations-web` |
-| SocialWireRedis | [appview.md](./appview.md#redis-cache-and-coordination) | `cd packages/swift/SocialWireRedis && swift test` | `redis` |
-| GatewayCore | [api.md](./api.md) | `cd packages/swift/GatewayCore && swift test` | `gateway` |
-| Gateway | [api.md](./api.md) | `cd services/gateway && swift test` | `gateway` |
-| AppView | [appview.md](./appview.md) | `cd services/appview && swift test` | `appview` |
-| Replicated indexing roles | [worker.md](./worker.md) | `cd services/indexing-worker && go test -race ./...` | Not run in CI (Go) |
-| ThinAppViewCore | [worker.md](./worker.md#thinappviewcore) | `cd packages/swift/ThinAppViewCore && swift test` | `appview` |
-| OperationsCore | [operations.md](./operations.md) | `cd packages/swift/OperationsCore && swift test` | `operations` |
-| Operations service | [operations.md](./operations.md) | `cd services/operations && swift test` | `operations` |
-| Jetstream V2 Ingest | [operations.md](./operations.md) | `(cd services/jetstream-ingest && go test ./... && go vet ./...)` | Not run in CI (Go) |
-| iOS | [apple.md](./apple.md) | Xcode **Cmd+U** | `apple` |
-| Database migrations | [database.md](./database.md) | `DATABASE_URL=… bash scripts/apply-database-migrations.sh` | `database-migrator` (empty DB + idempotence) |
-| Lexicons | [web.md](./web.md#lexicons) | `cd packages/lexicons && bun test` | `lexicons` |
-| OpenAPI spec | [api.md](./api.md#openapi-drift) | `cd packages/spec && bun test` | `spec` |
+| Surface | Command | CI |
+|---------|---------|----|
+| Web | `cd apps/web && bun run test:coverage && bun run typecheck && bun run lint && bun run build` | Web image |
+| Go AppView | `cd services/appview && go test ./... && go vet ./...` | AppView image |
+| Lexicons | `cd packages/lexicons && bun test` | Web image |
+| OpenAPI and client contracts | `cd packages/spec && bun test` | Web image |
+| Native ReadStateCore | `cd apps/apple/Packages/ReadStateCore && swift test` | Apple |
+| Apple app | Xcode SocialWire scheme, simulator unit tests | Apple |
 
-## Run all automated tests locally
+The retired Swift server, Postgres migration and Operations Web test surfaces are removed. SQLite migration tests live with their Go stores. New API behavior requires Bruno requests in `services/appview/bruno` and Go-backed OpenAPI drift coverage.
 
-From the monorepo root (requires Swift 6.2+ and Bun):
+The `CI — Required` gate retains Development-before-Production patch parity. Hosted authenticated Web/iOS acceptance and database restore rehearsals are release checks; a successful build is not a substitute. Validate browsers in Chrome.
 
-```bash
-bun install
-
-# Web
-cd apps/web && bun run test:coverage && cd ../..
-
-# Operations UI
-cd apps/operations && bun run test:coverage && cd ../..
-
-# Backend services
-cd packages/swift/SocialWireRedis && swift test && cd ../../..
-cd packages/swift/GatewayCore && swift test && cd ../../..
-cd services/gateway && swift test && cd ../..
-cd services/appview && swift test && cd ../..
-cd services/indexing-worker && go test -race ./... && cd ../..
-cd packages/swift/OperationsCore && swift test && cd ../../..
-cd services/operations && swift test && cd ../..
-
-# ThinAppViewCore
-cd packages/swift/ThinAppViewCore && swift test && cd ../../..
-
-# Lexicons + OpenAPI drift
-cd packages/lexicons && bun test && cd ../..
-cd packages/spec && bun test && cd ../..
-
-# Jetstream V2 Ingest
-(cd services/jetstream-ingest && go test ./... && go vet ./...)
-
-# Database migration validation (use a disposable Postgres database)
-DATABASE_URL='postgresql://…' bash scripts/apply-database-migrations.sh
-```
-
-## PR checklist
-
-- [ ] Logic changes include tests in the **same package** as the source
-- [ ] `bun test` / `swift test` pass for affected packages
-- [ ] Test plan doc updated if scope or commands changed
-- [ ] Wiki `docs/wiki/Testing.md` updated for new coverage areas (when applicable)
-- [ ] No secrets in test fixtures or committed env files
-
-## Out of scope (handled separately)
-
-- Playwright / browser E2E
-- Authenticated browser end-to-end automation
-- Live hosted-database mutation from GitHub Actions
-
-## Branch protection
-
-Require the **`CI — Required`** job from `.github/workflows/ci.yml` on both `dev` and `main`. It aggregates path-filtered jobs and fails when any required check for changed paths did not succeed.
-
-## Related
-
-- [CONTRIBUTING.md](../../CONTRIBUTING.md)
-- [Architecture overview](../architecture/overview.md)
-- [GitHub Wiki — Testing](../wiki/Testing.md)
+See [the standalone backend runbook](../architecture/standalone-reader.md), [the native app guide](../../apps/apple/README.md), and [contributing](../../CONTRIBUTING.md).

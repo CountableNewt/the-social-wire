@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # Thin AppView
 
 Social Wire’s **data-minimized read index** — the current signed-in client read path, server feature-gated, and distinct from the Bluesky **`public.api.bsky.app`** App View.
@@ -145,7 +147,6 @@ Railway deploys independent public services plus three replicated indexing servi
 | Service | Config |
 |---------|--------|
 | Web | `railway/web.json` |
-| Operations Web | `railway/operations-web.json` |
 | Gateway | `railway/gateway.json` |
 | AppView | `railway/appview.json` |
 | Charybdis | `railway/charybdis.json` |

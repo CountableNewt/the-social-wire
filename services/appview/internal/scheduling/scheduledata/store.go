@@ -29,6 +29,34 @@ type Store struct {
 
 // Open opens path and migrates the schema before exposing the store.
 func Open(ctx context.Context, path, secret string, requireEncryption bool) (*Store, error) {
+	store, err := encryptedStore(nil, secret, requireEncryption)
+	if err != nil {
+		return nil, err
+	}
+	var db *sqlitedb.DB
+	if path == ":memory:" {
+		db, err = sqlitedb.OpenMemory()
+	} else {
+		if path == "" {
+			return nil, errors.New("scheduledata: SQLite path is required")
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return nil, err
+		}
+		db, err = sqlitedb.Open(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	store.db = db
+	if err := store.Migrate(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func encryptedStore(db *sqlitedb.DB, secret string, requireEncryption bool) (*Store, error) {
 	var key cipher.AEAD
 	if secret == "" && requireEncryption {
 		return nil, errors.New("SKEJ_AUTH_ENCRYPTION_KEY is required for live OAuth storage")
@@ -44,24 +72,33 @@ func Open(ctx context.Context, path, secret string, requireEncryption bool) (*St
 			return nil, err
 		}
 	}
-	var db *sqlitedb.DB
-	var err error
-	if path == ":memory:" {
-		db, err = sqlitedb.OpenMemory()
-	} else {
-		if path == "" {
-			return nil, errors.New("scheduledata: SQLite path is required")
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return nil, err
-		}
-		db, err = sqlitedb.Open(path)
-	}
+	return &Store{db: db, key: key}, nil
+}
+
+// OpenTurso never migrates during serving. The explicit initialization command
+// prepares a separate scheduling database using the existing encryption key.
+func OpenTurso(ctx context.Context, endpoint, token, secret string, initialize bool) (*Store, error) {
+	store, err := encryptedStore(nil, secret, true)
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{db: db, key: key}
-	if err := store.Migrate(ctx); err != nil {
+	db, err := sqlitedb.OpenTurso(ctx, endpoint, token)
+	if err != nil {
+		return nil, err
+	}
+	store.db = db
+	if initialize {
+		err = store.invalidateReadiness(ctx)
+		if err == nil {
+			err = store.Migrate(ctx)
+		}
+		if err == nil {
+			err = store.markReady(ctx)
+		}
+	} else {
+		err = store.verifyReady(ctx)
+	}
+	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -71,11 +108,18 @@ func Open(ctx context.Context, path, secret string, requireEncryption bool) (*St
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) Migrate(ctx context.Context) error {
-	if _, err := s.db.Writer().ExecContext(ctx, "PRAGMA secure_delete=ON"); err != nil {
+	if s.db.IsRemote() {
+		if err := s.verifyRemoteVault(ctx, s.db.Reader()); err != nil {
+			return err
+		}
+	} else if _, err := s.db.Writer().ExecContext(ctx, "PRAGMA secure_delete=ON"); err != nil {
 		return err
 	}
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, scheduleSchema); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS pro_entitlements"); err != nil {
 			return err
 		}
 		for _, migration := range []struct{ table, column, definition string }{
@@ -87,8 +131,6 @@ func (s *Store) Migrate(ctx context.Context) error {
 			{"oauth_states", "initiator_did", "TEXT"},
 			{"oauth_states", "invite_token", "TEXT"},
 			{"oauth_states", "return_to", "TEXT"},
-			{"pro_entitlements", "scope_type", "TEXT NOT NULL DEFAULT 'actor'"},
-			{"pro_entitlements", "scope_value", "TEXT"},
 			{"web_sessions", "display_name", "TEXT"},
 			{"web_sessions", "avatar", "TEXT"},
 			{"scheduled_jobs", "scheduled_at", "TEXT"},
@@ -122,10 +164,16 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if s.db.IsRemote() {
+			return s.verifyRemoteVault(ctx, tx)
+		}
 		return s.migrateVault(ctx, tx)
 	})
 	if err != nil {
 		return err
+	}
+	if s.db.IsRemote() {
+		return nil
 	}
 	var pending bool
 	err = s.db.Writer().QueryRowContext(ctx, "SELECT pending FROM auth_vault_cleanup WHERE id=1").Scan(&pending)

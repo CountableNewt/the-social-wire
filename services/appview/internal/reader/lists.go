@@ -483,7 +483,7 @@ func (s *service) listFeed(w http.ResponseWriter, r *http.Request, id string) er
 		return invalidFeed(w, r, validation)
 	}
 	viewer := reqctx.ViewerDID(r.Context())
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := readerQueryContext(r.Context(), s.db.IsRemote())
 	defer cancel()
 	start := time.Now()
 	var list standardList

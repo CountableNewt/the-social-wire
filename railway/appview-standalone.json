@@ -5,11 +5,8 @@
     "dockerfilePath": "/services/appview/Dockerfile.standalone",
     "watchPatterns": [
       "/services/appview/**",
-      "/services/podcast-worker/**",
-      "/scripts/migrations/**",
       "/packages/vendor/**",
       "/apps/web/package.json",
-      "/apps/operations/package.json",
       "/packages/read-state/package.json",
       "/packages/lexicons/package.json",
       "/packages/spec/package.json",

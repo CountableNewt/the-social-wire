@@ -1,7 +1,5 @@
 "use client";
 
-import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
-
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -12,7 +10,6 @@ import {
 import { usePDSClient } from "@/hooks/usePDSClient";
 import { useAuth } from "@/hooks/useAuth";
 import type { PDSClient, PreferencesRecord, RepoRecord } from "@/lib/pdsClient";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
 import { fetchSyncPreferences } from "@/lib/syncPreferencesClient";
 import {
   DEFAULT_FEED_DISPLAY_PREFERENCES,
@@ -79,21 +76,12 @@ export function useFeedDisplayPreferences() {
     mutationFn: async (input: PreferenceMutation) => {
       const { next, viewerDid: actorDid, oauth, client: actorClient } = input;
       if (!isCurrentActor(input)) throw new Error("Your account changed. Reopen Settings.");
-      if (isDummyReaderDataEnabled()) return null;
       if (!actorClient || !actorDid || !oauth || oauth.did !== actorDid) throw new Error("PDS session required");
       const existing = queryClient.getQueryData<RepoRecord<PreferencesRecord> | null>(accountPreferencesQueryKey(actorDid)) ?? null;
       const saved = await actorClient.upsertPreferences(
         {
           visibleFeeds: next.visibleFeeds,
-          showWire: next.showWire,
-          showCircle: next.showCircle,
-          showFinance: next.showFinance,
-          showSports: next.showSports,
           showSocial: next.showSocial,
-          showPodcasts: next.showPodcasts,
-          hideSportsScores: next.hideSportsScores,
-          hideFinancePerformance: next.hideFinancePerformance,
-          hideFinanceCrypto: next.hideFinanceCrypto,
           feedsWithUnreadCounts: next.feedsWithUnreadCounts,
           rssArticleOpenMode: next.rssArticleOpenMode,
           automaticallyMarkAsRead: next.automaticallyMarkAsRead,
@@ -201,11 +189,10 @@ export function useFeedDisplayPreferences() {
   );
 
   const setDiscoveryFeedVisible = useCallback(
-    (feed: "wire" | "circle" | "finance" | "sports" | "social" | "podcasts", visible: boolean) => {
-      if (isRetiredReaderFeed(feed)) return;
+    (_feed: "social", visible: boolean) => {
       mutatePreferences({
         ...preferences,
-        [({ wire: "showWire", circle: "showCircle", finance: "showFinance", sports: "showSports", social: "showSocial", podcasts: "showPodcasts" } as const)[feed]]: visible,
+        showSocial: visible,
       });
     },
     [mutatePreferences, preferences],
@@ -229,9 +216,6 @@ export function useFeedDisplayPreferences() {
     setFeedUnreadCountVisible,
     setRssArticleOpenInReader,
     setAutomaticallyMarkAsRead: (enabled: boolean) => mutatePreferences({ ...preferences, automaticallyMarkAsRead: enabled }),
-    setHideSportsScores: (hidden: boolean) => mutatePreferences({ ...preferences, hideSportsScores: hidden }),
-    setHideFinanceCrypto: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinanceCrypto: hidden }),
-    setHideFinancePerformance: (hidden: boolean) => mutatePreferences({ ...preferences, hideFinancePerformance: hidden }),
     isLoading: accountPreferences.isLoading,
     isPending: !automaticReadReady || mutation.isPending && mutation.variables?.viewerDid === viewerDid,
     error: mutation.variables?.viewerDid === viewerDid ? mutation.error : null,

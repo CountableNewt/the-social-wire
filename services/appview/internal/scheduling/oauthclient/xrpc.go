@@ -11,11 +11,14 @@ import (
 	"time"
 )
 
-// SessionStore persists OAuth token rotation using compare-and-swap on the
-// access token. Nil from LoadOAuthSession means the account is disconnected.
+// SessionStore coordinates token rotation with a database lease and durable
+// per-token intent. Nil from LoadOAuthSession means the account is disconnected.
 type SessionStore interface {
 	LoadOAuthSession(context.Context, string) (*Session, error)
-	ReplaceOAuthSessionAfterRefresh(context.Context, Session, string) error
+	ClaimOAuthRefresh(context.Context, string, string, string, int64, int64) (bool, error)
+	BeginOAuthRefresh(context.Context, string, string, string, int64) error
+	CompleteOAuthRefresh(context.Context, Session, string, string, string, int64) error
+	ReleaseOAuthRefresh(context.Context, string, string) error
 }
 
 type activeSession struct {
@@ -150,14 +153,60 @@ func (c *Client) refreshSession(ctx context.Context, session activeSession, stor
 	pending := c.refresh.DoChan(session.record.DID, func() (any, error) {
 		requestCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		current, err := load(requestCtx, session.record.DID, store)
-		if err != nil || current.token.AccessToken != session.token.AccessToken {
+		owner, err := NewVerifier()
+		if err != nil {
+			return activeSession{}, err
+		}
+		var current activeSession
+		var tokenHash string
+		for {
+			current, err = load(requestCtx, session.record.DID, store)
+			if err != nil || current.record.TokenJSON != session.record.TokenJSON || current.record.DPoPKeyJSON != session.record.DPoPKeyJSON {
+				return current, err
+			}
+			if current.token.RefreshToken == "" {
+				return activeSession{}, ErrNotConfigured
+			}
+			tokenHash = sha256URL(current.token.RefreshToken)
+			now := time.Now()
+			held, claimErr := store.ClaimOAuthRefresh(requestCtx, current.record.DID, owner, tokenHash, now.UnixMicro(), now.Add(time.Minute).UnixMicro())
+			if claimErr != nil {
+				fresh, reloadErr := load(requestCtx, session.record.DID, store)
+				if reloadErr == nil && (fresh.record.TokenJSON != session.record.TokenJSON || fresh.record.DPoPKeyJSON != session.record.DPoPKeyJSON) {
+					return fresh, nil
+				}
+				return activeSession{}, claimErr
+			}
+			if held {
+				break
+			}
+			timer := time.NewTimer(100 * time.Millisecond)
+			select {
+			case <-requestCtx.Done():
+				timer.Stop()
+				return activeSession{}, requestCtx.Err()
+			case <-timer.C:
+			}
+		}
+		defer func() {
+			release, stop := context.WithTimeout(context.WithoutCancel(requestCtx), 5*time.Second)
+			defer stop()
+			_ = store.ReleaseOAuthRefresh(release, session.record.DID, owner)
+		}()
+		// Re-read after claiming: another instance may have rotated just before
+		// our lease transaction. Do not consume a stale token in that case.
+		current, err = load(requestCtx, session.record.DID, store)
+		if err != nil || current.record.TokenJSON != session.record.TokenJSON || current.record.DPoPKeyJSON != session.record.DPoPKeyJSON {
 			return current, err
 		}
-		refreshToken := current.token.RefreshToken
-		if refreshToken == "" {
+		if sha256URL(current.token.RefreshToken) != tokenHash {
 			return activeSession{}, ErrNotConfigured
 		}
+		refreshToken := current.token.RefreshToken
+		if err := store.BeginOAuthRefresh(requestCtx, current.record.DID, owner, tokenHash, time.Now().UnixMicro()); err != nil {
+			return activeSession{}, err
+		}
+
 		target, _ := endpoint(current.token.TokenEndpoint)
 		form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshToken}, "client_id": {c.ClientID()}}
 		reply, err := c.requestToken(requestCtx, target, current.key, form)
@@ -177,7 +226,7 @@ func (c *Client) refreshSession(ctx context.Context, session activeSession, stor
 		if err != nil {
 			return activeSession{}, err
 		}
-		if err := store.ReplaceOAuthSessionAfterRefresh(requestCtx, replacement, current.token.AccessToken); err != nil {
+		if err := store.CompleteOAuthRefresh(requestCtx, replacement, current.record.TokenJSON, owner, tokenHash, time.Now().UnixMicro()); err != nil {
 			return activeSession{}, err
 		}
 		return load(requestCtx, current.record.DID, store)

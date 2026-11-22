@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/config"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
@@ -31,9 +30,7 @@ type storageConfig struct {
 }
 
 type Service struct {
-	objects  objectStore
-	activeMu sync.Mutex
-	active   map[string]bool
+	objects objectStore
 
 	db     *sqlitedb.DB
 	cipher cipher.AEAD
@@ -45,14 +42,9 @@ func FromEnvironment(db *sqlitedb.DB, env config.Env) (*Service, error) {
 	if !strings.EqualFold(env["SOCIAL_DRAFTS_ENABLED"], "true") {
 		return nil, nil
 	}
-	endpoint, err := url.Parse(env["SOCIAL_DRAFT_S3_ENDPOINT"])
-	if err != nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" {
-		return nil, errUnavailable
-	}
-	for _, key := range []string{"BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY", "REGION"} {
-		if env["SOCIAL_DRAFT_S3_"+key] == "" {
-			return nil, errUnavailable
-		}
+	objects, err := objectStoreFromEnvironment(env)
+	if err != nil {
+		return nil, err
 	}
 	encoded := env["SOCIAL_DRAFT_STORAGE_KEY"]
 	key, err := base64.StdEncoding.DecodeString(encoded)
@@ -63,11 +55,31 @@ func FromEnvironment(db *sqlitedb.DB, env config.Env) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	service.objects = newS3Store(storageConfig{Endpoint: endpoint.String(),
+	service.objects = objects
+	return service, nil
+}
+
+func objectStoreFromEnvironment(env config.Env) (objectStore, error) {
+	switch env.StringOr("SOCIAL_DRAFT_STORAGE_BACKEND", "s3") {
+	case "vercel-blob":
+		return newVercelBlobStore(env["BLOB_READ_WRITE_TOKEN"])
+	case "s3":
+	default:
+		return nil, errUnavailable
+	}
+	endpoint, err := url.Parse(env["SOCIAL_DRAFT_S3_ENDPOINT"])
+	if err != nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" {
+		return nil, errUnavailable
+	}
+	for _, key := range []string{"BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY", "REGION"} {
+		if env["SOCIAL_DRAFT_S3_"+key] == "" {
+			return nil, errUnavailable
+		}
+	}
+	return newS3Store(storageConfig{Endpoint: endpoint.String(),
 		Bucket: env["SOCIAL_DRAFT_S3_BUCKET"], AccessKeyID: env["SOCIAL_DRAFT_S3_ACCESS_KEY_ID"],
 		SecretAccessKey: env["SOCIAL_DRAFT_S3_SECRET_ACCESS_KEY"], Region: env["SOCIAL_DRAFT_S3_REGION"],
-	})
-	return service, nil
+	}), nil
 }
 
 func newService(db *sqlitedb.DB, key []byte) (*Service, error) {
@@ -79,7 +91,7 @@ func newService(db *sqlitedb.DB, key []byte) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{db: db, cipher: gcm, active: map[string]bool{}}, nil
+	return &Service{db: db, cipher: gcm}, nil
 }
 
 func encode(value any) []byte {
@@ -104,18 +116,4 @@ func (s *Service) sealMetadata(owner, id string, data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return s.cipher.Seal(nonce, nonce, data, encode([]any{"socialdraft", 1, owner, id, "metadata", 0})), nil
-}
-
-func (s *Service) acquire(owner string) (func(), error) {
-	s.activeMu.Lock()
-	defer s.activeMu.Unlock()
-	if len(s.active) >= 8 || s.active[owner] {
-		return nil, errUnavailable
-	}
-	s.active[owner] = true
-	return func() {
-		s.activeMu.Lock()
-		delete(s.active, owner)
-		s.activeMu.Unlock()
-	}, nil
 }

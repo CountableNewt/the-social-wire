@@ -3,14 +3,12 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*",
-    "services/podcast-worker"
+    "packages/*"
   ],
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
     "dev:web": "bun --cwd apps/web dev",
-    "dev:web:mock": "bun --cwd apps/web dev:mock",
     "locks:freeze-text": "bun install --save-text-lockfile --frozen-lockfile --lockfile-only",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

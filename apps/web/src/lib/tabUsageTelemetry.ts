@@ -6,7 +6,7 @@ export type TabUsageSample = { event: "tab_open" | "tab_dwell"; tab: UsageTab; d
 
 /** Raw paths, queries, publication IDs and handles never enter the payload. */
 export function canonicalUsageTab(pathname: string, feed?: string | null): UsageTab | undefined {
-  if (pathname === "/read" || pathname.startsWith("/read/")) return ["wire", "circle", "finance", "sports", "following"].includes(feed ?? "") ? feed as UsageTab : "subscribed";
+  if (pathname === "/read" || pathname.startsWith("/read/")) return feed === "following" ? "following" : "subscribed";
   if (pathname === "/social") return "home";
   if (pathname === "/social/profile") return "profile";
   const social = /^\/social\/(explore|notifications|messages|bookmarks|lists|feeds)(?:\/|$)/.exec(pathname);

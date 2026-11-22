@@ -6,7 +6,7 @@ import "context"
 // even when Swift and Go encode the same RSS key differently.
 func (s SQLiteIngestStore) ExistingRSSIdentities(ctx context.Context, feed string) (map[string]IndexedContentIdentity, error) {
 	rows, err := s.DB.Reader().QueryContext(ctx, `SELECT uri,cid FROM content_items
-		WHERE author_did=? AND publication_site=? ORDER BY indexed_at COLLATE tsw_timestamp DESC,uri LIMIT 5000`, RssAuthorDID, feed)
+		WHERE author_did=? AND publication_site=? ORDER BY indexed_at_us DESC,uri LIMIT 5000`, RssAuthorDID, feed)
 	if err != nil {
 		return nil, err
 	}

@@ -1,13 +1,16 @@
 docs {
   # Social Wire AppView
 
-  Bruno workspace for HTTP routes on `services/appview` (publication sidebar projection + Thin AppView read index).
+  Bruno workspace for the standalone Go backend and direct viewer PDS writes.
 
-  ## Folders
+  - **Health** — liveness, readiness, and freshness
+  - **OAuth** — public Web and native OAuth metadata
+  - **Sync** — preferences and cached PDS records
+  - **Publications** — sidebar projection and direct PDS record writes
+  - **AppView** — feeds, entries, read marks, enrollment, and NDJSON bootstrap
+  - **Latr**, **Semble**, **Scheduling**, **Analytics** — live integrations
+  - **Telemetry** — authenticated client performance telemetry
 
-  - **Health** — liveness
-  - **Publications** — sidebar, refresh, resolve
-  - **AppView** — Level-1 entry timelines, read marks, enroll, privacy purge, NDJSON bootstrap stream
-
-  Requires `ENABLE_THIN_APPVIEW=true`. Set `oauthAccessToken` and `dpopProof` before calling `/v1/*`.
+  Set `oauthAccessToken` and `dpopProof` from an ATProto OAuth session before
+  calling authenticated routes. Direct PDS writes use `pdsUrl` and `pdsDpopProof`.
 }

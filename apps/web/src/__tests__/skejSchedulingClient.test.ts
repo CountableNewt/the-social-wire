@@ -2,7 +2,6 @@ import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedu
 import { beforeEach, afterEach, expect, spyOn, test } from "bun:test";
 import type { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import * as Atproto from "@/lib/atprotoClient";
 import * as Social from "@/lib/blueskySocialClient";
 import * as Gateway from "@/lib/socialWireGatewayClient";
 import * as Environment from "@/lib/skej/skejEnvironment";
@@ -15,60 +14,39 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 function item(): SkejScheduleSummary {
   return { did, rkey: "schedule-one", scheduleUri: `at://${did}/at.skej.schedule/schedule-one`, scheduledAt: future, status: "scheduled", attempts: 0, record: { $type: "at.skej.schedule", scheduledAt: future, status: "scheduled", createdAt: "2026-10-11T12:00:00Z", updatedAt: "2026-10-11T12:00:00Z", timezonePolicy: "absolute_utc", recordType: "app.bsky.feed.post", publishRkey: "stable-post", retry: { attemptCount: 0, maxAttempts: 8 }, posts: [{ text: "Scheduled", publishRkey: "stable-post" }] } };
 }
-test("blocks scheduling clients before minting credentials or making requests when disabled", async () => {
+test("blocks scheduling clients before making requests when disabled", async () => {
   delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
-  const { actor, mints, requests } = fixture();
+  const { actor, requests } = fixture();
   await expect(getSkejSchedulingReadiness(actor)).rejects.toThrow("Post Scheduling Is Not Enabled");
   await expect(listSkejSchedules(actor)).rejects.toThrow("Post Scheduling Is Not Enabled");
   await expect(createSkejSchedule(actor, "Do Not Schedule", future)).rejects.toThrow("Post Scheduling Is Not Enabled");
   await expect(createSkejArticleSchedule(actor, { $type: "site.standard.document", title: "Article", site: `at://${did}/site.standard.publication/blog`, publishedAt: future }, "stable", future)).rejects.toThrow("Post Scheduling Is Not Enabled");
   await expect(cancelSkejSchedule(actor, item())).rejects.toThrow("Post Scheduling Is Not Enabled");
   await expect(rescheduleSkejPost(actor, item(), future)).rejects.toThrow("Post Scheduling Is Not Enabled");
-  expect(mints).toHaveLength(0); expect(requests).toHaveLength(0);
+  expect(requests).toHaveLength(0);
 });
-function fixture(options: { status?: number; body?: unknown; afterMint?: () => void; respond?: (url: URL, payload?: Record<string, unknown>) => Response | Promise<Response> } = {}) {
-  const mints: { aud: string; lxm: string; exp: number }[] = [];
+function fixture(options: { status?: number; body?: unknown; respond?: (url: URL, payload?: Record<string, unknown>) => Response | Promise<Response> } = {}) {
   const requests: { url: URL; init: RequestInit; payload?: Record<string, unknown> }[] = [];
-  const agent = { com: { atproto: { server: { getServiceAuth: async (input: { aud: string; lxm: string; exp: number }) => { mints.push(input); options.afterMint?.(); return { data: { token: "one-method-grant" } }; } } } } } as unknown as Agent;
-  const oauth = spyOn(Atproto, "createOAuthAgent").mockImplementation(actor => { expect(actor).toBe(session); return agent; });
   const appview = spyOn(Social, "createAuthenticatedAppViewAgent").mockReturnValue({} as Agent);
-  const env = spyOn(Environment, "getSkejEnvironment").mockReturnValue({ api: "https://scheduler.example", audience: "did:web:scheduler.example#skej_scheduler", connectUrl: "https://scheduler.example/oauth/start" });
-  const fetcher = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(String(input)); const payload = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+  const env = spyOn(Environment, "getSkejEnvironment").mockReturnValue({ api: "https://scheduler.example", connectUrl: "https://scheduler.example/oauth/scheduling/start" });
+  const fetcher = spyOn(Gateway, "gatewayFetch").mockImplementation(async (actor, input, init) => {
+    expect(actor).toBe(session);
+    const url = new URL(String(input), "https://scheduler.example"); const payload = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
     requests.push({ url, init: init!, payload });
     if (options.respond) return options.respond(url, payload);
     const body = options.body ?? (payload?.record ? { ...item(), record: payload.record, scheduledAt: (payload.record as SkejScheduleRecord).scheduledAt } : url.pathname.endsWith("getSession") ? { did } : url.pathname.endsWith("list") ? { records: [item()] } : item());
     return Response.json(body, { status: options.status ?? 200 });
-  }) as typeof fetch);
-  cleanups.push(() => oauth.mockRestore(), () => appview.mockRestore(), () => env.mockRestore(), () => fetcher.mockRestore());
-  return { mints, requests, actor: { session, assertCurrentActor: () => {} } };
+  });
+  cleanups.push(() => appview.mockRestore(), () => env.mockRestore(), () => fetcher.mockRestore());
+  return { requests, actor: { session, assertCurrentActor: () => {} } };
 }
 
-test("service authorization uses the selected actor, exact audience and method with a short expiry", async () => {
-  const f = fixture(), before = Math.floor(Date.now() / 1000);
-  await listSkejSchedules(f.actor);
-  expect(f.mints).toHaveLength(1);
-  expect(f.mints[0]).toMatchObject({ aud: "did:web:scheduler.example#skej_scheduler", lxm: "at.skej.schedule.list" });
-  expect(f.mints[0].exp).toBeGreaterThanOrEqual(before + 60);
-  expect(f.mints[0].exp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 60);
+test("scheduling uses the selected actor's Social Wire session", async () => {
+  const f = fixture();
+  expect(await listSkejSchedules(f.actor)).toEqual([item()]);
+  expect(f.requests[0].url.pathname).toBe("/xrpc/at.skej.schedule.list");
   expect(f.requests[0].url.searchParams.get("accountDid")).toBe(did);
   expect(f.requests[0].init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
-  expect(new Headers(f.requests[0].init.headers).get("Authorization")).toBe("Bearer one-method-grant");
-});
-
-test("embedded scheduling uses the selected actor's Social Wire session and skips Skej service auth", async () => {
-  const f = fixture();
-  const embedded = spyOn(Environment, "usesEmbeddedScheduling").mockReturnValue(true);
-  const gateway = spyOn(Gateway, "gatewayFetch").mockResolvedValue(Response.json({ records: [item()] }));
-  cleanups.push(() => embedded.mockRestore(), () => gateway.mockRestore());
-
-  expect(await listSkejSchedules(f.actor)).toEqual([item()]);
-  expect(f.mints).toHaveLength(0);
-  expect(f.requests).toHaveLength(0);
-  expect(gateway).toHaveBeenCalledWith(
-    session, `/xrpc/at.skej.schedule.list?accountDid=${encodeURIComponent(did)}`,
-    expect.objectContaining({ method: "GET", credentials: "omit", redirect: "error" }),
-  );
 });
 
 test("AccountNeedsReauth is a disconnected readiness result and a typed mutation failure", async () => {
@@ -76,7 +54,7 @@ test("AccountNeedsReauth is a disconnected readiness result and a typed mutation
   expect(await getSkejSchedulingReadiness(f.actor)).toEqual({ accountDid: did, connected: false });
   try { await cancelSkejSchedule(f.actor, item()); throw new Error("Expected rejection"); }
   catch (error) { expect(error).toBeInstanceOf(SkejSchedulingError); expect(error).toMatchObject({ code: "AccountNeedsReauth", status: 403 }); expect((error as Error).message).not.toContain("private provider detail"); }
-  expect(f.mints.map(m => m.lxm)).toEqual(["at.skej.actor.getSession", "at.skej.schedule.cancel"]);
+  expect(f.requests.map(request => request.url.pathname.split("/").at(-1))).toEqual(["at.skej.actor.getSession", "at.skej.schedule.cancel"]);
 });
 
 test("foreign and malformed calendar records fail closed", async () => {
@@ -89,16 +67,15 @@ test("a malformed schedule URI cannot escape the selected actor", async () => {
   await expect(listSkejSchedules(f.actor)).rejects.toThrow("Invalid Scheduled Post");
 });
 
-test("actor changes during token mint prevent an outbound scheduler request", async () => {
-  let switched = false;
-  const f = fixture({ afterMint: () => { switched = true; } });
-  await expect(listSkejSchedules({ session, assertCurrentActor: () => { if (switched) throw new Error("Account Changed"); } })).rejects.toThrow("Account Changed");
-  expect(f.mints).toHaveLength(1); expect(f.requests).toHaveLength(0);
+test("actor changes prevent an outbound scheduler request", async () => {
+  const f = fixture();
+  await expect(listSkejSchedules({ session, assertCurrentActor: () => { throw new Error("Account Changed"); } })).rejects.toThrow("Account Changed");
+  expect(f.requests).toHaveLength(0);
 });
 
 test("create sends a canonical schedule with one stable publication key", async () => {
   const f = fixture(); await createSkejSchedule(f.actor, "A plain scheduled post", future);
-  expect(f.mints[0].lxm).toBe("at.skej.schedule.create");
+  expect(f.requests[0].url.pathname).toBe("/xrpc/at.skej.schedule.create");
   const payload = f.requests[0].payload!, record = payload.record as SkejScheduleRecord;
   expect(payload.accountDid).toBe(did);
   expect(record).toMatchObject({ $type: "at.skej.schedule", scheduledAt: future, timezonePolicy: "absolute_utc", recordType: "app.bsky.feed.post", status: "scheduled", retry: { attemptCount: 0, maxAttempts: 8 }, posts: [{ text: "A plain scheduled post" }] });
@@ -113,18 +90,26 @@ test("rescheduling preserves provider extensions, retry state, thread payload an
   original.record.posts.push({ text: "Thread continuation", publishRkey: "second-post", facets: [{ custom: true }] });
   original.record.retry = { attemptCount: 2, maxAttempts: 9 };
   await rescheduleSkejPost(f.actor, original, "2099-02-01T12:00:00Z");
-  expect(f.mints[0].lxm).toBe("at.skej.schedule.update");
+  expect(f.requests[0].url.pathname).toBe("/xrpc/at.skej.schedule.update");
   const payload = f.requests[0].payload!, record = payload.record as SkejScheduleRecord;
   expect(payload).toMatchObject({ accountDid: did, rkey: original.rkey });
   expect(record).toMatchObject({ providerExtension: { keep: true }, retry: original.record.retry, posts: original.record.posts, publishRkey: "stable-post", createdAt: original.record.createdAt, scheduledAt: "2099-02-01T12:00:00.000Z" });
   expect(original.record.scheduledAt).toBe(future);
 });
 
-test("published posts and invalid dates are rejected before minting or fetching", async () => {
+test("published posts and invalid dates are rejected before making a request", async () => {
   const f = fixture();
   await expect(rescheduleSkejPost(f.actor, { ...item(), status: "published" }, future)).rejects.toThrow("No Longer");
   await expect(createSkejSchedule(f.actor, "Post", "not a date")).rejects.toThrow("One Minute");
-  expect(f.mints).toHaveLength(0); expect(f.requests).toHaveLength(0);
+  expect(f.requests).toHaveLength(0);
+});
+
+test("new and edited schedules reject off-grid times before any request", async () => {
+  const f = fixture();
+  await expect(createSkejSchedule(f.actor, "Post", "2099-01-01T12:07:00Z")).rejects.toThrow("Quarter-Hour");
+  await expect(rescheduleSkejPost(f.actor, item(), "2099-01-01T12:15:01Z")).rejects.toThrow("Quarter-Hour");
+  await expect(createSkejSchedule(f.actor, "Post", "2099-01-01T12:15:00.001Z")).rejects.toThrow("Quarter-Hour");
+  expect(f.requests).toHaveLength(0);
 });
 
 test("stores external previews in the scheduled publication payload", async () => {

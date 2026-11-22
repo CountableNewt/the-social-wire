@@ -44,11 +44,7 @@ import { type DiscoveredPublication } from "@/lib/atprotoClient";
 import { sumUnreadForPublications, unreadCountedAtLookup } from "@/lib/unreadCounts";
 import { PublicationTabs } from "./PublicationTabs";
 import { SidebarSocialSection } from "./SidebarSocialSection";
-import { SidebarAudioSection } from "./SidebarAudioSection";
-import { mediaEnabled } from "@/lib/toolsEnabled";
-import { podcastsEnabled } from "@/lib/podcasts/playback";
 import { SidebarToolsSection } from "./SidebarToolsSection";
-import { SidebarTopicsSection } from "./SidebarTopicsSection";
 import { ReadLaterSidebarBadge } from "./ReadLaterSidebarBadge";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
 import { defaultSidebarExpandedKeys } from "@/lib/sidebarExpandedKeysStorage";
@@ -318,23 +314,6 @@ export function AppSidebar({
       return;
     }
 
-    if (currentFeed === "finance" || currentFeed === "sports") {
-      const displayName =
-        currentFeed === "finance" ? "Finance" : "Sports";
-      setActiveReadFeedScope((previous) =>
-        previous.gatewayScope === null &&
-        previous.displayName === displayName &&
-        previous.publications.length === 0
-          ? previous
-          : {
-              publications: [],
-              gatewayScope: null,
-              displayName,
-            },
-      );
-      return;
-    }
-
     const folderRkey = selectedFolderRkey;
     const folderName = folderRkey
       ? folders.find((folder) => rkeyFromURI(folder.uri) === folderRkey)?.value
@@ -448,15 +427,10 @@ export function AppSidebar({
   );
   const displayPreferences = clientHydrated ? feedPreferences : DEFAULT_FEED_DISPLAY_PREFERENCES;
 
-  if (displayPreferences.showPodcasts && podcastsEnabled()) visible.add("podcasts");
   if (displayPreferences.showSocial) visible.add("social");
-  if (displayPreferences.showSocial && mediaEnabled()) { visible.add("shortVideos"); visible.add("photos"); }
 
   const selectTopLevelFeed = (feed: ReaderNavigationFeed) => {
-    if (feed === "shortVideos" || feed === "photos") { setOpenMobile(false); router.push(feed === "photos" ? "/media/photos" : "/media/short-videos"); return; }
     if (feed === "social") { setOpenMobile(false); router.push("/social"); return; }
-    if (feed === "podcasts") { setOpenMobile(false); router.push("/podcasts"); return; }
-    if (isRetiredReaderFeed(feed)) return;
     setSelectedFolderUri(null);
     if (feed === "readLater") {
       router.push("/saved");
@@ -464,16 +438,6 @@ export function AppSidebar({
     }
     if (feed === "archive") {
       router.push(usingSemble ? "/saved" : "/archive");
-      return;
-    }
-    if (feed === "sports") {
-      saveReaderFeedSelection(window.localStorage, "sports");
-      navigateReaderFeed(pathname, "sports", href => router.push(href));
-      return;
-    }
-    if (feed === "finance") {
-      saveReaderFeedSelection(window.localStorage, "finance");
-      navigateReaderFeed(pathname, "finance", href => router.push(href));
       return;
     }
     if (feed !== "subscribed" && feed !== "following") return;
@@ -492,8 +456,7 @@ export function AppSidebar({
     !selectedListUri &&
     (pathname.startsWith("/saved") || pathname.startsWith("/archive"));
   const publicationsRail = showPublicationsRail && (selectedListUri || (
-        currentFeed !== "wire" &&
-        currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos")) ? (
+        currentFeed !== "social")) ? (
         <FloatingChromeSurface className={`${floatingSidebarLayoutClassName} mx-2 flex flex-col self-stretch lg:self-start gap-0 group-data-[collapsible=icon]:overflow-hidden lg:fixed lg:mx-0 lg:bottom-4 lg:right-4 lg:top-[calc(var(--environment-banner-height,0px)+1rem)] lg:z-30 lg:w-60 lg:h-auto lg:max-h-[calc(100svh-var(--environment-banner-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain`}>
           {!selectedListUri && pathname.startsWith("/saved") ? (
             <SavedCategoryFilterSection
@@ -511,7 +474,7 @@ export function AppSidebar({
             </div>
           )}
           <SidebarGroup className="p-0">
-            {!selectedListUri && !savedRail && currentFeed && currentFeed !== "wire" && currentFeed !== "circle" && currentFeed !== "finance" && currentFeed !== "sports" && currentFeed !== "social" && currentFeed !== "podcasts" && currentFeed !== "shortVideos" && currentFeed !== "photos" ? (
+            {!selectedListUri && !savedRail && currentFeed && currentFeed !== "social" ? (
               <AllFeedSidebarButton
                 feed={currentFeed}
                 isActive={allFeedSelected}
@@ -678,7 +641,6 @@ export function AppSidebar({
             onNavigate={href => { setOpenMobile(false); router.push(href); }}
             onHome={() => { setOpenMobile(false); router.push("/social"); }}
           /> : null}
-          <SidebarAudioSection enabled={visible.has("podcasts")} active={currentFeed === "podcasts"} onSelect={() => selectTopLevelFeed("podcasts")} mediaEnabled={visible.has("photos")} mediaActive={currentFeed} onSelectMedia={selectTopLevelFeed} />
           <PublicationTabs
             visibleFeeds={visible}
             activeTab={
@@ -693,14 +655,6 @@ export function AppSidebar({
             showFollowingUnreadCount={showFeedCount("following")}
             subscribedPublications={subscribedPublications}
             followingPublications={followingTabPublications}
-          />
-          <SidebarTopicsSection
-            visibleFeeds={visible}
-            sportsEnabled={visible.has("sports")}
-            sportsActive={currentFeed === "sports"}
-            onSportsSelect={() => selectTopLevelFeed("sports")}
-            financeActive={currentFeed === "finance"}
-            onFinanceSelect={() => selectTopLevelFeed("finance")}
           />
           <SidebarToolsSection pathname={pathname} onNavigate={href => { setOpenMobile(false); router.push(href); }} />
           <SidebarListsSection

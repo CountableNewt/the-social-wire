@@ -30,6 +30,9 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
+// RunWorkerOnce performs a bounded scheduler sweep; callers coordinate a shared job lease.
+func (s *Service) RunWorkerOnce(ctx context.Context) error { return s.tick(ctx) }
+
 func (s *Service) tick(ctx context.Context) error {
 	now := time.Now()
 	stamp := scheduling.ScheduleTimestamp(now)

@@ -23,7 +23,7 @@ export async function getPublicationAnalytics(
 ): Promise<PublicationAnalyticsSummary> {
   const response = await gatewayFetch(session, "/v1/analytics/publications", { signal });
   if (response.status === 401) throw new Error("Log in again to allow Analytics to access your account.");
-  if (response.status === 403) throw new Error("Publication analytics requires Pro access for this account.");
+  if (response.status === 403) throw new Error("Publication analytics is not available for this account.");
   if (!response.ok) throw new Error(`Publication analytics could not be loaded (${response.status}). Please try again.`);
   return await response.json() as PublicationAnalyticsSummary;
 }

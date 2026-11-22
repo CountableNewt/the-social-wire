@@ -1,3 +1,4 @@
+import * as ReadStateRuntime from "@/lib/pdsReadStateRuntime";
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { InfiniteQueryObserver, QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -198,8 +199,7 @@ describe("PublicationSidebarProvider", () => {
 
   for (const action of ["markEntryUnread", "markEntriesUnread"] as const) {
     it(`rejects a delayed bootstrap seed for an absent publication after aggregate ${action}`, async () => {
-      const env = process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
-      process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = "false";
+      const runtime = spyOn(ReadStateRuntime, "pdsReadStateEnabled").mockReturnValue(false);
       window.localStorage.setItem(READ_STATE_STORAGE_KEY, JSON.stringify({
         old: "2026-01-01T00:00:00Z", history: "2026-01-01T00:00:00Z",
       }));
@@ -252,8 +252,7 @@ describe("PublicationSidebarProvider", () => {
       } finally {
         gate.resolve(); cleanup(); queryClient.clear();
         window.localStorage.removeItem(READ_STATE_STORAGE_KEY);
-        if (env === undefined) delete process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
-        else process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = env;
+        runtime.mockRestore();
       }
     });
   }
@@ -282,8 +281,7 @@ describe("PublicationSidebarProvider", () => {
   for (const mode of ["manual", "bootstrap"] as const) {
     for (const action of ["markEntryRead", "markEntryUnread"] as const) {
       it(`preserves read intent, flags, freshness and invalidation after blocked ${mode} ${action}`, async () => {
-        const env = process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
-        process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = "false";
+        const runtime = spyOn(ReadStateRuntime, "pdsReadStateEnabled").mockReturnValue(false);
         window.localStorage.removeItem(READ_STATE_STORAGE_KEY);
         if (action === "markEntryUnread") window.localStorage.setItem(READ_STATE_STORAGE_KEY, JSON.stringify({ old: "2026-01-01T00:00:00Z" }));
         spyOn(appview, "writeThroughReadMark").mockResolvedValue(undefined);
@@ -332,8 +330,7 @@ describe("PublicationSidebarProvider", () => {
         } finally {
           cleanup(); queryClient.clear();
           window.localStorage.removeItem(READ_STATE_STORAGE_KEY);
-          if (env === undefined) delete process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED;
-          else process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = env;
+          runtime.mockRestore();
         }
       });
     }

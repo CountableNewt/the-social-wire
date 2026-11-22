@@ -12,8 +12,6 @@ struct NewsShellUITestHarness: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("--ui-testing-read-age") {
             readAgeFixture
-        } else if ProcessInfo.processInfo.arguments.contains("--ui-testing-feed-cards") {
-            feedCardFixture
         } else {
             shell
         }
@@ -96,16 +94,12 @@ struct NewsShellUITestHarness: View {
                     .task {
                         fixtureModel.feedPreferences = ReaderFeedPreferences(
                             visibleFeeds: [.readLater, .archive, .subscribed, .following],
-                            feedsWithUnreadCounts: [], showWire: false, showCircle: false)
+                            feedsWithUnreadCounts: [])
 
                         if ProcessInfo.processInfo.arguments.contains("--ui-testing-sidebar-publications") {
                             configureSidebarPublications()
                         }
                         if ProcessInfo.processInfo.arguments.contains("--ui-testing-topics-lists") {
-                            fixtureModel.wireCatalog = WireFeedCatalog(
-                                financeAvailable: true, sportsAvailable: true,
-                                enabled: false, available: false, title: "The Wire", subtitle: "Fixture",
-                                supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil)
                             fixtureModel.standardReaderLists.configureFixture(
                                 lists: [StandardReaderList(
                                     uri: "at://did:plc:fixture/app.standard-reader.list/main",
@@ -169,50 +163,7 @@ struct NewsShellUITestHarness: View {
         authorDid: "did:plc:fixture", authorHandle: "fixture.example",
         title: "Fixture Publication", discoveredAt: "2026-09-01T00:00:00Z")
 
-    private var feedCardFixture: some View {
-        VStack(spacing: 12) {
-            Text(lastFeedAction)
-                .font(.caption)
-                .dynamicTypeSize(.medium)
-                .accessibilityIdentifier("feed-action-result")
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if ProcessInfo.processInfo.arguments.contains("--ui-testing-circle") {
-                        CircleStoryCard(
-                            story: Self.circleStory,
-                            onReadInApp: { lastFeedAction = "Open" },
-                            onHide: { lastFeedAction = "Hidden" }
-                        )
-                    } else {
-                        WireEditorialRail(
-                            title: "Trending",
-                            entries: [Self.entry(index: 1), Self.entry(index: 2)],
-                            onOpen: { _ in lastFeedAction = "Open" }
-                        )
-                    }
-                }
-                .frame(width: 320, alignment: .leading)
-                .padding(.vertical, 12)
-            }
-            .frame(width: 320)
-            .accessibilityIdentifier("feed-canvas")
-            .dynamicTypeSize(
-                ProcessInfo.processInfo.arguments.contains("--ui-testing-large-text")
-                    ? .accessibility3 : .large
-            )
-            .environment(\.openURL, OpenURLAction { _ in
-                lastFeedAction = "Website"
-                return .handled
-            })
-        }
-    }
-
     private static let fixtureTitle = "A Long Headline About Communities Building a More Open and Connected Social Web"
-    private static let fixtureSource = WireFeedSource(
-        name: "The International Journal of Independent Community Publishing",
-        domain: "community-publications.example"
-    )
 
     private static func entry(index: Int) -> EntryListItem {
         EntryListItem(
@@ -223,43 +174,7 @@ struct NewsShellUITestHarness: View {
             formattedPublishedAt: "Today",
             thumbnailUrl: nil,
             thumbnailFallbackUrl: nil,
-            originalUrl: "https://community-publications.example/story-\(index)",
-            wireMetadata: WireEntryMetadata(
-                source: fixtureSource,
-                reasons: [],
-                provenance: [],
-                representativeUri: nil
-            )
-        )
-    }
-
-    private static var circleStory: CircleStory {
-        CircleStory(
-            storyId: "ui-circle-story",
-            canonicalUrl: "https://community-publications.example/circle-story",
-            representativeUri: nil,
-            title: fixtureTitle,
-            summary: "People are sharing thoughtful stories and practical ideas across their communities every day.",
-            publishedAt: "2026-09-02T12:00:00Z",
-            thumbnailUrl: nil,
-            source: fixtureSource,
-            reasons: [],
-            discussionCount: 8,
-            sharerCount: 7,
-            sharers: (1...5).map { index in
-                CircleSharer(
-                    identity: CirclePublicIdentity(
-                        did: "did:plc:fixture\(index)",
-                        handle: "community-writer-\(index).example",
-                        displayName: "Community Writer \(index)",
-                        avatarUrl: nil
-                    ),
-                    relationship: index == 5 ? "one_hop" : "following",
-                    action: "share",
-                    sourceUri: "at://did:plc:fixture\(index)/app.bsky.feed.post/story",
-                    timestamp: "2026-09-02T12:00:00Z"
-                )
-            }
+            originalUrl: "https://community-publications.example/story-\(index)"
         )
     }
 }

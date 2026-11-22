@@ -9,10 +9,7 @@ import * as Suggestions from "@/hooks/useLoginHandleSuggestions";
 import * as Profile from "@/hooks/useViewerProfile";
 import * as FeedSettings from "@/components/Account/FeedSettingsSection";
 import * as ImportSettings from "@/components/Account/OpmlImportSection";
-import * as Player from "@/components/Podcasts/PodcastPlayerProvider";
-import * as Playback from "@/lib/podcasts/playback";
 import * as Navigation from "next/navigation";
-import { initialPodcastState } from "@/lib/podcasts/client";
 import { AccountSettingsContent } from "@/components/Account/AccountSettingsContent";
 import { AccountSettingsDialog } from "@/components/Account/AccountSettingsDialog";
 import { AccountHeader } from "@/components/Account/AccountHeader";
@@ -24,8 +21,6 @@ function render(ui: ReactElement) { return renderUI(ui, { wrapper: ({ children }
 
 const restoreGlobals: (() => void)[] = [];
 const signOut = mock(async () => {});
-const changeState = mock(async () => {});
-const setRemoveSilences = mock(async () => {});
 
 beforeEach(() => {
   cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -40,14 +35,10 @@ beforeEach(() => {
     restoreGlobals.push(() => { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name); });
   }
   signOut.mockReset().mockImplementation(async () => {});
-  changeState.mockClear();
-  setRemoveSilences.mockClear();
   spyOn(Auth, "useAuth").mockReturnValue({ session: { did: "did:plc:settings-viewer" }, signOut, isLoading: false, oauthSessionReloadSeq: 0, applyOAuthSession() {}, getOAuthSession: () => null, getAuthFetch: () => null, reconcileOAuthSession: async () => false, signIn: async () => {} });
   spyOn(Profile, "useViewerProfile").mockReturnValue({ data: { handle: "reader.test" } } as ReturnType<typeof Profile.useViewerProfile>);
   spyOn(FeedSettings, "FeedSettingsSection").mockImplementation(() => <section aria-label="Existing Feed Settings">Existing Preference Controls</section>);
   spyOn(ImportSettings, "OpmlImportSection").mockImplementation(() => <section aria-label="Existing OPML Import">Existing Import Controls</section>);
-  spyOn(Playback, "podcastsEnabled").mockReturnValue(true);
-  spyOn(Player, "useOptionalPodcastPlayer").mockReturnValue({ episode: null, playing: false, position: 0, duration: 0, state: initialPodcastState(), error: null, silence: null, play: async () => {}, toggle() {}, seek() {}, changeState, setRemoveSilences, clearError() {} });
   spyOn(Navigation, "usePathname").mockReturnValue("/me");
 });
 
@@ -59,25 +50,13 @@ afterEach(() => {
   for (const restore of restoreGlobals.splice(0).reverse()) restore();
 });
 
-test("settings route renders the existing preferences, import, account, and enabled podcast controls", () => {
+test("settings route renders the existing preferences, import, and account controls", () => {
   render(<SettingsPage />);
   expect(screen.getByText("@reader.test")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Existing Feed Settings" })).toBeTruthy();
   expect(screen.getByRole("region", { name: "Existing OPML Import" })).toBeTruthy();
-  expect(screen.getByRole("region", { name: "Podcasts" })).toBeTruthy();
-  expect(screen.getByRole("combobox", { name: "Default Speed" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Playback Defaults" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Podcasts" })).toBeNull();
   expect(screen.getByRole("button", { name: "Edit Profile" })).toBeTruthy();
-});
-
-test("podcast defaults are hidden when the feature is disabled or the player is unavailable", () => {
-  spyOn(Playback, "podcastsEnabled").mockReturnValue(false);
-  const view = render(<AccountSettingsContent />);
-  expect(screen.queryByRole("region", { name: "Podcasts" })).toBeNull();
-  spyOn(Playback, "podcastsEnabled").mockReturnValue(true);
-  spyOn(Player, "useOptionalPodcastPlayer").mockReturnValue(null);
-  view.rerender(<AccountSettingsContent />);
-  expect(screen.queryByRole("region", { name: "Podcasts" })).toBeNull();
 });
 
 test("profile cog opens accessible settings and Done closes it", async () => {
@@ -173,17 +152,6 @@ test("logout failure remains visible and permits retry", async () => {
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Session revocation failed."));
   fireEvent.click(within(confirmation).getByRole("button", { name: "Log Out" }));
   await waitFor(() => expect(signOut).toHaveBeenCalledTimes(2));
-});
-
-test("podcast settings render inline and reuse the player mutation handlers", () => {
-  render(<AccountSettingsContent />);
-  expect(screen.queryByRole("dialog", { name: "Playback Defaults" })).toBeNull();
-  fireEvent.change(screen.getByRole("combobox", { name: "Default Speed" }), { target: { value: "1.5" } });
-  expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1.5 });
-  fireEvent.click(screen.getByRole("checkbox", { name: "Remove Silences by Default" }));
-  expect(setRemoveSilences).toHaveBeenCalledWith(true);
-  fireEvent.click(screen.getByRole("button", { name: "Reset Defaults" }));
-  expect(changeState).toHaveBeenCalledWith({ playbackSpeed: 1, removeSilences: false });
 });
 
 test("Edit Profile opens inside Settings and Cancel returns to the settings dialog", async () => {

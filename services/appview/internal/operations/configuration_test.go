@@ -34,3 +34,14 @@ func TestLoadConfigurationDefaults(t *testing.T) {
 		t.Fatal("out-of-range ratio accepted")
 	}
 }
+
+func TestRetiredGatewayOperationsSecretIsIgnored(t *testing.T) {
+	configuration := LoadConfiguration(config.Env{"GATEWAY_OPERATIONS_INTERNAL_SECRET": "retired-secret"})
+	if configuration.BackfillFingerprintSecret != "" {
+		t.Fatal("retired Operations gateway secret was retained")
+	}
+	configuration = LoadConfiguration(config.Env{"OPERATIONS_BACKFILL_FINGERPRINT_SECRET": "fingerprint-secret"})
+	if configuration.BackfillFingerprintSecret != "fingerprint-secret" {
+		t.Fatal("dedicated fingerprint secret was not retained")
+	}
+}

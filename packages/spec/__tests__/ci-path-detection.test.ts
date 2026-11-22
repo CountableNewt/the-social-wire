@@ -77,49 +77,57 @@ function detect(
 describe("standalone CI path detection", () => {
   it.each([
     "services/appview/go.mod",
+    "services/appview/vercel.ts",
+    "services/appview/scripts/vercel-config.ts",
+    "services/appview/scripts/vercel-build.sh",
     "services/appview/Dockerfile.standalone",
-    "services/appview/bin/backend-supervisor",
+    "services/appview/bin/standalone-entrypoint",
     "services/appview/internal/thinstore/store.go",
-    "services/podcast-worker/src/index.ts",
     "apps/web/package.json",
-    "packages/spec/openapi.yaml",
     "packages/vendor/example/package.json",
-    "scripts/migrations/postgres_to_sqlite.py",
     "railway/appview-standalone.json",
     "package.json", "bun.lock", ".dockerignore",
   ])("checks backend runtime plus schema/source contracts for %s", path => {
     const result = detect(repositoryWithChange(path), "pull_request");
-    expect(Object.fromEntries(result)).toEqual({ web: "true", appview: "true" });
+    expect(Object.fromEntries(result)).toEqual({ web: "true", appview: "true", apple: "false" });
   });
   it.each([
     "apps/web/src/app/page.tsx",
+    "apps/web/vercel.json",
     "packages/read-state/src/index.ts",
-    "packages/swift/ReadStateCore/Sources/ReadStateCore/State.swift",
-    "packages/lexicons/lexicons/article.json",
     "packages/spec/__tests__/example.test.ts",
-    "apps/apple/SocialWire/Feature.swift",
-    "database/migrations/20990101000000_example.sql",
     "railway/web.json",
   ])("retains cross-client/source contracts without distributed runtime jobs for %s", path => {
-    expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request"))).toEqual({ web: "true", appview: "false" });
+    expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request"))).toEqual({ web: "true", appview: "false", apple: "false" });
   });
   it.each(["scripts/ci/verify-runtime-images.mjs", "scripts/ci/verify-runtime-images.test.mjs", "scripts/ci/development-parity.mjs"])("checks both packaged verifiers when %s changes", path => {
-    expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true"]);
+    expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true", "false"]);
   });
   it.each([".github/workflows/ci.yml", ".github/workflows/validated-merge.yml", "scripts/ci-detect-changes.sh"])("requires every runtime check when shared gate %s changes", path => {
-    expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true"]);
-  });
-  it("uses push before SHA and skips unrelated documentation-only changes", () => {
-    expect(Object.fromEntries(detect(repositoryWithChange("docs/wiki/Testing.md"), "push"))).toEqual({ web: "false", appview: "false" });
+    expect([...detect(repositoryWithChange(path), "pull_request").values()]).toEqual(["true", "true", "true"]);
   });
   it.each([
-    ["services/appview/cmd/appview/main.go", { web: "true", appview: "true" }],
-    ["apps/web/src/app/page.tsx", { web: "true", appview: "false" }],
-    [".github/workflows/ci.yml", { web: "true", appview: "true" }],
+    "apps/apple/Packages/ReadStateCore/Sources/ReadStateCore/State.swift",
+    "apps/apple/SocialWire/Feature.swift", "packages/lexicons/lexicons/article.json",
+  ])("also checks native consumers for %s", path => {
+    expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request")))
+      .toEqual({ web: "true", appview: "false", apple: "true" });
+  });
+  it("checks all consumers when the shared API changes", () => {
+    expect(Object.fromEntries(detect(repositoryWithChange("packages/spec/openapi.yaml"), "pull_request")))
+      .toEqual({ web: "true", appview: "true", apple: "true" });
+  });
+  it("uses push before SHA and skips unrelated documentation-only changes", () => {
+    expect(Object.fromEntries(detect(repositoryWithChange("docs/wiki/Testing.md"), "push"))).toEqual({ web: "false", appview: "false", apple: "false" });
+  });
+  it.each([
+    ["services/appview/cmd/appview/main.go", { web: "true", appview: "true", apple: "false" }],
+    ["apps/web/src/app/page.tsx", { web: "true", appview: "false", apple: "false" }],
+    [".github/workflows/ci.yml", { web: "true", appview: "true", apple: "true" }],
   ])("selects runtime checks from the pushed commit range for %s", (path, expected) => {
     expect(Object.fromEntries(detect(repositoryWithChange(path as string), "push"))).toEqual(expected);
   });
-  it("runs both targets for an initial push without a base commit", () => {
-    expect([...detect(repositoryWithChange("README.md"), "push", "0".repeat(40)).values()]).toEqual(["true", "true"]);
+  it("runs all targets for an initial push without a base commit", () => {
+    expect([...detect(repositoryWithChange("README.md"), "push", "0".repeat(40)).values()]).toEqual(["true", "true", "true"]);
   });
 });

@@ -15,6 +15,7 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/atproto"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/oauthclient"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/scheduledata"
 )
 
@@ -106,21 +107,19 @@ func (s *Service) loadSchedules(ctx context.Context, did string) ([]summary, err
 
 func (s *Service) repairAndImport(ctx context.Context, did string, records map[string]storedRecord) error {
 	now := scheduling.ScheduleTimestamp(time.Now())
-	if s.importLegacy {
-		imported, err := s.store.HasImportedLegacyScheduleQueue(ctx, did)
-		if err != nil {
-			return err
+	imported, err := s.store.HasImportedLegacyScheduleQueue(ctx, did)
+	if err != nil {
+		return err
+	}
+	if !imported {
+		jobs := make([]scheduledata.ScheduledJob, 0, len(records))
+		for key, record := range records {
+			if job, ok := legacyJob(did, key, record.Value); ok {
+				jobs = append(jobs, job)
+			}
 		}
-		if !imported {
-			jobs := make([]scheduledata.ScheduledJob, 0, len(records))
-			for key, record := range records {
-				if job, ok := legacyJob(did, key, record.Value); ok {
-					jobs = append(jobs, job)
-				}
-			}
-			if err := s.store.ImportLegacyScheduleQueue(ctx, did, jobs, now); err != nil {
-				return err
-			}
+		if err := s.store.ImportLegacyScheduleQueue(ctx, did, jobs, now); err != nil {
+			return err
 		}
 	}
 	for key, record := range records {
@@ -173,17 +172,38 @@ func (s *Service) proof(did, key, publishKey string) []byte {
 }
 
 func (s *Service) create(ctx context.Context, did string, value scheduling.Record) (summary, error) {
-	if !s.acquireCreate(did) {
+	// The request deadline is shorter than the lease, so a timed-out owner
+	// cannot keep writing when another instance is permitted to take over.
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	owner, err := oauthclient.NewVerifier()
+	if err != nil {
+		return summary{}, err
+	}
+	acquiredAt := time.Now()
+	held, err := s.store.ClaimActorLease(ctx, "create", did, owner, acquiredAt.UnixMicro(), acquiredAt.Add(time.Minute).UnixMicro(), 32)
+	if err != nil {
+		return summary{}, err
+	}
+	if !held {
 		return summary{}, httpx.Named(http.StatusConflict, "ScheduleChanged", "This account is saving another schedule")
 	}
-	defer s.releaseCreate(did)
+	defer func() {
+		release, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer stop()
+		if err := s.store.ReleaseActorLease(release, "create", did, owner); err != nil {
+			s.logger.Warn("Could not release schedule creation lease")
+		}
+	}()
+	checkLease := func() error { return s.store.CheckActorLease(ctx, "create", did, owner, time.Now().UnixMicro()) }
+
 	now := time.Now()
 	scheduled, parseErr := time.Parse(time.RFC3339Nano, value.ScheduledAt())
 	if err := scheduling.ValidateRecord(value); err != nil {
 		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", err.Error())
 	}
-	if parseErr != nil || !scheduled.After(now) || value.Status() != scheduling.StatusScheduled {
-		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future schedule time")
+	if parseErr != nil || !scheduling.IsQuarterHour(scheduled) || !scheduled.After(now) || value.Status() != scheduling.StatusScheduled {
+		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future quarter-hour schedule time (:00, :15, :30, or :45)")
 	}
 	publishKey := value.Text("publishRkey")
 	schedules, err := s.loadSchedules(ctx, did)
@@ -229,17 +249,29 @@ func (s *Service) create(ctx context.Context, did string, value scheduling.Recor
 		return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", err.Error())
 	}
 	value["socialWireSubmissionProof"] = base64.StdEncoding.EncodeToString(s.proof(did, key, publishKey))
-	if err := s.store.RememberScheduleSubmission(ctx, did, key, stamp); err != nil {
+	if err := checkLease(); err != nil {
+		return summary{}, err
+	}
+	if err := s.store.RememberScheduleSubmissionOwned(ctx, did, key, owner, stamp); err != nil {
+		return summary{}, err
+	}
+	if err := checkLease(); err != nil {
 		return summary{}, err
 	}
 	if err := s.pds.writeCalendar(ctx, did, key, value); err != nil {
+		return summary{}, err
+	}
+	if err := checkLease(); err != nil {
 		return summary{}, err
 	}
 	if _, err := s.pds.write(ctx, did, scheduling.ScheduleCollection, key, value, nil); err != nil {
 		return summary{}, err
 	}
 	job := jobFrom(did, key, value)
-	if err := s.store.InsertScheduleJobIfMissing(ctx, job, stamp); err != nil {
+	if err := checkLease(); err != nil {
+		return summary{}, err
+	}
+	if err := s.store.InsertScheduleJobIfMissingOwned(ctx, job, owner, stamp); err != nil {
 		return summary{}, err
 	}
 	return summarize(job, value), nil
@@ -283,9 +315,9 @@ func (s *Service) edit(ctx context.Context, did, key string, update scheduling.R
 		value["status"] = scheduling.StatusCanceled
 	} else {
 		date, err := time.Parse(time.RFC3339Nano, update.ScheduledAt())
-		if err != nil || !date.After(now) || update.Text("publishRkey") != existing.Value.Text("publishRkey") ||
+		if err != nil || !scheduling.IsQuarterHour(date) || !date.After(now) || update.Text("publishRkey") != existing.Value.Text("publishRkey") ||
 			update.Collection() != existing.Value.Collection() {
-			return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future time for this schedule")
+			return summary{}, httpx.Named(http.StatusBadRequest, "InvalidSchedule", "Choose a future quarter-hour time for this schedule (:00, :15, :30, or :45)")
 		}
 		value["scheduledAt"], value["status"] = update.ScheduledAt(), scheduling.StatusScheduled
 		if document := value.Object("shadowRecord"); value.Collection() == scheduling.DocumentCollection && document != nil {

@@ -38,8 +38,8 @@ const nextConfig: NextConfig = {
   },
   /**
    * Monorepo root so Turbopack resolves `next` from the workspace (setting this to only `apps/web`
-   * breaks `next build` with package resolution errors). Heavy dev-mode churn from Turbopack is
-   * avoided by running `next dev --webpack` in the package `dev` script.
+   * breaks `next build` with package resolution errors). Development and production builds
+   * both use Turbopack.
    */
   turbopack: {
     root: path.join(__dirname, "..", ".."),

@@ -13,6 +13,7 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/readstate"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reqctx"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
 )
 
 type strictPDSResolver struct {
@@ -127,6 +128,15 @@ func (s *service) activateGeneration(ctx context.Context, viewer, manifestCID st
 		return status, err
 	}
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
+		if s.recoveryClaim != nil {
+			var owned bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pds_recovery_jobs WHERE viewer_did=? AND status='running' AND lease_owner=? AND lease_until_us>?)`, viewer, s.recoveryClaim.owner, time.Now().UnixMicro()).Scan(&owned); err != nil {
+				return err
+			}
+			if !owned {
+				return errors.New("read-state recovery lease lost")
+			}
+		}
 		prior, err := pdsStatus(ctx, tx, viewer)
 		if err != nil {
 			return err
@@ -253,7 +263,7 @@ func installProjection(ctx context.Context, tx *sql.Tx, viewer, manifest, cid st
 		return err
 	}
 	defer exact.Close()
-	boundaries, err := tx.PrepareContext(ctx, "INSERT OR REPLACE INTO appview_pds_read_state_boundaries VALUES(?,?,?,?,?,?,?,?,?)")
+	boundaries, err := tx.PrepareContext(ctx, "INSERT OR REPLACE INTO appview_pds_read_state_boundaries (viewer_did,sequence,rule_key,is_read,acted_at,author_did,scope_keys,boundary_at,boundary_uri,boundary_at_us) VALUES(?,?,?,?,?,?,?,?,?,?)")
 	if err != nil {
 		return err
 	}
@@ -277,8 +287,12 @@ func installProjection(ctx context.Context, tx *sql.Tx, viewer, manifest, cid st
 			if err != nil {
 				return err
 			}
+			boundaryMicros, err := sqlitedb.TimestampMicroseconds(boundary.CreatedAt)
+			if err != nil {
+				return err
+			}
 			if _, err := boundaries.ExecContext(ctx, viewer, op.Sequence, string(key), op.State == readstate.StateRead,
-				op.ActedAt, boundary.Scope.AuthorDID, string(keys), boundary.CreatedAt, boundary.EntryID); err != nil {
+				op.ActedAt, boundary.Scope.AuthorDID, string(keys), boundary.CreatedAt, boundary.EntryID, boundaryMicros); err != nil {
 				return err
 			}
 		}
@@ -296,8 +310,8 @@ func installProjection(ctx context.Context, tx *sql.Tx, viewer, manifest, cid st
 			UNION ALL
 			SELECT b.is_read,b.sequence FROM appview_pds_read_state_boundaries b WHERE b.viewer_did=? AND b.author_did=c.author_did
 				AND (json_array_length(b.scope_keys)=0 OR EXISTS(SELECT 1 FROM json_each(b.scope_keys) WHERE value=c.publication_site))
-				AND (tsw_timestamp_us(c.created_at)<tsw_timestamp_us(b.boundary_at)
-					OR (tsw_timestamp_us(c.created_at)=tsw_timestamp_us(b.boundary_at) AND (b.boundary_uri IS NULL OR c.uri<=b.boundary_uri)))
+				AND (c.created_at_us<b.boundary_at_us
+					OR (c.created_at_us=b.boundary_at_us AND (b.boundary_uri IS NULL OR c.uri<=b.boundary_uri)))
 		) ORDER BY sequence DESC LIMIT 1),0)=1`, viewer, viewer, viewer, viewer, viewer); err != nil {
 		return err
 	}

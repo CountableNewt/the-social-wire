@@ -25,7 +25,6 @@ export function webBuildArguments(appEnvironment) {
     NEXT_PUBLIC_APP_ENV: development ? 'dev' : 'prod',
     NEXT_PUBLIC_SITE_URL: development ? 'https://testing.thesocialwire.app' : 'https://thesocialwire.app',
     NEXT_PUBLIC_SOCIALWIRE_API_URL: development ? 'https://api.testing.thesocialwire.app' : 'https://api.thesocialwire.app',
-    NEXT_PUBLIC_USE_THIN_APPVIEW: 'true',
   };
   return Object.entries(values).flatMap(([key, value]) => ['--build-arg', `${key}=${value}`]);
 }
@@ -58,9 +57,6 @@ export function build(context, kind, target, { execute = run, environment = proc
   const args = [...(cacheRoot ? ['buildx', 'build', '--load', '--progress', 'plain'] : ['build']), '--platform', 'linux/amd64', '--file', kind === 'appview' ? 'services/appview/Dockerfile.standalone' : 'apps/web/Dockerfile', '--tag', target ? `${reference}-verify` : reference,
     '--label', `org.opencontainers.image.revision=${context.sha}`, '--label', `org.opencontainers.image.source=${canonical}`];
   if (kind === 'web') args.push(...webBuildArguments(context.appEnvironment));
-  // Make the runtime build depend on media tests so BuildKit exports their
-  // successful layer alongside the runtime layers without loading a second image.
-  if (kind === 'appview' && !target) args.push('--build-arg', 'PODCAST_MEDIA_ARTIFACTS=media-tests');
   if (target) args.push('--target', target);
   if (cacheRoot) {
     mkdirSync(cacheRoot, { recursive: true });
@@ -121,18 +117,14 @@ export async function runtimeSmoke(image, {
   const fixtureKey = Buffer.alloc(32, 7).toString('base64');
   const environment = {
     APP_ENV: 'dev', PORT: '8081',
-    PODCASTS_ENABLED: 'true', SOCIAL_DRAFTS_ENABLED: 'true', TOOLS_ENABLED: 'true',
-    PODCAST_BRIDGE_ENABLED: 'false',
-    EMBEDDED_SCHEDULING_ENABLED: 'true', EMBEDDED_SCHEDULING_PUBLIC_ORIGIN: 'https://smoke.invalid',
-    EMBEDDED_SCHEDULING_STORAGE_KEY: fixtureKey,
+    SOCIAL_DRAFTS_ENABLED: 'true',
+    SCHEDULING_PUBLIC_ORIGIN: 'https://smoke.invalid',
+    SCHEDULING_STORAGE_KEY: fixtureKey,
     PDS_ATTESTATION_RECEIPT_SECRET: 'smoke-fixture-attestation-secret-at-least-32-bytes',
     GATEWAY_APPVIEW_INTERNAL_SECRET: 'smoke-fixture-analytics-secret-at-least-32-bytes',
-    SOCIAL_DRAFT_STORAGE_KEY: fixtureKey, PODCAST_PRIVATE_STORAGE_KEY: fixtureKey,
-    PODCAST_MEDIA_INTERNAL_SECRET: 'smoke-fixture-media-secret-at-least-32-bytes',
+    SOCIAL_DRAFT_STORAGE_KEY: fixtureKey,
     SOCIAL_DRAFT_S3_ENDPOINT: 'https://smoke.invalid', SOCIAL_DRAFT_S3_BUCKET: 'fixture',
     SOCIAL_DRAFT_S3_ACCESS_KEY_ID: 'fixture', SOCIAL_DRAFT_S3_SECRET_ACCESS_KEY: 'fixture', SOCIAL_DRAFT_S3_REGION: 'auto',
-    PODCAST_S3_ENDPOINT: 'https://smoke.invalid', PODCAST_S3_BUCKET: 'fixture',
-    PODCAST_S3_ACCESS_KEY_ID: 'fixture', PODCAST_S3_SECRET_ACCESS_KEY: 'fixture',
   };
   const docker = (args, options = {}) => execute('docker', args, { capture: true, ...options });
   const status = url => docker(['exec', name, 'curl', '--silent', '--show-error', '--connect-timeout', '1', '--max-time', '3', '--output', '/dev/null', '--write-out', '%{http_code}', url]);
@@ -148,7 +140,6 @@ export async function runtimeSmoke(image, {
     }
     throw new Error('Runtime smoke startup did not become ready within the bounded deadline.');
   };
-  let bunPID;
   try {
     docker(['volume', 'create', volume]);
     docker(['run', '--detach', '--name', name, '--network', 'none', '--volume', `${volume}:/data`,
@@ -159,22 +150,11 @@ export async function runtimeSmoke(image, {
     expectStatus('http://127.0.0.1:8081/oauth/scheduling/client-metadata.json', '200');
     expectStatus('http://127.0.0.1:8081/xrpc/at.skej.actor.getSession', '401');
     expectStatus('http://127.0.0.1:8081/xrpc/app.thesocialwire.publication.getSidebar', '401');
-    expectStatus('http://127.0.0.1:9080/startupz', '200');
-    expectStatus('http://127.0.0.1:9080/healthz', '200');
-    bunPID = docker(['exec', name, 'sh', '-euc', 'for file in /proc/[0-9]*/comm; do if [ "$(cat "$file" 2>/dev/null)" = bun ]; then pid=${file%/comm}; printf "%s\\n" "${pid#/proc/}"; exit 0; fi; done; exit 1']);
-    if (!/^[1-9][0-9]*$/.test(bunPID)) throw new Error('Runtime smoke could not identify the Bun processor.');
-    docker(['exec', name, 'kill', '-STOP', bunPID]);
-    expectStatus('http://127.0.0.1:8081/readyz', '503');
-    expectStatus('http://127.0.0.1:8081/livez', '200');
-    docker(['exec', name, 'kill', '-CONT', bunPID]);
-    bunPID = undefined;
-    await ready();
-    console.log('Packaged runtime smoke passed: API, private media processor, and dependency-aware readiness.');
+    console.log('Packaged runtime smoke passed: API and readiness.');
   } catch (error) {
     try { console.error(docker(['logs', '--tail', '80', name])); } catch {}
     throw error;
   } finally {
-    if (bunPID) { try { docker(['exec', name, 'kill', '-CONT', bunPID]); } catch {} }
     try { docker(['rm', '--force', name]); } catch {}
     try { docker(['volume', 'rm', '--force', volume]); } catch {}
   }

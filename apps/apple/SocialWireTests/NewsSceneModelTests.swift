@@ -5,7 +5,7 @@ import Testing
 @Suite("News shell routing")
 @MainActor
 struct NewsSceneModelTests {
-    private func wireFixture(replies: [OAuthTestTransport.Reply], delay: Duration = .zero) async throws -> (SocialWireAppModel, OAuthTestTransport) {
+    private func fixture(replies: [OAuthTestTransport.Reply], delay: Duration = .zero) async throws -> (SocialWireAppModel, OAuthTestTransport) {
         let store = OAuthTestSessionStore()
         let auth = ATProtoOAuthService(keychain: store)
         let session = AuthSession(did: "did:plc:test", pdsURL: URL(string: "https://pds.example.test")!,
@@ -20,13 +20,12 @@ struct NewsSceneModelTests {
         await auth.restoreSession()
         let transport = OAuthTestTransport(replies, delay: delay)
         let model = SocialWireAppModel(authService: auth, gatewayTransport: { try await transport.send($0) })
-        model.wireCatalog = WireFeedCatalog(enabled: true, available: true, title: "The Wire", subtitle: "", supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil)
         return (model, transport)
     }
 
     @Test("Selecting the current aggregate clears a stale publication")
     func aggregateSelectionClearsStalePublication() async throws {
-        let (model, _) = try await wireFixture(replies: [])
+        let (model, _) = try await fixture(replies: [])
         defer { model.authService.signOut() }
         for source in [ReaderListSource.subscribed, .following] {
             model.readerListSource = source
@@ -46,146 +45,29 @@ struct NewsSceneModelTests {
         }
     }
 
-    @Test("Selecting Wire schedules no detached feed load before the destination task")
-    func wireSelectionDoesNotSpawnRequest() async throws {
-        let (model, transport) = try await wireFixture(replies: [])
-        defer { model.authService.signOut() }
-        model.selectReaderListSource(.wire)
-        try await Task.sleep(for: .milliseconds(10))
-        #expect(model.readerListSource == .wire)
-        #expect(!model.isLoadingEntries)
-        #expect(await transport.recordedRequests().isEmpty)
-    }
-
-    @Test("Cancelled Wire destination permits a new load while its old response is pending")
-    func cancelledWireLoadDoesNotSuppressReplacement() async throws {
-        let edition = WireEditionPage(editionVersion: "1", generationId: "new-generation",
-            generatedAt: "2026-10-12T12:00:00Z", language: "en", source: .ranked, degraded: false,
-            stories: [], topStoryIds: [], publicationSpotlights: [], storyRails: [], people: [], trendingStoryIds: [], moreCursor: nil)
-        let reply = OAuthTestTransport.Reply(status: 200, body: String(decoding: try JSONEncoder().encode(edition), as: UTF8.self))
-        let (model, transport) = try await wireFixture(replies: [reply, reply], delay: .milliseconds(30))
-        defer { model.authService.signOut() }
-        model.selectReaderListSource(.wire)
-        let obsolete = Task { await model.loadWireEdition() }
-        while await transport.recordedRequests().isEmpty { await Task.yield() }
-        obsolete.cancel()
-        while model.isLoadingEntries { await Task.yield() }
-        await model.loadWireEdition()
-        await obsolete.value
-        #expect(await transport.recordedRequests().count == 2)
-        #expect(model.wireEdition?.generationId == "new-generation")
-        #expect(!model.isLoadingEntries)
-    }
-
-    @Test("Tabs keep their editorial order while gated destinations are omitted")
+    @Test("Tabs keep their stable order")
     func availableTabOrder() {
-        #expect(NewsTab.available(wire: true, circle: true, finance: true, sports: true, podcasts: true) == [.podcasts, .library, .saved, .search])
-        #expect(
-            NewsTab.available(wire: false, circle: false)
-                == [.library, .saved, .search]
-        )
+        #expect(NewsTab.available == [.library, .saved, .search])
     }
 
-    @Test("Retired Circle stays omitted regardless of catalog state")
-    func circleNavigationDoesNotRequireAvailableStories() {
-        for available in [false, true] {
-            let catalog = CircleFeedCatalog(
-                enabled: true, available: available, title: "Your Circle", subtitle: "",
-                supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
-            )
-            #expect(!NewsTab.available(
-                preferences: .defaults, wireCatalog: nil, circleCatalog: catalog
-            ).contains(.circle))
-        }
-        #expect(!NewsTab.available(
-            preferences: .defaults, wireCatalog: nil, circleCatalog: nil
-        ).contains(.circle))
-    }
-
-    @Test("Explicit Circle hide and global disable still remove its destination")
-    func circleNavigationHonorsVisibilityControls() {
-        let disabled = CircleFeedCatalog(
-            enabled: false, available: true, title: "Your Circle", subtitle: "",
-            supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
-        )
-        #expect(!NewsTab.available(
-            preferences: .defaults, wireCatalog: nil, circleCatalog: disabled
-        ).contains(.circle))
-        var preferences = ReaderFeedPreferences.defaults
-        preferences.showCircle = false
-        #expect(!NewsTab.available(
-            preferences: preferences, wireCatalog: nil, circleCatalog: nil
-        ).contains(.circle))
-    }
-
-    @Test("Retired primary slots stay omitted while catalogs load or become available")
-    func primarySlotsRespectCatalogAvailability() {
+    @Test("Primary slots contain only reader feeds")
+    func primarySlotsContainReaderFeeds() {
         let model = SocialWireAppModel()
         model.loadPrimaryTabPreferences()
-        #expect(!model.primaryTabFeeds.contains(.wire))
-        #expect(!model.primaryTabFeeds.contains(.circle))
-
-        model.wireCatalog = WireFeedCatalog(
-            enabled: true, available: true, title: "The Wire", subtitle: "",
-            supportedLanguages: ["en"], latestGenerationId: "g1", generatedAt: nil
-        )
-        model.circleCatalog = CircleFeedCatalog(
-            enabled: false, available: true, title: "Your Circle", subtitle: "",
-            supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
-        )
-        model.loadPrimaryTabPreferences()
-        #expect(!model.primaryTabFeeds.contains(.wire))
-        #expect(!model.primaryTabFeeds.contains(.circle))
-
-        model.circleCatalog = CircleFeedCatalog(
-            enabled: true, available: false, title: "Your Circle", subtitle: "",
-            supportedLanguages: ["en"], latestGenerationId: nil, generatedAt: nil
-        )
-        model.feedPreferences.showWire = false
-        model.loadPrimaryTabPreferences()
-        #expect(!model.primaryTabFeeds.contains(.wire))
-        #expect(!model.primaryTabFeeds.contains(.circle))
+        #expect(model.primaryTabFeeds.allSatisfy { $0 == .subscribed || $0 == .following })
     }
 
-    @Test("Podcast navigation honors section visibility while preserving other destinations")
-    func podcastNavigationHonorsVisibility() {
-        var preferences = ReaderFeedPreferences.defaults
-        let visible = NewsTab.available(
-            preferences: preferences, wireCatalog: nil, circleCatalog: nil,
-            podcastsAvailable: true
-        )
-        #expect(visible.contains(.podcasts))
-        preferences.showPodcasts = false
-        let hidden = NewsTab.available(
-            preferences: preferences, wireCatalog: nil, circleCatalog: nil,
-            podcastsAvailable: true
-        )
-        #expect(hidden == visible.filter { $0 != .podcasts })
-
-        let suiteName = "NewsSceneModelTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let scene = NewsSceneModel(defaults: defaults)
-        scene.updateContext(viewerDID: "did:plc:viewer", availableTabs: visible)
-        scene.select(.podcasts, availableTabs: visible)
-        scene.navigate(to: .settings, in: .podcasts)
-        scene.updateContext(viewerDID: "did:plc:viewer", availableTabs: hidden)
-        #expect(scene.selectedTab == .library)
-        #expect(scene.activeRoute == .settings)
-    }
-
-    @Test("Other feed settings preserve hidden Social and Podcast sections")
+    @Test("Other feed settings preserve a hidden Social section")
     func unrelatedFeedSettingsPreserveSectionVisibility() async {
         let model = SocialWireAppModel()
         model.feedPreferences.showSocial = false
-        model.feedPreferences.showPodcasts = false
 
         await model.setFeedDisplayOption(.showFeedOnly, for: .subscribed)
-        #expect(!model.feedPreferences.showSocial && !model.feedPreferences.showPodcasts)
+        #expect(!model.feedPreferences.showSocial)
         await model.setFeedVisible(.following, visible: false)
-        #expect(!model.feedPreferences.showSocial && !model.feedPreferences.showPodcasts)
+        #expect(!model.feedPreferences.showSocial)
         await model.setFeedUnreadCountVisible(.subscribed, visible: true)
-        #expect(!model.feedPreferences.showSocial && !model.feedPreferences.showPodcasts)
+        #expect(!model.feedPreferences.showSocial)
     }
 
     @Test("Last tab is restored per viewer")
@@ -197,22 +79,22 @@ struct NewsSceneModelTests {
         let first = NewsSceneModel(defaults: defaults)
         first.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
-        first.select(.saved, availableTabs: [.wire, .library, .saved, .search])
+        first.select(.saved, availableTabs: [.library, .saved, .search])
 
         let restored = NewsSceneModel(defaults: defaults)
         restored.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
         #expect(restored.selectedTab == .saved)
 
         restored.updateContext(
             viewerDID: "did:plc:bob",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
-        #expect(restored.selectedTab == .wire)
+        #expect(restored.selectedTab == .library)
     }
 
     @Test("A temporarily unavailable preferred feed is restored when its catalog arrives")
@@ -221,31 +103,31 @@ struct NewsSceneModelTests {
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set(
-            NewsTab.wire.rawValue,
+            NewsTab.search.rawValue,
             forKey: NewsSceneModel.storageKey(viewerDID: "did:plc:alice")
         )
 
         let model = NewsSceneModel(defaults: defaults)
         model.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.library, .saved, .search]
+            availableTabs: [.library, .saved]
         )
         #expect(model.selectedTab == .library)
 
         model.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
-        #expect(model.selectedTab == .wire)
+        #expect(model.selectedTab == .search)
     }
 
     @Test("Each tab owns an independent route path")
     func independentPaths() {
         let model = NewsSceneModel()
-        model.navigate(to: .entry(id: "wire-story"), in: .wire)
+        model.navigate(to: .entry(id: "search-story"), in: .search)
         model.navigate(to: .savedLink(id: "saved-story"), in: .saved)
 
-        #expect(model.path(for: .wire) == [.entry(id: "wire-story")])
+        #expect(model.path(for: .search) == [.entry(id: "search-story")])
         #expect(model.path(for: .saved) == [.savedLink(id: "saved-story")])
         #expect(model.path(for: .library).isEmpty)
     }
@@ -253,18 +135,18 @@ struct NewsSceneModelTests {
     @Test("Active route follows the selected tab without destroying other tab paths")
     func activeRouteFollowsSelectedTab() {
         let model = NewsSceneModel()
-        model.navigate(to: .entry(id: "wire-story"), in: .wire)
+        model.navigate(to: .entry(id: "search-story"), in: .search)
         model.navigate(to: .savedLink(id: "saved-story"), in: .saved)
 
-        model.select(.wire, availableTabs: NewsTab.allCases)
-        #expect(model.activeRoute == .entry(id: "wire-story"))
+        model.select(.search, availableTabs: NewsTab.allCases)
+        #expect(model.activeRoute == .entry(id: "search-story"))
 
         model.select(.saved, availableTabs: NewsTab.allCases)
         #expect(model.activeRoute == .savedLink(id: "saved-story"))
 
         model.resetPath(for: .saved)
         #expect(model.activeRoute == nil)
-        #expect(model.path(for: .wire) == [.entry(id: "wire-story")])
+        #expect(model.path(for: .search) == [.entry(id: "search-story")])
     }
 
     @Test("Switching Read Later and Archive returns to the list and persists the cleared route",
@@ -276,7 +158,7 @@ struct NewsSceneModelTests {
         let model = NewsSceneModel(defaults: defaults)
         model.updateContext(viewerDID: "did:plc:alice", availableTabs: NewsTab.allCases)
         model.navigate(to: .savedLink(id: "previous-source-story"), in: .saved)
-        model.navigate(to: .entry(id: "wire-story"), in: .wire)
+        model.navigate(to: .entry(id: "search-story"), in: .search)
 
         model.prepareForReaderSourceChange(
             from: destination == .archive ? .readLater : .archive, to: destination
@@ -284,7 +166,7 @@ struct NewsSceneModelTests {
         model.select(.saved, availableTabs: NewsTab.allCases)
 
         #expect(model.activeRoute == nil)
-        #expect(model.path(for: .wire) == [.entry(id: "wire-story")])
+        #expect(model.path(for: .search) == [.entry(id: "search-story")])
         let restored = NewsSceneModel(defaults: defaults)
         restored.updateContext(viewerDID: "did:plc:alice", availableTabs: NewsTab.allCases)
         #expect(restored.path(for: .saved).isEmpty)
@@ -321,7 +203,7 @@ struct NewsSceneModelTests {
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        for tab in [NewsTab.wire, .circle] {
+        for tab in [NewsTab.search] {
             let model = NewsSceneModel(defaults: defaults)
             model.updateContext(viewerDID: "did:plc:alice", availableTabs: NewsTab.allCases)
             model.select(tab, availableTabs: NewsTab.allCases)
@@ -330,7 +212,7 @@ struct NewsSceneModelTests {
 
             model.updateContext(
                 viewerDID: "did:plc:alice",
-                availableTabs: [.library, .saved, .search]
+                availableTabs: [.library, .saved]
             )
             #expect(model.selectedTab == .library)
             #expect(model.path(for: .library).last == .settings)
@@ -347,7 +229,7 @@ struct NewsSceneModelTests {
         let first = NewsSceneModel(defaults: defaults, windowID: "window-a")
         first.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
         first.setPath(
             [.publication(id: "at://alice/site.standard.publication/main")],
@@ -357,7 +239,7 @@ struct NewsSceneModelTests {
         let restored = NewsSceneModel(defaults: defaults, windowID: "window-a")
         restored.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
         #expect(
             restored.path(for: .library)
@@ -367,13 +249,13 @@ struct NewsSceneModelTests {
         let otherWindow = NewsSceneModel(defaults: defaults, windowID: "window-b")
         otherWindow.updateContext(
             viewerDID: "did:plc:alice",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
         #expect(otherWindow.path(for: .library).isEmpty)
 
         restored.updateContext(
             viewerDID: "did:plc:bob",
-            availableTabs: [.wire, .library, .saved, .search]
+            availableTabs: [.library, .saved, .search]
         )
         #expect(restored.path(for: .library).isEmpty)
     }

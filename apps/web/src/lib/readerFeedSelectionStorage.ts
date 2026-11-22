@@ -1,24 +1,11 @@
 import { isRetiredReaderFeed } from "./retiredReaderFeeds";
 
-export type ReaderFeedSelection =
-  | "wire"
-  | "circle"
-  | "finance"
-  | "sports"
-  | "subscribed"
-  | "following";
+export type ReaderFeedSelection = "subscribed" | "following";
 
 export function isReaderFeedSelection(
   value: string | null,
 ): value is ReaderFeedSelection {
-  return (
-    value === "wire" ||
-    value === "circle" ||
-    value === "finance" ||
-    value === "sports" ||
-    value === "subscribed" ||
-    value === "following"
-  );
+  return value === "subscribed" || value === "following";
 }
 
 export const READER_FEED_SELECTION_STORAGE_KEY =
@@ -31,9 +18,8 @@ export function loadReaderFeedSelection(
 ): ReaderFeedSelection | null {
   try {
     const value = storage.getItem(READER_FEED_SELECTION_STORAGE_KEY);
-    if (isReaderFeedSelection(value)) {
-      return isRetiredReaderFeed(value) ? "subscribed" : value;
-    }
+    if (isReaderFeedSelection(value)) return value;
+    if (isRetiredReaderFeed(value)) return "subscribed";
     const legacy = storage.getItem(LEGACY_PUBLICATION_TAB_STORAGE_KEY);
     return legacy === "subscribed" || legacy === "following" ? legacy : null;
   } catch {
@@ -46,7 +32,7 @@ export function saveReaderFeedSelection(
   feed: ReaderFeedSelection,
 ): void {
   try {
-    storage.setItem(READER_FEED_SELECTION_STORAGE_KEY, isRetiredReaderFeed(feed) ? "subscribed" : feed);
+    storage.setItem(READER_FEED_SELECTION_STORAGE_KEY, feed);
   } catch {
     // Private browsing and quota failures must not block reader navigation.
   }

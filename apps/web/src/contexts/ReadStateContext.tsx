@@ -32,7 +32,6 @@ import {
   clearPublicationUnreadCounts,
 } from "@/lib/optimisticUnreadCounts";
 import {
-  isThinAppViewEnabled,
   writeThroughReadMark,
   writeThroughReadMarkDelete,
   writeThroughReadStates,
@@ -175,7 +174,7 @@ export function ReadStateProvider({ children }: { children: ReactNode }) {
 
   /** Records, paints, and writes one read state for many entries as a single batch. */
   const synchronizeEntryStates = useCallback((entryIds: readonly string[], read: boolean, readAt?: string) => {
-    if (!isThinAppViewEnabled() || entryIds.length === 0) return;
+    if (entryIds.length === 0) return;
     const oauth = getOAuthSession();
     if (!oauth) return;
     const targets = new Set(entryIds);

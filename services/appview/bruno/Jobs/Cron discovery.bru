@@ -1,0 +1,20 @@
+meta {
+  name: Cron Drain Discovery Work
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/internal/cron/discovery
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{cronSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

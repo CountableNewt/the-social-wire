@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # AppView test plan
 
 **Package:** `services/appview`  
@@ -19,7 +21,6 @@ services/appview/internal/
   reader/*_test.go
   publications/*_test.go
   readstate/*_test.go
-  podcasts/*_test.go
 ```
 
 ## Bruno (manual HTTP)

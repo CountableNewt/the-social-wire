@@ -33,21 +33,25 @@ type service struct {
 	generationFetcher *readstate.LiveRecordFetcher
 	confirmationSlots chan struct{}
 	verifiedChunks    *readstate.VerifiedRecordCache
+	recoveryClaim     *recoveryClaim
+	durableRecovery   bool
 	reconciles        reconcileState
 	recoverySlots     chan struct{}
 }
 
 type Options struct {
-	Bootstrap    func([]thinstore.PublicationScope)
-	VerifyEntry  func(context.Context, string) (bool, error)
-	RefreshScope func(context.Context, *reqctx.Auth, thinstore.PublicationScope) (int, error)
+	// DurableRecovery queues public PDS recovery instead of detaching request work.
+	DurableRecovery bool
+	Bootstrap       func([]thinstore.PublicationScope)
+	VerifyEntry     func(context.Context, string) (bool, error)
+	RefreshScope    func(context.Context, *reqctx.Auth, thinstore.PublicationScope) (int, error)
 }
 
 // Register serves reader routes and returns the read-state readiness gate for
 // other routes that serve the viewer's projection, such as the sidebar.
 func Register(group *httpx.Group, db *sqlitedb.DB, publications *publications.Service, enroll EnrollFunc, options Options) httpx.Middleware {
 	s := &service{db: db, publications: publications, enroll: enroll, verifyEntry: options.VerifyEntry, refreshScope: options.RefreshScope,
-		confirmationSlots: make(chan struct{}, 4), recoverySlots: make(chan struct{}, 2), verifiedChunks: readstate.NewDefaultVerifiedRecordCache()}
+		durableRecovery: options.DurableRecovery, confirmationSlots: make(chan struct{}, 4), recoverySlots: make(chan struct{}, 2), verifiedChunks: readstate.NewDefaultVerifiedRecordCache()}
 	group = group.Use(s.requireReadState)
 	if options.Bootstrap != nil {
 		s.bootstrapHooks = []func([]thinstore.PublicationScope){options.Bootstrap}
@@ -174,18 +178,19 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 		return invalidFeed(w, r, validation)
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := readerQueryContext(r.Context(), s.db.IsRemote())
 	defer cancel()
 	viewer := reqctx.ViewerDID(ctx)
 	var page thinstore.EntryListResponse
 	var updated string
 	var projections bool
 	err := s.db.Read(ctx, func(tx *sql.Tx) error {
-		err := tx.QueryRowContext(ctx, `SELECT updated_at FROM appview_viewer_feeds
-			WHERE viewer_did=? AND feed_kind=? AND feed_id=?`, viewer, selector.Kind, selector.ID).Scan(&updated)
+		var matched []feedMatch
+		var migrated bool
+		var err error
+		updated, _, matched, migrated, err = feedSnapshotWithMatches(ctx, tx, viewer, string(selector.Kind), selector.ID)
 		if errors.Is(err, sql.ErrNoRows) {
-			err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM appview_viewer_feeds WHERE viewer_did=?)", viewer).Scan(&projections)
-			if err != nil {
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM appview_viewer_feeds WHERE viewer_did=?)", viewer).Scan(&projections); err != nil {
 				return err
 			}
 			return sql.ErrNoRows
@@ -193,11 +198,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		scopeRows, err := scopes(ctx, tx, viewer, string(selector.Kind), selector.ID)
-		if err != nil {
-			return err
-		}
-		page, err = listEntries(ctx, tx, viewer, scopeRows, args.filter, args.cursor, args.limit, true)
+		page, err = listMatchedEntries(ctx, tx, viewer, matched, args.filter, args.cursor, args.limit, true, migrated)
 		return err
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -220,6 +221,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 }
 
 func feedFailure(w http.ResponseWriter, r *http.Request, err error) error {
+	logDatabaseFailure(r.Context(), "feed", err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		return feedError(w, r, http.StatusGatewayTimeout, "feed_deadline_exceeded", "The feed request exceeded its deadline.", true)
 	}
@@ -252,7 +254,7 @@ func (s *service) entries(w http.ResponseWriter, r *http.Request) error {
 	if validation != "" {
 		return invalidFeed(w, r, validation)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := readerQueryContext(r.Context(), s.db.IsRemote())
 	defer cancel()
 	viewer := reqctx.ViewerDID(ctx)
 	limit := args.limit
@@ -505,17 +507,6 @@ func (s *service) purge(w http.ResponseWriter, r *http.Request) error {
 			"appview_unread_counters", "sidebar_projection_cache"} {
 			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE viewer_did = ?", viewer); err != nil {
 				return err
-			}
-		}
-		for _, table := range []string{"appview_circle_graph_snapshots", "appview_circle_hidden_items", "appview_circle_edition_cache"} {
-			var exists bool
-			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table).Scan(&exists); err != nil {
-				return err
-			}
-			if exists {
-				if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE viewer_did = ?", viewer); err != nil {
-					return err
-				}
 			}
 		}
 		return invalidateCaches(ctx, tx, viewer)

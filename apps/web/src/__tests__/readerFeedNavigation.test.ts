@@ -4,7 +4,7 @@ import { navigateReaderFeed } from "@/lib/readerFeedNavigation";
 const restores: Array<() => void> = [];
 afterEach(() => { for (const restore of restores.splice(0)) restore(); });
 
-it.each(["sports", "finance", "wire", "circle", "subscribed", "following"] as const)(
+it.each(["subscribed", "following"] as const)(
   "switches %s from the reader index without a server route transition",
   feed => {
     const history = spyOn(window.history, "pushState").mockImplementation(() => undefined);
@@ -14,7 +14,7 @@ it.each(["sports", "finance", "wire", "circle", "subscribed", "following"] as co
     navigateReaderFeed("/read", feed, pushRoute);
 
     // A fresh destination query drops the prior list/folder/topic selection, as full navigation did.
-    expect(history).toHaveBeenCalledWith(null, "", `/read?feed=${feed === "wire" || feed === "circle" || feed === "finance" || feed === "sports" ? "subscribed" : feed}`);
+    expect(history).toHaveBeenCalledWith(null, "", `/read?feed=${feed}`);
     expect(pushRoute).not.toHaveBeenCalled();
   },
 );
@@ -26,7 +26,7 @@ it.each(["/read/at%3Apublication", "/read/", "/saved", "/social"])(
     restores.push(() => history.mockRestore());
     const pushRoute = mock(() => undefined);
 
-    navigateReaderFeed(pathname, "finance", pushRoute);
+    navigateReaderFeed(pathname, "subscribed", pushRoute);
 
     expect(pushRoute).toHaveBeenCalledWith("/read?feed=subscribed");
     expect(history).not.toHaveBeenCalled();

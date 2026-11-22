@@ -19,7 +19,7 @@ test("private article methods have owner-bound auth, no public cache, and matchi
     expect(operation.responses["409"].description).toContain("Conflict");
     expect(operation.responses["503"].description).toBe("Unavailable");
     expect(manifest.entries).toContainEqual({ surface: "openapi", method: method.toUpperCase(), path: prefix + name, classification: "xrpc-migration", xrpcNsid: `app.thesocialwire.articleDraft.${name}` });
-    for (const service of ["gateway", "appview"]) {
+    for (const service of ["appview"]) {
       const request = readFileSync(join(root, `services/${service}/bruno/XRPC/app.thesocialwire.articleDraft.${name}.bru`), "utf8");
       expect(request).toContain(`${method} {`);
       expect(request).toContain(prefix + name);

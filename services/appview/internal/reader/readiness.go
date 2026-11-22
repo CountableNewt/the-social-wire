@@ -2,6 +2,7 @@ package reader
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -50,7 +51,9 @@ func (s *service) requireReadState(next httpx.Handler) httpx.Handler {
 		}
 		status, err := pdsStatus(r.Context(), s.db.Reader(), auth.DID)
 		if err == nil {
-			s.reconcile(auth.DID, status)
+			s.reconcileForRequest(r.Context(), auth.DID, status)
+		} else {
+			logDatabaseFailure(r.Context(), "read-state-status", err)
 		}
 		if (err == nil && status.ProjectionReady) || r.URL.Path == readStateStatusPath {
 			return next(w, r)
@@ -137,4 +140,19 @@ func withBackoff(backoff map[string]time.Time, viewer string, now, next time.Tim
 	}
 	backoff[viewer] = next
 	return backoff
+}
+
+// Serverless requests only enqueue durable work; no detached network request is
+// needed to repair a public PDS generation after this response has completed.
+func (s *service) reconcileForRequest(ctx context.Context, viewer string, status readstate.Status) {
+	if !s.durableRecovery {
+		s.reconcile(viewer, status)
+		return
+	}
+	if status.ManifestCID == nil || s.generationFetcher == nil {
+		return
+	}
+	if err := enqueueRecovery(ctx, s.db, viewer, time.Now()); err != nil {
+		slog.Default().Warn("Read-state recovery enqueue deferred")
+	}
 }

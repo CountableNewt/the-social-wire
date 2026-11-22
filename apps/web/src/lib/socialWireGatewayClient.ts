@@ -76,7 +76,7 @@ function isProjectionRead(path: string, init?: RequestInit): boolean {
   if ((init?.method ?? "GET").toUpperCase() !== "GET") return false;
   const route = path.split("?")[0];
   return /^\/xrpc\/app\.thesocialwire\.(appview|discovery)\.get[A-Z]/.test(route) ||
-    route === "/xrpc/app.thesocialwire.sync.getPreferences" || route === "/xrpc/app.thesocialwire.podcast.getState";
+    route === "/xrpc/app.thesocialwire.sync.getPreferences";
 }
 
 async function tokenBinding(oauth: OAuthSession): Promise<string> {

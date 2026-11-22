@@ -31,20 +31,10 @@ src/hooks/useSavedLinkSocialEntry.ts
 src/lib/latrGatewayDebugClient.ts
 
 # TSW-107: Existing authenticated integration surfaces awaiting rendered coverage.
-# Circle query/action provider integration with the editorial layout; feed/action contracts are covered.
 # Stateful tag dialogs and paginated mutations; tag parsing and PDS operations are covered.
 src/components/SavedLinks/SavedLinksTagToolbar.tsx
 # Semble collection query, save/retry, and detail composition; Semble client contracts are covered.
 src/components/SavedLinks/SembleCollectionBrowser.tsx
-
-# Podcast route and public clip integration surfaces; player/library behavior is covered.
-src/app/api/podcast-oembed/route.ts
-src/app/podcast-clips/[id]/embed/page.tsx
-src/app/podcast-clips/[id]/page.tsx
-src/app/podcasts/layout.tsx
-src/app/podcasts/page.tsx
-src/components/Podcasts/PodcastBridgeStatus.tsx
-src/lib/podcasts/publicClip.ts
 
 # Articles domain types contain only erased TypeScript declarations.
 src/lib/articles/articleDraftCloudTypes.ts

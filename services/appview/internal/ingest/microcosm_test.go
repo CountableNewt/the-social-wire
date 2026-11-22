@@ -73,7 +73,7 @@ func TestMicrocosmInsertsVerifiedScopedRecordsOnly(t *testing.T) {
 				}
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
-			service := NewMicrocosm(provider, store)
+			service := NewMicrocosm(provider, store, db)
 			count, err := service.discover(ctx, scope)
 			if (count == 1) != test.want {
 				t.Fatalf("unexpected indexed count %d", count)

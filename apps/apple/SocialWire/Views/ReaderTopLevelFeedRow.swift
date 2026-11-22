@@ -40,15 +40,7 @@ struct ReaderTopLevelFeedRow: View {
             HStack {
                 Image(systemName: source.systemImage)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayTitle)
-                    if let subtitle = displaySubtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Text(displayTitle)
                 Spacer(minLength: 8)
                 if appModel.showsTopLevelFeedUnreadCount(for: source) {
                     SidebarCountLabel(
@@ -71,8 +63,6 @@ struct ReaderTopLevelFeedRow: View {
 
     private var confirmationMessage: String {
         switch source {
-        case .wire:
-            ""
         case .subscribed:
             "This marks every unread article in Subscribed as read."
         case .following:
@@ -84,9 +74,5 @@ struct ReaderTopLevelFeedRow: View {
 
     private var displayTitle: String {
         return source.rawValue
-    }
-
-    private var displaySubtitle: String? {
-        return source.navigationSubtitle
     }
 }

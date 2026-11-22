@@ -3,118 +3,148 @@ package ingest
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/atproto"
 )
 
-type authorHistoryQueue struct {
-	mu      sync.Mutex
-	pending chan string
-	active  map[string]bool
-	retry   map[string]time.Time
+func normalizeHistoryAuthor(raw string) string {
+	did, err := atproto.NormalizeDID(raw)
+	if err != nil || len(did) > 2048 || did == atproto.RSSAuthorDID || (!strings.HasPrefix(did, "did:plc:") && !strings.HasPrefix(did, "did:web:")) {
+		return ""
+	}
+	return did
 }
 
-func (q *authorHistoryQueue) init() {
-	if q.pending == nil {
-		q.pending = make(chan string, 32)
-		q.active = map[string]bool{}
-		q.retry = map[string]time.Time{}
+func (s *Service) scheduleAuthorHistory(ctx context.Context, did string) error {
+	did = normalizeHistoryAuthor(did)
+	if did == "" {
+		return nil
 	}
+	return (historyQueue{s.HistoryDB}).enqueue(ctx, did, time.Now())
 }
 
-func (s *Service) scheduleAuthorHistory(did string) {
-	q := &s.history
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.init()
-	if q.active[did] || q.retry[did].After(time.Now()) {
-		return
-	}
-	select {
-	case q.pending <- did:
-		q.active[did] = true
-	default:
-	}
+type AuthorHistoryRunResult struct {
+	Claimed   bool `json:"claimed"`
+	Completed bool `json:"completed"`
+	Retried   bool `json:"retried"`
+	Pages     int  `json:"pages"`
+	Indexed   int  `json:"indexed"`
 }
 
-// RunAuthorHistory consumes request-scoped work. Two workers match the
-// standalone service's existing background concurrency.
+// RunAuthorHistoryOnce resumes one durable author checkpoint. Work is bounded,
+// and only fully indexed pages advance the cursor, so process loss cannot skip data.
+func (s *Service) RunAuthorHistoryOnce(ctx context.Context) (AuthorHistoryRunResult, error) {
+	result := AuthorHistoryRunResult{}
+	if s.AuthorPDS == nil {
+		return result, nil
+	}
+	queue := historyQueue{s.HistoryDB}
+	claim, err := queue.claim(ctx, time.Now())
+	if err != nil || claim == nil {
+		return result, err
+	}
+	result.Claimed = true
+	work, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	base := ""
+	if claim.collection == len(documentCollections) {
+		result.Completed = true
+	} else {
+		base, err = s.AuthorPDS.ResolvePDSBaseStrict(work, claim.author, atproto.EndpointPublicHTTPS)
+		if err == nil && base == "" {
+			err = errors.New("scoped PDS history endpoint unavailable")
+		}
+	}
+	if err == nil && !result.Completed {
+		result.Pages, result.Indexed, result.Completed, err = walkHistoryClaim(work, queue, claim,
+			func(ctx context.Context, collection, cursor string) ([]authorRecord, string, error) {
+				return s.loadAuthorPage(ctx, base, claim.author, collection, cursor)
+			},
+			func(ctx context.Context, collection string, records []authorRecord) (int, error) {
+				return s.indexAuthorPage(ctx, claim.author, collection, records)
+			})
+	}
+	// A cancelled request still records bounded retry evidence without extending
+	// indexing past the claim's work deadline. The lease remains authoritative.
+	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	retried, finishErr := queue.finish(finish, *claim, result.Completed, err != nil, time.Now())
+	result.Retried = retried
+	return result, errors.Join(err, finishErr)
+}
+
+type historyPageLoader func(context.Context, string, string) ([]authorRecord, string, error)
+type historyPageIndexer func(context.Context, string, []authorRecord) (int, error)
+
+func walkHistoryClaim(ctx context.Context, queue historyQueue, claim *historyClaim, load historyPageLoader, index historyPageIndexer) (pages, indexed int, completed bool, err error) {
+	budget := 1000
+	for claim.collection < len(documentCollections) {
+		if err := ctx.Err(); err != nil {
+			return pages, indexed, false, err
+		}
+		collection := documentCollections[claim.collection]
+		pageLimit := 50
+		if collection == "site.standard.document" {
+			pageLimit = 10
+		}
+		// Never split a page: the PDS cursor addresses the entire returned page.
+		if pages >= 25 || budget < pageLimit {
+			return pages, indexed, false, nil
+		}
+		records, next, err := load(ctx, collection, claim.cursor)
+		if err != nil {
+			return pages, indexed, false, err
+		}
+		if len(records) > pageLimit || len(next) > 2048 {
+			return pages, indexed, false, errors.New("invalid author history page")
+		}
+		if next != "" && next == claim.cursor {
+			return pages, indexed, false, errHistoryCursorLoop
+		}
+		count, err := index(ctx, collection, records)
+		indexed += count
+		if err != nil {
+			return pages, indexed, false, err
+		}
+		nextCollection := claim.collection
+		if next == "" {
+			nextCollection++
+		}
+		if err := queue.checkpoint(ctx, claim, nextCollection, next, time.Now()); err != nil {
+			return pages, indexed, false, err
+		}
+		pages++
+		budget -= len(records)
+	}
+	return pages, indexed, true, nil
+}
+
+// RunAuthorHistory is retained for a long-running server; serverless jobs invoke
+// RunAuthorHistoryOnce directly and never depend on this process-local timer.
 func (s *Service) RunAuthorHistory(ctx context.Context, logFailure func(error)) {
-	q := &s.history
-	q.mu.Lock()
-	q.init()
-	q.mu.Unlock()
 	var workers sync.WaitGroup
 	for range 2 {
 		workers.Go(func() {
-			for {
+			for ctx.Err() == nil {
+				result, err := s.RunAuthorHistoryOnce(ctx)
+				if err != nil && ctx.Err() == nil && logFailure != nil {
+					logFailure(err)
+				}
+				if result.Claimed && err == nil {
+					continue
+				}
+				timer := time.NewTimer(time.Second)
 				select {
 				case <-ctx.Done():
+					timer.Stop()
 					return
-				case author := <-q.pending:
-					s.runAuthorHistory(ctx, author, logFailure)
+				case <-timer.C:
 				}
 			}
 		})
 	}
 	workers.Wait()
-}
-
-func (s *Service) runAuthorHistory(ctx context.Context, author string, logFailure func(error)) {
-	deadline, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	err := s.walkAuthorHistory(deadline, author)
-	if err != nil && ctx.Err() == nil && logFailure != nil {
-		logFailure(err)
-	}
-	retry := 6 * time.Hour
-	if err != nil {
-		retry = time.Minute
-	}
-	q := &s.history
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	delete(q.active, author)
-	now := time.Now()
-	if len(q.retry) >= 512 {
-		clear(q.retry)
-	}
-	q.retry[author] = now.Add(retry)
-}
-
-func (s *Service) walkAuthorHistory(ctx context.Context, author string) error {
-	base, err := s.AuthorPDS.ResolvePDSBaseStrict(ctx, author, atproto.EndpointPublicHTTPS)
-	if err != nil || base == "" {
-		return errors.New("scoped PDS history endpoint unavailable")
-	}
-	budget := 1000
-	for _, collection := range documentCollections {
-		cursor := ""
-		seen := map[string]bool{}
-		for {
-			records, next, err := s.loadAuthorPage(ctx, base, author, collection, cursor)
-			if err != nil {
-				return err
-			}
-			if len(records) > budget {
-				_, err := s.indexAuthorPage(ctx, author, collection, records[:budget])
-				return errors.Join(err, errors.New("scoped PDS history reached record limit"))
-			}
-			if _, err := s.indexAuthorPage(ctx, author, collection, records); err != nil {
-				return err
-			}
-			budget -= len(records)
-			if next == "" {
-				break
-			}
-			if budget == 0 || seen[next] {
-				return errors.New("scoped PDS history did not complete")
-			}
-			seen[next] = true
-			cursor = next
-		}
-	}
-	return nil
 }

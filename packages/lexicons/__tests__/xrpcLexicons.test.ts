@@ -31,7 +31,7 @@ describe("Social Wire XRPC lexicons", () => {
     const nativeNsids = manifest.entries
       .filter((entry) => entry.classification === "first-party-xrpc")
       .map((entry) => entry.xrpcNsid!);
-    const documents = ["app.thesocialwire.defs", "app.thesocialwire.discovery.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids, ...nativeNsids].map((nsid) =>
+    const documents = ["app.thesocialwire.defs", "app.thesocialwire.socialDraft.defs", "app.thesocialwire.articleDraft.defs", ...nsids, ...nativeNsids].map((nsid) =>
       JSON.parse(readFileSync(fileForNsid(nsid), "utf8"))
     );
     expect(() => new Lexicons(documents)).not.toThrow();
@@ -44,8 +44,8 @@ describe("Social Wire XRPC lexicons", () => {
       const expectedType = /^(get|list|search)/.test(method) ? "query" : "procedure";
       expect(lexicon.defs.main.type, nsid).toBe(expectedType);
       if (expectedType === "query") expect(lexicon.defs.main.parameters?.type).toBe("params");
-      else expect(lexicon.defs.main.input?.encoding).toBe(nsid === "app.thesocialwire.socialDraft.uploadAttachment" ? "application/octet-stream" : "application/json");
-      expect(lexicon.defs.main.output.encoding).toBe(["app.thesocialwire.socialDraft.getAttachment", "app.thesocialwire.socialDraft.getGifFile", "app.thesocialwire.podcast.getMedia", "app.thesocialwire.podcast.getImage", "app.thesocialwire.podcast.getClipAsset", "app.thesocialwire.podcast.getPublicClipAsset"].includes(nsid) ? "*/*" : "application/json");
+      else expect(lexicon.defs.main.input?.encoding).toBe(["app.thesocialwire.socialDraft.uploadAttachment", "app.thesocialwire.socialDraft.uploadAttachmentChunk"].includes(nsid) ? "application/octet-stream" : "application/json");
+      expect(lexicon.defs.main.output.encoding).toBe(["app.thesocialwire.socialDraft.getAttachment", "app.thesocialwire.socialDraft.getGifFile"].includes(nsid) ? "*/*" : "application/json");
       expect(lexicon.defs.main.errors.length).toBeGreaterThan(0);
     }
   });
@@ -53,7 +53,6 @@ describe("Social Wire XRPC lexicons", () => {
   it("declares bounded identifiers for item methods", () => {
     for (const nsid of [
       "app.thesocialwire.appview.getEntry",
-      "app.thesocialwire.discovery.getWireItem",
       "app.thesocialwire.operations.getBackfill",
       "app.thesocialwire.operations.getGapInvestigation",
       "app.thesocialwire.operations.getTrace",
@@ -96,12 +95,12 @@ describe("Social Wire XRPC lexicons", () => {
     }
   });
 
-  it("keeps Operations metric filters and gap statuses aligned with the service contract", () => {
+  it("preserves published Operations metric filter limits and compatible gap statuses", () => {
     const metrics = JSON.parse(
       readFileSync(fileForNsid("app.thesocialwire.operations.listMetrics"), "utf8")
     );
-    expect(metrics.defs.main.parameters.properties.metric.maxLength).toBe(160);
-    expect(metrics.defs.main.parameters.properties.collection.maxLength).toBe(256);
+    expect(metrics.defs.main.parameters.properties.metric.maxLength).toBe(256);
+    expect(metrics.defs.main.parameters.properties.collection.maxLength).toBe(512);
 
     const updateGap = JSON.parse(
       readFileSync(fileForNsid("app.thesocialwire.operations.updateGap"), "utf8")

@@ -18,7 +18,7 @@ struct UnifiedFeedSelectionTests {
     @Test("selection cases remain exclusive")
     func selectionCasesRemainDistinct() {
         let selections: Set<FeedSelection> = [
-            .topLevel(.wire),
+            .topLevel(.following),
             .topLevel(.subscribed),
             .folder("folder-one"),
             .publication("at://did:plc:example/site.standard.publication/main"),
@@ -52,8 +52,6 @@ struct UnifiedFeedSelectionTests {
         #expect(ReaderListSource.following.supportsMarkAllReadContextMenu)
         #expect(!ReaderListSource.readLater.supportsMarkAllReadContextMenu)
         #expect(!ReaderListSource.archive.supportsMarkAllReadContextMenu)
-        #expect(!ReaderListSource.wire.supportsMarkAllReadContextMenu)
-        #expect(ReaderMarkReadScope.selectedFeed(.topLevel(.wire)) == .unavailable)
     }
 
     @Test("preference decoding defaults additive fields and preserves order")
@@ -62,16 +60,8 @@ struct UnifiedFeedSelectionTests {
         #expect(defaults.visibleFeeds == ReaderListSource.preferenceCases)
         #expect(defaults.feedsWithUnreadCounts == ReaderListSource.preferenceCases)
         #expect(defaults.articleOpenMode == .original)
-        #expect(defaults.showWire)
-        #expect(defaults.showCircle)
         #expect(defaults.showSocial)
-        #expect(defaults.showPodcasts)
-        let ignoresWire = ReaderFeedPreferences(
-            visibleFeeds: [.wire, .following],
-            feedsWithUnreadCounts: [.wire, .following]
-        )
-        #expect(ignoresWire.visibleFeeds == [.following])
-        #expect(ignoresWire.feedsWithUnreadCounts == [.following])
+        #expect(ReaderListSource(preferenceKey: "wire") == nil)
 
         let record = PreferencesRecord(
             type: "app.thesocialwire.preferences",
@@ -105,32 +95,6 @@ struct UnifiedFeedSelectionTests {
         #expect(perFeedPreferences.articleOpenMode == .original)
     }
 
-    @Test(
-        "discovery feed visibility round-trips independently of legacy feed lists",
-        arguments: [true, false], [true, false]
-    )
-    func discoveryFeedVisibilityRoundTrip(showWire: Bool, showCircle: Bool) throws {
-        let data = Data("""
-        {
-          "$type": "app.thesocialwire.preferences",
-          "visibleFeeds": ["following"],
-          "showWire": \(showWire),
-          "showCircle": \(showCircle),
-          "createdAt": "2026-09-08T00:00:00Z",
-          "updatedAt": "2026-09-08T00:00:00Z"
-        }
-        """.utf8)
-        let record = try JSONDecoder().decode(PreferencesRecord.self, from: data)
-        let preferences = ReaderFeedPreferences(record: record)
-        #expect(preferences.showWire == showWire)
-        #expect(preferences.showCircle == showCircle)
-        #expect(preferences.visibleFeeds == [.following])
-        let cached = try JSONEncoder().encode(preferences)
-        #expect(try JSONDecoder().decode(ReaderFeedPreferences.self, from: cached) == preferences)
-        let stored = try JSONEncoder().encode(record)
-        #expect(try JSONDecoder().decode(PreferencesRecord.self, from: stored) == record)
-    }
-
     @Test("explicitly hiding all feeds survives PDS and cache round trips")
     func emptyFeedVisibilityRoundTrip() throws {
         let data = Data("""
@@ -149,7 +113,6 @@ struct UnifiedFeedSelectionTests {
         let preferences = ReaderFeedPreferences(record: record)
         #expect(preferences.visibleFeeds.isEmpty)
         #expect(preferences.feedsWithUnreadCounts.isEmpty)
-        #expect(!preferences.showWire && !preferences.showCircle && !preferences.showFinance)
         #expect(try JSONDecoder().decode(ReaderFeedPreferences.self,
             from: JSONEncoder().encode(preferences)) == preferences)
         #expect(try JSONDecoder().decode(PreferencesRecord.self,
@@ -162,7 +125,6 @@ struct UnifiedFeedSelectionTests {
         {
           "$type": "app.thesocialwire.preferences",
           "showSocial": \(visible),
-          "showPodcasts": \(visible),
           "createdAt": "2026-10-11T00:00:00Z",
           "updatedAt": "2026-10-11T00:00:00Z"
         }
@@ -170,23 +132,19 @@ struct UnifiedFeedSelectionTests {
         let record = try JSONDecoder().decode(PreferencesRecord.self, from: data)
         let preferences = ReaderFeedPreferences(record: record)
         #expect(preferences.showSocial == visible)
-        #expect(preferences.showPodcasts == visible)
         #expect(try JSONDecoder().decode(ReaderFeedPreferences.self,
             from: JSONEncoder().encode(preferences)) == preferences)
         #expect(try JSONDecoder().decode(PreferencesRecord.self,
             from: JSONEncoder().encode(record)) == record)
     }
 
-    @Test("older cached preferences keep both discovery feeds visible")
+    @Test("older cached preferences keep Social visible")
     func legacyDiscoveryFeedVisibilityDefaults() throws {
         let preferences = try JSONDecoder().decode(
             ReaderFeedPreferences.self,
             from: Data("{}".utf8)
         )
-        #expect(preferences.showWire)
-        #expect(preferences.showCircle)
         #expect(preferences.showSocial)
-        #expect(preferences.showPodcasts)
         #expect(preferences.visibleFeeds == ReaderListSource.preferenceCases)
     }
 }

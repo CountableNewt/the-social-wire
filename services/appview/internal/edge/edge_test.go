@@ -26,8 +26,7 @@ func TestMetadataAndCORS(t *testing.T) {
 		reply := httptest.NewRecorder()
 		router.ServeHTTP(reply, req)
 		body := reply.Body.String()
-		if reply.Code != http.StatusOK || !strings.Contains(body, tc.clientID) || !strings.Contains(body, tc.redirect) ||
-			strings.Contains(body, "podcast.clip") {
+		if reply.Code != http.StatusOK || !strings.Contains(body, tc.clientID) || !strings.Contains(body, tc.redirect) {
 			t.Errorf("wrong metadata for %s: %d %s", tc.path, reply.Code, body)
 		}
 	}
@@ -44,7 +43,7 @@ func TestMetadataAndCORS(t *testing.T) {
 }
 
 func TestAdmissionReleasesPerViewerTransfer(t *testing.T) {
-	admission := NewAdmission(config.Core{})
+	admission := NewAdmission()
 	now := time.Now()
 	if !admission.acquire("owner", true, now) || !admission.acquire("owner", true, now) ||
 		admission.acquire("owner", true, now) || !admission.acquire("another", true, now) {
@@ -104,5 +103,15 @@ func TestLatrUsesLatrProofAndPreservesMethodAndNonce(t *testing.T) {
 	router.ServeHTTP(reply, req)
 	if reply.Code != http.StatusUnauthorized || reply.Header().Get("DPoP-Nonce") != "latr-nonce" {
 		t.Errorf("wrong proxied nonce response: %d %+v", reply.Code, reply.Header())
+	}
+}
+
+func TestRetiredOperationsMetadataIsNotRegistered(t *testing.T) {
+	router := httpx.NewRouter()
+	RegisterMetadata(router, config.Core{})
+	reply := httptest.NewRecorder()
+	router.ServeHTTP(reply, httptest.NewRequest(http.MethodGet, "/operations-oauth-client-metadata.json", nil))
+	if reply.Code != http.StatusNotFound {
+		t.Fatalf("retired Operations metadata returned %d", reply.Code)
 	}
 }

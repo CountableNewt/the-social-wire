@@ -10,11 +10,11 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/atproto"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/repo"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/thinstore"
 	"golang.org/x/sync/singleflight"
 )
@@ -33,15 +33,13 @@ type DiscoveryScope struct {
 type Microcosm struct {
 	client atproto.HTTPDoer
 	store  PublicDiscoveryStore
-	queue  chan DiscoveryScope
-	mu     sync.Mutex
-	active map[string]bool
+	queue  *discoveryQueue
 	slots  chan struct{}
 	checks singleflight.Group
 }
 
-func NewMicrocosm(client atproto.HTTPDoer, store PublicDiscoveryStore) *Microcosm {
-	return &Microcosm{client: client, store: store, queue: make(chan DiscoveryScope, 64), active: make(map[string]bool), slots: make(chan struct{}, 4)}
+func NewMicrocosm(client atproto.HTTPDoer, store PublicDiscoveryStore, db *sqlitedb.DB) *Microcosm {
+	return &Microcosm{client: client, store: store, queue: &discoveryQueue{db: db}, slots: make(chan struct{}, 4)}
 }
 
 func normalizeDiscoveryScope(scope DiscoveryScope) DiscoveryScope {
@@ -65,22 +63,13 @@ func normalizeDiscoveryScope(scope DiscoveryScope) DiscoveryScope {
 	return DiscoveryScope{Author: did, Keys: keys[:min(len(keys), 8)]}
 }
 
-func (m *Microcosm) Schedule(scope DiscoveryScope) {
+// Schedule persists a deduplicated refresh request before returning.
+func (m *Microcosm) Schedule(ctx context.Context, scope DiscoveryScope) error {
 	scope = normalizeDiscoveryScope(scope)
 	if scope.Author == "" {
-		return
+		return nil
 	}
-	id := discoveryID(scope)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.active[id] {
-		return
-	}
-	select {
-	case m.queue <- scope:
-		m.active[id] = true
-	default:
-	}
+	return m.queue.enqueue(ctx, scope, time.Now())
 }
 
 func discoveryID(scope DiscoveryScope) string {
@@ -108,19 +97,48 @@ func publicKey(author, raw string) string {
 	return ""
 }
 
+// DiscoveryRunResult summarizes one bounded durable queue attempt.
+type DiscoveryRunResult struct {
+	Claimed bool `json:"claimed"`
+	Indexed int  `json:"indexed"`
+	Retried bool `json:"retried"`
+}
+
+// RunOnce claims at most one scope. Discovery is positive-only and idempotent;
+// an expired worker cannot acknowledge or reschedule another worker's claim.
+func (m *Microcosm) RunOnce(ctx context.Context) (DiscoveryRunResult, error) {
+	var result DiscoveryRunResult
+	claim, err := m.queue.claim(ctx, time.Now())
+	if err != nil || claim == nil {
+		return result, err
+	}
+	result.Claimed = true
+	result.Indexed, err = m.Check(ctx, claim.scope)
+	// Preserve the queue outcome even if the HTTP caller disconnected. This
+	// bounded cleanup cannot extend the claim's lease.
+	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	retried, finishErr := m.queue.finish(finishCtx, *claim, err != nil, time.Now())
+	result.Retried = retried
+	return result, errors.Join(err, finishErr)
+}
+
+// Run is the Railway compatibility runner; one-shot callers use RunOnce.
 func (m *Microcosm) Run(ctx context.Context, onError func(error)) {
 	for ctx.Err() == nil {
+		result, err := m.RunOnce(ctx)
+		if err != nil && ctx.Err() == nil && onError != nil {
+			onError(err)
+		}
+		if result.Claimed && err == nil {
+			continue
+		}
+		timer := time.NewTimer(time.Second)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case scope := <-m.queue:
-			_, err := m.Check(ctx, scope)
-			m.mu.Lock()
-			delete(m.active, discoveryID(scope))
-			m.mu.Unlock()
-			if err != nil && ctx.Err() == nil {
-				onError(err)
-			}
+		case <-timer.C:
 		}
 	}
 }

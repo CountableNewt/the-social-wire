@@ -21,7 +21,6 @@ import { SocialGifEmbed } from "./SocialGifEmbed";
 import { socialGalleryImages } from "./socialGalleryImages";
 import { SocialProfileLink } from "./SocialProfileLink";
 import { ProfileDisplayName } from "@/components/shared/ProfileDisplayName";
-import { SocialCashtags } from "./SocialCashtags";
 import { SocialYouTubeEmbed } from "./SocialYouTubeEmbed";
 import { socialYouTubePlayerUrl } from "./socialYouTubePlayerUrl";
 
@@ -150,7 +149,6 @@ export function SocialPostEmbed({
         </SocialProfileLink>
       )}
       <SocialRichText record={record.value} />
-      {!media.blur && !media.filter && !media.noOverride ? <SocialCashtags record={record.value} /> : null}
       {media.blur || media.filter || media.noOverride ? (
         <p className="text-sm text-muted-foreground">Media withheld.</p>
       ) : (

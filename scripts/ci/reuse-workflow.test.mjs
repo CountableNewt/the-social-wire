@@ -42,12 +42,12 @@ test('changes exports path flags and only the proof runner can authorize target 
 test('Required always runs and checks every actual target, path and proof result', () => {
   const required = job('required');
   assert.match(required, /^    name: CI — Required$/m);
-  assert.match(required, /^    needs: \[changes, web, appview\]$/m);
+  assert.match(required, /^    needs: \[changes, web, appview, apple\]$/m);
   assert.match(required, /^    if: always\(\)$/m);
   const gate = step(required, 'Verify path-filtered checks');
   for (const [name, expression] of Object.entries({
     CHANGES_RESULT: 'needs.changes.result', WEB_FLAG: 'needs.changes.outputs.web', APPVIEW_FLAG: 'needs.changes.outputs.appview',
-    WEB_RESULT: 'needs.web.result', APPVIEW_RESULT: 'needs.appview.result',
+    WEB_RESULT: 'needs.web.result', APPVIEW_RESULT: 'needs.appview.result', APPLE_FLAG: 'needs.changes.outputs.apple', APPLE_RESULT: 'needs.apple.result',
     REUSE_WEB: 'needs.changes.outputs.reuse_web', REUSE_APPVIEW: 'needs.changes.outputs.reuse_appview',
   })) assert.ok(gate.includes(`${name}: \${{ ${expression} }}`), `${name} must use its real job output`);
   assert.match(gate, /^        run: node scripts\/ci\/required-checks.mjs$/m);
@@ -77,7 +77,7 @@ test('proof access remains read-only and a second post-merge workflow cannot dup
 
 function gateEnvironment(result, context) {
   const outputs = Object.fromEntries(reuseOutputs(result).trim().split('\n').map(line => line.split('=')));
-  return { ...context, CHANGES_RESULT: 'success', WEB_FLAG: 'true', APPVIEW_FLAG: 'true', WEB_RESULT: 'success', APPVIEW_RESULT: 'success', REUSE_WEB: outputs.reuse_web, REUSE_APPVIEW: outputs.reuse_appview };
+  return { ...context, CHANGES_RESULT: 'success', WEB_FLAG: 'true', APPVIEW_FLAG: 'true', APPLE_FLAG: 'true', APPLE_RESULT: 'success', WEB_RESULT: 'success', APPVIEW_RESULT: 'success', REUSE_WEB: outputs.reuse_web, REUSE_APPVIEW: outputs.reuse_appview };
 }
 
 for (const eventName of ['pull_request', 'merge_group', 'workflow_dispatch']) test(`${eventName} never inherits a skip even with claimed successful evidence`, async () => {
@@ -85,7 +85,7 @@ for (const eventName of ['pull_request', 'merge_group', 'workflow_dispatch']) te
   const result = await reusePRVerification({}, context, { verify: () => assert.fail('PR, merge-group, and manual events must not consult reuse proof') });
   assert.equal(result.reuseWeb, false); assert.equal(result.reuseAppview, false);
   const environment = gateEnvironment(result, context);
-  assert.deepEqual(verifyRequiredChecks(environment), { web: 'passed', appview: 'passed' });
+  assert.deepEqual(verifyRequiredChecks(environment), { web: 'passed', appview: 'passed', apple: 'passed' });
   assert.throws(() => verifyRequiredChecks({ ...environment, WEB_RESULT: 'skipped' }));
   assert.throws(() => verifyRequiredChecks({ ...environment, APPVIEW_RESULT: 'skipped' }));
 });
@@ -96,7 +96,7 @@ test('failed push proof emits false outputs so normal builds must run', async ()
   const result = await reusePRVerification({ ref: context.GITHUB_REF, after: sha, repository: { full_name: context.GITHUB_REPOSITORY } }, context, { createAPI: () => ({}), verify: async () => { throw new Error('API evidence unavailable'); } });
   const environment = gateEnvironment(result, context);
   assert.equal(environment.REUSE_WEB, 'false'); assert.equal(environment.REUSE_APPVIEW, 'false');
-  assert.deepEqual(verifyRequiredChecks(environment), { web: 'passed', appview: 'passed' });
+  assert.deepEqual(verifyRequiredChecks(environment), { web: 'passed', appview: 'passed', apple: 'passed' });
   for (const service of ['WEB', 'APPVIEW']) assert.throws(() => verifyRequiredChecks({ ...environment, [`${service}_RESULT`]: 'skipped' }));
 });
 
@@ -105,7 +105,7 @@ for (const proven of ['web', 'appview']) test(`partial ${proven} proof can skip 
   const context = { GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main', GITHUB_SHA: sha, GITHUB_REPOSITORY: 'example/repository', GITHUB_TOKEN: 'test-token', INPUT_WEB: 'true', INPUT_APPVIEW: 'true' };
   const result = await reusePRVerification({ ref: context.GITHUB_REF, after: sha, repository: { full_name: context.GITHUB_REPOSITORY } }, context, { createAPI: () => ({}), verify: async () => ({ baseRef: 'main', mergeSHA: sha, headSHA: head, treeSHA: tree, prNumber: 5, runID: 123, targets: { web: proven === 'web', appview: proven === 'appview' } }) });
   const environment = { ...gateEnvironment(result, context), [`${proven.toUpperCase()}_RESULT`]: 'skipped' };
-  assert.deepEqual(verifyRequiredChecks(environment), proven === 'web' ? { web: 'reused', appview: 'passed' } : { web: 'passed', appview: 'reused' });
+  assert.deepEqual(verifyRequiredChecks(environment), proven === 'web' ? { web: 'reused', appview: 'passed', apple: 'passed' } : { web: 'passed', appview: 'reused', apple: 'passed' });
   const other = proven === 'web' ? 'APPVIEW' : 'WEB';
   assert.throws(() => verifyRequiredChecks({ ...environment, [`${other}_RESULT`]: 'skipped' }));
 });
@@ -174,4 +174,18 @@ test('base caches are warmed only from the exact successful proof run', () => {
   assert.ok(layerKey);
   assert.ok(step(warmer, 'Save verified layers in base-branch cache scope').includes(`key: ${layerKey}`));
   assert.ok(step(warmer, 'Unpack verified Go build cache').includes('--no-same-owner'));
+});
+
+test('Apple client verification is path-filtered and never borrows backend reuse proof', () => {
+  assert.ok(job('changes').includes('apple: ${{ steps.filter.outputs.apple }}'));
+  const apple = job('apple');
+  assert.match(apple, /^    needs: changes$/m);
+  assert.match(apple, /^    runs-on: macos-26$/m);
+  assert.ok(apple.includes("if: needs.changes.result == 'success' && needs.changes.outputs.apple == 'true'"));
+  assert.doesNotMatch(apple, /reuse_|continue-on-error/);
+  assert.ok(step(apple, 'Verify native app and ReadStateCore').includes('bash scripts/ci/apple-test.sh'));
+  const script = readFileSync(new URL('./apple-test.sh', import.meta.url), 'utf8');
+  assert.ok(script.includes('swift test --package-path apps/apple/Packages/ReadStateCore'));
+  assert.ok(script.includes('-only-testing:SocialWireTests'));
+  assert.ok(script.includes('CODE_SIGNING_ALLOWED=NO'));
 });

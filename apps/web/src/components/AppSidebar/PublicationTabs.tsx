@@ -1,6 +1,6 @@
 "use client";
 
-import { Network, Newspaper, Rss, Users } from "lucide-react";
+import { Newspaper, Users } from "lucide-react";
 
 import {
   SidebarGroup,
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/sidebar";
 import type { DiscoveredPublication } from "@/lib/atprotoClient";
 import type { ReaderNavigationFeed } from "@/lib/feedPreferences";
-import { isRetiredReaderFeed } from "@/lib/retiredReaderFeeds";
 import type { PublicationTab } from "./appSidebarConstants";
 import { SidebarSectionUnreadBadge } from "./SidebarSectionUnreadBadge";
 import { SidebarReadBulkMenuWrap } from "./SidebarReadBulkMenuWrap";
@@ -26,10 +25,6 @@ export function PublicationTabs({
   showFollowingUnreadCount = true,
   subscribedPublications = [],
   followingPublications = [],
-  wireActive = false,
-  onWireSelect,
-  circleActive = false,
-  onCircleSelect,
 }: {
   visibleFeeds?: ReadonlySet<ReaderNavigationFeed>;
   activeTab: PublicationTab | null;
@@ -40,16 +35,10 @@ export function PublicationTabs({
   showFollowingUnreadCount?: boolean;
   subscribedPublications?: DiscoveredPublication[];
   followingPublications?: DiscoveredPublication[];
-  wireActive?: boolean;
-  onWireSelect?: () => void;
-  circleActive?: boolean;
-  onCircleSelect?: () => void;
 }) {
   if (
     visibleFeeds &&
-    !["wire", "circle", "subscribed", "following"].some((feed) =>
-      !isRetiredReaderFeed(feed) && visibleFeeds.has(feed as ReaderNavigationFeed),
-    )
+    !(["subscribed", "following"] as const).some((feed) => visibleFeeds.has(feed))
   )
     return null;
   return (
@@ -60,37 +49,6 @@ export function PublicationTabs({
         role="tablist"
         aria-label="Publication Source"
       >
-        {!isRetiredReaderFeed("wire") && visibleFeeds?.has("wire") !== false ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              type="button"
-              role="tab"
-              aria-label="The Wire"
-              aria-selected={wireActive}
-              isActive={wireActive}
-              onClick={onWireSelect}
-            >
-              <Rss />
-              <span>The Wire</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
-        {!isRetiredReaderFeed("circle") && visibleFeeds?.has("circle") !== false ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              type="button"
-              role="tab"
-              aria-label="Your Circle"
-              className="gap-1.5"
-              aria-selected={circleActive}
-              isActive={circleActive}
-              onClick={onCircleSelect}
-            >
-              <Network />
-              <span className="whitespace-nowrap">Your&nbsp;Circle</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
         {visibleFeeds?.has("subscribed") !== false ? (
           <SidebarMenuItem>
             <SidebarReadBulkMenuWrap

@@ -69,7 +69,6 @@ struct PDSRecordServiceTests {
         #expect(PDSRecordService.latrSavedItem == "link.latr.saved.item")
         #expect(PDSRecordService.standardSiteSubscription == "site.standard.graph.subscription")
         #expect(PDSRecordService.standardSiteRecommend == "site.standard.graph.recommend")
-        #expect(PDSRecordService.wireArticleFeedback == "app.thesocialwire.wireFeedback")
         #expect(PDSRecordService.skyreaderFeedSubscription == "app.skyreader.feed.subscription")
     }
     @Test("Checking authority never publishes an AppView user's read history")

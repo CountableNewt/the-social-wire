@@ -1,4 +1,3 @@
-import { SKEJ_SCHEDULING_SCOPES } from "@/lib/skej/skejEnvironment";
 import { STANDARD_READER_LIST_SAVE_SCOPE, STANDARD_READER_LIST_WRITE_SCOPE } from "@/lib/standardReaderList";
 import { LATR_REPO_OAUTH_SCOPES } from "@/lib/latrCollections";
 import {
@@ -30,8 +29,6 @@ export const SOCIAL_WIRE_REPO_SCOPES = [
   "repo:app.thesocialwire.publicationPrefs?action=create&action=update&action=delete",
   "repo:app.thesocialwire.preferences?action=create&action=update",
   "repo:app.thesocialwire.liveEvent?action=create&action=update",
-  "repo:app.thesocialwire.finance.selection?action=create&action=update&action=delete",
-  "repo:app.thesocialwire.sports.selection?action=create&action=update&action=delete",
 ] as const;
 
 /** Article drafts stay private; these permissions publish finished native records. */
@@ -116,8 +113,8 @@ export const BLUESKY_CHAT_RPC_SCOPES = [
   "rpc:com.atproto.moderation.createReport?aud=did:plc:ar7c4by46qjdydhdevvrndac%23atproto_labeler",
 ] as const;
 
-/** Viewer moderation reads used by authenticated The Wire requests. */
-export const WIRE_MODERATION_RPC_SCOPES = [
+/** Viewer moderation reads used to apply Bluesky blocks, mutes and labels. */
+export const BLUESKY_MODERATION_RPC_SCOPES = [
   "rpc:app.bsky.actor.getPreferences?aud=did:web:api.bsky.app%23bsky_appview",
   "rpc:app.bsky.graph.getBlocks?aud=did:web:api.bsky.app%23bsky_appview",
   "rpc:app.bsky.graph.getMutes?aud=did:web:api.bsky.app%23bsky_appview",
@@ -128,9 +125,6 @@ export const WIRE_MODERATION_RPC_SCOPES = [
 
 export const STANDARD_SITE_SOCIAL_PERMISSION_SCOPE =
   "include:site.standard.authSocial";
-
-export const WIRE_FEEDBACK_REPO_SCOPE =
-  "repo:app.thesocialwire.wireFeedback?action=create&action=update&action=delete";
 
 export const SKYREADER_REPO_SCOPES = [
   "repo:app.skyreader.feed.subscription?action=create&action=update&action=delete",
@@ -150,7 +144,7 @@ export const PDS_READ_STATE_REPO_SCOPES = [
 ] as const;
 
 /** Video service delegates blob upload back to the dynamically discovered viewer PDS. */
-export const BLUESKY_PODCAST_VIDEO_SCOPES = [
+export const BLUESKY_VIDEO_SCOPES = [
   "blob:video/mp4",
   "rpc:com.atproto.repo.uploadBlob?aud=*",
   // OAuth RPC audiences require a service fragment; the video JWT audience
@@ -164,15 +158,13 @@ export const AT_PROTO_OAUTH_SCOPES = [
   ...SOCIAL_WIRE_REPO_SCOPES,
   ...ARTICLE_PUBLISHING_SCOPES,
   ...STREAMPLACE_REPO_SCOPES,
-  ...SKEJ_SCHEDULING_SCOPES,
   ...BLUESKY_SOCIAL_RPC_SCOPES,
   ...BLUESKY_DRAFT_RPC_SCOPES,
   ...BLUESKY_CHAT_RPC_SCOPES,
-  ...WIRE_MODERATION_RPC_SCOPES,
+  ...BLUESKY_MODERATION_RPC_SCOPES,
   ...BLUESKY_SOCIAL_REPO_SCOPES,
   ...LATR_REPO_OAUTH_SCOPES,
   ...SEMBLE_REPO_OAUTH_SCOPES,
-  WIRE_FEEDBACK_REPO_SCOPE,
   STANDARD_SITE_SOCIAL_PERMISSION_SCOPE,
   ...SKYREADER_REPO_SCOPES,
   STANDARD_READER_LIST_SAVE_SCOPE,
@@ -180,6 +172,5 @@ export const AT_PROTO_OAUTH_SCOPES = [
   USER_INPUT_OAUTH_SCOPE,
   USER_INPUT_UPVOTE_OAUTH_SCOPE,
   USER_INPUT_BLOB_OAUTH_SCOPE,
-  ...BLUESKY_PODCAST_VIDEO_SCOPES,
-  "repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete",
+  ...BLUESKY_VIDEO_SCOPES,
 ].join(" ");

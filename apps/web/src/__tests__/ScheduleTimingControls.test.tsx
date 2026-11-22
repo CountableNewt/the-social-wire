@@ -19,6 +19,10 @@ test("switches publishing mode explicitly and validates a local future time", ()
   const localTime = new Intl.DateTimeFormat(undefined, {
     year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
   }).format(date);
-  expect(screen.getByText(`Publishes ${localTime}`)).toBeTruthy();
+  expect(screen.getByText(`Scheduled For ${localTime}`)).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByLabelText("Publish At").getAttribute("step")).toBe("900");
+  expect(screen.getByText(/Publishing times are approximate/).textContent).toContain("posts may publish after the selected time");
+  view.rerender(<ScheduleTimingControls mode="schedule" value="2099-01-01T12:07" disabled={false} onModeChange={mode} onChange={change} />);
+  expect(screen.getByRole("alert").textContent).toContain("Quarter-Hour");
 });

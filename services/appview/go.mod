@@ -14,6 +14,7 @@ require (
 	golang.org/x/sync v0.25.0
 	golang.org/x/text v0.44.0
 	modernc.org/sqlite v1.62.0
+	turso.tech/database/tursogo-serverless v0.0.0-20261121191726-37096726c629
 )
 
 require (

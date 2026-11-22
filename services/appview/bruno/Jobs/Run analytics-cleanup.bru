@@ -1,0 +1,20 @@
+meta {
+  name: Run Clean Up Analytics Retention
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/internal/jobs/analytics-cleanup
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jobsSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

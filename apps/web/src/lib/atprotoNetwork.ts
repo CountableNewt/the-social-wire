@@ -1,4 +1,3 @@
-import { skejScopesForEnvironment } from "@/lib/skej/skejEnvironment";
 import { normalizeAppEnv, readAppEnvRaw } from "@/lib/appEnv";
 
 export type AtprotoNetwork = {
@@ -77,7 +76,7 @@ export function atprotoScopesForNetwork(scopes: string, network = getAtprotoNetw
     ? supported
     : supported.split(" ").filter(scope => scope !== "rpc:com.atproto.moderation.createReport?aud=did:plc:ar7c4by46qjdydhdevvrndac%23atproto_labeler").join(" ");
   const scoped = network.chatServiceDid ? reporting.replaceAll(`${CHAT_SERVICE_DID}%23bsky_chat`, `${network.chatServiceDid}%23bsky_chat`) : reporting.split(" ").filter(scope => !scope.includes(`${CHAT_SERVICE_DID}%23bsky_chat`)).join(" ");
-  return skejScopesForEnvironment(scoped.replaceAll(`${APPVIEW_DID}%23bsky_appview`, `${network.appViewDid}%23bsky_appview`));
+  return scoped.replaceAll(`${APPVIEW_DID}%23bsky_appview`, `${network.appViewDid}%23bsky_appview`);
 }
 
 /** Compact local loopback scopes; the PDS requires identical strings in its metadata and PAR. */

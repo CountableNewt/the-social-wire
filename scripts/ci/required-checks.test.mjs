@@ -5,16 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { verifyRequiredChecks } from './required-checks.mjs';
 
 const normal = {
-  CHANGES_RESULT: 'success', WEB_FLAG: 'true', APPVIEW_FLAG: 'true',
+  CHANGES_RESULT: 'success', WEB_FLAG: 'true', APPVIEW_FLAG: 'true', APPLE_FLAG: 'true', APPLE_RESULT: 'success',
   WEB_RESULT: 'success', APPVIEW_RESULT: 'success', REUSE_WEB: 'false', REUSE_APPVIEW: 'false',
   GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/123/merge',
 };
 
 for (const [web, appview, expected] of [
-  ['true', 'true', { web: 'passed', appview: 'passed' }],
-  ['true', 'false', { web: 'passed', appview: 'not-required' }],
-  ['false', 'true', { web: 'not-required', appview: 'passed' }],
-  ['false', 'false', { web: 'not-required', appview: 'not-required' }],
+  ['true', 'true', { web: 'passed', appview: 'passed', apple: 'passed' }],
+  ['true', 'false', { web: 'passed', appview: 'not-required', apple: 'passed' }],
+  ['false', 'true', { web: 'not-required', appview: 'passed', apple: 'passed' }],
+  ['false', 'false', { web: 'not-required', appview: 'not-required', apple: 'passed' }],
 ]) test(`accepts successful checks with path selection web=${web}, appview=${appview}`, () => {
   const environment = { ...normal, WEB_FLAG: web, APPVIEW_FLAG: appview, WEB_RESULT: web === 'true' ? 'success' : 'skipped', APPVIEW_RESULT: appview === 'true' ? 'success' : 'skipped' };
   const before = { ...environment };
@@ -23,15 +23,15 @@ for (const [web, appview, expected] of [
 });
 
 test('permits checks to run and pass even when paths are unchanged', () => {
-  assert.deepEqual(verifyRequiredChecks({ ...normal, WEB_FLAG: 'false', APPVIEW_FLAG: 'false' }), { web: 'passed', appview: 'passed' });
+  assert.deepEqual(verifyRequiredChecks({ ...normal, WEB_FLAG: 'false', APPVIEW_FLAG: 'false' }), { web: 'passed', appview: 'passed', apple: 'passed' });
 });
 
 for (const branch of ['dev', 'main']) {
   for (const [web, appview, expected] of [
-    ['true', 'true', { web: 'reused', appview: 'reused' }],
-    ['true', 'false', { web: 'reused', appview: 'passed' }],
-    ['false', 'true', { web: 'passed', appview: 'reused' }],
-    ['false', 'false', { web: 'passed', appview: 'passed' }],
+    ['true', 'true', { web: 'reused', appview: 'reused', apple: 'passed' }],
+    ['true', 'false', { web: 'reused', appview: 'passed', apple: 'passed' }],
+    ['false', 'true', { web: 'passed', appview: 'reused', apple: 'passed' }],
+    ['false', 'false', { web: 'passed', appview: 'passed', apple: 'passed' }],
   ]) test(`accepts independently proven reuse on ${branch}: web=${web}, appview=${appview}`, () => {
     assert.deepEqual(verifyRequiredChecks({ ...normal, GITHUB_EVENT_NAME: 'push', GITHUB_REF: `refs/heads/${branch}`, REUSE_WEB: web, REUSE_APPVIEW: appview, WEB_RESULT: web === 'true' ? 'skipped' : 'success', APPVIEW_RESULT: appview === 'true' ? 'skipped' : 'success' }), expected);
   });
@@ -81,4 +81,18 @@ test('CLI reports success or exits nonzero when proof outputs are missing', () =
   assert.equal(passed.status, 0); assert.match(passed.stdout, /Required checks verified/);
   const rejected = spawnSync(process.execPath, [script], { env: { ...normal, REUSE_WEB: '' }, encoding: 'utf8' });
   assert.equal(rejected.status, 1); assert.match(rejected.stderr, /REUSE_WEB/);
+});
+
+test('Apple verification cannot be skipped or reused for changed native paths', () => {
+  assert.equal(verifyRequiredChecks(normal).apple, 'passed');
+  for (const result of ['skipped', 'failure', 'cancelled', '', undefined]) {
+    assert.throws(() => verifyRequiredChecks({ ...normal, APPLE_RESULT: result, REUSE_APPLE: 'true' }), /Apple/);
+  }
+  assert.equal(verifyRequiredChecks({ ...normal, APPLE_FLAG: 'false', APPLE_RESULT: 'skipped' }).apple, 'not-required');
+  for (const result of ['failure', 'cancelled', '', undefined]) {
+    assert.throws(() => verifyRequiredChecks({ ...normal, APPLE_FLAG: 'false', APPLE_RESULT: result }), /Apple/);
+  }
+  for (const flag of ['', undefined, 'TRUE', '1']) {
+    assert.throws(() => verifyRequiredChecks({ ...normal, APPLE_FLAG: flag }), /APPLE_FLAG/);
+  }
 });

@@ -1,12 +1,12 @@
+import { isQuarterHour } from "@/components/ContentCalendar/calendarDates";
 import { compilePostText, resolvePostText } from "@/lib/composePostText";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { ArticleSchedulingNotSubmittedError } from "@/lib/articles/articleSchedulingError";
-import { createOAuthAgent } from "@/lib/atprotoClient";
 import { createAuthenticatedAppViewAgent } from "@/lib/blueskySocialClient";
 import { composeExternalEmbed, type ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
 import { postTextLength } from "@/lib/blueskyComposeClient";
 import { gatewayFetch } from "@/lib/socialWireGatewayClient";
-import { getSkejEnvironment, usesEmbeddedScheduling, type SKEJ_SCHEDULING_METHODS } from "./skejEnvironment";
+import { getSkejEnvironment, type SKEJ_SCHEDULING_METHODS } from "./skejEnvironment";
 import { assertPostSchedulingEnabled } from "@/lib/postScheduling";
 
 export type SkejScheduleStatus = "draft" | "scheduled" | "blocked" | "publishing" | "published" | "failed" | "canceled";
@@ -61,9 +61,7 @@ async function request(actor: SkejSchedulingActor, method: Method, input?: unkno
     credentials: "omit",
     redirect: "error",
   };
-  const response = usesEmbeddedScheduling()
-    ? await gatewayFetch(actor.session, url.pathname + url.search, init)
-    : await requestLegacyScheduler(actor, method, environment.audience, url, init);
+  const response = await gatewayFetch(actor.session, url.pathname + url.search, init);
   actor.assertCurrentActor();
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   actor.assertCurrentActor();
@@ -73,18 +71,6 @@ async function request(actor: SkejSchedulingActor, method: Method, input?: unkno
     throw new SkejSchedulingError(needsConnection ? "Connect This Account to Enable Scheduling." : "Skej Could Not Complete This Request. Please Try Again.", code, response.status);
   }
   return body;
-}
-async function requestLegacyScheduler(
-  actor: SkejSchedulingActor, method: Method, audience: string, url: URL, init: RequestInit,
-): Promise<Response> {
-  const { data } = await createOAuthAgent(actor.session).com.atproto.server.getServiceAuth({
-    aud: audience, lxm: method, exp: Math.floor(Date.now() / 1000) + 60,
-  }, { signal: init.signal ?? undefined });
-  actor.assertCurrentActor();
-  if (!data.token) throw new Error("Scheduling Authorization Is Unavailable.");
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${data.token}`);
-  return fetch(url, { ...init, headers });
 }
 
 function summary(value: unknown, did: string): SkejScheduleSummary {
@@ -96,6 +82,7 @@ function summary(value: unknown, did: string): SkejScheduleSummary {
 export function validateScheduledAt(value: string, now = Date.now()): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) || date.getTime() < now + 60_000) throw new Error("Choose a Time At Least One Minute From Now.");
+  if (!isQuarterHour(date)) throw new Error("Choose a Quarter-Hour Time (:00, :15, :30, or :45).");
   return date.toISOString();
 }
 export async function getSkejSchedulingReadiness(actor: SkejSchedulingActor, signal?: AbortSignal) {

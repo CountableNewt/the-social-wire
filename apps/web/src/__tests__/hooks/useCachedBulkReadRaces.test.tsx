@@ -1,3 +1,4 @@
+import * as Thin from "@/lib/thinAppViewClient";
 import { afterEach, expect, it, spyOn } from "bun:test";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
@@ -7,7 +8,6 @@ import * as Auth from "@/hooks/useAuth";
 import * as Runtime from "@/lib/pdsReadStateRuntime";
 import * as Pending from "@/hooks/usePendingPDSReadState";
 import * as Notice from "@/components/Account/PDSReadStateSyncNotice";
-import * as Thin from "@/lib/thinAppViewClient";
 import * as Projection from "@/lib/publicationProjectionClient";
 import { ReadRouteProvider, useReadRoute } from "@/contexts/ReadRouteContext";
 import { useCachedBulkReadActions } from "@/hooks/useCachedBulkReadActions";
@@ -43,7 +43,6 @@ function fixture(previouslyRead = false) {
     spyOn(Runtime, "usesPDSReadState").mockResolvedValue(false),
     spyOn(Pending, "usePendingPDSReadState").mockReturnValue(new Map()),
     spyOn(Notice, "PDSReadStateSyncNotice").mockReturnValue(null),
-    spyOn(Thin, "isThinAppViewEnabled").mockReturnValue(true),
     unread, gateway,
   ];
   restores.push(() => { spies.forEach(spy => spy.mockRestore()); client.clear(); });

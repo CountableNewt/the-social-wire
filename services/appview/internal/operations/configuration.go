@@ -63,9 +63,6 @@ func LoadConfiguration(env config.Env) Configuration {
 		instanceID, _ = os.Hostname()
 	}
 	fingerprint := nonEmpty(env, "OPERATIONS_BACKFILL_FINGERPRINT_SECRET")
-	if fingerprint == "" {
-		fingerprint = nonEmpty(env, "GATEWAY_OPERATIONS_INTERNAL_SECRET")
-	}
 	return Configuration{
 		Enabled:                   truthy(env, "OPERATIONS_TELEMETRY_ENABLED", true),
 		RecoveryEnabled:           truthy(env, "OPERATIONS_RECOVERY_ENABLED", false),

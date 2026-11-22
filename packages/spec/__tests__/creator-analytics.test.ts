@@ -11,7 +11,7 @@ it("documents authenticated creator APIs with scoped nullable metrics and matchi
     const operation = spec.paths[`/v1/analytics/${name}`][method];
     expect(operation.security).toEqual([{ ATProtoOAuthDPoP: [] }]);
     expect(operation.responses["401"]).toBeDefined();
-    for (const service of ["gateway", "appview"]) {
+    for (const service of ["appview"]) {
       const request = readFileSync(join(import.meta.dir, `../../../services/${service}/bruno/Analytics/${file}.bru`), "utf8");
       expect(request).toContain(`/v1/analytics/${name}`);
       expect(request).toContain("DPoP: {{dpopProof}}");
@@ -28,7 +28,7 @@ it("documents authenticated creator APIs with scoped nullable metrics and matchi
 
 it("defines Standard.site publication analytics with nullable counts and explicit coverage", () => {
   const operation = spec.paths["/v1/analytics/publications"].get;
-  for (const status of ["200", "401", "403", "429", "502", "503"]) {
+  for (const status of ["200", "401", "429", "502", "503"]) {
     expect(operation.responses[status]).toBeDefined();
   }
   const schemas = spec.components.schemas;
@@ -45,7 +45,7 @@ it("defines Standard.site publication analytics with nullable counts and explici
 
 it("defines bounded Bluesky analysis with unknown metrics and explicit incomplete search coverage", () => {
   const operation = spec.paths["/v1/analytics/bluesky"].get;
-  for (const status of ["200", "400", "401", "403", "429", "503"]) {
+  for (const status of ["200", "400", "401", "429", "503"]) {
     expect(operation.responses[status]).toBeDefined();
   }
   const schemas = spec.components.schemas;

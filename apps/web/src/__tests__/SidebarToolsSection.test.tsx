@@ -1,5 +1,4 @@
-import * as Pro from "@/hooks/useProEntitlements";
-import { beforeEach, afterAll, afterEach, beforeAll, expect, it, mock, spyOn } from "bun:test";
+import { beforeEach, afterAll, afterEach, beforeAll, expect, it, mock } from "bun:test";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SidebarToolsSection } from "@/components/AppSidebar/SidebarToolsSection";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -10,7 +9,6 @@ afterAll(() => { if (originalMatchMedia) Object.defineProperty(window, "matchMed
 const restores: (() => void)[] = [];
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
 it("groups all tool workspaces and navigates to the selected destination", async () => {
-  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
   const onNavigate = mock(() => {});
   await act(async () => { render(<SidebarProvider><SidebarToolsSection pathname="/livestream" onNavigate={onNavigate} /></SidebarProvider>); });
   for (const title of ["Articles", "Live Post", "Livestream", "Delegated Accounts", "Content Calendar", "Analytics"]) expect(screen.getByRole("button", { name: title })).toBeTruthy();
@@ -20,46 +18,29 @@ it("groups all tool workspaces and navigates to the selected destination", async
   expect(onNavigate).toHaveBeenCalledWith("/analytics");
 });
 
-it("marks every Tools destination as locked for Free viewers while keeping its gate reachable", async () => {
-  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: false } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
-  const onNavigate = mock(() => {});
-  await act(async () => { render(<SidebarProvider><SidebarToolsSection pathname="/social" onNavigate={onNavigate} /></SidebarProvider>); });
-  expect(screen.getByText("Pro")).toBeTruthy();
-  for (const title of ["Articles", "Live Post", "Livestream", "Delegated Accounts", "Content Calendar", "Analytics"]) {
-    const destination = screen.getByRole("button", { name: title });
-    expect(destination.querySelector("svg.lucide-lock-keyhole")).toBeTruthy();
-  }
-  fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
-  expect(onNavigate).toHaveBeenCalledWith("/analytics");
-});
 
-it.each([false, true])("keeps Articles and Analytics reachable in Production with Tools disabled (Pro: %p)", async isPro => {
+it("keeps live tools reachable in Production without paid locks", async () => {
   const originalEnv = process.env.NEXT_PUBLIC_APP_ENV;
-  const originalTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
   try {
     process.env.NEXT_PUBLIC_APP_ENV = "prod";
-    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
     delete process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING;
-    const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
     const onNavigate = mock(() => {});
     render(<SidebarProvider><SidebarToolsSection pathname="/analytics/report" onNavigate={onNavigate} /></SidebarProvider>);
-    for (const name of ["Articles", "Analytics"]) {
+    for (const name of ["Articles", "Analytics", "Live Post"]) {
       const destination = screen.getByRole("button", { name });
-      expect(!!destination.querySelector("svg.lucide-lock-keyhole")).toBe(!isPro);
+      expect(!!destination.querySelector("svg.lucide-lock-keyhole")).toBe(false);
     }
     expect(screen.getByRole("button", { name: "Analytics" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
     expect(onNavigate).toHaveBeenCalledWith("/analytics");
-    for (const name of ["Live Post", "Livestream", "Delegated Accounts", "Content Calendar"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Content Calendar" })).toBeNull();
   } finally {
     if (originalEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = originalEnv;
-    if (originalTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED; else process.env.NEXT_PUBLIC_TOOLS_ENABLED = originalTools;
   }
 });
 
 it("hides Content Calendar independently when scheduling is disabled", () => {
   process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "false";
-  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
   render(<SidebarProvider><SidebarToolsSection pathname="/articles" onNavigate={() => {}} /></SidebarProvider>);
   expect(screen.getByRole("button", { name: "Articles" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Content Calendar" })).toBeNull();
@@ -75,7 +56,6 @@ afterEach(() => { if (previousSchedulingFlag === undefined) delete process.env.N
 
 it("hides Delegated Accounts by default while leaving personal tools available", () => {
   delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  const entitlement = spyOn(Pro, "useProEntitlements").mockReturnValue({ isPro: true } as ReturnType<typeof Pro.useProEntitlements>); restores.push(() => entitlement.mockRestore());
   render(<SidebarProvider><SidebarToolsSection pathname="/analytics" onNavigate={() => {}} /></SidebarProvider>);
   expect(screen.queryByRole("button", { name: "Delegated Accounts" })).toBeNull();
   for (const name of ["Articles", "Live Post", "Livestream", "Content Calendar", "Analytics"]) expect(screen.getByRole("button", { name })).toBeTruthy();

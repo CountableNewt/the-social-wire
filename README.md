@@ -14,7 +14,7 @@ Web Frontend (Next.js)       iOS/iPadOS (SwiftUI)
        User's PDS        │       Go AppView (Railway)
        User-owned        └────── OAuth/DPoP + Reader API
        protocol records          SQLite on persistent /data
-                                 Bounded RSS + bundled media processor
+                                 Bounded RSS + embedded scheduling
 ```
 
 The hosted target has two services: Frontend and AppView with SQLite. AppView
@@ -31,20 +31,13 @@ builds and deploys the protected branches through its GitHub integration.
 the-social-wire/
   apps/
     web/             # Next.js Frontend; standalone Node runtime
-    apple/           # SwiftUI iOS/iPadOS app
-    operations/      # Next.js operator console (Bun)
+    apple/           # SwiftUI client; shared ReadStateCore in Packages/
   services/
-    gateway/         # Distributed rollback source
-    appview/         # Public Go API, SQLite, RSS and bundled media
-    jetstream-ingest/ # Retired ingress source and historical contracts
-    indexing-worker/ # Retained distributed worker source
-    operations/      # Operations control plane (Railway)
+    appview/         # Public Go API, SQLite, RSS and scheduling
   packages/
     lexicons/        # record schemas plus app.thesocialwire.* service XRPC lexicons
     spec/            # OpenAPI 3.1 compatibility contract + endpoint manifest
-    swift/           # Read-state and vendored reader core; contract fixtures
-  database/
-    migrations/      # Historical Postgres schema and import source
+    read-state/      # Web read-state protocol implementation
   docs/
     architecture/
     wiki/        # Canonical public wiki Markdown (GitHub sync; manual Lichen publish)
@@ -56,7 +49,7 @@ the-social-wire/
 |------|---------|
 | [Bun](https://bun.sh) | Matches root [`package.json`](package.json) `packageManager` (currently 1.3.x) |
 | [Go](https://go.dev/dl/) | Matches [AppView go.mod](services/appview/go.mod) |
-| [Swift](https://swift.org/install) | 6.4.2 for retained backend sources |
+| [Swift](https://swift.org/install) | Supplied by Xcode for the native client |
 | [Railway CLI](https://docs.railway.com/guides/cli) | Latest (hosted operations and migration access) |
 | [Xcode](https://developer.apple.com/xcode/) | 16+ (for iOS) |
 
@@ -86,14 +79,15 @@ store uses the `dev` environment for local development.
 cd services/appview
 APP_ENV=dev BACKEND_MODE=standalone \
   SQLITE_DB_PATH="$(mktemp -d)/social-wire.sqlite" \
-  ENABLE_THIN_APPVIEW=true BIND_HOST=127.0.0.1 \
+  BIND_HOST=127.0.0.1 \
+  SCHEDULING_PUBLIC_ORIGIN=https://api.testing.thesocialwire.app \
+  SCHEDULING_STORAGE_KEY="$(openssl rand -base64 32)" \
   PDS_ATTESTATION_RECEIPT_SECRET=local-development-attestation-receipt-secret \
   go run ./cmd/appview --port 8081
 ```
 
 Set `NEXT_PUBLIC_SOCIALWIRE_API_URL=http://localhost:8081` in the local Web
-environment before starting the Web app. Use the standalone Docker image when
-testing the bundled podcast processor.
+environment before starting the Web app.
 
 ### Running tests
 
@@ -102,7 +96,6 @@ See **[docs/test-plans/README.md](docs/test-plans/README.md)** for per-surface p
 ```bash
 (cd apps/web && bun test)
 (cd services/appview && go test -vet=all -count=1 ./...)
-bun --cwd services/podcast-worker test
 node --test scripts/ci/*.test.mjs
 bash scripts/ci/verify-runtime-images.sh appview
 
@@ -114,7 +107,7 @@ bash scripts/ci/verify-runtime-images.sh appview
 - **Protocol-first where data is portable**: folders, publication preferences, subscriptions, and read-later records live on the user's own ATProto PDS
 - **AppView-owned read state**: feed read/unread state is local-first in clients and synchronized to Social Wire AppView for counters and unread filtering
 - **Thin AppView read path**: signed-in clients load bootstrap data, feeds, and entry detail through the public AppView; standard.site bodies remain authoritative on publisher PDSes, while RSS feed bodies may be retained in the derived index (see [docs/architecture/appview.md](docs/architecture/appview.md))
-- **Local projections**: AppView keeps reader projections, private drafts, analytics, podcasts and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
+- **Local projections**: AppView keeps reader projections, private drafts, analytics and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
 - **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
 

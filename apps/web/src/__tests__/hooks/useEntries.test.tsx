@@ -12,7 +12,6 @@ import {
   MOCK_ENTRIES,
   MOCK_ENTRY_DETAIL,
 } from "../mocks/handlers/service";
-import { dummyPublicationSidebarProjection } from "@/lib/dummyReaderData";
 import { PDS_SESSION_ATTESTATION_RECEIPT_HEADER } from "@/lib/pdsSessionAttestation";
 
 import { ReadStateProvider, useReadState } from "@/contexts/ReadStateContext";
@@ -142,7 +141,6 @@ function makeWrapper() {
 
 describe("useEntries", () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_USE_THIN_APPVIEW = "true";
     mockFetchHandler.mockClear();
     globalThis.fetch = mockFetchHandler as unknown as typeof fetch;
     pdsNonces.clear();
@@ -196,24 +194,7 @@ describe("useEntries", () => {
     ).toHaveLength(1);
   });
 
-  it("uses dummy entries without an AppView request in local", async () => {
-    process.env.NEXT_PUBLIC_APP_ENV = "local";
-    delete process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
-    const publication =
-      dummyPublicationSidebarProjection.subscribedUnfoldered[0];
-    expect(publication).toBeDefined();
 
-    const { result } = renderHook(
-      () => useEntries(publication!.publicationId),
-      { wrapper: makeWrapper() },
-    );
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    const entries = result.current.data?.pages.flatMap((page) => page.entries);
-    expect(entries?.length).toBeGreaterThan(0);
-    expect(mockFetchHandler.mock.calls.map(([url]) => url)).toEqual([]);
-  });
 
   it("keeps fresh cached rows visible without redundant refresh or enroll on remount", async () => {
     const qc = new QueryClient({
@@ -286,7 +267,6 @@ describe("useEntries", () => {
 
 describe("useEntry", () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_USE_THIN_APPVIEW = "true";
     mockFetchHandler.mockClear();
     globalThis.fetch = mockFetchHandler as unknown as typeof fetch;
     pdsNonces.clear();
@@ -426,12 +406,11 @@ describe("reader lifecycle refreshes", () => {
 
   beforeEach(() => {
     process.env.NEXT_PUBLIC_APP_ENV = "production";
-    process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "false";
-    process.env.NEXT_PUBLIC_USE_THIN_APPVIEW = "true";
     activeViewerDid = viewer;
     activeOAuthSession = mockOAuthSession;
     activeReloadSeq = 0;
-    process.env.NEXT_PUBLIC_PDS_READ_STATE_ENABLED = "false";
+    const enabled = spyOn(readStateRuntime, "pdsReadStateEnabled").mockReturnValue(false);
+    lifecycleRestores.push(() => enabled.mockRestore());
     window.localStorage.removeItem(READ_STATE_STORAGE_KEY);
     client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 1 } } });
     requests = [];

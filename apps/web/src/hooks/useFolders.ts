@@ -12,7 +12,6 @@ import {
 } from "@/lib/optimisticSidebarFolder";
 import { migrateStoredSidebarFolderExpandKey } from "@/lib/sidebarExpandedKeysStorage";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
 import { useAuth } from "./useAuth";
 import { usePDSClient } from "./usePDSClient";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
@@ -173,13 +172,11 @@ export function useUpdateFolder() {
   const client = usePDSClient();
   const { session } = useAuth();
   const qc = useQueryClient();
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   return useMutation({
     mutationFn: async (params: {
       uri: string;
       updates: Partial<Pick<FolderRecord, "name" | "sortOrder" | "icon" | "iconImage">>;
     }) => {
-      if (!client && dummyReaderDataEnabled) return;
       if (!client) throw new Error("Sign in to update folders on your PDS.");
       const rkey = rkeyFromURI(params.uri);
       await client.updateFolder(rkey, params.updates);
@@ -216,7 +213,7 @@ export function useUpdateFolder() {
       );
     },
     onSuccess: () => {
-      if (session?.did && !dummyReaderDataEnabled) {
+      if (session?.did) {
         qc.invalidateQueries({
           queryKey: PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(session.did),
         });

@@ -17,11 +17,9 @@ import * as EntryListModule from "@/components/EntryList/EntryList";
 import * as RssReaderModule from "@/components/EntryDetail/RssArticleReaderDialog";
 import * as FeedPreferences from "@/hooks/useFeedDisplayPreferences";
 import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
-import * as WireEditionHook from "@/hooks/useWireEdition";
 import type { EntryListItem } from "@/lib/atprotoClient";
 import * as ResolveEntryOpenURL from "@/lib/resolveEntryOpenUrl";
 import { READ_STATE_STORAGE_KEY } from "@/lib/entryReadStateStorage";
-import type { WireEditionPage } from "@/lib/wireEditionClient";
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "Element", {
@@ -45,12 +43,8 @@ let oauthSessionReloadSeq = 0;
 let resolveEntryOpenUrlFromPds: ReturnType<
   typeof spyOn<typeof ResolveEntryOpenURL, "resolveEntryOpenUrlFromPds">
 >;
-let useWireEdition: ReturnType<
-  typeof spyOn<typeof WireEditionHook, "useWireEdition">
->;
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_WIRE_NEWS_EDITION_ENABLED = "true";
   window.localStorage.clear();
   renderedEntry = unresolvedEntry;
   renderedEntryListProps = {};
@@ -73,33 +67,9 @@ beforeEach(() => {
     ResolveEntryOpenURL,
     "resolveEntryOpenUrlFromPds",
   ).mockResolvedValue(undefined);
-  useWireEdition = spyOn(
-    WireEditionHook,
-    "useWireEdition",
-  ).mockImplementation(
-    () =>
-      ({
-        data: {
-          pages: [wireEditionPageForEntry(renderedEntry)],
-          pageParams: [undefined],
-        },
-        catalog: { isLoading: false },
-        isLoading: false,
-        isError: false,
-        error: null,
-        viewerModerationError: false,
-        moreStories: [],
-        hasNextPage: false,
-        isFetchingNextPage: false,
-        isFetchNextPageError: false,
-        fetchNextPage: async () => undefined,
-        retryTheWire: async () => undefined,
-      }) as unknown as ReturnType<typeof WireEditionHook.useWireEdition>,
-  );
 });
 
 afterEach(() => {
-  delete process.env.NEXT_PUBLIC_WIRE_NEWS_EDITION_ENABLED;
   cleanup();
   window.localStorage.clear();
   restoreAuthSpy?.();
@@ -109,7 +79,6 @@ afterEach(() => {
   restorePreferencesSpy?.();
   restorePreferencesSpy = undefined;
   resolveEntryOpenUrlFromPds.mockRestore();
-  useWireEdition.mockRestore();
 });
 
 /** standard.site entry the AppView could not index a hosted URL for. */
@@ -120,7 +89,6 @@ const unresolvedEntry: EntryListItem = {
 };
 let renderedEntry = unresolvedEntry;
 let renderedEntryListProps: {
-  wireFeed?: boolean;
   readIndicatorsEnabled?: boolean;
   articleFilter?: string;
   isEntryRead?: (entryId: string) => boolean;
@@ -129,42 +97,10 @@ let renderedEntryListProps: {
   resolvingEntryId?: string | null;
 } = {};
 
-function wireEditionPageForEntry(entry: EntryListItem): WireEditionPage {
-  const itemId = entry.wireItem?.itemId ?? entry.entryId;
-  return {
-    editionVersion: "1",
-    generationId: "test-generation",
-    generatedAt: "2026-08-20T12:00:00.000Z",
-    language: "en",
-    source: "ranked",
-    degraded: false,
-    stories: [
-      {
-        itemId,
-        canonicalUrl: entry.originalUrl ?? "https://news.example/story",
-        representativeUri: entry.entryId,
-        title: entry.title,
-        publishedAt: entry.publishedAt,
-        source: entry.wireItem?.source ?? {
-          name: "Example News",
-          domain: "news.example",
-        },
-        reasons: entry.wireItem?.reasons ?? [],
-        provenance: entry.wireItem?.provenance ?? [],
-      },
-    ],
-    topStoryIds: [itemId],
-    publicationSpotlights: [],
-    storyRails: [],
-    people: [],
-    trendingStoryIds: [],
-  };
-}
 
 const renderEntryList = ({
     onSelectEntry,
     resolvingEntryId,
-    wireFeed,
     readIndicatorsEnabled,
     articleFilter,
     isEntryRead,
@@ -174,7 +110,6 @@ const renderEntryList = ({
   }: {
     onSelectEntry: (entryId: string, entry?: EntryListItem) => void;
     resolvingEntryId?: string | null;
-    wireFeed?: boolean;
     readIndicatorsEnabled?: boolean;
     articleFilter?: string;
     isEntryRead?: (entryId: string) => boolean;
@@ -191,7 +126,6 @@ const renderEntryList = ({
       onClick={() => onSelectEntry(renderedEntry.entryId, renderedEntry)}
       ref={() => {
         renderedEntryListProps = {
-          wireFeed,
           readIndicatorsEnabled,
           articleFilter,
           isEntryRead,
@@ -278,55 +212,7 @@ describe("ReadPubPage entry open fallback", () => {
     }
   });
 
-  it("opens The Wire stories through the isolated news surface without creating read state", async () => {
-    renderedEntry = {
-      entryId: "at://did:plc:writer/site.standard.document/wire-story",
-      title: "The Wire Story",
-      publishedAt: "2026-08-20T12:00:00.000Z",
-      originalUrl: "https://news.example/story",
-      wireItem: {
-        itemId: "wire:item:one",
-        representativeUri:
-          "at://did:plc:writer/site.standard.document/wire-story",
-        source: { name: "Example News", domain: "news.example" },
-        reasons: ["breaking_story"],
-        provenance: [],
-      },
-    };
-    const { tabs, restore } = stubWindowOpen();
 
-    try {
-      render(
-        <ReadPubPage wireFeed />,
-        { wrapper: Wrapper },
-      );
-      const storyTitle = await screen.findByText("The Wire Story");
-      const story = storyTitle.closest('[role="link"]');
-      if (!story) throw new Error("Wire story card did not render");
-      act(() => (story as HTMLElement).click());
-
-      expect(renderedEntryListProps).toEqual({});
-      expect(tabs).toHaveLength(1);
-      expect(window.localStorage.getItem(READ_STATE_STORAGE_KEY)).toBeNull();
-      expect(resolveEntryOpenUrlFromPds).not.toHaveBeenCalled();
-    } finally {
-      restore();
-      renderedEntry = unresolvedEntry;
-    }
-  });
-
-  it("keeps the existing Wire list active until the news edition rollout gate is enabled", () => {
-    delete process.env.NEXT_PUBLIC_WIRE_NEWS_EDITION_ENABLED;
-
-    render(<ReadPubPage wireFeed />, { wrapper: Wrapper });
-
-    expect(screen.getByTestId("entry-row")).toBeDefined();
-    expect(renderedEntryListProps).toMatchObject({
-      wireFeed: true,
-      readIndicatorsEnabled: false,
-      articleFilter: "all",
-    });
-  });
 
   it("surfaces a message instead of silently doing nothing", async () => {
     resolveEntryOpenUrlFromPds.mockResolvedValue(undefined);

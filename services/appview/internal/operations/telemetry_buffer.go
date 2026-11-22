@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -213,8 +212,7 @@ func (b *TelemetryBuffer) flushAt(ctx context.Context, at time.Time) int {
 			// additive batch and potentially counting every metric twice.
 			b.recordDropLocked(count)
 			b.mu.Unlock()
-			b.logger.Error("Telemetry export stopped without a safe retry",
-				"error_type", ErrorCategory(err), "batch_size", strconv.Itoa(count))
+			logTelemetryFailure(b.logger, "Telemetry export stopped without a safe retry", err, count)
 			return 0
 		}
 		if attempt+1 >= b.maxRetryAttempts {
@@ -222,8 +220,7 @@ func (b *TelemetryBuffer) flushAt(ctx context.Context, at time.Time) int {
 			// the Postgres-only deferral path never applies here.
 			b.recordDropLocked(count)
 			b.mu.Unlock()
-			b.logger.Error("Telemetry export exhausted bounded retries",
-				"error_type", ErrorCategory(err), "batch_size", strconv.Itoa(count))
+			logTelemetryFailure(b.logger, "Telemetry export exhausted bounded retries", err, count)
 			return 0
 		}
 		b.mu.Unlock()

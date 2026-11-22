@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 
+import { registeredGoRoutes } from "./helpers/goRoutes";
+
 const REPO_ROOT = join(import.meta.dir, "../../..");
 const manifest = JSON.parse(
   readFileSync(join(REPO_ROOT, "packages/spec/endpoint-manifest.json"), "utf8")
@@ -104,45 +106,13 @@ describe("client XRPC transport", () => {
     }
   });
 
-  it("forwards Gateway adapters to AppView XRPC upstream", () => {
-    const source = readFileSync(
-      join(REPO_ROOT, "services/gateway/Sources/Gateway/Routes/AppViewProxyRoutes.swift"), "utf8"
-    );
-    const registrations = source.split(/(?=^    (?:group\.(?:get|post|put|delete|patch)\(|for path in))/m);
-    const proxyMigrations = clientMigrations.filter(
-      ({ xrpcNsid }) => xrpcNsid!.startsWith("app.thesocialwire.appview.") ||
-        xrpcNsid!.startsWith("app.thesocialwire.publication.")
-    );
-    for (const migration of proxyMigrations) {
-      const registration = registrations.find(block =>
-        block.includes(`group.${migration.method.toLowerCase()}("${migration.path}")`) ||
-        (block.startsWith("    for path in") && block.includes(`"${migration.path}"`) &&
-          block.includes(`group.${migration.method.toLowerCase()}(RouterPath(path))`))
-      );
-      expect(registration, `missing Gateway adapter for ${migration.path}`).toBeDefined();
-      expect(registration, `${migration.path} must forward to XRPC`).toContain(
-        `path: "/xrpc/${migration.xrpcNsid}"`
-      );
-      expect(registration, `${migration.path} must use the Lexicon HTTP verb`).toContain(
-        `method: "${/\.(get|list)[A-Z]/.test(migration.xrpcNsid!) ? "GET" : "POST"}`
-      );
+  it("registers compatibility and canonical XRPC routes with their Lexicon verbs", () => {
+    const routes = registeredGoRoutes();
+    for (const migration of clientMigrations) {
+      expect(routes.has(`${migration.method} ${migration.path}`), migration.path).toBe(true);
+      const method = /\.(get|list)[A-Z]/.test(migration.xrpcNsid!) ? "GET" : "POST";
+      expect(routes.has(`${method} /xrpc/${migration.xrpcNsid}`), migration.xrpcNsid).toBe(true);
     }
-  });
-
-  it("registers canonical XRPC feed routes in the Gateway", () => {
-    const routes = readFileSync(
-      join(
-        REPO_ROOT,
-        "services/gateway/Sources/Gateway/Routes/AppViewProxyRoutes.swift"
-      ),
-      "utf8"
-    );
-    expect(routes).toContain(
-      'group.get("/xrpc/app.thesocialwire.appview.getFeed")'
-    );
-    expect(routes).toContain(
-      'group.get("/xrpc/app.thesocialwire.appview.listEntries")'
-    );
   });
 
   it("uses canonical repeated query parameters for XRPC arrays", () => {
@@ -160,7 +130,7 @@ describe("client XRPC transport", () => {
     const appViewRoutes = readFileSync(
       join(
         REPO_ROOT,
-        "services/appview/Sources/AppView/Routes/AppViewExtendedRoutes.swift"
+        "services/appview/internal/reader/routes.go"
       ),
       "utf8"
     );
@@ -170,7 +140,7 @@ describe("client XRPC transport", () => {
       'repeatedQuery: ["publicationIds": publicationIds]'
     );
     expect(appViewRoutes).toContain(
-      'queryParameters[values: "publicationIds"]'
+      'httpx.QueryAll(r, "publicationIds", true)'
     );
   });
 
@@ -196,15 +166,14 @@ describe("client XRPC transport", () => {
     expect(appleClient.match(/JSONEncoder\(\)\.encode\(EmptyXRPCInput\(\)\)/g)).toHaveLength(2);
   });
 
-  it("keeps AppView, Gateway, and moved worker verification clients XRPC-first", () => {
-    const brunoSources = ["gateway", "appview"].flatMap(
+  it("keeps AppView verification clients XRPC-first", () => {
+    const brunoSources = ["appview"].flatMap(
       (service) =>
         collectSourceFiles(
           join(REPO_ROOT, `services/${service}/bruno`),
           new Set([".bru"])
         )
     );
-    expect(brunoSources.some((source) => source.includes("/WorkerVerification/"))).toBe(true);
     const forbiddenPaths = [
       ...compatibilityMigrations.map(({ path }) => path),
       "/v1/publications/folders",

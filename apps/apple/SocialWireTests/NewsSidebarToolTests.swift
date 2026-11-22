@@ -11,20 +11,20 @@ struct NewsSidebarToolTests {
         #expect(Set(NewsSidebarTool.allCases.map(\.id)).count == 6)
     }
 
-    @Test("Unreleased Pro tools are hidden from the native sidebar")
+    @Test("Unreleased tools are hidden from the native sidebar")
     func unreleasedToolsHidden() {
-        #expect(!SocialWireAPIEnvironment.proFeaturesReleased)
+        #expect(!SocialWireAPIEnvironment.toolsFeaturesReleased)
         #expect(NewsSidebarTool.availableTools.isEmpty)
     }
 
-    @Test("Delegated Accounts requires both its feature flag and the Pro release gate", arguments: [false, true])
+    @Test("Delegated Accounts requires both its feature flag and the tools release gate", arguments: [false, true])
     func brandAccountsRequiresBothGates(brandAccountsEnabled: Bool) {
         #expect(NewsSidebarTool.availableTools(
-            proFeaturesReleased: false,
+            toolsFeaturesReleased: false,
             brandAccountsEnabled: brandAccountsEnabled
         ).isEmpty)
         let released = NewsSidebarTool.availableTools(
-            proFeaturesReleased: true,
+            toolsFeaturesReleased: true,
             brandAccountsEnabled: brandAccountsEnabled
         )
         #expect(released.contains(.brandAccounts) == brandAccountsEnabled)

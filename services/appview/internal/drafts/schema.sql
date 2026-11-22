@@ -29,3 +29,12 @@ CREATE TABLE IF NOT EXISTS private_article_draft_bindings(
   FOREIGN KEY(owner,draft_id) REFERENCES private_article_drafts(owner,draft_id),
   FOREIGN KEY(owner,asset_id) REFERENCES private_social_draft_assets(owner,asset_id));
 CREATE INDEX IF NOT EXISTS private_article_draft_binding_assets ON private_article_draft_bindings(owner,asset_id);
+
+CREATE TABLE IF NOT EXISTS private_social_draft_owner_leases(owner TEXT PRIMARY KEY,token TEXT NOT NULL,expires_at_us INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS private_social_draft_transfer_leases(owner TEXT PRIMARY KEY,token TEXT NOT NULL,expires_at_us INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS private_social_draft_upload_chunks(
+ owner TEXT NOT NULL,asset_id TEXT NOT NULL,part INTEGER NOT NULL CHECK(part>=0 AND part<34),metadata BLOB NOT NULL,
+ object_key TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('reserved','ready','retired','purged')),
+ expires_at REAL NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(owner,asset_id,part),FOREIGN KEY(owner,asset_id) REFERENCES private_social_draft_assets(owner,asset_id));
+CREATE INDEX IF NOT EXISTS private_social_draft_upload_chunks_cleanup ON private_social_draft_upload_chunks(expires_at,owner,asset_id,part);

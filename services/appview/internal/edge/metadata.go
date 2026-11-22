@@ -12,7 +12,6 @@ import (
 )
 
 const nativePath = "/ios-client-metadata.json"
-const operationsPath = "/operations-oauth-client-metadata.json"
 const webPath = "/oauth-client-metadata.json"
 
 type metadataDocument struct {
@@ -28,9 +27,9 @@ type metadataDocument struct {
 	DPoPBoundAccessTokens   bool     `json:"dpop_bound_access_tokens"`
 }
 
-// RegisterMetadata publishes the app's web, iOS, and Operations OAuth metadata.
+// RegisterMetadata publishes the app's web and iOS OAuth metadata.
 func RegisterMetadata(router *httpx.Router, core config.Core) {
-	for _, path := range []string{webPath, "/oauth/client-metadata.json", nativePath, operationsPath} {
+	for _, path := range []string{webPath, "/oauth/client-metadata.json", nativePath} {
 		router.Get(path, func(w http.ResponseWriter, r *http.Request) error {
 			scheme, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
 			scheme = strings.TrimSpace(scheme)
@@ -69,13 +68,6 @@ func metadata(path, origin string, core config.Core) (metadataDocument, error) {
 		redirect = strings.Join(components, ".") + ":/oauth/callback"
 		doc.ApplicationType = "native"
 		doc.Scope = nativeScopes
-	case operationsPath:
-		if strings.TrimSpace(core.OAuthOperationsOrigin) == "" {
-			return doc, httpx.Errorf(http.StatusServiceUnavailable, "Operations OAuth origin is not configured")
-		}
-		redirect = defaultOrigin(core.OAuthOperationsOrigin, "") + "/callback"
-		doc.ClientName = "The Social Wire Operations"
-		doc.Scope = "atproto"
 	default:
 		redirect = defaultOrigin(core.OAuthPublicOrigin, origin) + "/callback"
 		path = webPath
@@ -89,20 +81,6 @@ func metadata(path, origin string, core config.Core) (metadataDocument, error) {
 	doc.ClientURI = origin
 	doc.ClientID = origin + path
 	doc.RedirectURIs = []string{redirect}
-	if !core.PodcastsEnabled {
-		scopes := strings.Fields(doc.Scope)
-		scopes = slices.DeleteFunc(scopes, func(scope string) bool {
-			switch scope {
-			case "repo:app.thesocialwire.podcast.clip?action=create&action=update&action=delete",
-				"blob:video/mp4", "rpc:com.atproto.repo.uploadBlob?aud=*",
-				"rpc:app.bsky.video.getUploadLimits?aud=did:web:video.bsky.app",
-				"rpc:app.bsky.video.getUploadLimits?aud=*":
-				return true
-			}
-			return false
-		})
-		doc.Scope = strings.Join(scopes, " ")
-	}
 	return doc, nil
 }
 

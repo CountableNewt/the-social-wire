@@ -9,6 +9,7 @@ import (
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/atproto"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reqctx"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/thinstore"
 )
 
@@ -32,7 +33,7 @@ type Service struct {
 	ContentRetention time.Duration
 	MaximumRSSItems  int
 	feedRefreshes    sync.Map
-	history          authorHistoryQueue
+	HistoryDB        *sqlitedb.DB
 }
 
 // Enroll refreshes requested RSS feeds that belong to the authenticated viewer.

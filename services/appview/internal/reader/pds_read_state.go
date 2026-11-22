@@ -15,6 +15,7 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/readstate"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reqctx"
+	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/thinstore"
 )
 
@@ -298,13 +299,17 @@ func prepareBoundaries(ctx context.Context, db rowsQueryer, viewer string, reque
 		if err != nil {
 			return nil, err
 		}
+		nowMicros, err := sqlitedb.TimestampMicroseconds(thinstore.CursorTimestamp(now))
+		if err != nil {
+			return nil, err
+		}
 		boundary := thinstore.ReadWatermarkBoundary{PublicationID: scope.PublicationID, CreatedAt: now}
 		var at, entry string
 		err = db.QueryRowContext(ctx, `SELECT uri,created_at FROM content_items
-			WHERE author_did=? AND tsw_timestamp_us(created_at)<=tsw_timestamp_us(?) AND
+			WHERE author_did=? AND created_at_us<=? AND
 				(? OR EXISTS(SELECT 1 FROM json_each(?) WHERE value=publication_site))
 			ORDER BY `+thinstore.FeedTimestampSQL("created_at")+` DESC,uri DESC LIMIT 1`,
-			scope.AuthorDID, thinstore.CursorTimestamp(now), len(scope.ScopeKeys) == 0, string(keys)).Scan(&entry, &at)
+			scope.AuthorDID, nowMicros, len(scope.ScopeKeys) == 0, string(keys)).Scan(&entry, &at)
 		if err == nil {
 			boundary.CreatedAt, err = readstate.ParseDate(at)
 			boundary.EntryID = &entry

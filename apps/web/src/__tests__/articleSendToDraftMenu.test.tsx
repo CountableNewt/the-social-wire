@@ -4,7 +4,6 @@ import * as Auth from "@/hooks/useAuth";
 import * as Social from "@/hooks/useEntrySocial";
 import * as Saved from "@/hooks/useLatrSaved";
 import * as Recommendations from "@/hooks/useStandardSiteRecommendation";
-import * as Feedback from "@/hooks/useWireArticleFeedback";
 import * as DraftDialog from "@/components/Articles/SendArticleToDraftDialog";
 import { ArticleSocialToolbar } from "@/components/EntryDetail/ArticleSocialToolbar";
 import type { EntryDetail } from "@/lib/atprotoClient";
@@ -32,9 +31,8 @@ beforeEach(() => {
   const saved = spyOn(Saved, "useEntryIsLatrSaved").mockReturnValue(false);
   const saving = spyOn(Saved, "useSaveReadLaterEntryMutation").mockReturnValue(mutation as unknown as ReturnType<typeof Saved.useSaveReadLaterEntryMutation>);
   const recommendations = spyOn(Recommendations, "useStandardSiteRecommendation").mockReturnValue({ applicable: false } as ReturnType<typeof Recommendations.useStandardSiteRecommendation>);
-  const feedback = spyOn(Feedback, "useWireArticleFeedback").mockReturnValue({ applicable: false } as ReturnType<typeof Feedback.useWireArticleFeedback>);
   const dialog = spyOn(DraftDialog, "SendArticleToDraftDialog").mockImplementation(({ url }) => <div role="dialog">Draft Source: {url}</div>);
-  restores.push(...[auth, social, saved, saving, recommendations, feedback, dialog].map(spy => () => spy.mockRestore()));
+  restores.push(...[auth, social, saved, saving, recommendations, dialog].map(spy => () => spy.mockRestore()));
 });
 afterEach(() => { cleanup(); restores.splice(0).reverse().forEach(restore => restore()); });
 const entry: EntryDetail = { entryId: "at://did:plc:author/site.standard.document/article", title: "Source Article", publishedAt: "2026-11-10T00:00:00Z", contentHtml: "", originalUrl: "https://publisher.test/article" };

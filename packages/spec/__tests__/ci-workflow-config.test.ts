@@ -11,9 +11,9 @@ const backendImage = readFileSync(join(repositoryRoot, "services/appview/Dockerf
 
 describe("standalone reader CI", () => {
   it("requires only the two packaged runtime targets and path detection", () => {
-    expect(Object.keys(parsed.jobs)).toEqual(expect.arrayContaining(["changes", "web", "appview", "required", "warm_base_cache"]));
+    expect(Object.keys(parsed.jobs)).toEqual(expect.arrayContaining(["changes", "web", "appview", "apple", "required", "warm_base_cache"]));
     expect(parsed.jobs.required.name).toBe("CI — Required");
-    expect(parsed.jobs.required.needs).toEqual(["changes", "web", "appview"]);
+    expect(parsed.jobs.required.needs).toEqual(["changes", "web", "appview", "apple"]);
     expect(parsed.jobs.required.if).toBe("always()");
     expect(parsed.jobs.web.needs).toBe("changes");
     expect(parsed.jobs.web.steps.some((step: any) => step.run === "bash scripts/ci/verify-runtime-images.sh web")).toBe(true);
@@ -28,8 +28,10 @@ describe("standalone reader CI", () => {
     expect(verify.run).toContain("go test -vet=all -count=1 ./...");
     expect(parsed.jobs.appview_go.defaults.run["working-directory"]).toBe("services/appview");
     expect(parsed.jobs.appview_image.steps.some((step: any) => step.run?.includes("bash scripts/ci/verify-runtime-images.sh appview"))).toBe(true);
-    expect(workflow).not.toMatch(/swift|SwiftPM/i);
-    expect(workflow).not.toMatch(/runs-on: macos-|working-directory: services\/(?:gateway|indexing-worker)/);
+    expect(workflow).not.toContain("working-directory: packages/swift");
+    expect(workflow).not.toMatch(/working-directory: services\/(?:gateway|indexing-worker)/);
+    expect(parsed.jobs.apple["runs-on"]).toBe("macos-26");
+    expect(parsed.jobs.apple.steps.some((step: any) => step.run === "bash scripts/ci/apple-test.sh")).toBe(true);
     expect(workflow).not.toContain("REDIS_INTEGRATION_URL");
     expect(workflow).not.toContain("DATABASE_URL");
   });
@@ -82,24 +84,22 @@ describe("standalone reader CI", () => {
     expect(detector.env.GITHUB_EVENT_PULL_REQUEST_BASE_SHA).toBe("${{ github.event.pull_request.base.sha }}");
   });
 
-  it("checks real release images, SQLite migrations, and the bundled processor", () => {
+  it("checks real release images and SQLite migrations", () => {
     expect(verifier).not.toContain("backend-tests");
-    expect(verifier).toContain("PODCAST_MEDIA_ARTIFACTS=media-tests");
-    expect(backendImage).toContain("ARG PODCAST_MEDIA_ARTIFACTS=media-builder");
     expect(verifier).toContain("await runtimeVolumeGuardSmoke(image)");
     expect(verifier).toContain("await runtimeSmoke(image)");
     expect(verifier).toContain("await webRuntimeSmoke(buildImage(kind))");
-    expect(parsed.jobs.appview_go.steps.find((step: any) => step.name === "Test SQLite migration tools").run)
-      .toContain("python3 -m unittest discover -s scripts/migrations -p 'test_*.py'");
+    expect(parsed.jobs.appview_go.steps.find((step: any) => step.name === "Verify AppView sources").run)
+      .toContain("go test -vet=all -count=1 ./...");
     expect(backendImage).toContain("FROM golang:");
     expect(backendImage).toContain("CGO_ENABLED=0");
     expect(backendImage).toContain("-o /out/AppView ./cmd/appview");
     expect(backendImage).toContain("COPY --from=builder /out/AppView /usr/local/bin/AppView");
     expect(backendImage.indexOf("go mod download")).toBeLessThan(backendImage.indexOf("COPY services/appview/internal ./internal"));
     expect(backendImage).not.toMatch(/swift/i);
-    expect(backendImage).toContain("bun --cwd services/podcast-worker typecheck && bun --cwd services/podcast-worker test");
+    expect(backendImage).not.toMatch(/podcast|ffmpeg|oven\/bun|bun install/i);
     expect(backendImage).toContain("BACKEND_MODE=standalone SQLITE_DB_PATH=/data/social-wire.sqlite");
-    expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/readyz', '503')");
+    expect(verifier).toContain("status('http://127.0.0.1:8081/readyz') === '200'");
     expect(verifier).toContain("expectStatus('http://127.0.0.1:8081/livez', '200')");
   });
 
@@ -116,13 +116,13 @@ describe("standalone reader CI", () => {
     const gate = parsed.jobs.required.steps.find((step: any) => step.name === "Verify path-filtered checks");
     const baseline = {
       CHANGES_RESULT: "success", WEB_FLAG: "false", WEB_RESULT: "skipped", APPVIEW_FLAG: "false", APPVIEW_RESULT: "skipped",
-      REUSE_WEB: "false", REUSE_APPVIEW: "false", GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/123/merge",
+      APPLE_FLAG: "false", APPLE_RESULT: "skipped", REUSE_WEB: "false", REUSE_APPVIEW: "false", GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/123/merge",
     };
     return spawnSync("bash", ["-c", gate.run], { cwd: repositoryRoot, env: { ...process.env, ...baseline, ...overrides }, encoding: "utf8" });
   }
 
   it("fails the aggregate gate for every selected check that does not succeed", () => {
-    for (const flag of ["WEB", "APPVIEW"]) {
+    for (const flag of ["WEB", "APPVIEW", "APPLE"]) {
       for (const result of ["failure", "cancelled", "skipped", "success"]) {
         expect(runRequiredGate({ [`${flag}_FLAG`]: "true", [`${flag}_RESULT`]: result }).status).toBe(result === "success" ? 0 : 1);
       }
@@ -131,6 +131,12 @@ describe("standalone reader CI", () => {
       expect(runRequiredGate({ CHANGES_RESULT: result }).status).toBe(1);
     }
     expect(runRequiredGate().status).toBe(0);
+  });
+
+  it("rejects missing or malformed native path-selection outputs", () => {
+    for (const value of [undefined, "", "TRUE"]) {
+      expect(runRequiredGate({ APPLE_FLAG: value }).status).toBe(1);
+    }
   });
 
   it("accepts proven target skips only on dev and main pushes", () => {

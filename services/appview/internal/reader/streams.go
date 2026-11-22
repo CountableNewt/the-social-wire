@@ -47,10 +47,12 @@ func (s *service) bootstrap(w http.ResponseWriter, r *http.Request) error {
 	var lists <-chan standardListsResponse
 	if s.lists != nil && httpx.Query(r, "includeLists") == "true" {
 		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		defer cancel()
+		finished := make(chan struct{})
+		defer func() { cancel(); <-finished }()
 		response := make(chan standardListsResponse, 1)
 		lists = response
 		go func() {
+			defer close(finished)
 			defer close(response)
 			if result, err := s.lists.list(ctx, auth.DID, false); err == nil {
 				response <- result
@@ -163,10 +165,13 @@ func (s *service) refreshFeed(w http.ResponseWriter, r *http.Request) error {
 		err     error
 	}
 	results := make(chan checked, len(requested))
+	ctx, cancel := context.WithCancel(ctx)
+	finished := make(chan struct{})
+	defer func() { cancel(); <-finished }()
 	group, ctx := errgroup.WithContext(ctx)
 	group.SetLimit(8)
 	go func() {
-
+		defer close(finished)
 		for _, scope := range requested {
 			group.Go(func() error {
 				input := thinstore.EnrollRequest{AuthorDIDs: []string{scope.AuthorDID}}
