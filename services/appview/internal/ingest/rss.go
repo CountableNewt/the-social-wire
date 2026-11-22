@@ -99,7 +99,7 @@ func (s *Service) refreshFeed(ctx context.Context, feed string) (int, error) {
 	if modified := validators.Get("Last-Modified"); modified != "" {
 		meta.LastModified = &modified
 	}
-	indexed := 0
+	var contents []thinstore.IndexedContentItem
 	if parsed != nil {
 		sort.SliceStable(parsed.Items, func(i, j int) bool {
 			return itemPublished(parsed.Items[i], now).After(itemPublished(parsed.Items[j], now))
@@ -128,13 +128,29 @@ func (s *Service) refreshFeed(ctx context.Context, feed string) (int, error) {
 				continue
 			}
 			seen[content.URI] = true
-			if err := s.Store.UpsertContentItem(ctx, content); err != nil {
-				return indexed, err
-			}
-			indexed++
+			contents = append(contents, content)
 		}
 	}
-	return indexed, s.Store.StoreRssFeedMetadata(ctx, meta)
+	return s.storeFeed(ctx, contents, meta)
+}
+
+// Keep the narrow Store interface usable by alternate ingestion stores. The
+// production store atomically batches content and its conditional-GET checkpoint.
+func (s *Service) storeFeed(ctx context.Context, contents []thinstore.IndexedContentItem, meta thinstore.RssFeedFetchMetadata) (int, error) {
+	if batch, ok := s.Store.(interface {
+		StoreRSSFeed(context.Context, []thinstore.IndexedContentItem, thinstore.RssFeedFetchMetadata) error
+	}); ok {
+		if err := batch.StoreRSSFeed(ctx, contents, meta); err != nil {
+			return 0, err
+		}
+		return len(contents), nil
+	}
+	for index, content := range contents {
+		if err := s.Store.UpsertContentItem(ctx, content); err != nil {
+			return index, err
+		}
+	}
+	return len(contents), s.Store.StoreRssFeedMetadata(ctx, meta)
 }
 
 func (s *Service) fetchFeed(ctx context.Context, raw string, headers map[string]string) (int, http.Header, []byte, error) {
