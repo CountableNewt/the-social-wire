@@ -61,8 +61,24 @@ func jsonEntryBatch(scopes []feedMatch, migrated bool, viewer, now string, filte
 		args = append(args, limit)
 		return query + " ORDER BY position DESC,ci.uri DESC LIMIT ?)"
 	}
-	singleSite := branch("idx_content_items_author_site_timestamp_uri", "ci.publication_site=json_extract(scopes.sites,'$[0]')")
-	multipleSites := branch("idx_content_items_author_timestamp_uri", "(scopes.sites IS NULL OR ci.publication_site IN (SELECT value FROM json_each(scopes.sites)))")
+	// The input already proves which site policies can occur. Avoid asking the
+	// remote engine to describe and optimize an unreachable correlated branch.
+	onlySingleSite, onlyNonSingleSite := len(scopes) > 0, len(scopes) > 0
+	for _, scope := range scopes {
+		onlySingleSite = onlySingleSite && len(scope.Sites) == 1
+		onlyNonSingleSite = onlyNonSingleSite && len(scope.Sites) != 1
+	}
+	var candidates string
+	switch {
+	case onlySingleSite:
+		candidates = "(" + branch("idx_content_items_author_site_timestamp_uri", "ci.publication_site=json_extract(scopes.sites,'$[0]')") + ")"
+	case onlyNonSingleSite:
+		candidates = "(" + branch("idx_content_items_author_timestamp_uri", "(scopes.sites IS NULL OR ci.publication_site IN (SELECT value FROM json_each(scopes.sites)))") + ")"
+	default:
+		singleSite := branch("idx_content_items_author_site_timestamp_uri", "ci.publication_site=json_extract(scopes.sites,'$[0]')")
+		multipleSites := branch("idx_content_items_author_timestamp_uri", "(scopes.sites IS NULL OR ci.publication_site IN (SELECT value FROM json_each(scopes.sites)))")
+		candidates = "CASE WHEN json_array_length(scopes.sites)=1 THEN (" + singleSite + ") ELSE (" + multipleSites + ") END"
+	}
 	args = append(args, limit)
 	stateColumn, stateJoins := "batch.is_read", ""
 	if !filterReadState {
@@ -83,7 +99,7 @@ FROM (
  SELECT json_extract(value,'$.author') AS author,json_extract(value,'$.publication') AS pub,
  json_extract(value,'$.sites') AS sites FROM json_each(?)
 ) scopes` + scopeJoins + `
-JOIN json_each(CASE WHEN json_array_length(scopes.sites)=1 THEN (` + singleSite + `) ELSE (` + multipleSites + `) END) candidate
+JOIN json_each(` + candidates + `) candidate
 ORDER BY position DESC,uri DESC,scopes.pub ASC LIMIT ?) batch
 JOIN content_items ci ON ci.uri=batch.uri` + stateJoins + `
 ORDER BY batch.position DESC,batch.uri DESC,batch.pub ASC`, args

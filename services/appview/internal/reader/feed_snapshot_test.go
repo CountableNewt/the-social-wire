@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/publications"
@@ -205,6 +207,86 @@ func TestCombinedFeedSnapshotPreservesAliasMatchingFiltersAndPagination(t *testi
 			}
 			if cursor == nil {
 				break
+			}
+		}
+	}
+}
+
+func TestFeedSnapshotDeduplicatesSharedAuthorsWithoutLosingPublicationAliases(t *testing.T) {
+	db := testReaderDB(t)
+	const publications = 80
+	base := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	err := db.Write(t.Context(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO appview_viewer_feeds VALUES(?,'subscribed','','2026-11-21T00:00:00Z')`, testViewer); err != nil {
+			return err
+		}
+		for i := range publications {
+			publication := fmt.Sprintf("publication-%03d", i)
+			atURI := fmt.Sprintf("at://%s/site.standard.publication/p%d", testAuthor, i)
+			siteURL := fmt.Sprintf("https://example.com/publication/%d", i)
+			sites, _ := json.Marshal([]string{siteURL + "/"})
+			if _, err := tx.Exec(`INSERT INTO appview_publication_scopes VALUES(?,?,?,?, '[]',?,'[]','["subscribed"]','2026-11-21T00:00:00Z')`, testViewer, publication, testAuthor, atURI, string(sites)); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`INSERT INTO appview_feed_publications VALUES(?,'subscribed','',?)`, testViewer, publication); err != nil {
+				return err
+			}
+			rawSite := fmt.Sprintf("at://did:plc:AUTHOR/site.standard.publication/p%d", i)
+			if i%2 == 0 {
+				rawSite = siteURL
+			}
+			for j := range 3 {
+				uri := fmt.Sprintf("at://%s/site.standard.document/shared-%d-%d", testAuthor, i, j)
+				at := base.Add(time.Duration(i*3+j) * time.Second)
+				stamp := thinstore.CursorTimestamp(at)
+				render, _ := json.Marshal(map[string]string{"title": "Fixture", "publishedAt": stamp})
+				if _, err := tx.Exec(`INSERT INTO content_items(uri,cid,author_did,collection,created_at,indexed_at,publication_site,render_json,expires_at,created_at_us,indexed_at_us)
+				 VALUES(?,'cid',?,'site.standard.document',?,?,?,?,'2099-01-01T00:00:00Z',?,?)`, uri, testAuthor, stamp, stamp, rawSite, string(render), sqlitedb.TimeMicroseconds(at), sqlitedb.TimeMicroseconds(at)); err != nil {
+					return err
+				}
+				if j == 0 {
+					if _, err := tx.Exec("INSERT INTO read_marks VALUES(?,?,?)", testViewer, uri, stamp); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filter := range []thinstore.EntryListFilter{thinstore.FilterAll, thinstore.FilterRead, thinstore.FilterUnread} {
+		var cursor *string
+		for pageIndex := range 3 {
+			err := db.Read(t.Context(), func(tx *sql.Tx) error {
+				oldScopes, err := scopes(t.Context(), tx, testViewer, "subscribed", "")
+				if err != nil {
+					return err
+				}
+				expected, err := listEntriesWithAuthority(t.Context(), tx, testViewer, oldScopes, filter, cursor, 7, true, false)
+				if err != nil {
+					return err
+				}
+				_, gotScopes, matched, migrated, err := feedSnapshotWithMatches(t.Context(), tx, testViewer, "subscribed", "")
+				if err != nil {
+					return err
+				}
+				if len(matched) != publications || !reflect.DeepEqual(gotScopes, oldScopes) {
+					t.Fatal("shared-author deduplication lost publication identities or aliases")
+				}
+				actual, err := listMatchedEntries(t.Context(), tx, testViewer, matched, filter, cursor, 7, true, migrated)
+				if err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(actual, expected) {
+					t.Fatalf("shared-author filter=%s page=%d changed entries or cursor", filter, pageIndex)
+				}
+				cursor = actual.Cursor
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
 		}
 	}

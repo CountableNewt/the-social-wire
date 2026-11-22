@@ -35,7 +35,7 @@ func feedSnapshotWithMatches(ctx context.Context, db rowsQueryer, viewer, kind, 
 		UNION ALL
 		SELECT DISTINCT 1,NULL,NULL,NULL,NULL,ci.author_did,NULL,NULL,NULL,NULL,NULL,NULL,ci.publication_site
 		FROM content_items ci WHERE ci.publication_site IS NOT NULL AND ci.author_did IN (
-			SELECT ps.author_did FROM appview_publication_scopes ps
+			SELECT DISTINCT ps.author_did FROM appview_publication_scopes ps
 			JOIN appview_feed_publications fp ON fp.viewer_did=ps.viewer_did AND fp.publication_id=ps.publication_id
 			JOIN appview_viewer_feeds f ON f.viewer_did=fp.viewer_did AND f.feed_kind=fp.feed_kind AND f.feed_id=fp.feed_id
 			WHERE f.viewer_did=? AND f.feed_kind=? AND f.feed_id=?
