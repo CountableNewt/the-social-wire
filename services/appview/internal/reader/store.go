@@ -154,6 +154,16 @@ func listEntries(ctx context.Context, db rowsQueryer, viewer string, scopes []th
 	if err != nil {
 		return page, err
 	}
+	return listEntriesWithAuthority(ctx, db, viewer, scopes, filter, cursor, limit, includePublication, migrated)
+}
+
+// listEntriesWithAuthority uses authority verified in the same read transaction.
+func listEntriesWithAuthority(ctx context.Context, db rowsQueryer, viewer string, scopes []thinstore.PublicationScope,
+	filter thinstore.EntryListFilter, cursor *string, limit int, includePublication, migrated bool) (thinstore.EntryListResponse, error) {
+	page := thinstore.EntryListResponse{Entries: []thinstore.EntryListItem{}}
+	if len(scopes) == 0 {
+		return page, nil
+	}
 	scopeJSON, err := matches(ctx, db, scopes)
 	if err != nil {
 		return page, err
