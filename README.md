@@ -24,7 +24,7 @@ for data import, key preservation, backups, and Development-first acceptance.
 
 GitHub remains origin and GitHub Actions runs required verification. Both Vercel
 projects use `main` for Production and the `dev` branch Preview for Development.
-The old Railway writer remains frozen pending operator infrastructure retirement.
+Issue #963 records the hosted cutover and separate Railway infrastructure retirement.
 
 ## Monorepo Structure
 
@@ -124,7 +124,7 @@ bash scripts/ci/verify-runtime-images.sh appview
 
 Follow the [runtime and cutover guide](docs/architecture/standalone-reader.md)
 for explicit schema initialization, stable domains and recovery. Railway resource
-retirement is still an operator step; source cleanup does not delete infrastructure.
+retirement requires a separate operator step; source cleanup does not delete infrastructure.
 The Dockerfiles remain available for local verification and recovery.
 
 ## Docs

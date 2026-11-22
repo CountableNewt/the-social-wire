@@ -1,6 +1,6 @@
 # Go AppView Runtime and Hosting
 
-The current hosting target is Next.js Web and Go AppView on Vercel, with US Turso databases and private Blob storage. Issue #963 records environment-specific cutover and acceptance evidence. The old Railway writer remains frozen while public cutover checks and separate operator infrastructure retirement finish. Removing deployment configuration from source does not delete hosted services, volumes, buckets or backups.
+Next.js Web and Go AppView run on Vercel, with US Turso databases and private Blob storage. Issue #963 records environment-specific cutover, acceptance and infrastructure retirement evidence. Keep any retired Railway writer frozen until its infrastructure is removed. Removing deployment configuration from source does not delete hosted services, volumes, buckets or backups.
 
 PDS records remain authoritative for user-owned protocol data. AppView owns reader projections, private unpublished state, analytics and embedded scheduling. No retired Swift backend, global firehose, Postgres, Redis, separate Gateway or Coordinator is required. Web and Apple remain thin consumers of the existing API domains and authenticated unbuffered NDJSON bootstrap.
 

@@ -10,4 +10,4 @@ The Go `services/appview/cmd/sqlite-backup` command creates verified local SQLit
 
 Timestamp portability uses stored integer microseconds for content timestamps, read floors, unread overrides and PDS boundaries. Original timestamp strings remain authoritative for API/PDS serialization, and feed/cursor ordering retains nanosecond precision. Schema checks reject residual private timestamp extensions.
 
-Hosted cutover evidence is tracked in issue #963. The old Railway writer stays frozen while operator resource retirement remains pending; deleting source configuration does not delete hosted data or backups.
+Hosted cutover and resource retirement evidence is tracked in issue #963. Keep any retired Railway writer frozen until its infrastructure is removed; deleting source configuration does not delete hosted data or backups.
