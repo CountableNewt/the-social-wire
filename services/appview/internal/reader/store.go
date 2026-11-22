@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
@@ -132,10 +131,8 @@ const readExpression = `CASE WHEN ? THEN rm.subject_uri IS NOT NULL
 	OR (ci.created_at_us = floor.read_floor_at_us
 	AND (floor.read_floor_uri IS NULL OR ci.uri <= floor.read_floor_uri)))) END`
 
-const readerCTEStart = `WITH scopes AS MATERIALIZED (
-		SELECT json_extract(value,'$.author') AS author, json_extract(value,'$.publication') AS pub,
-			json_extract(value,'$.sites') AS sites FROM json_each(?)
-	), candidates AS (`
+const readerScopeRows = `(SELECT json_extract(value,'$.author') AS author,
+ json_extract(value,'$.publication') AS pub,json_extract(value,'$.sites') AS sites FROM json_each(?)) scopes`
 
 const readerJoins = `
 	FROM scopes
@@ -165,41 +162,19 @@ func listEntries(ctx context.Context, db rowsQueryer, viewer string, scopes []th
 	if err := json.Unmarshal(scopeJSON, &matched); err != nil {
 		return page, err
 	}
-	now := thinstore.CursorTimestamp(time.Now())
-	timestamp := thinstore.FeedTimestampSQL("ci.created_at")
-	baseQuery := readerCTEStart + "SELECT ci.uri, ci.render_json, ci.created_at, scopes.pub, " + timestamp + " AS position, " +
-		readExpression + " AS is_read" + readerJoins
-	suffix := ") SELECT uri,render_json,created_at,pub,is_read FROM candidates"
-	switch filter {
-	case thinstore.FilterRead:
-		suffix += " WHERE is_read = 1"
-	case thinstore.FilterUnread:
-		suffix += " WHERE is_read = 0"
+	if cursor != nil {
+		if _, _, valid := thinstore.DecodeCursor(*cursor); !valid {
+			return page, httpx.ErrBadRequest
+		}
 	}
-	suffix += " ORDER BY position DESC, uri DESC, pub ASC LIMIT ?"
-
+	if len(matched) == 0 {
+		return page, nil
+	}
+	now := thinstore.CursorTimestamp(time.Now())
 	batchSize := max(100, 2*limit)
 	seen := map[string]bool{}
 	for {
-		query := baseQuery
-		args := []any{string(scopeJSON), migrated, viewer, viewer, viewer, now}
-		if cursor != nil {
-			at, uri, valid := thinstore.DecodeCursor(*cursor)
-			if !valid {
-				return page, httpx.ErrBadRequest
-			}
-			query += " AND (" + timestamp + ", ci.uri) < (?, ?)"
-			args = append(args, at.UTC().Format("2006-01-02T15:04:05.000000000Z"), uri)
-		}
-		query += suffix
-		args = append(args, batchSize)
-		// A global sort of every matching author's history defeats pagination.
-		// No scope can contribute more than batchSize rows to the global batch,
-		// so bound each ordered index scan before merging. Nested groups stay
-		// below SQLite's compound SELECT limit for large subscription sets.
-		if len(matched) > 1 {
-			query, args = boundedEntryBatch(matched, migrated, viewer, now, filter, cursor, batchSize)
-		}
+		query, args := jsonEntryBatch(matched, migrated, viewer, now, filter, cursor, batchSize)
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return page, err
@@ -234,60 +209,6 @@ func listEntries(ctx context.Context, db rowsQueryer, viewer string, scopes []th
 		}
 		cursor = last
 	}
-}
-
-func boundedEntryBatch(scopes []feedMatch, migrated bool, viewer, now string, filter thinstore.EntryListFilter, cursor *string, limit int) (string, []any) {
-	// Small groups bound compound-select parser depth as subscription sets grow.
-	const groupSize = 32
-	branches := make([]string, 0, min(len(scopes), groupSize))
-	groups := make([]string, 0, (len(scopes)+groupSize-1)/groupSize)
-	var args []any
-	timestamp := thinstore.FeedTimestampSQL("ci.created_at")
-	for i, scope := range scopes {
-		sites, _ := json.Marshal(scope.Sites)
-		index := "idx_content_items_author_timestamp_uri"
-		sitePredicate := "(ci.publication_site IN (SELECT value FROM json_each(?)) OR ?)"
-		siteArgs := []any{string(sites), scope.Sites == nil}
-		if len(scope.Sites) == 1 {
-			index = "idx_content_items_author_site_timestamp_uri"
-			sitePredicate = "ci.publication_site=?"
-			siteArgs = []any{scope.Sites[0]}
-		}
-		// The author/time index permits each scope to stop after its own limit;
-		// the expiry index would instead scan and sort its complete live history.
-		branch := "SELECT ci.uri,ci.render_json,ci.created_at,? AS pub," + timestamp + " AS position," + readExpression + ` AS is_read
- FROM content_items ci INDEXED BY ` + index + `
- LEFT JOIN read_marks rm ON rm.viewer_did=? AND rm.subject_uri=ci.uri
- LEFT JOIN appview_unread_overrides uo ON uo.viewer_did=? AND uo.subject_uri=ci.uri
- LEFT JOIN appview_publication_read_floors floor ON floor.viewer_did=? AND floor.publication_id=?
- WHERE ci.author_did=? AND ` + sitePredicate + ` AND ci.expires_at>?`
-		args = append(args, scope.PublicationID, migrated, viewer, viewer, viewer, scope.PublicationID, scope.AuthorDID)
-		args = append(args, siteArgs...)
-		args = append(args, now)
-		if cursor != nil {
-			at, uri, _ := thinstore.DecodeCursor(*cursor)
-			branch += " AND (" + timestamp + ",ci.uri) < (?,?)"
-			args = append(args, at.UTC().Format("2006-01-02T15:04:05.000000000Z"), uri)
-		}
-		if filter == thinstore.FilterRead {
-			branch += " AND (" + readExpression + ")=1"
-			args = append(args, migrated)
-		} else if filter == thinstore.FilterUnread {
-			branch += " AND (" + readExpression + ")=0"
-			args = append(args, migrated)
-		}
-		branch += " ORDER BY position DESC,uri DESC LIMIT ?"
-		args = append(args, limit)
-		branches = append(branches, "SELECT * FROM ("+branch+")")
-		if len(branches) == groupSize || i == len(scopes)-1 {
-			group := "SELECT uri,render_json,created_at,pub,position,is_read FROM (" + strings.Join(branches, " UNION ALL ") + ") ORDER BY position DESC,uri DESC,pub ASC LIMIT ?"
-			groups = append(groups, "SELECT * FROM ("+group+")")
-			args = append(args, limit)
-			branches = branches[:0]
-		}
-	}
-	args = append(args, limit)
-	return "SELECT uri,render_json,created_at,pub,is_read FROM (" + strings.Join(groups, " UNION ALL ") + ") ORDER BY position DESC,uri DESC,pub ASC LIMIT ?", args
 }
 
 func readEntries(rows *sql.Rows, includePublication bool) ([]thinstore.EntryListItem, *string, int, error) {
@@ -361,9 +282,8 @@ func counts(ctx context.Context, db rowsQueryer, viewer string, scopes []thinsto
 	if err != nil {
 		return nil, err
 	}
-	query := readerCTEStart + "SELECT scopes.pub, " + readExpression + " AS is_read" + readerJoins +
-		") SELECT pub, COUNT(*) FROM candidates WHERE is_read = 0 GROUP BY pub"
-	rows, err := db.QueryContext(ctx, query, string(scopeJSON), migrated, viewer, viewer, viewer, thinstore.CursorTimestamp(time.Now()))
+	query, args := unreadCountsQuery(scopeJSON, migrated, viewer, thinstore.CursorTimestamp(time.Now()))
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
