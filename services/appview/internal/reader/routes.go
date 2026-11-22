@@ -185,11 +185,12 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 	var updated string
 	var projections bool
 	err := s.db.Read(ctx, func(tx *sql.Tx) error {
-		err := tx.QueryRowContext(ctx, `SELECT updated_at FROM appview_viewer_feeds
-			WHERE viewer_did=? AND feed_kind=? AND feed_id=?`, viewer, selector.Kind, selector.ID).Scan(&updated)
+		var scopeRows []thinstore.PublicationScope
+		var migrated bool
+		var err error
+		updated, scopeRows, migrated, err = feedSnapshot(ctx, tx, viewer, string(selector.Kind), selector.ID)
 		if errors.Is(err, sql.ErrNoRows) {
-			err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM appview_viewer_feeds WHERE viewer_did=?)", viewer).Scan(&projections)
-			if err != nil {
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM appview_viewer_feeds WHERE viewer_did=?)", viewer).Scan(&projections); err != nil {
 				return err
 			}
 			return sql.ErrNoRows
@@ -197,11 +198,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		scopeRows, err := scopes(ctx, tx, viewer, string(selector.Kind), selector.ID)
-		if err != nil {
-			return err
-		}
-		page, err = listEntries(ctx, tx, viewer, scopeRows, args.filter, args.cursor, args.limit, true)
+		page, err = listEntriesWithAuthority(ctx, tx, viewer, scopeRows, args.filter, args.cursor, args.limit, true, migrated)
 		return err
 	})
 	if errors.Is(err, sql.ErrNoRows) {

@@ -30,17 +30,28 @@ func (f rehearsalReadTransport) RoundTrip(request *http.Request) (*http.Response
 // token, not the production connector which must enable foreign-key enforcement
 // before any writes. No write fixture or migration can run through this pool.
 func TestLiveTursoImportedReaderAcceptance(t *testing.T) {
-	runImportedReaderAcceptance(t, false)
+	runImportedReaderAcceptance(t, false, "")
 }
 
 func TestLiveTursoImportedReaderPhaseProfile(t *testing.T) {
 	if os.Getenv("TSW_TURSO_REHEARSAL_PROFILE") != "1" {
 		t.Skip("set TSW_TURSO_REHEARSAL_PROFILE for diagnostic timing only")
 	}
-	runImportedReaderAcceptance(t, true)
+	runImportedReaderAcceptance(t, true, "")
 }
 
-func runImportedReaderAcceptance(t *testing.T, profile bool) {
+func TestLiveTursoImportedReaderCostProbe(t *testing.T) {
+	operation := os.Getenv("TSW_TURSO_REHEARSAL_COST_OPERATION")
+	if operation == "" {
+		t.Skip("set an explicit cost-probe operation for one isolated query bundle")
+	}
+	if operation != "feed" && operation != "counts" && operation != "read-age" {
+		t.Fatal("cost operation must be feed, counts or read-age")
+	}
+	runImportedReaderAcceptance(t, false, operation)
+}
+
+func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation string) {
 	t.Helper()
 	dir, snapshot := os.Getenv("TSW_TURSO_REHEARSAL_DIR"), os.Getenv("TSW_SQLITE_REHEARSAL_SNAPSHOT")
 	if dir == "" || snapshot == "" {
@@ -99,6 +110,51 @@ func runImportedReaderAcceptance(t *testing.T, profile bool) {
 	if err := remote.PingContext(ctx); err != nil {
 		fail("startup-equivalent connection warmup", err)
 	}
+	if costOperation != "" {
+		budgetDuration := 15 * time.Second
+		if costOperation == "feed" {
+			budgetDuration = 2 * time.Second
+		}
+		budget, stop := context.WithTimeout(ctx, budgetDuration)
+		defer stop()
+		started := time.Now()
+		tx, err := remote.BeginTx(budget, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			fail("cost-probe transaction", err)
+		}
+		defer tx.Rollback()
+		counter := &readerQueryCounter{Tx: tx}
+		var requested []thinstore.PublicationScope
+		var migrated bool
+		if costOperation == "feed" {
+			_, requested, migrated, err = feedSnapshot(budget, counter, viewer, kind, id)
+		} else {
+			requested, err = scopes(budget, counter, viewer, kind, id)
+		}
+		returned := 0
+		if err == nil {
+			switch costOperation {
+			case "feed":
+				var result thinstore.EntryListResponse
+				result, err = listEntriesWithAuthority(budget, counter, viewer, requested, thinstore.FilterAll, nil, 50, true, migrated)
+				returned = len(result.Entries)
+			case "counts":
+				var result map[string]int
+				result, err = counts(budget, counter, viewer, requested)
+				returned = len(result)
+			case "read-age":
+				err = forEachUnread(budget, counter, viewer, requested, func(string, time.Time) error { returned++; return nil })
+			}
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+		if err != nil {
+			fail("isolated "+costOperation+" query bundle", err)
+		}
+		t.Logf("operation=%s scopes=%d dataQueries=%d returned=%d elapsed=%s; fresh client connection; HTTP auth/startup/Cron excluded", costOperation, scopeCount, counter.count, returned, time.Since(started).Round(time.Millisecond))
+		return
+	}
 	if profile {
 		started := time.Now()
 		tx, err := remote.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -152,9 +208,9 @@ func runImportedReaderAcceptance(t *testing.T, profile bool) {
 					return result, err
 				}
 				defer tx.Rollback()
-				requested, err := scopes(ctx, tx, viewer, kind, id)
+				_, requested, migrated, err := feedSnapshot(ctx, tx, viewer, kind, id)
 				if err == nil {
-					result, err = listEntries(ctx, tx, viewer, requested, filter, cursor, 50, true)
+					result, err = listEntriesWithAuthority(ctx, tx, viewer, requested, filter, cursor, 50, true, migrated)
 				}
 				if err != nil {
 					return result, err
