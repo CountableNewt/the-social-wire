@@ -12,10 +12,10 @@ function files(directory: string): string[] {
 /** Expand the literal routes, constant prefixes, string loops and reader route
  * table used by the Go router. Unknown registration expressions fail closed so
  * changing the registration style cannot silently weaken drift coverage. */
-export function registeredGoRoutes(): Set<string> {
+export function registeredGoRoutes(includeSource: (path: string) => boolean = () => true): Set<string> {
   const routes = new Set<string>();
-  const sources = [...files(join(root, "services/appview/internal")), join(root, "services/appview/cmd/appview/router.go")];
-  for (const file of sources.filter(path => !path.includes("/internal/httpx/"))) {
+  const sources = files(join(root, "services/appview/internal"));
+  for (const file of sources.filter(path => !path.includes("/internal/httpx/") && includeSource(path))) {
     const source = readFileSync(file, "utf8").replace(/^\s*\/\/.*$/gm, "");
     const constants = new Map([...source.matchAll(/const\s+(\w+)\s*=\s*"([^"]+)"/g)].map(match => [match[1]!, match[2]!]));
     const evaluate = (expression: string, bindings = new Map<string, string>()): string => expression.split("+").map(part => {

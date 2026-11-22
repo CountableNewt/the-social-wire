@@ -43,7 +43,7 @@ func TestMetadataAndCORS(t *testing.T) {
 }
 
 func TestAdmissionReleasesPerViewerTransfer(t *testing.T) {
-	admission := NewAdmission(config.Core{})
+	admission := NewAdmission()
 	now := time.Now()
 	if !admission.acquire("owner", true, now) || !admission.acquire("owner", true, now) ||
 		admission.acquire("owner", true, now) || !admission.acquire("another", true, now) {

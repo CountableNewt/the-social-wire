@@ -4,6 +4,12 @@
   "entries": [
     {
       "surface": "openapi",
+      "method": "GET",
+      "path": "/internal/schedules/maintenance",
+      "classification": "operational"
+    },
+    {
+      "surface": "openapi",
       "method": "POST",
       "path": "/internal/jobs/scheduling",
       "classification": "operational"
@@ -206,12 +212,6 @@
       "path": "/v1/appview/feed",
       "classification": "xrpc-migration",
       "xrpcNsid": "app.thesocialwire.appview.getFeed"
-    },
-    {
-      "surface": "openapi",
-      "method": "GET",
-      "path": "/v1/subscription/entitlements",
-      "classification": "first-party-rest"
     },
     {
       "surface": "openapi",

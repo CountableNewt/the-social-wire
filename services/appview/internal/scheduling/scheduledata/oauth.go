@@ -22,12 +22,11 @@ type OAuthSession struct {
 }
 
 type Viewer struct {
-	DID                string  `json:"did"`
-	Handle             *string `json:"handle,omitempty"`
-	DisplayName        *string `json:"displayName,omitempty"`
-	Avatar             *string `json:"avatar,omitempty"`
-	DefaultAccountDID  string  `json:"defaultAccountDid,omitempty"`
-	ProFeaturesEnabled *bool   `json:"proFeaturesEnabled,omitempty"`
+	DID               string  `json:"did"`
+	Handle            *string `json:"handle,omitempty"`
+	DisplayName       *string `json:"displayName,omitempty"`
+	Avatar            *string `json:"avatar,omitempty"`
+	DefaultAccountDID string  `json:"defaultAccountDid,omitempty"`
 }
 
 func (s *Store) CreateOAuthState(ctx context.Context, state OAuthState) error {

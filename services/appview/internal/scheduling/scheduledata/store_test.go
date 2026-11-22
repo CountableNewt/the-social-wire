@@ -21,6 +21,8 @@ func TestExistingDatabaseMigrationPreservesOAuthAndLegacyQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = legacy.Exec(`
+		CREATE TABLE pro_entitlements(viewer_did TEXT PRIMARY KEY, status TEXT);
+		INSERT INTO pro_entitlements VALUES('did:plc:account','active');
 		CREATE TABLE oauth_sessions(did TEXT PRIMARY KEY,handle TEXT,token_json TEXT NOT NULL,dpop_key_json TEXT NOT NULL,updated_at TEXT NOT NULL);
 		INSERT INTO oauth_sessions VALUES('did:plc:account',NULL,'{"accessToken":"old"}','{"key":"secret"}','2026-01-01T00:00:00Z');
 		CREATE TABLE oauth_states(state TEXT PRIMARY KEY,handle TEXT NOT NULL,pkce_verifier TEXT NOT NULL,nonce TEXT NOT NULL,expires_at TEXT NOT NULL);
@@ -39,6 +41,10 @@ func TestExistingDatabaseMigrationPreservesOAuthAndLegacyQueue(t *testing.T) {
 	store, err := Open(ctx, path, "vault key", true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var retiredTables int
+	if err := store.db.Reader().QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='pro_entitlements'").Scan(&retiredTables); err != nil || retiredTables != 0 {
+		t.Fatalf("retired paid entitlement table remains: %v", err)
 	}
 	session, err := store.OAuthSession(ctx, "did:plc:account")
 	if err != nil || session == nil || session.TokenJSON != `{"accessToken":"old"}` || session.DPoPKeyJSON != `{"key":"secret"}` {

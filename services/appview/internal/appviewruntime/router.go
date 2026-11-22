@@ -1,4 +1,4 @@
-package main
+package appviewruntime
 
 import (
 	"context"
@@ -26,6 +26,7 @@ import (
 )
 
 type runtimeServices struct {
+	surface       Surface
 	db            *sqlitedb.DB
 	repo          *atproto.RepoClient
 	operations    operations.Configuration
@@ -57,27 +58,36 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 		checks.scheduling = services.scheduling.Ready
 	}
 	registerHealth(router, core, services.db, services.logger, checks)
-	edge.RegisterMetadata(router, core)
-	jobrunner.Register(router, services.maintenance, env.String("CRON_SECRET"))
+	if services.surface.includes(Reader) {
+		edge.RegisterMetadata(router, core)
+		registerReaderMetadata(router)
+	}
+	if services.surface.includes(Maintenance) {
+		jobrunner.Register(router, services.maintenance, env.String("CRON_SECRET"))
+	}
 
-	admission := edge.NewAdmission(core)
+	admission := edge.NewAdmission()
 	protected := router.Group(httpx.XRPCErrors(), verifier.Middleware, admission.Middleware)
-	edge.RegisterSubscriptions(protected, core)
-	edge.RegisterLatr(protected, env, services.repo.HTTPClient())
-	edge.RegisterGIF(protected, core, admission)
-	services.drafts.Register(protected)
-	articles.Register(protected, services.repo)
-	semble.Register(protected, env, services.repo)
-	syncapi.Register(protected, services.db, services.repo)
-	operations.RegisterClientPerformance(protected, services.telemetry, services.operations.Environment)
-
-	publicationsService := publications.New(services.db, services.repo)
-	readState := reader.Register(protected, services.db, publicationsService, services.enroll, services.readerOptions)
-	publications.Register(protected.Use(readState), publicationsService)
-	if services.analytics != nil {
+	if services.surface.includes(Integrations) {
+		edge.RegisterLatr(protected, env, services.repo.HTTPClient())
+		semble.Register(protected, env, services.repo)
+	}
+	if services.surface.includes(Publishing) {
+		edge.RegisterGIF(protected, core, admission)
+		services.drafts.Register(protected)
+		articles.Register(protected, services.repo)
+	}
+	if services.surface.includes(Reader) {
+		syncapi.Register(protected, services.db, services.repo)
+		operations.RegisterClientPerformance(protected, services.telemetry, services.operations.Environment)
+		publicationsService := publications.New(services.db, services.repo)
+		readState := reader.Register(protected, services.db, publicationsService, services.enroll, services.readerOptions)
+		publications.Register(protected.Use(readState), publicationsService)
+	}
+	if services.surface.includes(Analytics) && services.analytics != nil {
 		analytics.Register(protected, services.analytics, services.repo)
 	}
-	if services.scheduling != nil {
+	if services.surface.includes(Scheduling) && services.scheduling != nil {
 		services.scheduling.Register(router, protected)
 	}
 	return router, nil
@@ -94,14 +104,16 @@ func registerHealth(router *httpx.Router, core config.Core, db *sqlitedb.DB, log
 	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) error {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		if err := db.Ping(ctx); err != nil {
-			logger.Warn("AppView database readiness check failed")
-			return httpx.Status(http.StatusServiceUnavailable)
-		}
-		if core.DatabaseBackend == "turso" {
-			if err := verifyRuntimeSchemaMarker(ctx, db, checks.draftsEnabled); err != nil {
-				logger.Warn("AppView schema readiness check failed")
+		if db != nil {
+			if err := db.Ping(ctx); err != nil {
+				logger.Warn("AppView database readiness check failed")
 				return httpx.Status(http.StatusServiceUnavailable)
+			}
+			if core.DatabaseBackend == "turso" {
+				if err := verifyRuntimeSchemaMarker(ctx, db, checks.draftsEnabled); err != nil {
+					logger.Warn("AppView schema readiness check failed")
+					return httpx.Status(http.StatusServiceUnavailable)
+				}
 			}
 		}
 		if checks.scheduling != nil {
@@ -112,6 +124,9 @@ func registerHealth(router *httpx.Router, core config.Core, db *sqlitedb.DB, log
 		}
 		return healthStatus("ready")(w, r)
 	})
+}
+
+func registerReaderMetadata(router *httpx.Router) {
 	router.Get("/freshness", operations.FreshnessHandler("appview"))
 	router.Get("/xrpc/app.thesocialwire.teapot", func(w http.ResponseWriter, _ *http.Request) error {
 		return httpx.JSON(w, http.StatusTeapot, map[string]string{"error": "Teapot", "message": "I'm a teapot"})

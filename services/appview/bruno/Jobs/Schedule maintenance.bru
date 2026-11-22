@@ -1,0 +1,21 @@
+meta {
+  name: Consolidated Scheduled Maintenance
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{baseUrl}}/internal/schedules/maintenance
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{cronSecret}}
+}
+
+docs {
+  Dedicated scheduler secret; viewer and manual-job credentials are not accepted.
+  Runs enabled leased actions with durable limits for less frequent maintenance.
+  Publishing times are approximate. Use Development before Production.
+}

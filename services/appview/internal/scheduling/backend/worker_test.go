@@ -30,7 +30,7 @@ func TestSchedulePublishesArticleOnceAndCannotBeCanceled(t *testing.T) {
 		store: store, pds: pds{rpc: fixture.call, isNotFound: func(err error) bool { return err == errMissing }},
 		submissionSecret: sha256.Sum256([]byte("test-secret")), logger: slog.Default(),
 	}
-	future := time.Now().Add(30 * time.Minute)
+	future := time.Now().Add(30 * time.Minute).Truncate(15 * time.Minute)
 	stamp := scheduling.ScheduleTimestamp(future)
 	record := func() scheduling.Record {
 		return scheduling.Record{

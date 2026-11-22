@@ -119,6 +119,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, scheduleSchema); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS pro_entitlements"); err != nil {
+			return err
+		}
 		for _, migration := range []struct{ table, column, definition string }{
 			{"oauth_states", "auth_server", "TEXT"},
 			{"oauth_states", "token_endpoint", "TEXT"},
@@ -128,8 +131,6 @@ func (s *Store) Migrate(ctx context.Context) error {
 			{"oauth_states", "initiator_did", "TEXT"},
 			{"oauth_states", "invite_token", "TEXT"},
 			{"oauth_states", "return_to", "TEXT"},
-			{"pro_entitlements", "scope_type", "TEXT NOT NULL DEFAULT 'actor'"},
-			{"pro_entitlements", "scope_value", "TEXT"},
 			{"web_sessions", "display_name", "TEXT"},
 			{"web_sessions", "avatar", "TEXT"},
 			{"scheduled_jobs", "scheduled_at", "TEXT"},

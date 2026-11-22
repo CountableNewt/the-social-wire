@@ -4,13 +4,18 @@ set -euo pipefail
 # The standalone Go builder supplies this destination for its IPC server wrapper.
 : "${VERCEL_OUTPUT_FILE:?Vercel must provide the Go server output path}"
 
-# Build the whole package: main.go has sibling runtime and router source files.
-go build -trimpath -ldflags='-s -w' -o "$VERCEL_OUTPUT_FILE" ./cmd/appview
+# Accept only the fixed deployment surfaces, never a caller-supplied Go path.
+surface="${1:-}"
+case "$surface" in
+  reader|publishing|scheduling|analytics|integrations|maintenance) ;;
+  *) echo "A supported AppView surface is required." >&2; exit 1 ;;
+esac
+go build -trimpath -ldflags='-s -w' -o "$VERCEL_OUTPUT_FILE" "./cmd/$surface"
 
 # Services has no preDeployCommand. Explicit release initialization runs after
 # compilation and before activation, never on a Preview build. Preview stores
 # need their own explicit external initialization; serving only checks readiness.
-if [[ "${DEPLOY_SCHEMA_INITIALIZATION:-false}" != "true" ]]; then
+if [[ "$surface" != "maintenance" || "${DEPLOY_SCHEMA_INITIALIZATION:-false}" != "true" ]]; then
   exit 0
 fi
 if [[ "${VERCEL_ENV:-}" != "production" ]]; then

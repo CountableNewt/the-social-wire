@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CountableNewt/the-social-wire/services/appview/internal/config"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reqctx"
 )
@@ -18,17 +17,16 @@ type ownerAdmission struct {
 	active    int
 }
 
-// Admission bounds concurrent draft transfers and enforces tool entitlements.
+// Admission bounds concurrent draft transfers.
 type Admission struct {
-	core   config.Core
 	mu     sync.Mutex
 	owners map[string]ownerAdmission
 	active int
 }
 
 // NewAdmission creates the process-local standalone draft admission.
-func NewAdmission(core config.Core) *Admission {
-	return &Admission{core: core, owners: make(map[string]ownerAdmission)}
+func NewAdmission() *Admission {
+	return &Admission{owners: make(map[string]ownerAdmission)}
 }
 
 func (a *Admission) acquire(owner string, transfer bool, now time.Time) bool {
@@ -79,10 +77,6 @@ func (a *Admission) Middleware(next httpx.Handler) httpx.Handler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		did := reqctx.ViewerDID(r.Context())
 		path := r.URL.Path
-		if a.core.ProGatingEnabled && requiresPro(path) && !a.core.HasPro(did) {
-			w.Header().Set("Cache-Control", "private, no-store")
-			return httpx.JSON(w, http.StatusForbidden, map[string]string{"error": "ProRequired", "message": "A Pro subscription is required"})
-		}
 		if (!strings.HasPrefix(path, "/xrpc/app.thesocialwire.articleDraft.") &&
 			!strings.HasPrefix(path, "/xrpc/app.thesocialwire.socialDraft.")) || strings.HasSuffix(path, ".getGifFile") {
 			return next(w, r)
@@ -102,28 +96,4 @@ func (a *Admission) Middleware(next httpx.Handler) httpx.Handler {
 		}
 		return next(w, r)
 	}
-}
-
-func requiresPro(path string) bool {
-	switch path {
-	case "/v1/analytics/summary", "/v1/analytics/refresh", "/v1/analytics/bluesky", "/v1/analytics/publications":
-		return true
-	}
-	return strings.HasPrefix(path, "/xrpc/at.skej.")
-}
-
-// RegisterSubscriptions exposes the signed-in viewer's plan.
-func RegisterSubscriptions(group *httpx.Group, core config.Core) {
-	group.Get("/v1/subscription/entitlements", func(w http.ResponseWriter, r *http.Request) error {
-		w.Header().Set("Cache-Control", "private, no-store")
-		did := reqctx.ViewerDID(r.Context())
-		if did == "" {
-			return httpx.ErrUnauthorized
-		}
-		plan := "free"
-		if core.HasPro(did) {
-			plan = "pro"
-		}
-		return httpx.JSON(w, http.StatusOK, map[string]string{"viewerDid": did, "plan": plan})
-	})
 }
