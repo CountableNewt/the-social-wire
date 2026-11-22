@@ -43,7 +43,7 @@ func loadDatabase(env Env) (databaseConfiguration, error) {
 
 func databaseEndpoint(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "turso" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") || parsed.Opaque != "" {
+	if err != nil || (parsed.Scheme != "libsql" && parsed.Scheme != "turso" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") || parsed.Opaque != "" {
 		return "", errors.New("Turso database URLs must be bare TLS endpoints without credentials, query, path or fragment")
 	}
 	hostname := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
@@ -59,7 +59,7 @@ func databaseEndpoint(raw string) (string, error) {
 		parsed.Host = hostname
 	}
 	parsed.Path = ""
-	// turso:// and https:// identify the same HTTPS endpoint for this driver.
+	// libsql://, turso:// and https:// identify the same HTTPS endpoint for this driver.
 	parsed.Scheme = "https"
 	return parsed.String(), nil
 }

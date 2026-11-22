@@ -143,11 +143,12 @@ type tursoRoundTrip func(*http.Request) (*http.Response, error)
 func (f tursoRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *testing.T) {
-	for _, foreignKeys := range []string{"1", "0"} {
-		t.Run(foreignKeys, func(t *testing.T) {
+	for _, test := range []struct{ scheme, foreignKeys string }{{"turso", "1"}, {"libsql", "1"}, {"https", "1"}, {"libsql", "0"}} {
+		t.Run(test.scheme+"/"+test.foreignKeys, func(t *testing.T) {
+			foreignKeys := test.foreignKeys
 			var queries []string
 			client := &http.Client{Transport: tursoRoundTrip(func(r *http.Request) (*http.Response, error) {
-				if r.URL.Host != "database.turso.io" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer private-token" {
+				if r.URL.Scheme != "https" || r.URL.Host != "database.turso.io" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer private-token" {
 					t.Error("credential or origin mismatch")
 				}
 				var request struct {
@@ -194,7 +195,7 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 			})}
 			suppliedTransport := &tursoCustomTransport{RoundTripper: client.Transport}
 			client.Transport = suppliedTransport
-			db, err := openTurso(context.Background(), "turso://database.turso.io", "private-token", client)
+			db, err := openTurso(context.Background(), test.scheme+"://database.turso.io", "private-token", client)
 			if client.Transport != suppliedTransport || client.CheckRedirect != nil {
 				t.Fatal("caller-supplied HTTP client was mutated")
 			}
@@ -220,7 +221,7 @@ func TestOpenTursoUsesSinglePoolSeparateCredentialsAndVerifiedForeignKeys(t *tes
 }
 
 func TestTursoEndpointAndTransportFailClosed(t *testing.T) {
-	for _, endpoint := range []string{"http://database.turso.io", "https://user:token@database.turso.io", "https://database.turso.io?token=secret", "https://database.turso.io/path", "libsql://old.turso.io"} {
+	for _, endpoint := range []string{"http://database.turso.io", "https://user:token@database.turso.io", "https://database.turso.io?token=secret", "https://database.turso.io/path", "libsql://user:secret@database.turso.io", "libsql://database.turso.io?", "libsql://database.turso.io/path", "libsql:database.turso.io", "libsql://", "https://database.turso.io/#secret"} {
 		if db, err := OpenTurso(context.Background(), endpoint, "secret"); err == nil {
 			db.Close()
 			t.Fatalf("invalid endpoint accepted: %s", endpoint)
@@ -300,5 +301,35 @@ func TestExpiredRetainedSessionIsReplacedBeforeMutation(t *testing.T) {
 	}
 	if staleSQL != 0 || mutations != 1 || opened < 2 || db.Writer().Stats().MaxLifetimeClosed != 0 {
 		t.Fatalf("stale session reached SQL or mutation replayed: stale=%d mutations=%d opened=%d", staleSQL, mutations, opened)
+	}
+}
+
+func TestClassicLibSQLTransportRejectsRedirectsAndUnsafeTokens(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: tursoRoundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusTemporaryRedirect, Header: http.Header{"Location": []string{"https://other.turso.io/v3/pipeline"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+	})}
+	if db, err := openTurso(context.Background(), "libsql://database.turso.io", "private-token", client); err == nil {
+		db.Close()
+		t.Fatal("redirect accepted")
+	}
+	if calls != 1 {
+		t.Fatalf("credential-bearing redirect followed: %d requests", calls)
+	}
+	for _, token := range []string{"", "private secret", "private\tsecret", "private\nsecret"} {
+		called := false
+		rejecting := &http.Client{Transport: tursoRoundTrip(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected network call")
+		})}
+		db, err := openTurso(context.Background(), "libsql://database.turso.io", token, rejecting)
+		if err == nil {
+			db.Close()
+			t.Fatal("invalid token accepted")
+		}
+		if called || strings.Contains(err.Error(), "secret") {
+			t.Fatal("invalid credential sent or disclosed")
+		}
 	}
 }

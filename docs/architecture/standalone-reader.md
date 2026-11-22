@@ -34,12 +34,12 @@ Scheduling is always enabled. Preserve the exact existing `SCHEDULING_STORAGE_KE
 
 ## Turso Stores and Initialization
 
-The selected remote engine is the newer Turso Database engine with the official pure-Go `turso.tech/database/tursogo-serverless` driver, replacing #963's original classic-libSQL target. Development and Production each have distinct AppView and scheduling databases in the United States. Supply both server-only endpoint/token pairs:
+The selected migration target is Turso classic libSQL, using the existing official pure-Go HTTP `turso.tech/database/tursogo-serverless` driver. This replaces the earlier newer-engine choice in #963; source support alone does not prove a hosted classic-libSQL cutover. Development and Production each have distinct AppView and scheduling databases in the United States. Supply both server-only endpoint/token pairs:
 
 - `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
 - `SCHEDULING_TURSO_DATABASE_URL` and `SCHEDULING_TURSO_AUTH_TOKEN`.
 
-Use bare TLS `turso://` or `https://` endpoints without embedded credentials, query strings or fragments. Partial remote configuration fails and never falls back to an ephemeral local SQLite file. Remote sessions enforce foreign keys, immediate write transactions and described read-only statements. Unknown mutation/commit outcomes are not automatically replayed. Schema checks reject residual private timestamp extensions; stored integer microseconds preserve timestamp portability while API strings and cursor precision remain unchanged.
+Keep `DATABASE_BACKEND=turso`; there is no separate engine flag or native/CGO client. Use bare TLS `libsql://`, `turso://` or `https://` endpoints without embedded credentials, query strings or fragments. All three URL schemes normalize to the configured HTTPS origin; credential-bearing requests cannot redirect or cross origins. Partial remote configuration fails and never falls back to an ephemeral local SQLite file. Remote sessions enforce foreign keys, immediate write transactions and described read-only statements. Unknown mutation/commit outcomes are not automatically replayed. Schema checks reject residual private timestamp extensions; stored integer microseconds preserve timestamp portability while API strings and cursor precision remain unchanged.
 
 Remote serving verifies schema markers and encrypted-vault compatibility only; it never applies startup DDL. Run `AppView --initialize-only` explicitly against the intended two stores before serving. Complete plaintext scheduling-vault migration and secure cleanup locally before import, preserving its encryption key.
 
@@ -49,6 +49,8 @@ The optional build initialization guard remains restrictive. Only a maintenance 
 
 Use a maintenance window for store import/schema changes and never run old/new writers together. Check engine compatibility, shared-store leases, authenticated reader/draft/scheduling behavior and recovery in Development before promoting the same source to Production. Health probes alone are not acceptance.
 
+For a serverless cutover, scope `MIGRATION_MAINTENANCE_MODE=true` to only the intended deployment environment. It returns uncached 503 responses before any database, storage or worker initialization, including for health checks and GET jobs. Disable that environment's schedule and drain prior invocations before exporting; the flag does not stop already-running or historical deployments. Initialization commands are rejected while this flag is enabled. Restore its default `false` only after verifying the destination stores.
+
 ## Maintenance and Scheduling
 
 All eight actions use durable leases and bounded runs. Manual `POST /internal/jobs/<name>` requires server-only `JOBS_SECRET`. The consolidated `GET /internal/schedules/maintenance` dispatcher and retained `GET /internal/cron/<name>` adapters require a different `CRON_SECRET`. Use distinct random secrets of 32–512 non-whitespace characters. Viewer credentials authorize neither path; never put job credentials in query strings.
@@ -56,7 +58,7 @@ All eight actions use durable leases and bounded runs. Manual `POST /internal/jo
 | Action | Durable cadence | Maximum run |
 | --- | --- | --- |
 | `scheduling` | Each dispatcher window | 150 seconds |
-| `drafts-cleanup` | 15 minutes | 45 seconds |
+| `drafts-cleanup` | Each dispatcher window | 45 seconds |
 | `discovery` | Each dispatcher window | 30 seconds |
 | `ttl-cleanup` | 1 hour | 45 seconds, bounded batches |
 | `rss-poll` | 30 minutes | 90 seconds |
