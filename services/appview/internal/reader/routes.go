@@ -178,7 +178,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 		return invalidFeed(w, r, validation)
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := readerQueryContext(r.Context(), s.db.IsRemote())
 	defer cancel()
 	viewer := reqctx.ViewerDID(ctx)
 	var page thinstore.EntryListResponse
@@ -254,7 +254,7 @@ func (s *service) entries(w http.ResponseWriter, r *http.Request) error {
 	if validation != "" {
 		return invalidFeed(w, r, validation)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := readerQueryContext(r.Context(), s.db.IsRemote())
 	defer cancel()
 	viewer := reqctx.ViewerDID(ctx)
 	limit := args.limit
