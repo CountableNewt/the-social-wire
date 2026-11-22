@@ -25,17 +25,10 @@ import {
 } from "@/lib/feedCacheMerge";
 import {
   getEntryFromAppView,
-  isThinAppViewEnabled,
   listAggregateFeedFromAppView,
   shouldRetryAppViewRequest,
   type AggregateAppViewFeed,
 } from "@/lib/thinAppViewClient";
-import {
-  dummyEntriesForAggregateFeed,
-  dummyEntriesForPublication,
-  dummyEntryDetail,
-  isDummyReaderDataEnabled,
-} from "@/lib/dummyReaderData";
 import { recordClientPerformance } from "@/lib/clientPerformanceTelemetry";
 import { useAuth } from "./useAuth";
 import { coalesceFeedFirstPage, getFeedRefreshRevision, readFeedRefreshRevision } from "@/lib/feedRefreshCoordinator";
@@ -104,11 +97,6 @@ export async function fetchEntriesInfinitePage(args: {
   } = args;
 
   if (!normalizedKey) return { entries: [], cursor: undefined };
-
-  if (!isThinAppViewEnabled()) {
-    throw new Error("Thin AppView is required for entry lists");
-  }
-
   void viewerDid;
   void args.queryClient;
   void maxEntries;
@@ -341,7 +329,6 @@ export function useEntries(
 ) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
   const queryClient = useQueryClient();
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const normalizedKey = publicationKey ? normalizeAtRepoParam(publicationKey) : null;
   const viewerDid = session?.did ?? "";
   const entriesQueryKey = useMemo(
@@ -364,12 +351,6 @@ export function useEntries(
     queryKey: entriesQueryKey,
     queryFn: async ({ pageParam, signal }) => {
       if (!normalizedKey) return { entries: [], cursor: undefined };
-      if (dummyReaderDataEnabled) {
-        return {
-          entries: dummyEntriesForPublication(normalizedKey),
-          cursor: undefined,
-        };
-      }
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       const fetchPage = () => fetchEntriesInfinitePage({
@@ -387,18 +368,6 @@ export function useEntries(
       return page;
     },
     initialPageParam: undefined as string | undefined,
-    initialData:
-      dummyReaderDataEnabled && normalizedKey
-        ? {
-            pages: [
-              {
-                entries: dummyEntriesForPublication(normalizedKey),
-                cursor: undefined,
-              },
-            ],
-            pageParams: [undefined],
-          }
-        : undefined,
     placeholderData:
       articleFilter === "unread"
         ? () =>
@@ -441,7 +410,6 @@ export function useEntries(
 
   useEffect(() => {
     if (
-      dummyReaderDataEnabled ||
       !query.isSuccess ||
       query.isPlaceholderData ||
       !normalizedKey ||
@@ -469,7 +437,6 @@ export function useEntries(
     }).catch(() => undefined);
   }, [
     getOAuthSession,
-    dummyReaderDataEnabled,
     normalizedKey,
     paintKey,
     query.isFetchedAfterMount,
@@ -502,7 +469,7 @@ export function useEntries(
     queryKey: entriesQueryKey,
     feed: publicationFeed,
     articleFilter,
-    enabled: !dummyReaderDataEnabled && !!session && !!normalizedKey,
+    enabled: !!session && !!normalizedKey,
     hasData: !!query.data?.pages.length && !query.isPlaceholderData,
     isFetchedAfterMount: query.isFetchedAfterMount,
     oauthSessionReloadSeq,
@@ -545,7 +512,6 @@ export function useAggregateFeedEntries(
   canBackgroundRefresh?: () => boolean,
 ) {
   const { session, getOAuthSession, oauthSessionReloadSeq } = useAuth();
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const viewerDid = session?.did ?? "";
   const queryClient = useQueryClient();
   const feedKind = feed?.kind ?? "";
@@ -566,12 +532,6 @@ export function useAggregateFeedEntries(
     queryKey: aggregateQueryKey,
     queryFn: async ({ pageParam, signal }) => {
       if (!feed) return { entries: [], cursor: undefined };
-      if (dummyReaderDataEnabled) {
-        return {
-          entries: dummyEntriesForAggregateFeed(feed),
-          cursor: undefined,
-        };
-      }
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
       const fetchPage = () => listAggregateFeedFromAppView({
@@ -600,18 +560,6 @@ export function useAggregateFeedEntries(
       return page;
     },
     initialPageParam: undefined as string | undefined,
-    initialData:
-      dummyReaderDataEnabled && feed
-        ? {
-            pages: [
-              {
-                entries: dummyEntriesForAggregateFeed(feed),
-                cursor: undefined,
-              },
-            ],
-            pageParams: [undefined],
-          }
-        : undefined,
     placeholderData:
       articleFilter === "unread" && feed
         ? () =>
@@ -638,7 +586,6 @@ export function useAggregateFeedEntries(
 
   useEffect(() => {
     if (
-      dummyReaderDataEnabled ||
       !query.isSuccess ||
       query.isPlaceholderData ||
       !feed ||
@@ -666,7 +613,6 @@ export function useAggregateFeedEntries(
   }, [
     feed,
     getOAuthSession,
-    dummyReaderDataEnabled,
     paintKey,
     query.isFetchedAfterMount,
     query.isPlaceholderData,
@@ -698,7 +644,7 @@ export function useAggregateFeedEntries(
     queryKey: aggregateQueryKey,
     feed: refreshFeed,
     articleFilter,
-    enabled: !dummyReaderDataEnabled && !!session && !!feed,
+    enabled: !!session && !!feed,
     hasData: !!query.data?.pages.length && !query.isPlaceholderData,
     isFetchedAfterMount: query.isFetchedAfterMount,
     oauthSessionReloadSeq,
@@ -733,7 +679,7 @@ export function useAggregateFeedEntries(
   ]);
 
   useVisibleFeedRefresh(
-    !dummyReaderDataEnabled && viewerDid && feedKind && query.data?.pages.length && !query.isPlaceholderData
+    viewerDid && feedKind && query.data?.pages.length && !query.isPlaceholderData
       ? JSON.stringify([paintKey, oauthSessionReloadSeq]) : null,
     refreshInBackground,
   );
@@ -745,21 +691,14 @@ export function useAggregateFeedEntries(
  */
 export function useEntry(entryId: string | null) {
   const { session, getOAuthSession } = useAuth();
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const normalizedId = entryId ? normalizeAtRepoParam(entryId) : null;
 
   return useQuery({
     queryKey: ENTRY_DETAIL_QUERY_KEY(normalizedId ?? ""),
     queryFn: async ({ signal }) => {
       if (!normalizedId) return null;
-      if (dummyReaderDataEnabled) {
-        return dummyEntryDetail(normalizedId);
-      }
       const oauth = getOAuthSession();
       if (!oauth) throw new Error("OAuth session required");
-      if (!isThinAppViewEnabled()) {
-        throw new Error("Thin AppView is required for entry detail");
-      }
       const appViewEntry = await getEntryFromAppView(oauth, normalizedId, signal);
       if (
         appViewEntry &&

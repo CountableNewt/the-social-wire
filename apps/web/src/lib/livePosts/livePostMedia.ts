@@ -3,7 +3,7 @@ import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { getAtprotoNetwork } from "@/lib/atprotoNetwork";
 import { createOAuthAgent } from "@/lib/atprotoClient";
 import { composeExternalEmbed, composeLinkUrl, publicLinkUrl, type ComposeLinkPreview } from "@/lib/blueskyExternalEmbed";
-import { validateBlueskyClipVideo } from "@/lib/podcasts/blueskyClipPublisher";
+import { validateBlueskyVideo } from "@/lib/blueskyVideoUpload";
 import type { ArticleBlob } from "@/lib/articles/articlePublishingTypes";
 
 export type LiveUpdateAttachmentsDraft = {
@@ -86,7 +86,7 @@ async function pause(signal?: AbortSignal) {
 async function prepareVideo(args: PrepareArgs, file: Blob): Promise<ArticleBlob> {
   const network = getAtprotoNetwork();
   if (network.plcDirectory !== "https://plc.directory" || network.publicAppView !== "https://public.api.bsky.app" || network.appViewDid !== "did:web:api.bsky.app") throw new Error("Bluesky video publishing is unavailable in the isolated local sandbox.");
-  await validateBlueskyClipVideo(file); guard(args);
+  await validateBlueskyVideo(file); guard(args);
   const jobs = videoJobs.get(file) ?? new Map<string, VideoJob>(); videoJobs.set(file, jobs);
   let job = jobs.get(args.session.did);
   if (!job) {

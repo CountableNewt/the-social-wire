@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { AppBskyEmbedVideo, BlobRef } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
-import { forgetBlueskyVideo, uploadBlueskyVideo } from "@/lib/blueskyVideoUpload";
+import { forgetBlueskyVideo, uploadBlueskyVideo, validateBlueskyVideo } from "@/lib/blueskyVideoUpload";
 
 const cid = "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku";
-function video(): Blob {
+function video(seconds = 20): Blob {
   const box = (name: string, data: Uint8Array) => {
     const bytes = new Uint8Array(data.length + 8);
     new DataView(bytes.buffer).setUint32(0, bytes.length);
     bytes.set(new TextEncoder().encode(name), 4); bytes.set(data, 8); return bytes;
   };
   const timing = new Uint8Array(20), view = new DataView(timing.buffer);
-  view.setUint32(12, 1000); view.setUint32(16, 20_000);
+  view.setUint32(12, 1000); view.setUint32(16, seconds * 1000);
   return new Blob([box("ftyp", new Uint8Array(8)), box("moov", box("mvhd", timing))], { type: "video/mp4" });
 }
 function setup(options: {
@@ -64,6 +64,13 @@ beforeEach(() => { process.env.NEXT_PUBLIC_APP_ENV = "prod"; });
 afterEach(() => { if (oldEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = oldEnv; });
 
 describe("shared Bluesky video upload", () => {
+  it("validates actual MP4 duration and rejects overlong, malformed, wrong MIME videos", async () => {
+    const tooLarge = video(); Object.defineProperty(tooLarge, "size", { value: 300_000_001 });
+    await expect(validateBlueskyVideo(tooLarge)).rejects.toThrow("300 MB");
+    await validateBlueskyVideo(video(600)); await expect(validateBlueskyVideo(video(601))).rejects.toThrow("10 minutes");
+    await expect(validateBlueskyVideo(new Blob(["fake video"], { type: "video/mp4" }))).rejects.toThrow();
+    await expect(validateBlueskyVideo(new Blob([video()], { type: "video/webm" }))).rejects.toThrow(); await expect(validateBlueskyVideo(video(0))).rejects.toThrow();
+  });
   it("returns a valid SDK video blob without creating a post and reuses it after publication failure", async () => {
     const s = setup(), key = crypto.randomUUID();
     try {

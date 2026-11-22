@@ -2,7 +2,6 @@ import Foundation
 
 /// Top-level list bucket on the reader's Lists pane.
 enum ReaderListSource: String, CaseIterable, Codable, Identifiable, Hashable {
-    case wire = "The Wire"
     case readLater = "Read Later"
     case archive = "Archive"
     case subscribed = "Subscribed"
@@ -12,7 +11,6 @@ enum ReaderListSource: String, CaseIterable, Codable, Identifiable, Hashable {
 
     var preferenceKey: String {
         switch self {
-        case .wire: "wire"
         case .readLater: "readLater"
         case .archive: "archive"
         case .subscribed: "subscribed"
@@ -22,7 +20,6 @@ enum ReaderListSource: String, CaseIterable, Codable, Identifiable, Hashable {
 
     init?(preferenceKey: String) {
         switch preferenceKey {
-        case "wire": self = .wire
         case "readLater": self = .readLater
         case "archive": self = .archive
         case "subscribed": self = .subscribed
@@ -33,7 +30,6 @@ enum ReaderListSource: String, CaseIterable, Codable, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
-        case .wire: "dot.radiowaves.left.and.right"
         case .readLater: "bookmark"
         case .archive: "archivebox"
         case .subscribed: "tray.full"
@@ -43,24 +39,17 @@ enum ReaderListSource: String, CaseIterable, Codable, Identifiable, Hashable {
 
     var supportsReadState: Bool {
         switch self {
-        case .wire, .readLater, .archive: false
+        case .readLater, .archive: false
         case .subscribed, .following: true
         }
     }
 
-    var navigationSubtitle: String? {
-        self == .wire ? "Important stories across the social web" : nil
-    }
-
-    /// The legacy feed arrays retain their original values; discovery feed visibility
-    /// uses the separate showWire and showCircle preferences.
     static let preferenceCases: [ReaderListSource] = [
         .readLater, .archive, .subscribed, .following,
     ]
 
     var supportsMarkAllReadContextMenu: Bool {
         switch self {
-        case .wire: false
         case .subscribed, .following: true
         case .readLater, .archive: false
         }

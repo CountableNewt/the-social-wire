@@ -1,6 +1,6 @@
 # Operations Runbooks
 
-These are the canonical operator procedures rendered by `apps/operations`. Use the Development environment first and preserve request, trace, command, and idempotency IDs in incident notes. Operator notes are optional; the control plane always records actor, environment, before/after state, and outcome.
+These operator procedures retain recovery and incident guidance. The Operations Web console was retired in #963. Use the Development environment first and preserve request, trace, command, and idempotency IDs in incident notes. Operator notes are optional; the control plane always records actor, environment, before/after state, and outcome.
 
 1. [Tap Shadowing and Verified Cutover (retired history)](./tap-shadow-and-cutover.md)
 2. [Jetstream V2 Durable Replay](./jetstream-v2-durable-replay.md)

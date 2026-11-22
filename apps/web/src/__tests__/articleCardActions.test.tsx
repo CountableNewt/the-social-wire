@@ -32,13 +32,12 @@ let reloadSeq = 0;
 const action = mock((entryId?: string) => { void entryId; });
 let controller: ReturnType<typeof spyOn>;
 const restores: (() => void)[] = [];
-function TestController({ entry, showWireFeedback, menuContentOnly }: { entry: EntryDetail | null; showWireFeedback?: boolean; menuContentOnly?: boolean }) {
+function TestController({ entry, menuContentOnly }: { entry: EntryDetail | null; menuContentOnly?: boolean }) {
   const [dialog, setDialog] = useState(false);
   return <>
     <DropdownMenuContent align="end">
       <DropdownMenuItem onClick={() => action(entry?.entryId)}>Save {entry?.title}</DropdownMenuItem>
       <DropdownMenuItem onClick={() => setDialog(true)}>Post</DropdownMenuItem>
-      {showWireFeedback ? <DropdownMenuItem>Wire Feedback</DropdownMenuItem> : null}
     </DropdownMenuContent>
     {dialog ? <div role="dialog"><span>Post {entry?.title}</span><button onClick={() => setDialog(false)}>Close Composer</button></div> : null}
     {!menuContentOnly ? <span>Unexpected Nested Trigger</span> : null}
@@ -87,16 +86,13 @@ describe("article card actions", () => {
     );
     const entry: EntryListItem = {
       entryId: "at://did:plc:author/app.bsky.feed.post/article",
-      title: "Wire Article",
+      title: "Linked Article",
       publishedAt: "2026-08-22T00:00:00.000Z",
       originalUrl: "https://example.com/article",
     };
-    const { rerender } = render(<EntryCardActionMenu entry={entry} />);
+    render(<EntryCardActionMenu entry={entry} />);
     fireEvent.click(screen.getByRole("button", { name: "Article Actions" }));
     await screen.findByRole("menuitem", { name: `Save ${entry.title}` });
-    expect(screen.queryByRole("menuitem", { name: "Wire Feedback" })).toBeNull();
-    rerender(<EntryCardActionMenu entry={entry} showWireFeedback />);
-    expect(screen.getByRole("menuitem", { name: "Wire Feedback" })).toBeTruthy();
   });
 
   it("opens on the first keyboard activation without navigating the card", async () => {

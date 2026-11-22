@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # Go indexing worker test plan
 
 **Runtime:** `services/indexing-worker`, `packages/go/appviewworkercore`, `packages/go/wireworkercore`
@@ -26,7 +28,7 @@ Tests retain render extraction, SQLite/Postgres indexing, RSS parser/identity, c
 
 ## Live acceptance
 
-After exact-head CI and the exact Development deployment, verify both lane readiness, Coordinator ownership/standby, durable content projection and authenticated podcast behavior. Use existing Gateway/AppView Bruno requests and the retained worker verification collection. A healthy listener alone is insufficient. Production promotion and rollback remain separate release actions.
+After exact-head CI and the exact Development deployment, verify both lane readiness, Coordinator ownership/standby, durable content projection and authenticated reader behavior. Use existing Gateway/AppView Bruno requests and the retained worker verification collection. A healthy listener alone is insufficient. Production promotion and rollback remain separate release actions.
 
 - [AppView test plan](./appview.md)
 - [Thin AppView architecture](../architecture/appview.md)

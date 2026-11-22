@@ -29,13 +29,18 @@ export function verifyRequiredChecks(environment) {
       throw new Error(`${name} ${required ? 'must pass when its paths change' : 'must pass or be skipped when unchanged'} (got ${result ?? 'missing'}).`);
     }
   }
+  const appleRequired = booleanOutput(environment, 'APPLE_FLAG');
+  const appleResult = environment.APPLE_RESULT;
+  if (appleResult === 'success') outcomes.apple = 'passed';
+  else if (!appleRequired && appleResult === 'skipped') outcomes.apple = 'not-required';
+  else throw new Error(`Apple ${appleRequired ? 'must pass when its paths change' : 'must pass or be skipped when unchanged'} (got ${appleResult ?? 'missing'}).`);
   return outcomes;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const outcomes = verifyRequiredChecks(process.env);
-    console.log(`Required checks verified: Web ${outcomes.web}; SQLite AppView ${outcomes.appview}.`);
+    console.log(`Required checks verified: Web ${outcomes.web}; SQLite AppView ${outcomes.appview}; Apple ${outcomes.apple}.`);
   } catch (error) {
     console.error(`Required checks failed: ${error.message}`);
     process.exitCode = 1;

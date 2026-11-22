@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, it, mock, spyOn } from "bun:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EntryList } from "@/components/EntryList/EntryList";
 import * as Entries from "@/hooks/useEntries";
-import * as Wire from "@/hooks/useWireFeed";
 import * as Refresh from "@/hooks/useProactiveFeedRefresh";
 import * as Sidebar from "@/contexts/PublicationSidebarContext";
 
@@ -22,10 +21,9 @@ beforeEach(() => {
   };
   const entries = spyOn(Entries, "useEntries").mockImplementation(() => ({ ...query, scopePending: false }) as unknown as ReturnType<typeof Entries.useEntries>);
   const aggregate = spyOn(Entries, "useAggregateFeedEntries").mockImplementation(() => query as unknown as ReturnType<typeof Entries.useAggregateFeedEntries>);
-  const wire = spyOn(Wire, "useWireFeedEntries").mockReturnValue({ catalog: {} } as ReturnType<typeof Wire.useWireFeedEntries>);
   const refresh = spyOn(Refresh, "useProactiveFeedRefresh").mockImplementation(() => {});
   const sidebar = spyOn(Sidebar, "useSidebarProjection").mockReturnValue({ allPublicationRows: [] } as unknown as ReturnType<typeof Sidebar.useSidebarProjection>);
-  restores.push(() => entries.mockRestore(), () => aggregate.mockRestore(), () => wire.mockRestore(), () => refresh.mockRestore(), () => sidebar.mockRestore());
+  restores.push(() => entries.mockRestore(), () => aggregate.mockRestore(), () => refresh.mockRestore(), () => sidebar.mockRestore());
 });
 afterEach(() => { cleanup(); restores.splice(0).forEach(restore => restore()); });
 

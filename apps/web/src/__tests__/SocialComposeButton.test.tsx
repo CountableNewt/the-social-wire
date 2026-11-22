@@ -102,9 +102,9 @@ async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Compose Post" }));
   return await loadedField();
 }
-it.each([false, true])("keeps disabled Production tools out of composition while preserving ordinary posting (paid: %s)", async paid => {
-  const previousTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
-  process.env.NEXT_PUBLIC_TOOLS_ENABLED = "false";
+it.each([false, true])("keeps personal posting available with Delegated Accounts and scheduling disabled (paid: %s)", async paid => {
+  const previousBrands = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+  process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = "false";
   process.env.NEXT_PUBLIC_ENABLE_POST_SCHEDULING = "false";
   isPro = paid;
   const publish = spyOn(compose, "createBlueskyPost").mockResolvedValue({ uri: "at://did:plc:viewer/app.bsky.feed.post/released", cid: "cid" }); restores.push(() => publish.mockRestore());
@@ -119,8 +119,8 @@ it.each([false, true])("keeps disabled Production tools out of composition while
     expect(publish).toHaveBeenCalledTimes(1);
     expect(profiles.getBrandAccountPublicProfile).not.toHaveBeenCalled();
   } finally {
-    if (previousTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED;
-    else process.env.NEXT_PUBLIC_TOOLS_ENABLED = previousTools;
+    if (previousBrands === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
+    else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrands;
   }
 });
 it("keeps immediate posting available without scheduling controls when the flag is off", async () => {

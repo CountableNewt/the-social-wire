@@ -25,7 +25,6 @@ var (
 	ErrInvalidBackendMode          = errors.New("BACKEND_MODE must be standalone")
 	ErrMissingPersistentSQLitePath = errors.New("SQLITE_DB_PATH must be an absolute path outside local development")
 	ErrMissingAttestationSecret    = errors.New("PDS_ATTESTATION_RECEIPT_SECRET is required")
-	ErrRetiredIngestionEnabled     = errors.New("retired Wire, Circle, Finance, Sports, and global ingestion must stay disabled")
 )
 
 // OAuthGatewayPolicy binds JWT access tokens from registered OAuth clients.
@@ -38,15 +37,19 @@ type OAuthGatewayPolicy struct {
 // Core is the configuration shared by every module (GatewayConfig plus the
 // standalone edge settings).
 type Core struct {
-	AppEnv     AppEnvironment
-	PLCURL     string
-	ListenHost string
-	ListenPort int
-	SQLitePath string
+	AppEnv                     AppEnvironment
+	PLCURL                     string
+	ListenHost                 string
+	ListenPort                 int
+	SQLitePath                 string
+	DatabaseBackend            string
+	TursoDatabaseURL           string
+	TursoAuthToken             string
+	SchedulingTursoDatabaseURL string
+	SchedulingTursoAuthToken   string
 
 	OAuthPublicOrigin            string
 	OAuthIOSMetadataOrigin       string
-	OAuthOperationsOrigin        string
 	OAuthGateway                 OAuthGatewayPolicy
 	SupplementalJWKSJSON         string
 	GatewayAppViewInternalSecret string
@@ -58,11 +61,7 @@ type Core struct {
 	ProGatingEnabled bool
 	ProDIDs          map[string]struct{}
 
-	PodcastsEnabled       bool
-	PodcastMediaWorkerURL string
-	PodcastMediaSecret    string
-	ToolsEnabled          bool
-	KlipyAPIKey           string
+	KlipyAPIKey string
 }
 
 // HasPro reports whether did holds a Pro entitlement.
@@ -95,33 +94,22 @@ func LoadCore(env Env) (Core, error) {
 	if mode := env.StringOr("BACKEND_MODE", "standalone"); mode != "standalone" {
 		return Core{}, ErrInvalidBackendMode
 	}
+	database, err := loadDatabase(env)
+	if err != nil {
+		return Core{}, err
+	}
 	path := env.String("SQLITE_DB_PATH")
-	if path == "" && appEnv == Local {
+	if database.backend == "sqlite" && path == "" && appEnv == Local {
 		path = "./social-wire-appview.sqlite"
 	}
-	if path == "" || (appEnv != Local && !strings.HasPrefix(path, "/")) {
+	if database.backend == "sqlite" && (path == "" || (appEnv != Local && !strings.HasPrefix(path, "/"))) {
 		return Core{}, ErrMissingPersistentSQLitePath
 	}
 	secret := env.String("PDS_ATTESTATION_RECEIPT_SECRET")
 	if secret == "" {
 		return Core{}, ErrMissingAttestationSecret
 	}
-	for _, key := range []string{"WIRE_FEED_MODE", "CIRCLE_FEED_MODE", "FINANCE_FEED_MODE", "SPORTS_FEED_MODE"} {
-		if mode := strings.ToLower(env.String(key)); mode == "api" || mode == "visible" {
-			return Core{}, ErrRetiredIngestionEnabled
-		}
-	}
-	if env.True("GLOBAL_INGESTION_ENABLED") {
-		return Core{}, ErrRetiredIngestionEnabled
-	}
 	clients := env.Tokens("OAUTH_GATEWAY_ALLOWED_CLIENT_IDS")
-	if operations, ok := env.Optional("OAUTH_OPERATIONS_CLIENT_ID"); ok {
-		clients[operations] = struct{}{}
-	}
-	tools := appEnv != Prod
-	if raw, ok := env.Optional("TOOLS_ENABLED"); ok {
-		tools = strings.ToLower(raw) == "true"
-	}
 	klipy := env.String("KLIPY_API_KEY")
 	if klipy == "" {
 		klipy = env.String("KLIPPY_API_KEY")
@@ -132,9 +120,13 @@ func LoadCore(env Env) (Core, error) {
 		ListenHost:                   env.StringOr("BIND_HOST", "::"),
 		ListenPort:                   port,
 		SQLitePath:                   path,
+		DatabaseBackend:              database.backend,
+		TursoDatabaseURL:             database.appURL,
+		TursoAuthToken:               database.appToken,
+		SchedulingTursoDatabaseURL:   database.schedulingURL,
+		SchedulingTursoAuthToken:     database.schedulingToken,
 		OAuthPublicOrigin:            env.String("OAUTH_PUBLIC_ORIGIN"),
 		OAuthIOSMetadataOrigin:       env.String("OAUTH_IOS_METADATA_ORIGIN"),
-		OAuthOperationsOrigin:        env.String("OAUTH_OPERATIONS_ORIGIN"),
 		OAuthGateway:                 OAuthGatewayPolicy{AllowedClientIDs: clients, AllowedAudiences: env.Tokens("OAUTH_GATEWAY_ALLOWED_AUDIENCES"), RequireKnownClient: env.Truthy("OAUTH_GATEWAY_REQUIRE_KNOWN_CLIENT")},
 		SupplementalJWKSJSON:         env.String("OAUTH_ACCESS_TOKEN_SUPPLEMENTAL_JWKS_JSON"),
 		GatewayAppViewInternalSecret: env.String("GATEWAY_APPVIEW_INTERNAL_SECRET"),
@@ -142,10 +134,6 @@ func LoadCore(env Env) (Core, error) {
 		AttestationReceiptSecret:     secret,
 		ProGatingEnabled:             env.True("SOCIALWIRE_PRO_GATING_ENABLED"),
 		ProDIDs:                      env.Tokens("SOCIALWIRE_PRO_DIDS"),
-		PodcastsEnabled:              env.True("PODCASTS_ENABLED"),
-		PodcastMediaWorkerURL:        env.String("PODCAST_MEDIA_WORKER_URL"),
-		PodcastMediaSecret:           env.String("PODCAST_MEDIA_INTERNAL_SECRET"),
-		ToolsEnabled:                 tools,
 		KlipyAPIKey:                  klipy,
 	}, nil
 }

@@ -18,12 +18,9 @@ Never work directly on `main`. If the checkout is already on an issue branch, ke
 |------|-----------|
 | Web | [apps/web/README.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/apps/web/README.md) |
 | Apple | [apps/apple/README.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/apps/apple/README.md) |
-| Operations UI | [apps/operations/README.md](https://github.com/Stygian-Tech/the-social-wire/blob/main/apps/operations/README.md) |
-| Gateway | `services/gateway` |
 | AppView | `services/appview` |
-| Projection Pool / Coordinator | `services/indexing-worker` |
 
-Gateway, AppView, and the Swift indexing workers require `APP_ENV=dev|prod` at process startup because their Operations telemetry namespace uses the same environment guard. Although SQLite backends still exist in code, the documented `APP_ENV=local` launch path is not runnable at present. For local service integration, use `APP_ENV=dev` with an isolated disposable Postgres database; never point local experiments at hosted Development or Production data.
+The backend is Go AppView with `APP_ENV=dev|prod` and an absolute SQLite path. Use disposable local databases and the required scheduling/draft configuration; never point experiments at hosted data. Native shared Swift code lives in `apps/apple/Packages/ReadStateCore`.
 
 ## Working expectations
 

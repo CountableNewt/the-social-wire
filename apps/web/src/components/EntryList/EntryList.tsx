@@ -37,14 +37,12 @@ import {
 } from "@/lib/subscribedFeedPerf";
 import { useSidebarProjection } from "@/contexts/PublicationSidebarContext";
 import { CursorSingleFlight } from "@/lib/cursorSingleFlight";
-import { useWireFeedEntries } from "@/hooks/useWireFeed";
 
 export type { ArticleListFilter };
 
 interface EntryListProps {
   pubId?: string;
   aggregateFeed?: AggregateAppViewFeed;
-  wireFeed?: boolean;
   selectedEntryId: string | null;
   /** Entry whose destination is being resolved from the PDS after a click. */
   resolvingEntryId?: string | null;
@@ -68,7 +66,6 @@ function virtualFeedIdentity(
 export function EntryList({
   pubId,
   aggregateFeed,
-  wireFeed = false,
   selectedEntryId,
   resolvingEntryId = null,
   onSelectEntry,
@@ -110,58 +107,34 @@ export function EntryList({
     effectiveFilter,
     canBackgroundRefresh,
   );
-  const wireQuery = useWireFeedEntries({
-    enabled: wireFeed,
-    refreshCachedOnMount: wireFeed,
-  });
-  const activeData = wireFeed
-    ? wireQuery.data
-    : aggregateFeed
-      ? aggregateQuery.data
-      : data;
-  const activeIsFetching = wireFeed
-    ? wireQuery.isFetching
-    : aggregateFeed
-      ? aggregateQuery.isFetching
-      : publicationQueryIsFetching;
-  const activeLoading = wireFeed
-    ? wireQuery.isLoading || wireQuery.catalog.isLoading
-    : aggregateFeed
-      ? aggregateQuery.isLoading
-      : isLoading;
-  const activeIsError = wireFeed
-    ? wireQuery.isError || wireQuery.catalog.isError
-    : aggregateFeed
-      ? aggregateQuery.isError
-      : isError;
-  const activeError = wireFeed
-    ? wireQuery.error ?? wireQuery.catalog.error
-    : aggregateFeed
-      ? aggregateQuery.error
-      : error;
-  const activeRefetch = wireFeed
-    ? wireQuery.retryTheWire
-    : aggregateFeed
-      ? aggregateQuery.refetch
-      : refetch;
-  const activeFetchNextPage = wireFeed
-    ? wireQuery.fetchNextPage
-    : aggregateFeed
+  const activeData = aggregateFeed
+    ? aggregateQuery.data
+    : data;
+  const activeIsFetching = aggregateFeed
+    ? aggregateQuery.isFetching
+    : publicationQueryIsFetching;
+  const activeLoading = aggregateFeed
+    ? aggregateQuery.isLoading
+    : isLoading;
+  const activeIsError = aggregateFeed
+    ? aggregateQuery.isError
+    : isError;
+  const activeError = aggregateFeed
+    ? aggregateQuery.error
+    : error;
+  const activeRefetch = aggregateFeed
+    ? aggregateQuery.refetch
+    : refetch;
+  const activeFetchNextPage = aggregateFeed
     ? aggregateQuery.fetchNextPage
     : fetchNextPage;
-  const activeHasNextPage = wireFeed
-    ? wireQuery.hasNextPage
-    : aggregateFeed
+  const activeHasNextPage = aggregateFeed
     ? aggregateQuery.hasNextPage
     : hasNextPage;
-  const activeIsFetchingNextPage = wireFeed
-    ? wireQuery.isFetchingNextPage
-    : aggregateFeed
+  const activeIsFetchingNextPage = aggregateFeed
     ? aggregateQuery.isFetchingNextPage
     : isFetchingNextPage;
-  const activeIsFetchNextPageError = wireFeed
-    ? wireQuery.isFetchNextPageError
-    : aggregateFeed
+  const activeIsFetchNextPageError = aggregateFeed
     ? aggregateQuery.isFetchNextPageError
     : isFetchNextPageError;
   const { allPublicationRows } = useSidebarProjection();
@@ -184,7 +157,6 @@ export function EntryList({
     pubId ?? null,
     effectiveFilter,
     !aggregateFeed &&
-      !wireFeed &&
       !isLoading &&
       !scopePending &&
       (data?.pages.length ?? 0) > 0,
@@ -192,11 +164,9 @@ export function EntryList({
   );
 
   const aggregateAccumulator = useMemo(() => {
-    if (!aggregateFeed && !wireFeed) return undefined;
-    return mergeAggregateEntryPagesCached(
-      (wireFeed ? wireQuery.data?.pages : aggregateQuery.data?.pages) ?? [],
-    );
-  }, [aggregateFeed, aggregateQuery.data?.pages, wireFeed, wireQuery.data?.pages]);
+    if (!aggregateFeed) return undefined;
+    return mergeAggregateEntryPagesCached(aggregateQuery.data?.pages ?? []);
+  }, [aggregateFeed, aggregateQuery.data?.pages]);
   const aggregateEntries = aggregateAccumulator?.entries ?? [];
 
   const publicationEntries: EntryListItem[] = useMemo(() => {
@@ -206,10 +176,10 @@ export function EntryList({
     return sortEntryListItemsNewestFirst(flat);
   }, [data?.pages]);
 
-  const allEntries = aggregateFeed || wireFeed ? aggregateEntries : publicationEntries;
+  const allEntries = aggregateFeed ? aggregateEntries : publicationEntries;
 
   const previousAggregateEntryCountRef = useRef({
-    feedKey: wireFeed ? "wire" : virtualFeedIdentity(aggregateFeed, pubId),
+    feedKey: virtualFeedIdentity(aggregateFeed, pubId),
     count: 0,
   });
   useLayoutEffect(() => {
@@ -244,8 +214,8 @@ export function EntryList({
 
   /** Remount only when the user changes publication/filter; data churn must not reset scroll. */
   const virtualPaneKey = useMemo(() => {
-    return `${wireFeed ? "wire" : virtualFeedIdentity(aggregateFeed, pubId)}:${effectiveFilter}`;
-  }, [aggregateFeed, pubId, effectiveFilter, wireFeed]);
+    return `${virtualFeedIdentity(aggregateFeed, pubId)}:${effectiveFilter}`;
+  }, [aggregateFeed, pubId, effectiveFilter]);
 
   const nextPageRequestRef = useRef(new CursorSingleFlight());
 
@@ -300,7 +270,7 @@ export function EntryList({
   ]);
 
   if (
-    (activeLoading || (!aggregateFeed && !wireFeed && scopePending)) &&
+    (activeLoading || (!aggregateFeed && scopePending)) &&
     allEntries.length === 0
   ) {
     return (
@@ -316,13 +286,9 @@ export function EntryList({
     return (
       <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
         <p>
-          {wireFeed && wireQuery.viewerModerationError
-            ? "Your moderation settings could not be applied to The Wire. Retry to load The Wire safely."
-            : activeError instanceof Error
+          {activeError instanceof Error
             ? activeError.message
-            : wireFeed
-              ? "The Wire could not load."
-              : "Could not load entries."}
+            : "Could not load entries."}
         </p>
         <button
           type="button"
@@ -351,9 +317,7 @@ export function EntryList({
       <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
         {effectiveFilter === "unread"
           ? "No unread stories. You're all caught up."
-          : wireFeed
-            ? "No stories are available on The Wire right now."
-            : "No entries found for this publication."}
+          : "No entries found for this publication."}
       </div>
     );
   }

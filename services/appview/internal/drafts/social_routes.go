@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
 	"mime"
 	"net/http"
@@ -19,7 +18,7 @@ import (
 
 func (s *Service) registerSocial(group *httpx.Group) {
 	const prefix = "/xrpc/app.thesocialwire.socialDraft."
-	for _, operation := range []string{"reserveAttachment", "uploadAttachment", "putManifest", "deleteManifest"} {
+	for _, operation := range []string{"reserveAttachment", "uploadAttachment", "uploadAttachmentChunk", "completeAttachmentUpload", "putManifest", "deleteManifest"} {
 		group.Post(prefix+operation, s.socialRoute(operation))
 	}
 	for _, operation := range []string{"getAttachment", "getManifest"} {
@@ -38,7 +37,7 @@ func (s *Service) socialRoute(operation string) httpx.Handler {
 		if s == nil {
 			return socialFailure(w, errUnavailable)
 		}
-		transfer := operation == "uploadAttachment" || operation == "getAttachment"
+		transfer := operation == "uploadAttachment" || operation == "getAttachment" || operation == "completeAttachmentUpload"
 		duration := 60 * time.Second
 		if transfer {
 			duration = 120 * time.Second
@@ -49,11 +48,17 @@ func (s *Service) socialRoute(operation string) httpx.Handler {
 		deadline, _ := ctx.Deadline()
 		_ = http.NewResponseController(w).SetReadDeadline(deadline)
 		_ = http.NewResponseController(w).SetWriteDeadline(deadline)
-		release, err := s.acquire(owner)
+		ctx, release, err := s.acquire(ctx, owner)
 		if err != nil {
 			return socialFailure(w, err)
 		}
 		defer release()
+		if transfer {
+			if err := s.acquireTransfer(ctx, owner); err != nil {
+				return socialFailure(w, err)
+			}
+		}
+		r = r.WithContext(ctx)
 		err = s.handleSocial(w, r, owner, operation)
 		if err != nil {
 			return socialFailure(w, err)
@@ -96,6 +101,33 @@ func (s *Service) handleSocial(w http.ResponseWriter, r *http.Request, owner, op
 			return err
 		}
 		return httpx.OK(w, map[string]asset{"attachment": result})
+	case "uploadAttachmentChunk":
+		id := r.Header.Get("X-Social-Draft-Upload-Id")
+		rawPart := r.Header.Get("X-Social-Draft-Upload-Part")
+		part, parseErr := strconv.Atoi(rawPart)
+		media, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if r.ContentLength < 0 {
+			return httpx.JSON(w, http.StatusLengthRequired, map[string]string{"error": "LengthRequired"})
+		}
+		if parseErr != nil || strconv.Itoa(part) != rawPart || !uuid.MatchString(id) || media != "application/octet-stream" {
+			return errInvalid
+		}
+		if err := s.uploadChunk(ctx, owner, id, part, r.Body, r.ContentLength); err != nil {
+			return err
+		}
+		return httpx.OK(w, map[string]any{"assetId": id, "part": part, "received": true})
+	case "completeAttachmentUpload":
+		var input struct {
+			AssetID string `json:"assetId"`
+		}
+		if err := decodeSocial(r, &input, "assetId"); err != nil || !uuid.MatchString(input.AssetID) {
+			return errInvalid
+		}
+		result, err := s.completeUpload(ctx, owner, input.AssetID)
+		if err != nil {
+			return err
+		}
+		return httpx.OK(w, map[string]asset{"attachment": result})
 	case "getAttachment":
 		id := r.URL.Query().Get("assetId")
 		if !uuid.MatchString(id) {
@@ -107,10 +139,24 @@ func (s *Service) handleSocial(w http.ResponseWriter, r *http.Request, owner, op
 		}
 		defer discard(file)
 		w.Header().Set("Content-Type", value.ContentType)
-		w.Header().Set("Content-Length", strconv.FormatInt(value.ByteLength, 10))
+		w.Header().Del("Content-Length")
 		w.WriteHeader(http.StatusOK)
 		if r.Method != http.MethodHead {
-			_, _ = io.Copy(w, file)
+			buffer := make([]byte, 64<<10)
+			for {
+				n, readErr := file.Read(buffer)
+				if n > 0 {
+					if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+						return nil
+					}
+					if flushErr := http.NewResponseController(w).Flush(); flushErr != nil {
+						return nil
+					}
+				}
+				if readErr != nil {
+					return nil
+				}
+			}
 		}
 		return nil
 	case "getManifest":

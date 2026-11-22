@@ -1,0 +1,66 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.socialDraft.completeAttachmentUpload",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Authentication required. Never publishes to the PDS. Authenticates every encrypted temporary part and verifies the complete reserved SHA-256 and content type before committing the private attachment. Idempotent after completion.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "assetId"
+          ],
+          "properties": {
+            "assetId": {
+              "type": "string",
+              "maxLength": 36
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "attachment"
+          ],
+          "properties": {
+            "attachment": {
+              "type": "ref",
+              "ref": "app.thesocialwire.socialDraft.defs#asset"
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Conflict"
+        },
+        {
+          "name": "Quota"
+        },
+        {
+          "name": "UploadPending"
+        },
+        {
+          "name": "Unavailable"
+        },
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "LengthRequired"
+        }
+      ]
+    }
+  }
+}

@@ -55,9 +55,9 @@ func seedItems(t *testing.T, db *sqlitedb.DB) []string {
 			site = "at://did:plc:author/site.standard.publication/other"
 		}
 		_, err := db.Writer().Exec(`INSERT INTO content_items
-			(uri,cid,author_did,collection,created_at,indexed_at,publication_site,render_json,expires_at)
-			VALUES(?, 'cid', ?, 'site.standard.document', ?, ?, ?, ?, ?)`, id, testAuthor, date, date, site, string(render),
-			thinstore.CursorTimestamp(time.Now().Add(time.Hour)))
+			(uri,cid,author_did,collection,created_at,indexed_at,publication_site,render_json,expires_at,created_at_us,indexed_at_us)
+			VALUES(?, 'cid', ?, 'site.standard.document', ?, ?, ?, ?, ?, ?, ?)`, id, testAuthor, date, date, site, string(render),
+			thinstore.CursorTimestamp(time.Now().Add(time.Hour)), sqlitedb.TimeMicroseconds(created.Add(time.Duration(i)*time.Second)), sqlitedb.TimeMicroseconds(created.Add(time.Duration(i)*time.Second)))
 		if err != nil {
 			t.Fatal(err)
 		}

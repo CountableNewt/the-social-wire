@@ -1,0 +1,20 @@
+meta {
+  name: Cron Run Due Scheduling Work
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/internal/cron/scheduling
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{cronSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

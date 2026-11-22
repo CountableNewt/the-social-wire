@@ -84,32 +84,10 @@ describe("app sidebar feed selection", () => {
     ).toBe(true);
   });
 
-  it("recognizes The Wire without changing the remembered publication tab", () => {
-    expect(
-      currentAppSidebarFeed({
-        pathname: "/read",
-        feedParam: "wire",
-        folderParam: null,
-        publicationTab: "following",
-      }),
-    ).toBe("wire");
-  });
-
-  it("recognizes Your Circle without changing the remembered publication tab", () => {
-    expect(
-      currentAppSidebarFeed({
-        pathname: "/read",
-        feedParam: "circle",
-        folderParam: null,
-        publicationTab: "subscribed",
-      }),
-    ).toBe("circle");
-  });
 });
 
-it("selects actual Media routes independently from Social and Podcasts", () => {
+it("does not select retired Media routes", () => {
   const state = { feedParam: null, folderParam: null, publicationTab: "subscribed" as const };
-  expect(currentAppSidebarFeed({ ...state, pathname: "/media/photos" })).toBe("photos");
-  expect(currentAppSidebarFeed({ ...state, pathname: "/media/short-videos" })).toBe("shortVideos");
-  expect(currentAppSidebarFeed({ ...state, pathname: "/podcasts" })).toBe("podcasts");
+  expect(currentAppSidebarFeed({ ...state, pathname: "/media/photos" })).toBeNull();
+  expect(currentAppSidebarFeed({ ...state, pathname: "/media/short-videos" })).toBeNull();
 });

@@ -12,11 +12,12 @@ import {
   type OEmbedResponse,
 } from "@/lib/oEmbed";
 
+export const maxDuration = 60;
+
 const TIMEOUT_MS = 8_000;
 
 const FETCH_INIT = {
   redirect: "follow" as const,
-  signal: AbortSignal.timeout(TIMEOUT_MS),
   headers: {
     "User-Agent": "the-social-wire/oembed",
     Accept: "text/html,application/json,*/*",
@@ -25,7 +26,7 @@ const FETCH_INIT = {
 
 async function fetchPageHtml(pageHref: string): Promise<string | null> {
   try {
-    const res = await fetch(pageHref, { ...FETCH_INIT, method: "GET" });
+    const res = await fetch(pageHref, { ...FETCH_INIT, method: "GET", signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
     if (!/text\/html/i.test(ct)) return null;
@@ -44,6 +45,7 @@ async function fetchOEmbedFromEndpoint(
     const res = await fetch(oEmbedRequestUrl(endpoint, pageHref), {
       ...FETCH_INIT,
       method: "GET",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: {
         ...FETCH_INIT.headers,
         Accept: "application/json",

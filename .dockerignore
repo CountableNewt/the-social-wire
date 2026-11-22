@@ -10,6 +10,4 @@
 **/*.xcresult
 **/DerivedData
 **/coverage
-.railway/*
-!.railway/*.ts
 .DS_Store

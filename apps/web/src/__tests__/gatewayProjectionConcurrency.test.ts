@@ -137,15 +137,3 @@ it("rechecks no-receipt capability after a bounded interval and normalizes relat
   } finally { clock.mockRestore(); }
 });
 
-it("uses receipt-backed concurrency for the Development podcast state XRPC", async () => {
-  const { oauth } = session(); let warms = 0;
-  globalThis.fetch = mock(async (input, init) => {
-    if (String(input).includes("listEntries")) { warms++; return ok("podcast-receipt"); }
-    expect(String(input)).toContain("/xrpc/app.thesocialwire.podcast.getState");
-    expect(new Headers(init?.headers).get(RECEIPT)).toBe("podcast-receipt");
-    expect(new Headers(init?.headers).get("X-ATProto-Upstream-DPoP-Prepared")).toBe("true");
-    return ok();
-  }) as unknown as typeof fetch;
-  expect((await gatewayFetch(oauth, "/xrpc/app.thesocialwire.podcast.getState")).status).toBe(200);
-  expect(warms).toBe(1);
-});

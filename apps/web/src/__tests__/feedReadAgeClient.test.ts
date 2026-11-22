@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import * as ReadStateRuntime from "@/lib/pdsReadStateRuntime";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 
 import { fetchReadAgeOptions, markReadBefore } from "@/lib/feedReadAgeClient";
@@ -10,7 +11,9 @@ const oauth = { did: "did:plc:viewer" } as unknown as OAuthSession;
 const before = "2026-09-02T05:00:00Z";
 let restoreGateway: (() => void) | undefined;
 
-afterEach(() => restoreGateway?.());
+let restoreAuthority: (() => void) | undefined;
+beforeEach(() => { const authority = spyOn(ReadStateRuntime, "usesPDSReadState").mockResolvedValue(false); restoreAuthority = () => authority.mockRestore(); });
+afterEach(() => { restoreGateway?.(); restoreAuthority?.(); });
 
 describe("feedReadAgeClient", () => {
   const scopes: GatewayMarkAllReadScope[] = [

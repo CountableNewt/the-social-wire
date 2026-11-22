@@ -10,8 +10,10 @@ Both services can read their stored data; this is not end-to-end encryption.
 
 Use one private media bucket in each environment. The standalone Gateway's
 `SOCIAL_DRAFT_S3_` variables for endpoint, bucket, region, access key, and secret
-reference the matching `PODCAST_S3_` variables on that service. Draft objects use
-opaque 64-character hex keys. Podcast media uses the `clips/` prefix. Drafts
+reference the bucket's endpoint, name, region and keys. Podcasts were retired; if
+these variables still reference the legacy `PODCAST_S3_` variables, repoint them
+to the bucket before deleting those variables. Draft objects use
+opaque 64-character hex keys. Drafts
 retain their independent `SOCIAL_DRAFT_STORAGE_KEY` for application encryption.
 The old `.railway/social-drafts.ts` partial describes the former dedicated
 Development bucket and should not be applied for this configuration.

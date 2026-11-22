@@ -41,11 +41,12 @@ func (s *Service) articleRoute(operation string) httpx.Handler {
 		if s == nil {
 			return draftFailure(w, errUnavailable)
 		}
-		release, err := s.acquire(owner)
+		ctx, release, err := s.acquire(ctx, owner)
 		if err != nil {
 			return draftFailure(w, err)
 		}
 		defer release()
+		r = r.WithContext(ctx)
 		value, err := s.handleArticle(r, owner, operation)
 		if err != nil {
 			return draftFailure(w, err)

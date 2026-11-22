@@ -25,7 +25,7 @@ struct NewsStartupDestinationTests {
         #expect(NewsStartupDestination.lastUsed.restoresReaderSelection(remembered: nil))
         #expect(NewsStartupDestination.lastUsed.restoresReaderSelection(remembered: .following))
         #expect(!NewsStartupDestination.subscribed.restoresReaderSelection(remembered: .following))
-        for destination in [NewsStartupDestination.readLater, .archive, .podcasts, .lists] {
+        for destination in [NewsStartupDestination.readLater, .archive, .lists] {
             #expect(!NewsStartupDestination.lastUsed.restoresReaderSelection(remembered: destination))
         }
     }
@@ -39,7 +39,5 @@ struct NewsStartupDestinationTests {
         #expect(NewsStartupDestination.lastUsed.resolved(availableFeeds: [], remembered: .lists) == .lists)
         #expect(NewsStartupDestination.lists.resolved(availableFeeds: [.subscribed], remembered: .following) == .lists)
         #expect(NewsStartupDestination.lastUsed.resolved(availableFeeds: [.subscribed], remembered: .archive) == .archive)
-        #expect(NewsStartupDestination.lastUsed.resolved(availableFeeds: [.podcasts], remembered: .podcasts) == .podcasts)
-        #expect(NewsStartupDestination.podcasts.resolved(availableFeeds: [.subscribed], remembered: nil) == .subscribed)
     }
 }

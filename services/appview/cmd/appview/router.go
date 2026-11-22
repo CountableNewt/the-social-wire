@@ -15,9 +15,8 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/drafts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/edge"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/httpx"
-	"github.com/CountableNewt/the-social-wire/services/appview/internal/media"
+	jobrunner "github.com/CountableNewt/the-social-wire/services/appview/internal/jobs"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/operations"
-	"github.com/CountableNewt/the-social-wire/services/appview/internal/podcasts"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/publications"
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/reader"
 	scheduler "github.com/CountableNewt/the-social-wire/services/appview/internal/scheduling/backend"
@@ -36,8 +35,10 @@ type runtimeServices struct {
 	drafts        *drafts.Service
 	analytics     *analytics.Store
 	scheduling    *scheduler.Service
+	maintenance   *jobrunner.Runner
 	context       context.Context
 	logger        *slog.Logger
+	serverless    bool
 }
 
 func buildRouter(core config.Core, env config.Env, services runtimeServices) (http.Handler, error) {
@@ -46,10 +47,18 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 		return nil, err
 	}
 	router := httpx.NewRouter()
+	if services.serverless {
+		router.Use(operations.RequestTelemetry(services.telemetry))
+	}
 	router.Use(operations.RequestTrace("appview", services.operations.Environment, services.operations.InstanceID, services.telemetry))
 	router.Use(edge.CORS(core))
-	registerHealth(router, core, services.db, services.logger)
+	checks := readinessChecks{draftsEnabled: services.drafts != nil}
+	if services.scheduling != nil {
+		checks.scheduling = services.scheduling.Ready
+	}
+	registerHealth(router, core, services.db, services.logger, checks)
 	edge.RegisterMetadata(router, core)
+	jobrunner.Register(router, services.maintenance, env.String("CRON_SECRET"))
 
 	admission := edge.NewAdmission(core)
 	protected := router.Group(httpx.XRPCErrors(), verifier.Middleware, admission.Middleware)
@@ -58,7 +67,6 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 	edge.RegisterGIF(protected, core, admission)
 	services.drafts.Register(protected)
 	articles.Register(protected, services.repo)
-	media.Register(protected)
 	semble.Register(protected, env, services.repo)
 	syncapi.Register(protected, services.db, services.repo)
 	operations.RegisterClientPerformance(protected, services.telemetry, services.operations.Environment)
@@ -72,34 +80,39 @@ func buildRouter(core config.Core, env config.Env, services runtimeServices) (ht
 	if services.scheduling != nil {
 		services.scheduling.Register(router, protected)
 	}
-	if core.PodcastsEnabled {
-		service := &podcasts.Service{
-			Database: services.db, Repo: services.repo, WorkerURL: core.PodcastMediaWorkerURL,
-			WorkerSecret: core.PodcastMediaSecret, PrivateStorageKey: env.String("PODCAST_PRIVATE_STORAGE_KEY"),
-			BridgeEnabled: env.True("PODCAST_BRIDGE_ENABLED"), Background: services.context,
-		}
-		service.Register(protected, router)
-	}
 	return router, nil
 }
 
-func registerHealth(router *httpx.Router, core config.Core, db *sqlitedb.DB, logger *slog.Logger) {
+type readinessChecks struct {
+	draftsEnabled bool
+	scheduling    func(context.Context) error
+}
+
+func registerHealth(router *httpx.Router, core config.Core, db *sqlitedb.DB, logger *slog.Logger, checks readinessChecks) {
 	router.Get("/health", healthStatus("ok"))
 	router.Get("/livez", healthStatus("live"))
 	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) error {
-		ctx := r.Context()
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
 		if err := db.Ping(ctx); err != nil {
 			logger.Warn("AppView database readiness check failed")
 			return httpx.Status(http.StatusServiceUnavailable)
 		}
-		if core.PodcastsEnabled {
-			if err := podcasts.CheckReadiness(ctx, core.PodcastMediaWorkerURL); err != nil {
+		if core.DatabaseBackend == "turso" {
+			if err := verifyRuntimeSchemaMarker(ctx, db, checks.draftsEnabled); err != nil {
+				logger.Warn("AppView schema readiness check failed")
+				return httpx.Status(http.StatusServiceUnavailable)
+			}
+		}
+		if checks.scheduling != nil {
+			if err := checks.scheduling(ctx); err != nil {
+				logger.Warn("Scheduling database readiness check failed")
 				return httpx.Status(http.StatusServiceUnavailable)
 			}
 		}
 		return healthStatus("ready")(w, r)
 	})
-	router.Get("/freshness", operations.FreshnessHandler("appview", nil))
+	router.Get("/freshness", operations.FreshnessHandler("appview"))
 	router.Get("/xrpc/app.thesocialwire.teapot", func(w http.ResponseWriter, _ *http.Request) error {
 		return httpx.JSON(w, http.StatusTeapot, map[string]string{"error": "Teapot", "message": "I'm a teapot"})
 	})

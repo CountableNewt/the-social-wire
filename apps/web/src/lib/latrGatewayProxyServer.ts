@@ -17,8 +17,9 @@ export const LATR_FORWARDED_DPOP_HEADER = "X-Latr-Forwarded-DPoP";
 
 function readServerHostname(): string | undefined {
   return (
-    process.env.RAILWAY_PUBLIC_DOMAIN?.trim().toLowerCase() ??
-    process.env.NEXT_PUBLIC_SITE_URL?.trim().toLowerCase()
+    process.env.NEXT_PUBLIC_SITE_URL?.trim().toLowerCase() ??
+    process.env.VERCEL_URL?.trim().toLowerCase() ??
+    process.env.RAILWAY_PUBLIC_DOMAIN?.trim().toLowerCase()
   );
 }
 
@@ -80,7 +81,7 @@ export function latrGatewayServerCredentialsHelpText(): string {
     "Set LATR_GATEWAY_CLIENT_CREDENTIAL to the `the-social-wire-web=…` entry from " +
     "the official api.testing.latr.link credential map, or LATR_GATEWAY_CLIENT_ID + " +
     "LATR_GATEWAY_API_KEY issued for that same gateway host. Configure these on the " +
-    "Railway Web service for each environment. If both official and split env vars exist, official wins."
+    "Web service for each environment. If both official and split env vars exist, official wins."
   );
 }
 

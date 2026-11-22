@@ -21,7 +21,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
 packages:
   ReadStateCore:
-    path: ../../packages/swift/ReadStateCore
+    path: Packages/ReadStateCore
   LatrKit:
     url: https://github.com/Stygian-Tech/latr-kit.git
     revision: f0e2ce680b07fa41d28d7b1cfeac01a25d5df2c6

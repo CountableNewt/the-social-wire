@@ -8,7 +8,6 @@ import * as FeedPreferences from "@/hooks/useFeedDisplayPreferences";
 import * as ReadLaterPreferences from "@/hooks/useReadLaterPreferences";
 import { DEFAULT_FEED_DISPLAY_PREFERENCES } from "@/lib/feedPreferences";
 import { findReadLaterService } from "@/lib/readLaterServices";
-import * as PodcastPlayback from "@/lib/podcasts/playback";
 
 const setAutomaticallyMarkAsRead = mock((enabled: boolean) => { void enabled; });
 const setRssArticleOpenInReader = mock((visible: boolean) => { void visible; });
@@ -24,7 +23,6 @@ beforeAll(() => {
 beforeEach(() => {
   setRssArticleOpenInReader.mockClear();
   setAutomaticallyMarkAsRead.mockClear();
-  spyOn(PodcastPlayback, "podcastsEnabled").mockReturnValue(true);
   setFeedVisible.mockClear();
   setFeedUnreadCountVisible.mockClear();
   spyOn(Appearance, "AppearanceSettingsSection").mockImplementation(() => <></>);
@@ -38,7 +36,6 @@ beforeEach(() => {
     preferences: {
       ...DEFAULT_FEED_DISPLAY_PREFERENCES,
       rssArticleOpenMode: "reader",
-      showWire: true, showCircle: true, showFinance: false,
       visibleFeeds: ["readLater", "archive"],
     },
     setFeedVisible, setFeedUnreadCountVisible,
@@ -46,9 +43,6 @@ beforeEach(() => {
     setRssArticleOpenInReader,
     setAutomaticallyMarkAsRead,
     automaticReadReady: true,
-    setHideSportsScores: () => undefined,
-    setHideFinanceCrypto: () => undefined,
-    setHideFinancePerformance: () => undefined,
     isLoading: false,
     isPending: false, error: null,
   });
@@ -62,13 +56,14 @@ afterEach(() => {
 test("active feeds expose independent visibility controls without retired products", () => {
   render(<FeedSettingsSection />);
   expect(screen.queryByText("Always Visible")).toBeNull();
-  for (const label of ["Social", "Podcasts", "Subscribed", "Following"]) {
+  for (const label of ["Social", "Subscribed", "Following"]) {
     expect(screen.getByRole("switch", { name: `Show ${label}` })).toBeDefined();
   }
   expect(screen.queryByRole("switch", { name: "Show The Wire" })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Show Your Circle" })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Show Finance" })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Show Sports" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show Podcasts" })).toBeNull();
   expect(screen.queryByText("Finance")).toBeNull();
   expect(screen.queryByText("Sports")).toBeNull();
   expect(screen.queryByText("The Wire")).toBeNull();

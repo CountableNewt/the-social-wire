@@ -1,0 +1,20 @@
+meta {
+  name: Cron Drain Scoped Author History
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/internal/cron/author-history
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{cronSecret}}
+}
+
+docs {
+  Dedicated server-only secret; viewer credentials are not accepted.
+  Runs bounded leased maintenance. Use Development before Production.
+}

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Base URL for the deployed Swift API (OAuth metadata, future authenticated sync/cache).
+/// Base URL for the deployed Go API and OAuth metadata.
 enum SocialWireAPIEnvironment {
     private static let productionBaseURLString = "https://api.thesocialwire.app"
     private static let testingBaseURLString = "https://api.testing.thesocialwire.app"
@@ -34,15 +34,6 @@ enum SocialWireAPIEnvironment {
     /// Discoverable OAuth **`client_id`** (**`GET .../ios-client-metadata.json`**).
     static var iosClientMetadataURL: URL {
         baseURL.appendingPathComponent("ios-client-metadata.json")
-    }
-
-    /// When true, entry timelines and unread filtering use **`app.thesocialwire.appview.*`** on the gateway.
-    static var useThinAppView: Bool {
-        #if SOCIALWIRE_USE_THIN_APPVIEW
-        return true
-        #else
-        return false
-        #endif
     }
 
     /// Native Pro workflows are unreleased, regardless of entitlement or billing flags.

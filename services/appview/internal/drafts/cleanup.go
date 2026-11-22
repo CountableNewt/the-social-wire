@@ -4,25 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 )
 
-// RunCleanup retires expired unbound assets while sharing the same owner
-// lease as draft mutations and transfers.
-func (s *Service) RunCleanup(ctx context.Context, logger *slog.Logger) {
-	ticker := time.NewTicker(15 * time.Minute)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := s.cleanup(ctx, 100); err != nil && ctx.Err() == nil {
-				logger.WarnContext(ctx, "Private draft cleanup deferred")
-			}
-		}
-	}
+// CleanupOnce retires one bounded batch under the same owner lease as draft
+// mutations and transfers. The job runner serializes invocations across replicas.
+func (s *Service) CleanupOnce(ctx context.Context) error {
+	return errors.Join(s.cleanup(ctx, 100), s.cleanupChunks(ctx, 100))
 }
 
 func (s *Service) cleanup(ctx context.Context, limit int) error {
@@ -39,11 +27,11 @@ func (s *Service) cleanup(ctx context.Context, limit int) error {
 		if err != nil {
 			return err
 		}
-		release, err := s.acquire(owner)
+		owned, release, err := s.acquire(ctx, owner)
 		if err != nil {
 			return err
 		}
-		err = s.cleanupOne(ctx, owner, id)
+		err = s.cleanupOne(owned, owner, id)
 		release()
 		if err != nil {
 			failure = err
@@ -58,6 +46,9 @@ func (s *Service) cleanup(ctx context.Context, limit int) error {
 func (s *Service) cleanupOne(ctx context.Context, owner, id string) error {
 	var key string
 	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := s.checkOwner(ctx, tx, owner); err != nil {
+			return err
+		}
 		err := tx.QueryRowContext(ctx, `UPDATE private_social_draft_assets SET state='deleted'
 			WHERE owner=? AND asset_id=?
 			AND EXISTS(SELECT 1 FROM private_social_draft_cleanup WHERE owner=? AND asset_id=? AND available_at<=?)
@@ -75,8 +66,14 @@ func (s *Service) cleanupOne(ctx context.Context, owner, id string) error {
 	if s.objects == nil {
 		return errUnavailable
 	}
+	if err := s.checkOwner(ctx, s.db.Reader(), owner); err != nil {
+		return err
+	}
 	if err = s.objects.Delete(ctx, key); err != nil {
 		updateErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+			if err := s.checkOwner(ctx, tx, owner); err != nil {
+				return err
+			}
 			_, err := tx.ExecContext(ctx, `UPDATE private_social_draft_cleanup
 				SET available_at=?+min(60,(1 << min(attempts,6)))*60,attempts=min(attempts+1,30)
 				WHERE owner=? AND asset_id=?`, nowSeconds(), owner, id)
@@ -85,6 +82,9 @@ func (s *Service) cleanupOne(ctx context.Context, owner, id string) error {
 		return errors.Join(err, updateErr)
 	}
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		if err := s.checkOwner(ctx, tx, owner); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE private_social_draft_assets SET state='purged',metadata=x''
 			WHERE owner=? AND asset_id=?`, owner, id); err != nil {
 			return err

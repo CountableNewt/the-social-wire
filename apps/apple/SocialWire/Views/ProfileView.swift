@@ -109,7 +109,7 @@ struct ProfileView: View {
                 .accessibilityIdentifier("account-log-out")
             }
 
-            if SocialWireAPIEnvironment.useThinAppView && !appModel.readStateSync.isPDSAuthoritative {
+            if !appModel.readStateSync.isPDSAuthoritative {
                 Section {
                     Button("Purge Indexed Data", role: .destructive) {
                         showPurgeIndexedDataConfirm = true

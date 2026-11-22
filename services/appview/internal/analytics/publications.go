@@ -35,8 +35,11 @@ func (p Provider) publications(ctx context.Context, author string, at time.Time)
 	}
 	docs := make(chan inventory, 1)
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var outstanding sync.WaitGroup
+	defer func() { cancel(); outstanding.Wait() }()
+	outstanding.Add(1)
 	go func() {
+		defer outstanding.Done()
 		records, complete, err := p.publicationInventory(ctx, author, articleCollection, 3)
 		docs <- inventory{records, complete, err}
 	}()
@@ -54,7 +57,9 @@ func (p Provider) publications(ctx context.Context, author string, at time.Time)
 		byPublication[record.URI] = nil
 	}
 	subscribers := make(chan map[string]int, 1)
+	outstanding.Add(1)
 	go func() {
+		defer outstanding.Done()
 		subscribers <- p.counts(ctx, targets, "site.standard.graph.subscription", ".publication")
 	}()
 	documentInventory := <-docs

@@ -1,3 +1,4 @@
+import * as Thin from "@/lib/thinAppViewClient";
 import { afterEach, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
@@ -6,7 +7,6 @@ import type { ReactNode } from "react";
 import * as Auth from "@/hooks/useAuth";
 import * as Pending from "@/hooks/usePendingPDSReadState";
 import * as Runtime from "@/lib/pdsReadStateRuntime";
-import * as Thin from "@/lib/thinAppViewClient";
 import * as Status from "@/hooks/usePDSReadStateStatus";
 import * as Notice from "@/components/Account/PDSReadStateSyncNotice";
 import { ReadStateProvider, useReadState } from "@/contexts/ReadStateContext";
@@ -40,7 +40,6 @@ function fixture(initialRead: boolean, pds = false, realNotice = false) {
     spyOn(Runtime, "usesPDSReadState").mockResolvedValue(pds),
     spyOn(Runtime, "loadPDSReadStateSync").mockImplementation(async () => ({ snapshot: async () => ({ viewerDid: alice.did, entries: durablePending ? [{ intent: { selection: "exact", state: "unread", subjectUris: [id] } }] : [] }) } as unknown as PDSReadStateSync)),
     ...(realNotice ? [] : [spyOn(Notice, "PDSReadStateSyncNotice").mockReturnValue(null)]),
-    spyOn(Thin, "isThinAppViewEnabled").mockReturnValue(true),
   ];
   const read = spyOn(Thin, "writeThroughReadMark").mockResolvedValue();
   const unread = spyOn(Thin, "writeThroughReadMarkDelete").mockResolvedValue();

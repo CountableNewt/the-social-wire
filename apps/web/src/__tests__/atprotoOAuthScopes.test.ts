@@ -5,7 +5,7 @@ import { isAtprotoOauthScope, ScopePermissions } from "@atproto/oauth-scopes";
 import {
   AT_PROTO_OAUTH_SCOPES,
   BLUESKY_DRAFT_RPC_SCOPES,
-  BLUESKY_PODCAST_VIDEO_SCOPES,
+  BLUESKY_VIDEO_SCOPES,
   ARTICLE_PUBLISHING_SCOPES,
   BLUESKY_SOCIAL_REPO_SCOPES,
   BLUESKY_SOCIAL_RPC_SCOPES,
@@ -15,8 +15,7 @@ import {
   STREAMPLACE_REPO_SCOPES,
   SEMBLE_REPO_OAUTH_SCOPES,
   STANDARD_SITE_SOCIAL_PERMISSION_SCOPE,
-  WIRE_FEEDBACK_REPO_SCOPE,
-  WIRE_MODERATION_RPC_SCOPES,
+  BLUESKY_MODERATION_RPC_SCOPES,
 } from "@/lib/atprotoOAuthScopes";
 import {
   USER_INPUT_BLOB_OAUTH_SCOPE,
@@ -47,7 +46,7 @@ describe("atprotoOAuthScopes", () => {
   });
   it("retains video permissions through provider validation and authorizes only the quota method", () => {
     const granted = AT_PROTO_OAUTH_SCOPES.split(" ").filter(isAtprotoOauthScope);
-    for (const scope of BLUESKY_PODCAST_VIDEO_SCOPES) expect(granted).toContain(scope);
+    for (const scope of BLUESKY_VIDEO_SCOPES) expect(granted).toContain(scope);
     const permissions = new ScopePermissions(granted);
     expect(permissions.allowsRpc({ aud: "did:web:video.bsky.app", lxm: "app.bsky.video.getUploadLimits" })).toBe(true);
     expect(permissions.allowsRpc({ aud: "did:web:video.bsky.app", lxm: "app.bsky.video.uploadVideo" })).toBe(false);
@@ -56,8 +55,8 @@ describe("atprotoOAuthScopes", () => {
     expect(new ScopePermissions([legacy].filter(isAtprotoOauthScope)).allowsRpc({ aud: "did:web:video.bsky.app", lxm: "app.bsky.video.getUploadLimits" })).toBe(false);
   });
   it("grants only MP4 upload and the exact video quota/PDS delegation methods", () => {
-    expect(BLUESKY_PODCAST_VIDEO_SCOPES).toEqual(["blob:video/mp4", "rpc:com.atproto.repo.uploadBlob?aud=*", "rpc:app.bsky.video.getUploadLimits?aud=*"]);
-    for (const scope of BLUESKY_PODCAST_VIDEO_SCOPES) expect(AT_PROTO_OAUTH_SCOPES.split(" ")).toContain(scope);
+    expect(BLUESKY_VIDEO_SCOPES).toEqual(["blob:video/mp4", "rpc:com.atproto.repo.uploadBlob?aud=*", "rpc:app.bsky.video.getUploadLimits?aud=*"]);
+    for (const scope of BLUESKY_VIDEO_SCOPES) expect(AT_PROTO_OAUTH_SCOPES.split(" ")).toContain(scope);
     expect(AT_PROTO_OAUTH_SCOPES).not.toContain("blob:video/*");
     expect(AT_PROTO_OAUTH_SCOPES).not.toContain("rpc:*?");
   });
@@ -101,7 +100,6 @@ describe("atprotoOAuthScopes", () => {
   it("includes required repo collections", () => {
     expect(AT_PROTO_OAUTH_SCOPES).toContain("atproto");
     expect(AT_PROTO_OAUTH_SCOPES).toContain("app.thesocialwire.folder");
-    expect(AT_PROTO_OAUTH_SCOPES).toContain("app.thesocialwire.wireFeedback");
     expect(AT_PROTO_OAUTH_SCOPES).not.toContain(
       "app.thesocialwire.entryReadState"
     );
@@ -134,13 +132,11 @@ describe("atprotoOAuthScopes", () => {
             scope.startsWith("blob:")
         )
     ).toBe(true);
-    expect(SOCIAL_WIRE_REPO_SCOPES).toHaveLength(6);
+    expect(SOCIAL_WIRE_REPO_SCOPES).toHaveLength(4);
     expect(SOCIAL_WIRE_REPO_SCOPES.filter(scope => scope.includes("liveEvent"))).toEqual(["repo:app.thesocialwire.liveEvent?action=create&action=update"]);
     expect(AT_PROTO_OAUTH_SCOPES.split(" ")).toContain("repo:app.thesocialwire.preferences?action=create&action=update");
     expect(AT_PROTO_OAUTH_SCOPES.split(" ")).toContain("repo:app.thesocialwire.readState?action=create&action=update");
-    expect(WIRE_FEEDBACK_REPO_SCOPE).toContain(
-      "app.thesocialwire.wireFeedback"
-    );
+    expect(AT_PROTO_OAUTH_SCOPES).not.toMatch(/wireFeedback|finance\.selection|sports\.selection/);
     expect(BLUESKY_SOCIAL_REPO_SCOPES).toEqual([
       "repo:app.bsky.actor.profile?action=create&action=update",
       "repo:app.bsky.feed.post?action=create",
@@ -171,7 +167,7 @@ describe("atprotoOAuthScopes", () => {
     expect(USER_INPUT_OAUTH_SCOPE).toBe("repo:app.userinput.discussion?action=create");
     expect(AT_PROTO_OAUTH_SCOPES).not.toContain("include:app.userinput.authFull");
     expect(USER_INPUT_BLOB_OAUTH_SCOPE).toBe("blob:image/*");
-    expect(WIRE_MODERATION_RPC_SCOPES).toEqual([
+    expect(BLUESKY_MODERATION_RPC_SCOPES).toEqual([
       "rpc:app.bsky.actor.getPreferences?aud=did:web:api.bsky.app%23bsky_appview",
       "rpc:app.bsky.graph.getBlocks?aud=did:web:api.bsky.app%23bsky_appview",
       "rpc:app.bsky.graph.getMutes?aud=did:web:api.bsky.app%23bsky_appview",

@@ -1,6 +1,7 @@
-import { afterAll, afterEach, beforeAll, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
+import * as Auth from "@/lib/auth";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { OAuthScopeRecoveryDialog } from "@/components/Auth/OAuthScopeRecoveryDialog";
 
@@ -36,9 +37,8 @@ it("requires an explicit tap and never exposes authorization failure details", a
 
 it("keeps account and action state mounted when the shared provider prompts for a missing scope", async () => {
   const priorEnv = process.env.NEXT_PUBLIC_APP_ENV;
-  const priorDummy = process.env.NEXT_PUBLIC_USE_DUMMY_DATA;
   process.env.NEXT_PUBLIC_APP_ENV = "prod";
-  process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "true";
+  const callback = spyOn(Auth, "pathnameIsOAuthCallbackRoute").mockReturnValue(true);
   let apply: ReturnType<typeof useAuth>["applyOAuthSession"] | undefined;
   let current: OAuthSession | null = null;
   function Probe() {
@@ -58,7 +58,7 @@ it("keeps account and action state mounted when the shared provider prompts for 
     expect((screen.getByLabelText("Pending Selection") as HTMLInputElement).value).toBe("Football");
     expect(screen.getByText("did:plc:scope-test")).toBeTruthy();
   } finally {
+    callback.mockRestore();
     if (priorEnv === undefined) delete process.env.NEXT_PUBLIC_APP_ENV; else process.env.NEXT_PUBLIC_APP_ENV = priorEnv;
-    if (priorDummy === undefined) delete process.env.NEXT_PUBLIC_USE_DUMMY_DATA; else process.env.NEXT_PUBLIC_USE_DUMMY_DATA = priorDummy;
   }
 });

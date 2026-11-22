@@ -42,9 +42,9 @@ describe("endpoint transport manifest", () => {
 
   it("maps XRPC migrations to valid method-specific NSIDs and verbs", () => {
     const migrations = manifest.entries.filter((entry) => entry.classification === "xrpc-migration");
-    expect(migrations.length).toBeGreaterThan(30);
+    expect(migrations.length).toBeGreaterThan(10);
     for (const entry of migrations) {
-      expect(entry.xrpcNsid).toMatch(/^app\.thesocialwire\.(appview|publication|sync|operations|discovery|socialDraft|articleDraft|podcast)\.[a-z][A-Za-z0-9]*$/);
+      expect(entry.xrpcNsid).toMatch(/^app\.thesocialwire\.(appview|publication|sync|socialDraft|articleDraft)\.[a-z][A-Za-z0-9]*$/);
       const verb = entry.xrpcNsid!.split(".").at(-1)!;
       const query = /^(get|list|search)/.test(verb);
       expect(query ? entry.method : ["POST", "PATCH", "DELETE"].includes(entry.method)).toBeTruthy();
@@ -54,7 +54,7 @@ describe("endpoint transport manifest", () => {
   it("keeps protocol-incompatible and externally owned transports explicit", () => {
     const byPath = new Map(manifest.entries.map((entry) => [`${entry.method} ${entry.path}`, entry.classification]));
     expect(byPath.get("GET /v1/appview/bootstrap-stream")).toBe("stream");
-    expect(byPath.get("GET /v1/operations/events/stream")).toBe("stream");
+    expect(byPath.has("GET /v1/operations/events/stream")).toBe(false);
     expect(byPath.get("GET /api/bluesky-card-thumb")).toBe("media-proxy");
     expect(byPath.get("GET /xrpc/link.latr.bookmarks.listBookmarks")).toBe("foreign-xrpc");
     expect(byPath.get("GET /xrpc/link.latr.bookmarks.listTags")).toBe("foreign-xrpc");

@@ -5,7 +5,8 @@ import { CHUNK_COLLECTION, MANIFEST_COLLECTION, PDSRequestError, ReadStateError,
   type V2Manifest, type VerifiedReadStateRecord } from "@thesocialwire/read-state";
 import { OAuthReadStateRepository } from "./pdsReadStateRepository";
 
-export const pdsReadStateGarbageCollectionEnabled = () => process.env.NEXT_PUBLIC_PDS_READ_STATE_GC_ENABLED === "true";
+// Cleanup stays unavailable until repository proof support is reviewed.
+export const pdsReadStateGarbageCollectionEnabled = () => false;
 /** Only supply a reviewed verifier that checks block CIDs, the current viewer DID signing key,
  * signed repo commit, and exact MST membership/absence. Unknown keys/rotation fail closed. */
 export type ReadStateCARVerifier = (car: Uint8Array, viewer: string, collection: string, rkey: string) => Promise<VerifiedReadStateRecord>;

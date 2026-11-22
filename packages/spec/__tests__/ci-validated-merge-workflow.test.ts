@@ -16,7 +16,7 @@ describe("merged commit verification within required CI", () => {
     expect(workflow.on).toHaveProperty("merge_group");
     expect(workflow.on).toHaveProperty("workflow_dispatch");
     expect(workflow.jobs.required.name).toBe("CI — Required");
-    expect(workflow.jobs.required.needs).toEqual(["changes", "web", "appview"]);
+    expect(workflow.jobs.required.needs).toEqual(["changes", "web", "appview", "apple"]);
     expect(workflow.jobs.required.if).toBe("always()");
   });
 

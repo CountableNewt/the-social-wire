@@ -16,15 +16,8 @@ Tests must live **inside the owning package**, not in a root-level `tests/` fold
 | Package | Test location |
 |---------|---------------|
 | Web | `apps/web/src/__tests__/` |
-| Operations UI | colocated `*.test.ts` / `*.test.tsx` under `apps/operations/src/` |
-| Gateway | `services/gateway/Tests/` |
-| AppView | `services/appview/Tests/` |
-| Charybdis | `services/appview-worker/Tests/` |
-| Operations service | `services/operations/Tests/` |
-| GatewayCore | `packages/swift/GatewayCore/Tests/` |
-| SocialWireRedis | `packages/swift/SocialWireRedis/Tests/` |
-| ThinAppViewCore | `packages/swift/ThinAppViewCore/Tests/` |
-| OperationsCore | `packages/swift/OperationsCore/Tests/` |
+| Go AppView | colocated `*_test.go` under `services/appview/` |
+| Native ReadStateCore | `apps/apple/Packages/ReadStateCore/Tests/` |
 | iOS | `apps/apple/SocialWireTests/` |
 | Lexicons | `packages/lexicons/__tests__/` |
 | OpenAPI spec | `packages/spec/__tests__/` |
@@ -60,7 +53,7 @@ hosted wiki can drift or be overwritten, so make the source change here first.
 
 ## Branch protection
 
-Require the **`CI — Required`** check from [.github/workflows/ci.yml](.github/workflows/ci.yml) on both `dev` and `main`. It gates merges on path-filtered jobs for Web, Operations Web, Apple, Redis, Gateway, AppView, Charybdis, Operations, Jetstream V2 Ingest, database migrations, Lexicons, OpenAPI, and documentation. Railway deployment remains independent and is handled by Railway's GitHub integration.
+Require the **`CI — Required`** check from [.github/workflows/ci.yml](.github/workflows/ci.yml) on both `dev` and `main`. It gates merges on path-filtered jobs for Web, Go AppView, native Apple, Lexicons and OpenAPI. Railway deployment remains independent and is handled by Railway's GitHub integration.
 
 ## License
 

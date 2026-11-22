@@ -1,3 +1,4 @@
+import * as Thin from "@/lib/thinAppViewClient";
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
@@ -6,7 +7,6 @@ import type { ReactNode } from "react";
 import * as Auth from "@/hooks/useAuth";
 import * as Pending from "@/hooks/usePendingPDSReadState";
 import * as Runtime from "@/lib/pdsReadStateRuntime";
-import * as Thin from "@/lib/thinAppViewClient";
 import * as Telemetry from "@/lib/clientPerformanceTelemetry";
 import * as Notice from "@/components/Account/PDSReadStateSyncNotice";
 import { ReadStateProvider, useReadState } from "@/contexts/ReadStateContext";
@@ -36,7 +36,6 @@ function ReadWrapper({ children }: { children: ReactNode }) {
 }
 beforeEach(() => {
   process.env.NEXT_PUBLIC_APP_ENV = "production";
-  process.env.NEXT_PUBLIC_USE_DUMMY_DATA = "false";
   activeOAuth = oauth;
   reloadSeq = 0;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -47,7 +46,6 @@ beforeEach(() => {
     spyOn(Runtime, "pdsReadStateEnabled").mockReturnValue(false),
     spyOn(Runtime, "usesPDSReadState").mockResolvedValue(false),
     spyOn(Notice, "PDSReadStateSyncNotice").mockReturnValue(null),
-    spyOn(Thin, "isThinAppViewEnabled").mockReturnValue(true),
     spyOn(Thin, "fetchAppViewUnreadCounts").mockResolvedValue({ counts: {} }),
     spyOn(Telemetry, "recordClientPerformance").mockResolvedValue(new Response(null, { status: 202 })),
   ];

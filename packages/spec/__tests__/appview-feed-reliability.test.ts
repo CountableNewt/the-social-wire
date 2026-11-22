@@ -4,13 +4,6 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../../..");
 const openapi = readFileSync(resolve(root, "packages/spec/openapi.yaml"), "utf8");
-const migration = readFileSync(
-  resolve(
-    root,
-    "database/migrations/20260728200000_appview_read_watermark_boundaries.sql"
-  ),
-  "utf8"
-);
 
 describe("AppView feed reliability contract", () => {
   it("requires authoritative read state and typed retry diagnostics", () => {
@@ -28,9 +21,9 @@ describe("AppView feed reliability contract", () => {
     expect(openapi).toContain("required: [publicationId, createdAt]");
   });
 
-  it("adds tuple floors and explicit unread overrides without rewriting history", () => {
-    expect(migration).toContain("ADD COLUMN IF NOT EXISTS read_floor_uri TEXT");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS appview_unread_overrides");
-    expect(migration).not.toContain("UPDATE appview_publication_read_floors");
+  it("keeps tuple floors and explicit unread overrides in the Go schema", () => {
+    const schema = readFileSync(resolve(root, "services/appview/internal/thinstore/migrate.go"), "utf8");
+    expect(schema).toContain("read_floor_uri");
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS appview_unread_overrides");
   });
 });

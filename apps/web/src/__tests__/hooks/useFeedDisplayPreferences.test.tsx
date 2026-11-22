@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 
 import * as AuthHook from "@/hooks/useAuth";
 import * as PDSHook from "@/hooks/usePDSClient";
-import * as DummyReaderData from "@/lib/dummyReaderData";
 import * as SyncPreferencesClient from "@/lib/syncPreferencesClient";
 import * as AccountPreferences from "@/hooks/useReadLaterPreferences";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
@@ -77,10 +76,9 @@ describe("feed display preference persistence", () => {
     const pds = spyOn(PDSHook, "usePDSClient").mockReturnValue({
       upsertPreferences,
     } as unknown as PDSClient);
-    const dummy = spyOn(DummyReaderData, "isDummyReaderDataEnabled").mockReturnValue(false);
     const sync = spyOn(SyncPreferencesClient, "fetchSyncPreferences").mockImplementation(fetchPreferences);
     restoreSpies.push(() => auth.mockRestore(), () => pds.mockRestore(),
-      () => dummy.mockRestore(), () => sync.mockRestore());
+      () => sync.mockRestore());
   });
 
   afterEach(() => {
@@ -125,14 +123,14 @@ describe("feed display preference persistence", () => {
     const request = deferred<RepoRecord<PreferencesRecord>>();
     upsertPreferences.mockReturnValue(request.promise);
     const { result, rerender } = renderHook(useSettingsAndSidebar, { wrapper });
-    act(() => result.current.settings.setHideFinanceCrypto(true));
+    act(() => result.current.settings.setRssArticleOpenInReader(false));
     await waitFor(() => expect(upsertPreferences).toHaveBeenCalledTimes(1));
     currentDid = bob; currentOAuth = { did: bob };
     rerender();
     expect(result.current.settings.preferences.automaticallyMarkAsRead).toBe(false);
     expect(result.current.settings.isPending).toBe(false);
     await act(async () => {
-      if (outcome === "success") request.resolve({ ...initial, value: { ...initial.value, automaticallyMarkAsRead: true, hideFinanceCrypto: true } });
+      if (outcome === "success") request.resolve({ ...initial, value: { ...initial.value, automaticallyMarkAsRead: true, rssArticleOpenMode: "original" } });
       else request.reject(new Error("Previous account write failed"));
     });
     expect(result.current.settings.preferences.automaticallyMarkAsRead).toBe(false);
@@ -170,7 +168,7 @@ describe("feed display preference persistence", () => {
     const { result } = renderHook(useSettingsAndSidebar, { wrapper });
     expect(result.current.settings.automaticReadReady).toBe(false);
     expect(result.current.settings.isPending).toBe(true);
-    await act(async () => result.current.settings.setHideFinanceCrypto(true));
+    await act(async () => result.current.settings.setRssArticleOpenInReader(false));
     expect(upsertPreferences).not.toHaveBeenCalled();
   });
 
@@ -221,19 +219,6 @@ describe("feed display preference persistence", () => {
     expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.automaticallyMarkAsRead).toBe(true);
   });
 
-  it("persists crypto hiding and rolls back an unsuccessful optimistic save", async () => {
-    const request = deferred<RepoRecord<PreferencesRecord>>();
-    upsertPreferences.mockReturnValue(request.promise);
-    const { result } = renderHook(useSettingsAndSidebar, { wrapper });
-    act(() => result.current.settings.setHideFinanceCrypto(true));
-    await waitFor(() => expect(result.current.sidebar.preferences.hideFinanceCrypto).toBe(true));
-    expect(upsertPreferences.mock.calls[0]![0]).toMatchObject({ hideFinanceCrypto: true, showFinance: true });
-    expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.hideFinanceCrypto).toBe(true);
-    await act(async () => request.reject(new Error("Failed Save")));
-    await waitFor(() => expect(result.current.settings.isPending).toBe(false));
-    expect(result.current.sidebar.preferences.hideFinanceCrypto).toBe(false);
-    expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.hideFinanceCrypto).toBe(false);
-  });
 
   for (const feed of ["subscribed", "following"] as const) {
     it(`ignores unread-count changes for explicitly hidden ${feed}`, async () => {
@@ -261,18 +246,9 @@ describe("feed display preference persistence", () => {
     expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.visibleFeeds).toEqual([]);
   });
 
-  it.each(["wire", "circle"] as const)("ignores attempts to reactivate retired %s preferences", feed => {
-    const { result } = renderHook(useSettingsAndSidebar, { wrapper });
-    act(() => result.current.settings.setDiscoveryFeedVisible(feed, true));
-    expect(upsertPreferences).not.toHaveBeenCalled();
-    expect(result.current.sidebar.preferences.showWire).toBe(false);
-    expect(result.current.sidebar.preferences.showCircle).toBe(false);
-    expect(queryClient.getQueryData<RepoRecord<PreferencesRecord>>(accountPreferencesQueryKey(did))).toEqual(initial);
-  });
 
-  for (const feed of ["social", "podcasts"] as const) {
-    const field = ({ wire: "showWire", circle: "showCircle", social: "showSocial", podcasts: "showPodcasts" } as const)[feed];
-    const otherField = "showWire";
+  for (const feed of ["social"] as const) {
+    const field = ({ social: "showSocial" } as const)[feed];
 
     it(`persists hiding ${feed} and shares the committed record with another observer`, async () => {
       const request = deferred<RepoRecord<PreferencesRecord>>();
@@ -287,7 +263,6 @@ describe("feed display preference persistence", () => {
       });
       expect(upsertPreferences.mock.calls[0]![0]).toMatchObject({
         [field]: false,
-        [otherField]: false,
         visibleFeeds: initial.value.visibleFeeds,
         feedsWithUnreadCounts: initial.value.feedsWithUnreadCounts,
         rssArticleOpenMode: "reader",
@@ -367,26 +342,7 @@ describe("feed display preference persistence", () => {
         accountPreferencesQueryKey(did),
       )).toEqual(initial);
       expect(loadCachedFeedDisplayPreferences(window.localStorage, did)?.[field]).toBe(true);
-      expect(result.current.sidebar.preferences[otherField]).toBe(false);
     });
   }
-  it("restores visible Sports scores in PDS and refreshes the Gateway before settling",async()=>{
-    const hidden={...initial,value:{...initial.value,hideSportsScores:true}};
-    const saved={...hidden,cid:"scores-visible",value:{...hidden.value,hideSportsScores:false}};
-    queryClient.setQueryData(accountPreferencesQueryKey(did),hidden);
-    upsertPreferences.mockResolvedValue(saved);
-    const refreshed=deferred<RepoRecord<PreferencesRecord>>();
-    fetchPreferences.mockReturnValue(refreshed.promise);
-    const {result}=renderHook(useSettingsAndSidebar,{wrapper});
-    act(()=>result.current.settings.setHideSportsScores(false));
-    await waitFor(()=>expect(fetchPreferences).toHaveBeenCalledTimes(1));
-    expect(upsertPreferences.mock.calls[0]?.[0].hideSportsScores).toBe(false);
-    expect(result.current.sidebar.preferences.hideSportsScores).toBe(false);
-    expect(result.current.settings.isPending).toBe(true);
-    await act(async()=>refreshed.resolve(saved));
-    await waitFor(()=>expect(result.current.settings.isPending).toBe(false));
-    expect(result.current.sidebar.preferences.hideSportsScores).toBe(false);
-    expect(result.current.settings.error).toBeNull();
-  });
 
 });

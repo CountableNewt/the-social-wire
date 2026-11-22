@@ -29,8 +29,8 @@ struct EntryRow: View {
                 fallback: entry.thumbnailFallbackUrl
             ),
             publication: publicationChip,
-            reason: entry.wireMetadata?.primaryReasonLabel,
-            reasonAccessibilityLabel: entry.wireMetadata?.reasonLabels.joined(separator: ", "),
+            reason: nil,
+            reasonAccessibilityLabel: nil,
             tags: [],
             isRead: isRead,
             showsReadState: showsReadState
@@ -38,13 +38,6 @@ struct EntryRow: View {
     }
 
     private var publicationChip: SavedLinkPublicationChipModel? {
-        if let wire = entry.wireMetadata {
-            return SavedLinkPublicationChipModel(
-                name: wire.source.displayName,
-                faviconURL: PublicationSiteFavicon.url(for: wire.source.domain).flatMap(URL.init(string:)),
-                homepageURL: URL(string: "https://\(wire.source.domain)")
-            )
-        }
         guard let publicationId = entry.publicationId,
               let publication = appModel.publication(forId: publicationId) else { return nil }
         return SavedLinkPublicationChipModel(

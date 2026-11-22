@@ -4,10 +4,6 @@ struct EntryDetailView: View {
     @Environment(SocialWireAppModel.self) private var appModel
     let entry: EntryDetail
 
-    private var financeSuggestions: [FinanceInstrument] {
-        entry.financeInstruments ?? appModel.financeSuggestions(for: entry.entryId)
-    }
-
     private var presentationMode: ArticlePresentationMode? {
         ArticlePresentationResolver.lockedPresentation(
             entryId: entry.entryId,
@@ -30,13 +26,6 @@ struct EntryDetailView: View {
 
                 ArticleToolbar(entry: entry)
 
-                if !appModel.feedPreferences.hideFinancePerformance,
-                   appModel.financePage?.widgetsEnabled == true,
-                   let symbol = financeSuggestions.first?.tradingViewSymbol,
-                   ProcessInfo.processInfo.environment["FINANCE_WIDGETS_DISABLED"] != "true" {
-                    TradingViewFinanceWidget(symbol: symbol)
-                        .id(symbol)
-                }
                 Divider()
             }
             .padding(.horizontal)

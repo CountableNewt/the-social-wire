@@ -1,7 +1,6 @@
 "use client";
 
 import { AnalyticsTrafficObserver } from "@/components/AnalyticsTrafficObserver";
-import { PodcastPlayerProvider } from "@/components/Podcasts/PodcastPlayerProvider";
 import { Suspense, useState } from "react";
 import { TabUsageObserver } from "@/components/TabUsageObserver";
 import {
@@ -15,10 +14,8 @@ import { AppearanceProvider } from "@/hooks/useAppearance";
 import { createIndexedDbQueryPersister } from "@/lib/indexedDbQueryPersister";
 import type { PublicationSidebarProjection } from "@/lib/publicationProjectionClient";
 import { shouldPersistSidebarProjection } from "@/lib/sidebarProjectionPersist";
-import { shouldPersistFinanceQuery } from "@/lib/financeQueryPersist";
 import { shouldPersistSocialQuery, prepareSocialQueryPersistence, restoreSocialQueryData } from "@/lib/socialQueryPersist";
 import { prepareEntriesQueryPersistence, shouldPersistEntriesQuery } from "@/lib/entriesQueryPersist";
-import { CircleViewerCacheCleanup } from "@/components/Circle/CircleViewerCacheCleanup";
 import { SocialViewerCacheCleanup } from "@/components/Social/SocialViewerCacheCleanup";
 
 /** IndexedDB key for dehydrated React Query cache (sidebar + bounded entry lists). */
@@ -36,7 +33,6 @@ function shouldPersistSidebarProjectionQuery(query: Query): boolean {
 
 function shouldDehydrateQuery(query: Query): boolean {
   return (
-    shouldPersistFinanceQuery(query) ||
     shouldPersistEntriesQuery(query) ||
     shouldPersistSocialQuery(query) ||
     shouldPersistSidebarProjectionQuery(query)
@@ -61,7 +57,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       dbName: "the-social-wire-cache",
       storeName: "react-query",
       key: QUERY_PERSIST_KEY,
-      /** The Wire + entry streams: throttle persist writes. */
+      /** Entry streams: throttle persist writes. */
       throttleTime: 2000,
       prepareClient: client => prepareEntriesQueryPersistence(prepareSocialQueryPersistence(client)),
     })
@@ -83,9 +79,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <AuthProvider>
           <AnalyticsTrafficObserver />
           <Suspense fallback={null}><TabUsageObserver /></Suspense>
-          <CircleViewerCacheCleanup />
           <SocialViewerCacheCleanup />
-          <SocialVerificationProvider><PodcastPlayerProvider>{children}</PodcastPlayerProvider></SocialVerificationProvider>
+          <SocialVerificationProvider>{children}</SocialVerificationProvider>
         </AuthProvider>
       </PersistQueryClientProvider>
     </AppearanceProvider>

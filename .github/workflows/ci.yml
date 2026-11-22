@@ -28,6 +28,7 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       appview: ${{ steps.filter.outputs.appview }}
+      apple: ${{ steps.filter.outputs.apple }}
       reuse_web: ${{ steps.reuse.outputs.reuse_web }}
       reuse_appview: ${{ steps.reuse.outputs.reuse_appview }}
       cache_run_id: ${{ steps.reuse.outputs.cache_run_id }}
@@ -151,9 +152,6 @@ jobs:
           unformatted="$(gofmt -l cmd internal)"
           if [ -n "$unformatted" ]; then echo "gofmt required:"; echo "$unformatted"; exit 1; fi
           go test -vet=all -count=1 ./...
-      - name: Test SQLite migration tools
-        working-directory: .
-        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/migrations -p 'test_*.py'
       - name: Save Go build cache
         if: steps.gocache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         continue-on-error: true
@@ -234,6 +232,27 @@ jobs:
           GO_RESULT: ${{ needs.appview_go.result }}
           IMAGE_RESULT: ${{ needs.appview_image.result }}
         run: test "$GO_RESULT" = success && test "$IMAGE_RESULT" = success
+
+  apple:
+    name: Apple
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.apple == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify native app and ReadStateCore
+        run: bash scripts/ci/apple-test.sh
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: apple-test-results
+          path: ${{ runner.temp }}/social-wire-apple-tests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
 
   warm_base_cache:
     name: Warm Web Cache
@@ -321,7 +340,7 @@ jobs:
 
   required:
     name: CI — Required
-    needs: [changes, web, appview]
+    needs: [changes, web, appview, apple]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -336,8 +355,10 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           WEB_FLAG: ${{ needs.changes.outputs.web }}
           APPVIEW_FLAG: ${{ needs.changes.outputs.appview }}
+          APPLE_FLAG: ${{ needs.changes.outputs.apple }}
           WEB_RESULT: ${{ needs.web.result }}
           APPVIEW_RESULT: ${{ needs.appview.result }}
+          APPLE_RESULT: ${{ needs.apple.result }}
           REUSE_WEB: ${{ needs.changes.outputs.reuse_web }}
           REUSE_APPVIEW: ${{ needs.changes.outputs.reuse_appview }}
         run: node scripts/ci/required-checks.mjs

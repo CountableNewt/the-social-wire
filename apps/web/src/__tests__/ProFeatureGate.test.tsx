@@ -35,9 +35,7 @@ afterAll(() => access.mockRestore());
 
 it("advertises multi-account support only when Delegated Accounts is enabled", () => {
   const previousBrand = process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
-  const previousTools = process.env.NEXT_PUBLIC_TOOLS_ENABLED;
   try {
-    process.env.NEXT_PUBLIC_TOOLS_ENABLED = "true";
     delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED;
     setAccess({});
     const view = render(<ProFeatureGate><p>Private Workspace</p></ProFeatureGate>);
@@ -48,6 +46,5 @@ it("advertises multi-account support only when Delegated Accounts is enabled", (
     expect(screen.getByText(/Tools and multi-account support/)).toBeTruthy();
   } finally {
     if (previousBrand === undefined) delete process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED; else process.env.NEXT_PUBLIC_BRAND_ACCOUNTS_ENABLED = previousBrand;
-    if (previousTools === undefined) delete process.env.NEXT_PUBLIC_TOOLS_ENABLED; else process.env.NEXT_PUBLIC_TOOLS_ENABLED = previousTools;
   }
 });

@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 # Replicated indexing and ingestion services
 
 The active ingestion and indexing control plane uses three independent Swift

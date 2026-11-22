@@ -35,46 +35,6 @@ struct ArticleToolbar: View {
                 }
                 .buttonStyle(.bordered)
 
-                if WireArticleFeedbackContract.normalizeCanonicalURL(
-                    entry.wireFeedbackCanonicalUrl ?? ""
-                ) != nil {
-                    Button {
-                        reactionFeedback += 1
-                        Task {
-                            await appModel.toggleWireArticleFeedback(for: entry, value: .good)
-                        }
-                    } label: {
-                        Label(
-                            appModel.wireArticleFeedbackValue(for: entry) == .good
-                                ? "Rated Good"
-                                : "Good Article",
-                            systemImage: appModel.wireArticleFeedbackValue(for: entry) == .good
-                                ? "hand.thumbsup.fill"
-                                : "hand.thumbsup"
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(appModel.isArticleSocialStateLoading(for: entry))
-
-                    Button {
-                        reactionFeedback += 1
-                        Task {
-                            await appModel.toggleWireArticleFeedback(for: entry, value: .notGood)
-                        }
-                    } label: {
-                        Label(
-                            appModel.wireArticleFeedbackValue(for: entry) == .notGood
-                                ? "Rated Not Good"
-                                : "Not a Good Article",
-                            systemImage: appModel.wireArticleFeedbackValue(for: entry) == .notGood
-                                ? "hand.thumbsdown.fill"
-                                : "hand.thumbsdown"
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(appModel.isArticleSocialStateLoading(for: entry))
-                }
-
                 if let url = entry.canonicalURL {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")

@@ -5,6 +5,8 @@ import {
   validateHttpsEmbedProbeTarget,
 } from "@/lib/embedFramePolicy";
 
+export const maxDuration = 60;
+
 const TIMEOUT_MS = 8_000;
 
 function embeddingHostHintsFromRequest(req: NextRequest): string[] {

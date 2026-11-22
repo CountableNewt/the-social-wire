@@ -7,10 +7,6 @@ import {
   BSKY_APPVIEW_PUBLIC,
   createOAuthAgent,
 } from "@/lib/atprotoClient";
-import {
-  dummyViewerProfile,
-  isDummyReaderDataEnabled,
-} from "@/lib/dummyReaderData";
 
 export const VIEWER_PROFILE_QUERY_KEY = (did: string) =>
   ["viewerProfile", did] as const;
@@ -43,13 +39,11 @@ export type ViewerProfileSlice = {
 export function useViewerProfile() {
   const { session, getOAuthSession } = useAuth();
   const did = session?.did ?? null;
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
 
   return useQuery({
     queryKey: VIEWER_PROFILE_QUERY_KEY(did ?? ""),
     queryFn: async ({ signal }): Promise<ViewerProfileSlice | null> => {
       if (!did) return null;
-      if (dummyReaderDataEnabled) return dummyViewerProfile;
 
       const appViewAgent = new Agent(BSKY_APPVIEW_PUBLIC);
       try {

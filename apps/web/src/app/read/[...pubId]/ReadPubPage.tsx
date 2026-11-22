@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EntryList } from "@/components/EntryList/EntryList";
@@ -15,49 +14,15 @@ import type { AggregateAppViewFeed } from "@/lib/thinAppViewClient";
 import { useFeedDisplayPreferences } from "@/hooks/useFeedDisplayPreferences";
 import { useAuth } from "@/hooks/useAuth";
 import { readEntryMutationRevision } from "@/lib/feedRefreshCoordinator";
-import { isWireNewsEditionEnabled } from "@/lib/wireEditionClient";
 import { cn } from "@/lib/utils";
-
-const ignoreTheWireReadState = () => undefined;
-const theWireEntryIsUnread = () => false;
-
-const WireNewsExperience = dynamic(
-  () => import("@/components/Wire/WireNewsExperience"),
-  {
-    loading: () => (
-      <div className="grid h-full gap-4 p-4 sm:grid-cols-2">
-        <div className="h-80 animate-pulse rounded-2xl bg-muted" />
-        <div className="h-80 animate-pulse rounded-2xl bg-muted" />
-      </div>
-    ),
-  },
-);
-
-const CircleNewsExperience = dynamic(
-  () => import("@/components/Circle/CircleNewsExperience"),
-  {
-    loading: () => (
-      <div className="grid h-full gap-4 p-4 sm:grid-cols-2">
-        <div className="h-80 animate-pulse rounded-2xl bg-muted" />
-        <div className="h-80 animate-pulse rounded-2xl bg-muted" />
-      </div>
-    ),
-  },
-);
 
 export default function ReadPubPage({
   pubId,
   aggregateFeed,
-  wireFeed = false,
-  circleFeed = false,
 }: {
   pubId?: string;
   aggregateFeed?: AggregateAppViewFeed;
-  wireFeed?: boolean;
-  circleFeed?: boolean;
 }) {
-  const wireNewsEditionEnabled = wireFeed && isWireNewsEditionEnabled();
-  const editorialFeed = wireFeed || circleFeed;
   const [rssReaderSelection, setRssReaderEntry] = useState<{
     entryId: string;
     title: string;
@@ -79,7 +44,7 @@ export default function ReadPubPage({
   const queryClient = useQueryClient();
   const explicitReadVersions = useRef(new Map<string, number>());
   const viewerKey = `${session?.did ?? "public"}:${oauthSessionReloadSeq ?? 0}`;
-  const scope = JSON.stringify([pubId, aggregateFeed, wireFeed, circleFeed]);
+  const scope = JSON.stringify([pubId, aggregateFeed]);
   const rssReaderEntry = rssReaderSelection?.viewerKey === viewerKey && rssReaderSelection.scope === scope ? rssReaderSelection : null;
   const resolvingEntryId = resolvingSelection?.viewerKey === viewerKey && resolvingSelection.scope === scope ? resolvingSelection.entryId : null;
   const setResolvingEntryId = useCallback((entryId: string | null) => setResolvingSelection(entryId ? { entryId, viewerKey, scope } : null), [scope, viewerKey]);
@@ -128,7 +93,7 @@ export default function ReadPubPage({
     ) => {
       if (target.kind === "rssReader") {
         pendingTab?.close();
-        if (!editorialFeed) markAutomaticRead();
+        markAutomaticRead();
         setRssReaderEntry({
           entryId,
           title: entry.title ?? "RSS Article",
@@ -143,9 +108,9 @@ export default function ReadPubPage({
       if (!tab || tab.closed) { setOpenFailureMessage("Allow Pop-Ups to Open This Article."); return; }
       tab.opener = null;
       tab.location.href = target.url;
-      if (!editorialFeed) markAutomaticRead();
+      markAutomaticRead();
     },
-    [editorialFeed, scope, viewerKey],
+    [scope, viewerKey],
   );
 
   const handleSelectEntry = useCallback(
@@ -256,30 +221,19 @@ export default function ReadPubPage({
               "mx-auto w-full max-w-3xl",
           )}
         >
-          {circleFeed ? (
-            <CircleNewsExperience onSelect={handleSelectEntry} />
-          ) : wireNewsEditionEnabled ? (
-            <WireNewsExperience onSelect={handleSelectEntry} />
-          ) : (
-            <EntryList
-              pubId={pubId}
-              aggregateFeed={aggregateFeed}
-              wireFeed={wireFeed}
-              selectedEntryId={rssReaderEntry?.entryId ?? null}
-              resolvingEntryId={resolvingEntryId}
-              onSelectEntry={handleSelectEntry}
-              isEntryRead={editorialFeed ? theWireEntryIsUnread : isEntryRead}
-              pendingEntryReadState={editorialFeed ? undefined : pendingEntryReadState}
-              readIndicatorsEnabled={!editorialFeed}
-              articleFilter={editorialFeed ? "all" : articleListFilter}
-              markEntryRead={
-                editorialFeed ? ignoreTheWireReadState : markEntryReadForPub
-              }
-              markEntryUnread={
-                editorialFeed ? ignoreTheWireReadState : markEntryUnreadForPub
-              }
-            />
-          )}
+          <EntryList
+            pubId={pubId}
+            aggregateFeed={aggregateFeed}
+            selectedEntryId={rssReaderEntry?.entryId ?? null}
+            resolvingEntryId={resolvingEntryId}
+            onSelectEntry={handleSelectEntry}
+            isEntryRead={isEntryRead}
+            pendingEntryReadState={pendingEntryReadState}
+            readIndicatorsEnabled
+            articleFilter={articleListFilter}
+            markEntryRead={markEntryReadForPub}
+            markEntryUnread={markEntryUnreadForPub}
+          />
         </div>
       </div>
       <RssArticleReaderDialog

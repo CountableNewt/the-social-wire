@@ -55,20 +55,6 @@ final class NewsShellSmokeUITests: XCTestCase {
         confirmation.buttons["Cancel"].tap()
     }
 
-    func testRetiredTopicControlsStayHiddenInNativeShell() {
-        let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists"]
-        app.launch()
-        XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 5))
-        selectRoot("Topics", in: app)
-        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Choose Feed"].exists)
-        XCTAssertFalse(app.buttons["Finance"].exists)
-        XCTAssertFalse(app.buttons["Sports"].exists)
-        selectDestination("Subscribed", in: app)
-        XCTAssertTrue(content(for: "library", in: app).waitForExistence(timeout: 3))
-    }
-
     func testListsSelectionAndManagementRemainReachable() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-topics-lists"]
@@ -139,18 +125,13 @@ final class NewsShellSmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["lists.createName"].exists)
         app.buttons["Done"].firstMatch.tap()
 
-        selectRoot("Topics", in: app)
-        XCTAssertTrue(app.staticTexts["No Topics"].waitForExistence(timeout: 5))
-        selectDestination("Lists", in: app)
-        XCTAssertTrue(app.staticTexts["No Lists Yet"].waitForExistence(timeout: 3))
         selectDestination("Read Later", in: app)
         XCTAssertTrue(content(for: "saved", in: app).waitForExistence(timeout: 5))
     }
 
     private func selectDestination(_ label: String, in app: XCUIApplication) {
         let root: String = switch label {
-        case "Finance", "Sports", "Podcasts": "Topics"
-        case "Subscribed", "Following", "The Wire", "Your Circle": "News"
+        case "Subscribed", "Following": "News"
         case "Archive", "Read Later": "Read Later"
         case "Lists": "Lists"
         default: label
@@ -219,10 +200,6 @@ final class NewsShellSmokeUITests: XCTestCase {
         return XCTWaiter.wait(for: [hittable], timeout: 5) == .completed
     }
 
-    func testWireCardsFitNarrowCanvas() {
-        assertFeedCards(circle: false, largeText: false)
-    }
-
     func testReadAgeMenuUsesAvailableDaysAndRequiresConfirmation() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-read-age"]
@@ -274,94 +251,6 @@ final class NewsShellSmokeUITests: XCTestCase {
         XCTAssertTrue(ageButton(days: 4, in: app).exists)
     }
 
-    func testWireCardsFitNarrowCanvasWithAccessibilityText() {
-        assertFeedCards(circle: false, largeText: true)
-    }
-
-    func testCircleActionsFitNarrowCanvas() {
-        assertFeedCards(circle: true, largeText: false)
-    }
-
-    func testCircleActionsFitNarrowCanvasWithAccessibilityText() {
-        assertFeedCards(circle: true, largeText: true)
-    }
-
-    private func assertFeedCards(circle: Bool, largeText: Bool) {
-        let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing-news-shell", "--ui-testing-reset-tabs", "--ui-testing-feed-cards"]
-        if circle { app.launchArguments.append("--ui-testing-circle") }
-        if largeText { app.launchArguments.append("--ui-testing-large-text") }
-        app.launch()
-
-        let canvas = app.scrollViews["feed-canvas"]
-        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
-        XCTAssertEqual(canvas.frame.width, 320, accuracy: 1)
-
-        let actionContainer: XCUIElement
-        if circle {
-            actionContainer = canvas
-        } else {
-            let firstCard = canvas.descendants(matching: .any)["wire-card-ui-story-1"]
-            XCTAssertTrue(firstCard.waitForExistence(timeout: 2))
-            XCTAssertGreaterThanOrEqual(firstCard.frame.width, 250)
-            actionContainer = firstCard
-        }
-
-        let actionSpecs = circle
-            ? [("story-open", "Open Story"), ("story-hide", "Hide Story")]
-            : [("story-open", "Open Story")]
-        let actions = actionSpecs.map { identifier, label in
-            let identified = actionContainer.descendants(matching: .any).matching(identifier: identifier).firstMatch
-            return identified.exists ? identified : actionContainer.buttons[label]
-        }
-        let actionIDs = actionSpecs.map(\.0)
-        for action in actions {
-            XCTAssertTrue(action.waitForExistence(timeout: 2))
-        }
-        if let last = actions.last { reveal(last, in: canvas) }
-
-        let frames = actions.map(\.frame)
-        for (index, frame) in frames.enumerated() {
-            XCTAssertGreaterThanOrEqual(frame.width, 43.5, actionIDs[index])
-            XCTAssertGreaterThanOrEqual(frame.height, 43.5, actionIDs[index])
-            XCTAssertGreaterThanOrEqual(frame.minX, canvas.frame.minX - 1, actionIDs[index])
-            XCTAssertLessThanOrEqual(frame.maxX, canvas.frame.maxX + 1, actionIDs[index])
-            for otherFrame in frames.dropFirst(index + 1) {
-                XCTAssertFalse(
-                    frame.insetBy(dx: 1, dy: 1).intersects(otherFrame),
-                    "Feed actions overlap"
-                )
-            }
-        }
-
-        let result = app.staticTexts["feed-action-result"]
-        let expectedResults = circle ? ["Open", "Hidden"] : ["Open"]
-        for (action, expected) in zip(actions, expectedResults) {
-            reveal(action, in: canvas)
-            XCTAssertTrue(action.isHittable)
-            action.tap()
-            // The result exists before tapping; wait for the callback to update it.
-            let callback = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "label == %@", expected),
-                object: result
-            )
-            XCTAssertEqual(XCTWaiter.wait(for: [callback], timeout: 5), .completed)
-            XCTAssertEqual(result.label, expected)
-        }
-
-        if !circle {
-            let rail = canvas.scrollViews.firstMatch
-            let secondCard = canvas.descendants(matching: .any)["wire-card-ui-story-2"]
-            XCTAssertTrue(secondCard.waitForExistence(timeout: 2))
-            XCTAssertGreaterThanOrEqual(secondCard.frame.width, 250)
-            let secondOpen = secondCard.descendants(matching: .any)["story-open"]
-            revealHorizontally(secondOpen, in: rail)
-            reveal(secondOpen, in: canvas)
-            XCTAssertTrue(secondOpen.isHittable, "The longer second card must remain usable")
-            XCTAssertLessThanOrEqual(secondOpen.frame.maxY, rail.frame.maxY + 1)
-        }
-    }
-
     private func ageButton(days: Int, in app: XCUIApplication) -> XCUIElement {
         // Keep both representations in one live query while the menu appears.
         // Choosing a fallback before presentation can strand the wait on a stale query.
@@ -370,51 +259,6 @@ final class NewsShellSmokeUITests: XCTestCase {
                         "mark-read-age-\(days)",
                         days == 7 ? "1 Week" : days == 1 ? "1 Day" : "\(days) Days")
         ).firstMatch
-    }
-
-    private func revealHorizontally(_ element: XCUIElement, in scrollView: XCUIElement) {
-        for _ in 0..<6 {
-            let frame = element.frame
-            let viewport = scrollView.frame
-            if frame.minX >= viewport.minX, frame.maxX <= viewport.maxX { return }
-            if frame.minX < viewport.minX {
-                scrollView.swipeRight()
-            } else {
-                scrollView.swipeLeft()
-            }
-        }
-    }
-
-    private func reveal(_ element: XCUIElement, in scrollView: XCUIElement) {
-        for _ in 0..<6 {
-            let frame = element.frame
-            let viewport = scrollView.frame
-            // Hittability alone can accept a clipped action near a scroll edge.
-            if frame.minY >= viewport.minY, frame.maxY <= viewport.maxY,
-               element.isHittable { break }
-            if frame.minY < viewport.minY {
-                scrollView.swipeDown()
-            } else if frame.maxY > viewport.maxY {
-                scrollView.swipeUp()
-            } else {
-                // Scrolling cannot resolve an action that is fully visible but blocked.
-                break
-            }
-        }
-        let frame = element.frame
-        let viewport = scrollView.frame
-        XCTAssertGreaterThanOrEqual(
-            frame.minY, viewport.minY,
-            "Action must be fully visible before tapping: \(frame), viewport: \(viewport)"
-        )
-        XCTAssertLessThanOrEqual(
-            frame.maxY, viewport.maxY,
-            "Action must be fully visible before tapping: \(frame), viewport: \(viewport)"
-        )
-        XCTAssertTrue(
-            element.isHittable,
-            "Action must accept a tap after reveal: \(frame), viewport: \(viewport)"
-        )
     }
 
     private func content(for tab: String, in app: XCUIApplication) -> XCUIElement {

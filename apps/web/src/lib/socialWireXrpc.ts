@@ -22,11 +22,4 @@ export const socialWireXrpc = {
   markAllRead: `${XRPC_PREFIX}app.thesocialwire.appview.markAllRead`,
   getReadAgeOptions: `${XRPC_PREFIX}app.thesocialwire.appview.getReadAgeOptions`,
   markReadBefore: `${XRPC_PREFIX}app.thesocialwire.appview.markReadBefore`,
-  getWire: `${XRPC_PREFIX}app.thesocialwire.discovery.getWire`,
-  getWireEdition: `${XRPC_PREFIX}app.thesocialwire.discovery.getWireEdition`,
-  getWireItem: `${XRPC_PREFIX}app.thesocialwire.discovery.getWireItem`,
-  getFeedCatalog: `${XRPC_PREFIX}app.thesocialwire.discovery.getFeedCatalog`,
-  getCircleCatalog: `${XRPC_PREFIX}app.thesocialwire.discovery.getCircleCatalog`,
-  getCircleEdition: `${XRPC_PREFIX}app.thesocialwire.discovery.getCircleEdition`,
-  setCircleItemHidden: `${XRPC_PREFIX}app.thesocialwire.discovery.setCircleItemHidden`,
 } as const;

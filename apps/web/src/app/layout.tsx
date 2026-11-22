@@ -7,6 +7,7 @@ import { GeistSerif } from "geist/font/serif/variable";
 import "./globals.css";
 import { Providers } from "./providers";
 import { EnvironmentBanner } from "@/components/shared/EnvironmentBanner";
+import { metadataSiteUrl } from "@/lib/metadataSiteUrl";
 import {
   environmentBannerHeight,
   getAppEnv,
@@ -18,15 +19,7 @@ import {
   THEME_STORAGE_KEY,
 } from "@/lib/appearance";
 
-const siteUrl = (() => {
-  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayDomain) {
-    return `https://${railwayDomain.replace(/^https?:\/\//i, "").replace(/\/$/, "")}`;
-  }
-  return "https://thesocialwire.app";
-})();
+const siteUrl = metadataSiteUrl();
 
 const lightInstallIcon = "/icons/social-wire-icon-light-512.png";
 const darkInstallIcon = "/icons/social-wire-icon-dark-512.png";

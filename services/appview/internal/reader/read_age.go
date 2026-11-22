@@ -224,11 +224,11 @@ func forEachUnread(ctx context.Context, db rowsQueryer, viewer string, requested
 	if err != nil {
 		return err
 	}
-	query := readerCTEStart + `SELECT ci.uri,ci.created_at,
+	query := `SELECT DISTINCT uri,created_at,published_at FROM (SELECT ci.uri,ci.created_at,
 		CASE WHEN json_valid(ci.render_json) THEN json_extract(ci.render_json,'$.publishedAt') END AS published_at, ` +
-		readExpression + " AS is_read" + readerJoins +
-		") SELECT DISTINCT uri,created_at,published_at FROM candidates WHERE is_read=0 ORDER BY " + thinstore.FeedTimestampSQL("created_at") + " DESC, uri DESC"
-	rows, err := db.QueryContext(ctx, query, string(scopeJSON), migrated, viewer, viewer, viewer, thinstore.CursorTimestamp(time.Now()))
+		readExpression + " AS is_read" + strings.Replace(readerJoins, "FROM scopes", "FROM "+readerScopeRows, 1) +
+		") candidates WHERE is_read=0 ORDER BY " + thinstore.FeedTimestampSQL("created_at") + " DESC, uri DESC"
+	rows, err := db.QueryContext(ctx, query, migrated, string(scopeJSON), viewer, viewer, viewer, thinstore.CursorTimestamp(time.Now()))
 	if err != nil {
 		return err
 	}

@@ -20,11 +20,9 @@ import { Label } from "@/components/ui/label";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { usePDSClient } from "@/hooks/usePDSClient";
-import { isDummyReaderDataEnabled } from "@/lib/dummyReaderData";
 import { outboundLinkProps } from "@/lib/outboundLinks";
 import {
   fetchUserInputBoardReference,
-  LOCAL_USER_INPUT_TAGS,
   requireUserInputFeedbackScopes,
   USER_INPUT_BOARD_URL,
   type UserInputBoardReference,
@@ -32,7 +30,6 @@ import {
 } from "@/lib/userInputFeedback";
 
 interface FeedbackResult {
-  local: boolean;
   url: string;
 }
 
@@ -41,7 +38,6 @@ export function FeedbackDialog() {
   const detailsId = useId();
   const client = usePDSClient();
   const { getOAuthSession } = useAuth();
-  const localPreview = isDummyReaderDataEnabled();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
@@ -61,7 +57,7 @@ export function FeedbackDialog() {
       setSelectedTags([]);
       setPhotos([]);
       setBoard(null);
-      setTagsLoading(!localPreview);
+      setTagsLoading(true);
       setSubmitting(false);
       setError(null);
       setResult(null);
@@ -69,7 +65,7 @@ export function FeedbackDialog() {
   }
 
   useEffect(() => {
-    if (!open || localPreview) return;
+    if (!open) return;
 
     let cancelled = false;
     void fetchUserInputBoardReference()
@@ -87,7 +83,7 @@ export function FeedbackDialog() {
     return () => {
       cancelled = true;
     };
-  }, [localPreview, open]);
+  }, [open]);
 
   function toggleTag(value: string) {
     setSelectedTags((current) =>
@@ -106,10 +102,6 @@ export function FeedbackDialog() {
     setError(null);
     setSubmitting(true);
     try {
-      if (localPreview) {
-        setResult({ local: true, url: USER_INPUT_BOARD_URL });
-        return;
-      }
 
       const oauth = getOAuthSession();
       if (!oauth || !client) throw new Error("Sign in to send feedback.");
@@ -126,7 +118,6 @@ export function FeedbackDialog() {
         ...(photos.length ? { photos } : {}),
       });
       setResult({
-        local: false,
         url: userInputDiscussionUrl(discussion.uri) ?? USER_INPUT_BOARD_URL,
       });
     } catch (caught) {
@@ -141,7 +132,7 @@ export function FeedbackDialog() {
     }
   }
 
-  const availableTags = localPreview ? LOCAL_USER_INPUT_TAGS : (board?.tags ?? []);
+  const availableTags = board?.tags ?? [];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -158,12 +149,10 @@ export function FeedbackDialog() {
           <>
             <DialogHeader>
               <DialogTitle>
-                {result.local ? "Feedback Previewed" : "Feedback Sent"}
+                Feedback Sent
               </DialogTitle>
               <DialogDescription>
-                {result.local
-                  ? "Local mode stays offline, so this was a preview and nothing was posted."
-                  : "Thanks—your feedback was posted to The Social Wire’s UserInput board."}
+                Thanks—your feedback was posted to The Social Wire’s UserInput board.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -174,7 +163,7 @@ export function FeedbackDialog() {
                 nativeButton={false}
                 render={<a href={result.url} {...outboundLinkProps} />}
               >
-                {result.local ? "View Feedback Board" : "View Feedback"}
+                View Feedback
                 <ExternalLink />
               </Button>
             </DialogFooter>
@@ -251,12 +240,6 @@ export function FeedbackDialog() {
                 onPhotosChange={setPhotos}
                 disabled={submitting}
               />
-              {localPreview ? (
-                <p className="rounded-xl border border-border/70 bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
-                  Local mode is offline. Submit will preview the success state
-                  without posting anything.
-                </p>
-              ) : null}
               {error ? (
                 <p
                   className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"

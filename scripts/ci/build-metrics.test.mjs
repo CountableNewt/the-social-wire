@@ -53,7 +53,7 @@ test('incomplete cache directories do not count as imported bytes', () => {
     mkdirSync(join(root, 'appview'));
     writeFileSync(join(root, 'appview', 'partial-blob'), 'not-an-export');
     let metrics;
-    build({ sha: 'a'.repeat(40), appEnvironment: 'dev' }, 'appview', 'media-tests', {
+    build({ sha: 'a'.repeat(40), appEnvironment: 'dev' }, 'appview', 'builder', {
       environment: { CI_DOCKER_CACHE_DIR: root }, execute: (_command, args) => {
         assert.ok(!args.includes('--cache-from'));
       }, record: value => { metrics = value; },

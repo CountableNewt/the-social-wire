@@ -39,10 +39,6 @@ import {
   unreadCountsMapFromProjection,
   type PublicationSidebarProjection,
 } from "@/lib/publicationProjectionClient";
-import {
-  dummyPublicationSidebarProjection,
-  isDummyReaderDataEnabled,
-} from "@/lib/dummyReaderData";
 import { PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY } from "@/lib/sidebarQueryKeys";
 import {
   projectionToSidebarState,
@@ -107,7 +103,6 @@ function PublicationSidebarProviderInner({
   auth: ReturnType<typeof useAuth>;
   children: ReactNode;
 }) {
-  const dummyReaderDataEnabled = isDummyReaderDataEnabled();
   const { session, getOAuthSession, oauthSessionReloadSeq } = auth;
   const qc = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -156,17 +151,7 @@ function PublicationSidebarProviderInner({
   >(undefined);
 
   const mergedProjection =
-    dummyReaderDataEnabled
-      ? cachedProjection ?? dummyPublicationSidebarProjection
-      : streamProjection ?? cachedProjection ?? undefined;
-
-  useEffect(() => {
-    if (!dummyReaderDataEnabled || !did) return;
-    const queryKey = PUBLICATION_SIDEBAR_PROJECTION_QUERY_KEY(did);
-    if (!qc.getQueryData<PublicationSidebarProjection>(queryKey)) {
-      qc.setQueryData(queryKey, dummyPublicationSidebarProjection);
-    }
-  }, [did, dummyReaderDataEnabled, qc]);
+    streamProjection ?? cachedProjection ?? undefined;
 
   const runBootstrapStream = useCallback(
     async (
@@ -386,7 +371,7 @@ function PublicationSidebarProviderInner({
   );
 
   useEffect(() => {
-    if (dummyReaderDataEnabled) return;
+
     if (!session) return;
     const oauth = getOAuthSession();
     if (!oauth) return;
@@ -399,7 +384,7 @@ function PublicationSidebarProviderInner({
       streamGenerationRef.current += 1;
     };
   }, [
-    dummyReaderDataEnabled,
+
     session,
     oauthSessionReloadSeq,
     runBootstrapStream,
@@ -418,7 +403,7 @@ function PublicationSidebarProviderInner({
 
   const hasSidebarSnapshot = mergedProjection != null;
   const sidebarListsLoading =
-    !dummyReaderDataEnabled && !hasSidebarSnapshot && !isRestoring && sidebarFetching;
+    !hasSidebarSnapshot && !isRestoring && sidebarFetching;
 
   const projectionState = useMemo(() => {
     if (!mergedProjection) return null;
@@ -438,23 +423,22 @@ function PublicationSidebarProviderInner({
   const foldersListLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
+    sidebarFetching: sidebarFetching,
     itemCount: folders.length,
   });
   const subscribedPublicationsLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
+    sidebarFetching: sidebarFetching,
     itemCount: unfolderedPubs.length,
   });
   const followingPublicationsLoading = sidebarListShowsSkeleton({
     hasSidebarSnapshot,
     isRestoring,
-    sidebarFetching: dummyReaderDataEnabled ? false : sidebarFetching,
+    sidebarFetching: sidebarFetching,
     itemCount: followingTabPublications.length,
   });
   const folderPublicationsListLoading =
-    !dummyReaderDataEnabled &&
     !hasSidebarSnapshot &&
     !isRestoring &&
     folderPublicationsLoading;
@@ -464,10 +448,7 @@ function PublicationSidebarProviderInner({
       if (manualRefreshRef.current) return manualRefreshRef.current.task;
       const controller = new AbortController();
       const task = (async () => {
-        if (dummyReaderDataEnabled) {
-          setRefreshMessage("Refresh Complete");
-          return;
-        }
+
         const oauth = getOAuthSession();
         if (!oauth) throw new Error("OAuth session required");
         const signal = controller.signal;
@@ -619,7 +600,7 @@ function PublicationSidebarProviderInner({
   });
 
   const refreshUnreadCountsFromAppViewImpl = useCallback(async () => {
-    if (dummyReaderDataEnabled) return;
+
     const oauth = getOAuthSession();
     if (!oauth || !did) return;
 
@@ -658,7 +639,7 @@ function PublicationSidebarProviderInner({
     } catch {
       /* best-effort cross-client sync */
     }
-  }, [did, dummyReaderDataEnabled, getOAuthSession, qc]);
+  }, [did, getOAuthSession, qc]);
 
   const refreshUnreadCountsFromAppView = useCallback(async () => {
     if (unreadRefreshDebounceRef.current != null) {

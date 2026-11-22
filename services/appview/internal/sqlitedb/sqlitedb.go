@@ -13,28 +13,25 @@ import (
 	"fmt"
 	"net/url"
 	"runtime"
-	"sync"
 
 	_ "modernc.org/sqlite"
 )
 
 // DB is a writer/reader pair over one SQLite file.
 type DB struct {
-	Path  string
-	write *sql.DB
-	read  *sql.DB
+	Path   string
+	write  *sql.DB
+	read   *sql.DB
+	remote bool
 }
 
-var register = sync.OnceValue(registerExtensions)
+// IsRemote reports whether the store uses Turso HTTP rather than a local file.
+func (db *DB) IsRemote() bool { return db.remote }
 
-// Open opens path (creating it when missing) in WAL mode with the functions and
-// collations existing schemas and queries rely on.
+// Open opens path (creating it when missing) in WAL mode using only builtin SQLite features.
 func Open(path string) (*DB, error) {
 	if path == "" {
 		return nil, errors.New("sqlitedb: empty path")
-	}
-	if err := register(); err != nil {
-		return nil, err
 	}
 	write, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
@@ -61,9 +58,6 @@ func Open(path string) (*DB, error) {
 // OpenMemory opens a private in-memory database for tests. Reads and writes
 // share one connection because each in-memory connection is its own database.
 func OpenMemory() (*DB, error) {
-	if err := register(); err != nil {
-		return nil, err
-	}
 	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)&_txlock=immediate")
 	if err != nil {
 		return nil, err
@@ -84,13 +78,14 @@ func dsn(path string, readOnly bool) string {
 		// transactions, so a read-then-write transaction cannot deadlock.
 		query.Set("_txlock", "immediate")
 	}
-	return "file:" + path + "?" + query.Encode()
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
 }
 
 // Writer returns the single-connection pool for statements that modify data.
 func (db *DB) Writer() *sql.DB { return db.write }
 
-// Reader returns the concurrent read-only pool.
+// Reader returns the read-intent pool. Remote stores share a pool with Writer;
+// use Read for an enforced read-only transaction and consistent snapshot.
 func (db *DB) Reader() *sql.DB { return db.read }
 
 // Write runs fn inside an immediate write transaction, committing when fn returns nil.

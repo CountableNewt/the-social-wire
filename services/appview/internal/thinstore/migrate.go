@@ -7,45 +7,44 @@ import (
 	"github.com/CountableNewt/the-social-wire/services/appview/internal/sqlitedb"
 )
 
-// Migrate creates or upgrades the thin AppView store schema in the order
-// SQLiteThinAppViewStore's initializer used: finance, sports, then the core
-// tables. Repository-recovery and PDS read-state migrations (readstate module)
-// must run after this, matching the Swift initializer. Every statement is
-// idempotent against an existing Swift-created file.
+// Migrate creates or upgrades the reader schema, then removes retired feature
+// data. Existing GRDB migration identifiers remain intact.
 func Migrate(ctx context.Context, db *sqlitedb.DB) error {
-	return db.Write(ctx, func(tx *sql.Tx) error {
-		if err := migrateFinance(tx); err != nil {
-			return err
-		}
-		if err := migrateSports(tx); err != nil {
-			return err
-		}
-		return migrateCore(tx)
-	})
+	if err := db.Write(ctx, migrateCore); err != nil {
+		return err
+	}
+	return db.Migrate(ctx, []sqlitedb.Migration{{
+		ID:    "retire-gated-feature-tables-v1",
+		Apply: dropRetiredFeatureTables,
+	}, {
+		ID:    "stored-timestamp-microseconds-v1",
+		Apply: migrateStoredTimestamps,
+	}})
 }
 
-func migrateFinance(tx *sql.Tx) error {
-	return sqlitedb.ExecAll(tx, `
-      CREATE TABLE IF NOT EXISTS finance_selection_sync (viewer_did TEXT PRIMARY KEY, synced_at DOUBLE NOT NULL);
-      CREATE TABLE IF NOT EXISTS finance_selections (
-        viewer_did TEXT NOT NULL, record_key TEXT NOT NULL, kind TEXT NOT NULL,
-        reference TEXT NOT NULL, updated_at DOUBLE NOT NULL, PRIMARY KEY(viewer_did, record_key));
-      CREATE TABLE IF NOT EXISTS finance_selection_versions (
-        viewer_did TEXT NOT NULL, record_key TEXT NOT NULL, event_at DOUBLE NOT NULL,
-        repo_rev TEXT NOT NULL, is_deleted BOOLEAN NOT NULL, PRIMARY KEY(viewer_did, record_key));
-      `)
+// Child tables precede their parents. Keep this explicit: future tables with a
+// similar prefix must never be deleted merely because of their names.
+var retiredFeatureTables = []string{
+	"podcast_clips", "podcast_jobs", "podcast_subscriptions", "podcast_episodes",
+	"podcast_private_episodes", "podcast_private_shows", "podcast_aliases",
+	"podcast_viewer_state", "podcast_shows",
+	"appview_circle_edition_cache", "appview_circle_hidden_items", "appview_circle_graph_snapshots",
+	"finance_personalized_snapshots", "finance_generations", "finance_catalog_snapshots",
+	"finance_instruments", "finance_selection_versions", "finance_selection_sync",
+	"finance_selections", "finance_provider_request_budget", "finance_article_analysis",
+	"sports_personalized_snapshots", "sports_generations", "sports_catalog_snapshots",
+	"sports_entities", "sports_selection_versions", "sports_selection_sync", "sports_selections",
+	"sports_provider_request_budget", "sports_article_analysis", "sports_events",
+	"sports_provider_refresh", "sports_standings", "sports_schedule_status",
 }
 
-func migrateSports(tx *sql.Tx) error {
-	return sqlitedb.ExecAll(tx, `
-      CREATE TABLE IF NOT EXISTS sports_selection_sync (viewer_did TEXT PRIMARY KEY, synced_at DOUBLE NOT NULL);
-      CREATE TABLE IF NOT EXISTS sports_selections (
-        viewer_did TEXT NOT NULL, record_key TEXT NOT NULL, action TEXT NOT NULL,
-        reference TEXT NOT NULL, updated_at DOUBLE NOT NULL, PRIMARY KEY(viewer_did, record_key));
-      CREATE TABLE IF NOT EXISTS sports_selection_versions (
-        viewer_did TEXT NOT NULL, record_key TEXT NOT NULL, event_at DOUBLE NOT NULL,
-        repo_rev TEXT NOT NULL, is_deleted BOOLEAN NOT NULL, PRIMARY KEY(viewer_did, record_key));
-      `)
+func dropRetiredFeatureTables(tx *sql.Tx) error {
+	for _, table := range retiredFeatureTables {
+		if _, err := tx.Exec("DROP TABLE IF EXISTS " + table); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateCore(tx *sql.Tx) error {

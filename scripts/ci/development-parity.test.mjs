@@ -80,7 +80,7 @@ for (const path of [
   'packages/lexicons/lexicons/site.standard.document.json',
   'packages/spec/openapi.yaml',
   'packages/spec/endpoint-manifest.json',
-  'packages/swift/thin-app-view-core/Sources/ThinAppViewCore/Store.swift',
+  'services/appview/internal/thinstore/sqlite_ingest.go',
 ]) test(`retains strict Development parity for canonical ${path}`, t => {
   const r = repository(t);
   r.write(path, 'canonical source change\n');

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import * as Auth from "@/hooks/useAuth";
-import * as Dummy from "@/lib/dummyReaderData";
 import { BSKY_APPVIEW_PUBLIC } from "@/lib/atprotoClient";
 import * as Atproto from "@/lib/atprotoClient";
 import { useViewerProfile } from "@/hooks/useViewerProfile";
@@ -28,10 +27,9 @@ beforeEach(() => {
   oauthFetch.mockClear();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const auth = spyOn(Auth, "useAuth").mockImplementation(() => ({ session: viewer ? { did: viewer } : null, getOAuthSession: () => ({ did: viewer, fetchHandler: oauthFetch } as unknown as OAuthSession) } as ReturnType<typeof Auth.useAuth>));
-  const dummy = spyOn(Dummy, "isDummyReaderDataEnabled").mockReturnValue(false);
   // Other hook suites replace this module factory. Restore the real transport for these boundary tests.
   const agent = spyOn(Atproto, "createOAuthAgent").mockImplementation(session => new Agent(session));
-  restores.push(() => auth.mockRestore(), () => dummy.mockRestore(), () => agent.mockRestore());
+  restores.push(() => auth.mockRestore(), () => agent.mockRestore());
 });
 afterEach(() => { cleanup(); queryClient.clear(); restores.splice(0).forEach(restore => restore()); });
 

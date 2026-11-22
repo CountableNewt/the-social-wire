@@ -1,7 +1,6 @@
 "use client";
 
 import { brandAccountsEnabled } from "@/lib/brandAccountsEnabled";
-import { toolsEnabled } from "@/lib/toolsEnabled";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SquarePen } from "lucide-react";
 import type { AppBskyDraftDefs } from "@atproto/api";
@@ -47,15 +46,14 @@ export function SocialComposeButton(props: SocialComposeButtonProps = {}) {
 function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigger = false, onClose, onDraftChanged }: SocialComposeButtonProps) {
   const { session, getOAuthSession } = useAuth();
   const { isPro: proAccess } = useProEntitlements();
-  const toolsAvailable = toolsEnabled();
-  const isPro = toolsAvailable && proAccess;
+  const isPro = proAccess;
   const brandsAvailable = brandAccountsEnabled();
   const cache = useQueryClient();
   const accounts = useBrandAccounts(session?.did ?? "");
   const [selectedActor, setSelectedActor] = useState<string>();
   const actorDid = brandsAvailable && isPro ? selectedActor ?? session?.did : session?.did;
   const [open, setOpen] = useState(autoOpen);
-  const scheduler = useSkejScheduling(session?.did ?? "", session?.did ?? "", { enabled: toolsAvailable && open && actorDid === session?.did, includeSchedules: false });
+  const scheduler = useSkejScheduling(session?.did ?? "", session?.did ?? "", { enabled: open && actorDid === session?.did, includeSchedules: false });
   const [mode, setMode] = useState<"now" | "schedule">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [scheduled, setScheduled] = useState(false);
@@ -249,7 +247,7 @@ function SocialAccountComposeButton({ initialDraft, autoOpen = false, hideTrigge
           {segments.length > 1 ? <p className="text-xs text-muted-foreground">Threads Publish in Order. Each Post Replies to the Previous Post.</p> : null}
           {locked ? <p role="status" className="text-sm text-muted-foreground">{completed} of {segments.length} Posts Published. Retry Continues This Thread.</p> : null}
           {locked && !pending ? discardRequested ? <div className="rounded-xl border p-3 text-sm"><p>Discard the Remaining Draft? Published Posts Will Stay on Bluesky. A Post With an Unconfirmed Result May Also Have Published.</p><div className="mt-2 flex gap-2"><Button type="button" variant="destructive" onClick={() => { void draft.clear().then(() => { resetDraft(); setError(undefined); }).catch(() => setError("Draft Could Not Be Cleared")); }}>Discard Remaining Draft</Button><Button type="button" variant="outline" onClick={() => setDiscardRequested(false)}>Keep Draft</Button></div></div> : <Button type="button" variant="outline" onClick={() => setDiscardRequested(true)}>{segments.length > 1 ? "Start a New Thread" : "Start A New Post"}</Button> : null}
-          {isPostSchedulingEnabled() && isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || closingDraft || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && toolsAvailable && (brandsAvailable || isPostSchedulingEnabled()) ? <p className="text-xs text-muted-foreground">{brandsAvailable ? isPostSchedulingEnabled() ? "Multi-account support and scheduling require Pro." : "Multi-account support requires Pro." : "Scheduling requires Pro."}</p> : null}
+          {isPostSchedulingEnabled() && isPro && segments.length === 1 ? <ScheduleTimingControls mode={mode} value={scheduledAt} disabled={pending || closingDraft || locked || !draft.loaded} onModeChange={setMode} onChange={setScheduledAt} /> : !isPro && (brandsAvailable || isPostSchedulingEnabled()) ? <p className="text-xs text-muted-foreground">{brandsAvailable ? isPostSchedulingEnabled() ? "Multi-account support and scheduling require Pro." : "Multi-account support requires Pro." : "Scheduling requires Pro."}</p> : null}
           {(isPostSchedulingEnabled() && isPro && mode === "schedule") ? <SchedulingReadiness connected={scheduler.readiness.data?.connected} pending={scheduler.readiness.isPending} failed={scheduler.readiness.isError} connectUrl={scheduler.connectUrl} retry={() => { void scheduler.readiness.refetch(); }} /> : null}
           {!draft.loaded ? <p role="status">Restoring Draft…</p> : <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{draft.saving ? "Saving Draft…" : draft.status}</p>}
           {draft.pendingCleanups ? <div role="status" className="text-sm text-muted-foreground">Post Published. Draft Cleanup Will Retry.<Button type="button" variant="outline" disabled={pending} onClick={() => { void draft.retryCleanups().catch(() => {}); }}>Retry Draft Cleanup</Button></div> : null}

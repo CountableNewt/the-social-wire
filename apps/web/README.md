@@ -28,14 +28,12 @@ Copy `.env.example` to `.env.local` or create `.env.local` manually (see **Envir
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_APP_ENV` | `prod` / `dev` / `local` — banner + OAuth mode (see **Local ATProto OAuth** below). Server also reads `APP_ENV`; `next.config` forwards it to the client bundle when `NEXT_PUBLIC_*` is unset |
-| `NEXT_PUBLIC_ATPROTO_CLIENT_ID` | Optional override for a nonstandard hosted OAuth client ID. Railway Development and Production default to same-origin `/oauth-client-metadata.json` |
+| `NEXT_PUBLIC_ATPROTO_CLIENT_ID` | Optional override for a nonstandard hosted OAuth client ID. Hosted Development and Production default to same-origin `/oauth-client-metadata.json` |
 | `NEXT_PUBLIC_ATPROTO_LOOPBACK_ORIGIN` | Optional: `http://127.0.0.1:PORT` — SSR / first-paint port fallback for loopback redirects |
 | `NEXT_PUBLIC_ATPROTO_LOOPBACK_CALLBACK_PATH` | Optional loopback redirect path (default `/callback`) |
 | `NEXT_PUBLIC_ATPROTO_LOOPBACK_FORCE` | Optional: `true` / `false` — override whether parameterized loopback OAuth is used in dev |
-| `NEXT_PUBLIC_USE_THIN_APPVIEW` | AppView read path switch. It is enabled unless explicitly set to `false`; current entry lists and detail require AppView routes |
-| `NEXT_PUBLIC_WIRE_NEWS_EDITION_ENABLED` | Enables the Wire News Edition UI only after Corpus Edge contract v2 is available. Local dummy-data previews enable it automatically |
 | `NEXT_PUBLIC_SOCIALWIRE_API_URL` | Social Wire gateway base URL for authenticated sidebar, AppView, and sync routes (default `https://api.thesocialwire.app`) |
-| `NEXT_PUBLIC_SITE_URL` | Canonical public Web origin for metadata and absolute URLs; set to the environment's Railway custom domain |
+| `NEXT_PUBLIC_SITE_URL` | Canonical public Web origin for metadata and absolute URLs; set to the environment's stable custom domain; Vercel deployment URL is a metadata-only fallback |
 
 ## Architecture
 
@@ -61,7 +59,7 @@ adapters, while bootstrap streaming and telemetry remain HTTP transports.
 
 Local dev does **not** use the static prod `public/client-metadata.json` at runtime (`/oauth-client-metadata.json` is served dynamically per host). On your machine the browser uses a **parameterized loopback** client ID (`http://localhost?redirect_uri=…&scope=…` per `@atproto/oauth-types`, RFC 8252).
 
-- **When loopback applies:** app env is `local`, or **`dev` during `next dev`**, or **`next dev` with app env unset**. Hosted Railway Development and Production use the Web service's same-origin `/oauth-client-metadata.json` unless `NEXT_PUBLIC_ATPROTO_CLIENT_ID` intentionally overrides it.
+- **When loopback applies:** app env is `local`, or **`dev` during `next dev`**, or **`next dev` with app env unset**. Hosted Development and Production use the Web service's same-origin `/oauth-client-metadata.json` unless `NEXT_PUBLIC_ATPROTO_CLIENT_ID` intentionally overrides it.
 - **Redirect URIs:** `http://127.0.0.1:<devPort>/callback` and `http://[::1]:<devPort>/callback`, derived from `window.location.port` when you sign in. The client may redirect **`localhost` → `127.0.0.1`** after load so IndexedDB matches the redirect origin.
 - **Overrides:** `NEXT_PUBLIC_ATPROTO_LOOPBACK_ORIGIN` (port fallback when `window` is missing), `NEXT_PUBLIC_ATPROTO_LOOPBACK_CALLBACK_PATH` (default `/callback`), `NEXT_PUBLIC_ATPROTO_LOOPBACK_FORCE=false` to force hosted client ID in dev.
 - **Callback route:** Never run idle `oauthClient.init()` concurrently on **`/callback`**, or a race can strip `#code=` / `#state=` when the OAuth client redirects `localhost → 127.0.0.1`. `AuthProvider` skips restore on that path until `handleCallback()` finishes.
@@ -231,14 +229,22 @@ bun run typecheck
 
 ## Deployment
 
-Development and Production are separate Railway services built from `apps/web`:
+Development and Production currently run on Railway; #963 prepares separate Vercel Web projects built with Root Directory `apps/web`. No hosted cutover is implied by the checked-in configuration.
 
 | Environment | Web origin | `NEXT_PUBLIC_APP_ENV` | `NEXT_PUBLIC_SOCIALWIRE_API_URL` |
 |-------------|------------|-----------------------|----------------------------------|
 | Development | `https://testing.thesocialwire.app` | `dev` | `https://api.testing.thesocialwire.app` |
 | Production | `https://thesocialwire.app` | `prod` | `https://api.thesocialwire.app` |
 
-Set `NEXT_PUBLIC_SITE_URL` to the Web origin in the same row. The public domains are Railway custom domains and are the stable OAuth/CORS identities; do not publish generated `*.up.railway.app` URLs as OAuth client IDs. Each Web service serves same-origin metadata: Development redirects to `https://testing.thesocialwire.app/callback`, and Production redirects to `https://thesocialwire.app/callback`. The matching Gateway's `OAUTH_PUBLIC_ORIGIN` and CORS configuration must use that Web origin. Server-only L@tr credentials belong on the matching Railway Web service.
+Set `NEXT_PUBLIC_SITE_URL` to the Web origin in the same row. The public domains remain the stable OAuth/CORS identities across the provider change. Each Web service serves same-origin metadata: Development redirects to `https://testing.thesocialwire.app/callback`, and Production redirects to `https://thesocialwire.app/callback`. The matching Gateway's `OAUTH_PUBLIC_ORIGIN` and CORS configuration must use that Web origin. Server-only L@tr credentials belong on the matching Web service/project.
+
+For the Vercel target, `apps/web/vercel.json` installs the root Bun workspace with the frozen lockfile, builds the Next.js app, and pins Functions to `sfo1`. Keep “Include source files outside the Root Directory” enabled for workspace dependencies. Configure the Development project production branch as `dev`, and Production as `main`; retain the existing required CI and Development-first promotion gate.
+
+Set `APP_ENV`/`NEXT_PUBLIC_APP_ENV` explicitly for each project and preview environment. Development/preview must use testing API endpoints and credentials. Keep `NEXT_PUBLIC_LIVESTREAM_ENABLED=true` in Development and `false` in Production. Livestream defaults off in Production when the flag is missing.
+
+`NEXT_PUBLIC_SITE_URL` controls social-card metadata only and should use the stable domain. Without it, `VERCEL_URL` provides a deployment-specific metadata fallback; it does not change OAuth client IDs. OAuth remains same-origin, including preview callbacks. Signed-in previews additionally require explicitly approved API CORS/client origins; metadata alone does not grant API access, and backend trust must not be wildcard-relaxed.
+
+The fetch-backed Web API routes have a 60-second duration budget. Original image responses preserve the existing 10 MB limit and publisher format, but stream in bounded chunks to avoid the buffered Function response limit. Private draft uploads/downloads use the Go API directly. Files larger than 3 MiB upload sequential 3 MiB binary parts under the existing immutable asset reservation, then explicitly complete the upload (120-second completion budget). Retries replay identical parts with the same asset UUID; account changes, cancellation, missing acknowledgments, and completion failures retain the local file for recovery. The existing 100 MiB whole-file limit and SHA-256 verification remain in place; encryption stays on the server.
 
 Environment banners:
 - **`local`** — blue banner ("Running locally")

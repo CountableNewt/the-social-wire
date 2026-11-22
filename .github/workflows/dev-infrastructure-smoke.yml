@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gateway-readiness:
-    name: Gateway, AppView, and Charybdis Readiness
+  appview-readiness:
+    name: Standalone AppView Readiness
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

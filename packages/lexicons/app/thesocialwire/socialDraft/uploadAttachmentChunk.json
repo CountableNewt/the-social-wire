@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "app.thesocialwire.socialDraft.uploadAttachmentChunk",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Authentication required. Never publishes to the PDS. Owner-only encrypted temporary attachment part. Requires reserved asset UUID in X-Social-Draft-Upload-Id, zero-based integer X-Social-Draft-Upload-Part, and exact known Content-Length. Parts are 3145728 bytes except the final remainder; maximum 34 parts and 104857600 aggregate bytes. Identical retries are idempotent, differing bytes conflict. Reservations expire after 24 hours.",
+      "input": {
+        "encoding": "application/octet-stream"
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "assetId",
+            "part",
+            "received"
+          ],
+          "properties": {
+            "assetId": {
+              "type": "string",
+              "maxLength": 36
+            },
+            "part": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 33
+            },
+            "received": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "name": "InvalidRequest"
+        },
+        {
+          "name": "NotFound"
+        },
+        {
+          "name": "Conflict"
+        },
+        {
+          "name": "Quota"
+        },
+        {
+          "name": "UploadPending"
+        },
+        {
+          "name": "Unavailable"
+        },
+        {
+          "name": "Unauthorized"
+        },
+        {
+          "name": "LengthRequired"
+        }
+      ]
+    }
+  }
+}

@@ -3,7 +3,6 @@ package scheduledata
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"time"
 )
@@ -174,29 +173,6 @@ func (s *Store) readSession(ctx context.Context, db sessionQuerier, did string) 
 		return nil, err
 	}
 	return &value, nil
-}
-
-func (s *Store) ReplaceOAuthSessionAfterRefresh(ctx context.Context, replacement OAuthSession, previousAccessToken, now string) error {
-	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		current, err := s.readSession(ctx, tx, replacement.DID)
-		if err != nil || current == nil {
-			return err
-		}
-		var token struct {
-			AccessToken string `json:"accessToken"`
-			SnakeToken  string `json:"access_token"`
-		}
-		if json.Unmarshal([]byte(current.TokenJSON), &token) != nil {
-			return nil
-		}
-		if token.AccessToken == "" {
-			token.AccessToken = token.SnakeToken
-		}
-		if previousAccessToken == "" || token.AccessToken != previousAccessToken {
-			return nil
-		}
-		return s.writeSession(ctx, tx, replacement, now)
-	})
 }
 
 func (s *Store) ClaimServiceAuth(ctx context.Context, issuer, jti string, expiresAt, now int64) (bool, error) {

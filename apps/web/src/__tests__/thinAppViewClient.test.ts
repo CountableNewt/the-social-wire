@@ -1,27 +1,20 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import * as ReadStateRuntime from "@/lib/pdsReadStateRuntime";
+import { describe, expect, it, mock, spyOn, beforeEach, afterEach } from "bun:test";
 
 const ORIG_ENV = { ...process.env };
 const ORIG_FETCH = globalThis.fetch;
 
 describe("thinAppViewClient", () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_USE_THIN_APPVIEW = "true";
     process.env.NEXT_PUBLIC_SOCIALWIRE_API_URL = "https://api.example.test";
     globalThis.fetch = ORIG_FETCH;
+    spyOn(ReadStateRuntime, "usesPDSReadState").mockResolvedValue(false);
   });
 
   afterEach(() => {
     process.env = { ...ORIG_ENV };
     globalThis.fetch = ORIG_FETCH;
     mock.restore();
-  });
-
-  it("isThinAppViewEnabled is true by default", async () => {
-    delete process.env.NEXT_PUBLIC_USE_THIN_APPVIEW;
-    const { isThinAppViewEnabled } = await import("@/lib/thinAppViewClient");
-    expect(isThinAppViewEnabled()).toBe(true);
-    process.env.NEXT_PUBLIC_USE_THIN_APPVIEW = "false";
-    expect(isThinAppViewEnabled()).toBe(false);
   });
 
   it("preserves typed publisher failures but keeps generic enrollment errors as failures", async () => {

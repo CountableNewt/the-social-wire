@@ -1,64 +1,11 @@
-# Database migrations
+# Database Schema
 
-Provider-neutral Postgres migrations for durable/rebuildable AppView and Charybdis state, the Operations control plane, Tap/recovery telemetry, and temporary cache rollback tables. Railway Postgres is the canonical hosted durable database; Redis cache data is disposable.
+The standalone Go backend owns SQLite schema migrations in `services/appview/internal`. Each store applies its schema before startup. The retired Postgres migrations and Database Migrator service were removed in #963.
 
-## Prerequisites
+User-authored protocol records remain authoritative on the PDS. SQLite contains derived projections and private unpublished data. Existing hosted Postgres databases and backups are retained separately; source cleanup does not delete hosted resources.
 
-- PostgreSQL client tools (`psql`)
+The Go backup command lives at `services/appview/cmd/sqlite-backup`; its snapshot and verification code lives in `internal/sqlitedb`. The old Postgres import scripts and Python runtime dependency are retired. Historical import revisions remain in Git.
 
-## Apply migrations
+Timestamp portability uses stored integer microseconds for content timestamps, read floors, unread overrides and PDS boundaries. Original timestamp strings remain authoritative for API/PDS serialization, and existing feed/cursor ordering retains its nanosecond precision. Startup checks the resulting schema for residual private timestamp dependencies. The source migration and its tests require verification before the Turso cutover.
 
-```bash
-# From repo root, against a disposable database
-DATABASE_URL='postgresql://…' bash scripts/apply-database-migrations.sh
-```
-
-Migrations live in `migrations/`. The runner applies each file once in timestamp order and records versions in `public.schema_migrations`.
-
-Migrations are transactional by default. A migration that must use PostgreSQL
-operations forbidden inside a transaction, such as `CREATE INDEX CONCURRENTLY`,
-must begin with `-- socialwire:transaction=off`. The runner then holds the same
-schema-migration advisory lock for the whole session and records the version
-only after every autocommitted statement succeeds. Such migrations must be
-idempotent and recover safely from a partially completed prior attempt.
-
-## Environment
-
-Set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on **Database Migrator** and each
-database-consuming application service in Railway.
-
-Gateway, AppView, and Charybdis contain SQLite backends, but their current
-process entry points share the Operations environment guard and reject
-`APP_ENV=local`. Runnable local service integration therefore uses `APP_ENV=dev`
-with an isolated disposable Postgres `DATABASE_URL`. Railway services use the
-private `DATABASE_URL`, not `DATABASE_PUBLIC_URL`.
-
-## Key tables
-
-| Table | Used by |
-|-------|---------|
-| `pds_repo_record_cache` | Active Gateway cache when an environment selects Postgres; rollback target in Redis mode |
-| `content_items` | Thin AppView entry index |
-| `read_marks` | Server-side unread filtering |
-| `sidebar_projection_cache`, `unread_counts_cache`, `first_page_cache` | Active projection caches in Postgres mode; rollback targets in Redis mode |
-| `appview_publication_scopes`, `appview_unread_counters`, `appview_viewer_feeds`, `appview_feed_publications` | Materialized scope, unread, and aggregate-feed state |
-| `appview_ingestion_*`, `appview_backfill_jobs`, `appview_recovery_failures`, `appview_projection_repair_outbox` | Ingestion checkpoints, gaps, recovery, and repair |
-| `appview_tap_*` | Tap registrations, receipts, repository state, and parity discrepancies |
-| `rss_feed_fetch_metadata` | Skyreader RSS polling metadata |
-| `operations_*` | Operator state, alerts, commands, events, audits, metrics, and traces |
-
-## Automation
-
-GitHub Actions does not mutate hosted databases. The Railway Database Migrator
-service runs the checked-in migration runner once per migration revision.
-Gateway, App View, Charybdis, Ops, and Jetstream V2 Ingest reference the
-migrator service ID so Railway starts their new revisions only after migration
-success. Validate migration changes against a disposable Postgres database
-before merging.
-
-## Related
-
-- [Database test plan](../docs/test-plans/database.md)
-- [Postgres restore drill](../docs/runbooks/operations/postgres-restore-drill.md)
-- [Thin AppView architecture](../docs/architecture/appview.md)
-- [Redis ownership and rollback](../docs/architecture/redis.md)
+The opt-in remote backend targets the newer Turso Database engine with the pure-Go serverless driver. AppView and scheduling remain separate databases. Remote serving only verifies readiness; `AppView --initialize-only` owns explicit initialization. Use `database-preflight` on verified offline snapshots before import. Hosted database creation/import and engine compatibility checks are not yet performed.

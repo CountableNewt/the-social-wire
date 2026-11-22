@@ -24,9 +24,8 @@ struct ArticleSocialStateLifecycleTests {
     }
 
     private var entry: EntryDetail {
-        WireFeedItem(itemId: "story", canonicalUrl: "https://example.com/story", representativeUri: nil,
-            title: "Story", summary: nil, publishedAt: "2026-10-13T12:00:00Z", thumbnailUrl: nil,
-            source: WireFeedSource(name: "Example", domain: "example.com"), reasons: [], provenance: []).toEntryDetail()
+        EntryDetail(entryId: "at://did:plc:author/site.standard.document/story", title: "Story",
+            publishedAt: "2026-10-13T12:00:00Z", contentHtml: "", originalUrl: "https://example.com/story")
     }
 
     @Test("A cancelled destination ignores late success and permits the next load")
@@ -37,11 +36,11 @@ struct ArticleSocialStateLifecycleTests {
         let task = Task { await model.loadArticleSocialState(for: entry) }
         await transport.waitForRequest()
         task.cancel()
-        let lateRating = #"{"records":[{"uri":"at://did:plc:test/app.thesocialwire.wireFeedback/story","cid":"test","value":{"$type":"app.thesocialwire.wireFeedback","canonicalUrl":"https://example.com/story","value":"not_good","createdAt":"2026-10-13T12:00:00Z","updatedAt":"2026-10-13T12:00:00Z"}}]}"#
-        await transport.complete(.success(lateRating))
+        let lateRecommendation = #"{"records":[{"uri":"at://did:plc:test/site.standard.graph.recommend/story","cid":"test","value":{"$type":"site.standard.graph.recommend","document":"at://did:plc:author/site.standard.document/story","createdAt":"2026-10-13T12:00:00Z"}}]}"#
+        await transport.complete(.success(lateRecommendation))
         await task.value
         #expect(model.errorMessage == nil)
-        #expect(model.wireArticleFeedbackValue(for: entry) == nil)
+        #expect(!model.isStandardSiteRecommended(entry))
         #expect(!model.isArticleSocialStateLoading(for: entry))
         let replacement = Task { await model.loadArticleSocialState(for: entry) }
         await transport.waitForRequest()
@@ -73,7 +72,7 @@ struct ArticleSocialStateLifecycleTests {
         await transport.waitForRequest()
         await transport.complete(.failure(URLError(.notConnectedToInternet)))
         await task.value
-        #expect(model.errorMessage?.hasPrefix("Couldn't load your Wire rating.") == true)
+        #expect(model.errorMessage?.hasPrefix("Couldn't load your recommendation.") == true)
         #expect(!model.isArticleSocialStateLoading(for: entry))
     }
 
@@ -87,7 +86,7 @@ struct ArticleSocialStateLifecycleTests {
         await task.value
         #expect(model.errorMessage == nil)
         #expect(!model.isArticleSocialStateLoading(for: entry))
-        #expect(model.wireArticleFeedbackValue(for: entry) == nil)
+        #expect(!model.isStandardSiteRecommended(entry))
     }
 }
 

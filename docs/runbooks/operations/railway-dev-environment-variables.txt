@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure retired from source in #963. Do not apply its deployment commands. Current runtime and validation guidance is in `docs/architecture/standalone-reader.md` and `docs/test-plans/README.md`.
+
 THE SOCIAL WIRE - RAILWAY DEV ENVIRONMENT VARIABLES
 ===================================================
 
@@ -20,16 +22,11 @@ VALUES STILL NEEDED FROM AN OPERATOR
 
 1. Operator DID allowlist
 
-   Set the same comma-delimited DID list in both locations:
-
-   Operations Web:
-     NEXT_PUBLIC_OPERATIONS_OPERATOR_DIDS=did:plc:...
-
-   Ops:
+   Set the server-side operator DID list on Ops:
      OPERATIONS_OPERATOR_DIDS=did:plc:...
 
-   The Operations Web value controls client-side visibility. The Ops value is the
-   authoritative server-side authorization check.
+   This is the authoritative server-side authorization check. The Operations Web
+   console and its public allowlist variable have been removed.
 
 2. L@tr Link credentials for the Web frontend
 
@@ -125,22 +122,6 @@ Do not set NEXT_PUBLIC_ATPROTO_CLIENT_ID for the Railway Dev host. Hosted Dev us
 the Web service's same-origin /oauth-client-metadata.json document by default.
 
 
-OPERATIONS FRONTEND SERVICE: Operations Web
-============================================
-
-ALREADY SET:
-  APP_ENV=dev
-  NEXT_PUBLIC_APP_ENV=dev
-  PORT=3001
-  NEXT_PUBLIC_OPERATIONS_DEMO_MODE=0
-  NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN=https://gateway-dev-4009.up.railway.app
-
-USER INPUT:
-  NEXT_PUBLIC_OPERATIONS_OPERATOR_DIDS=<comma-delimited operator DIDs>
-
-Keep NEXT_PUBLIC_OPERATIONS_DEMO_MODE=0 on every deployed instance.
-
-
 RETIRED TAP SERVICE (HISTORICAL — DO NOT APPLY)
 ================================================
 
@@ -201,12 +182,9 @@ ALREADY SET:
   PROJECTION_POOL_BASE_URL=http://${{Projection Pool.RAILWAY_PRIVATE_DOMAIN}}:8080
   OPERATIONS_BASE_URL=http://${{Ops.RAILWAY_PRIVATE_DOMAIN}}:${{Ops.PORT}}
   OAUTH_PUBLIC_ORIGIN=https://web-dev-88e4.up.railway.app
-  OAUTH_OPERATIONS_ORIGIN=https://operations-web-dev.up.railway.app
-  OAUTH_OPERATIONS_CLIENT_ID=https://gateway-dev-4009.up.railway.app/operations-oauth-client-metadata.json
 
 GENERATED, ALREADY SET:
   GATEWAY_APPVIEW_INTERNAL_SECRET=<unique Dev secret>
-  GATEWAY_OPERATIONS_INTERNAL_SECRET=<different unique Dev secret>
   PDS_ATTESTATION_RECEIPT_SECRET=<unique random secret, at least 32 bytes, identical on every Gateway replica>
 
 OPTIONAL TRUSTED-OPERATOR FAST PATH WHEN THE AUTHORIZATION SERVER DOES NOT PUBLISH ACCESS-TOKEN KEYS:
@@ -227,13 +205,13 @@ OR use both of these instead of LATR_IOS_PROXY_CLIENT_CREDENTIAL:
   LATR_IOS_PROXY_API_KEY=<Dev API key>
 
 OPTIONAL OAUTH/CORS HARDENING:
-  CORS_ALLOWED_ORIGINS=https://web-dev-88e4.up.railway.app,https://operations-web-dev.up.railway.app
+  CORS_ALLOWED_ORIGINS=https://web-dev-88e4.up.railway.app
   OAUTH_IOS_METADATA_ORIGIN=https://gateway-dev-4009.up.railway.app
   OAUTH_GATEWAY_REQUIRE_KNOWN_CLIENT=false
 
-The CORS variable is optional because Gateway currently derives both origins from
-OAUTH_PUBLIC_ORIGIN and OAUTH_OPERATIONS_ORIGIN. Leave the known-client switch false
-for Dev unless every accepted Web, Operations, and iOS client ID is explicitly added
+The CORS variable is optional because Gateway derives the Web origin from
+OAUTH_PUBLIC_ORIGIN. Leave the known-client switch false
+for Dev unless every accepted Web and iOS client ID is explicitly added
 to OAUTH_GATEWAY_ALLOWED_CLIENT_IDS.
 
 
@@ -269,10 +247,9 @@ ALREADY SET:
   OPERATIONS_ALERT_DELIVERY_ENABLED=false
 
 GENERATED, ALREADY SET:
-  GATEWAY_OPERATIONS_INTERNAL_SECRET=<same Dev secret as Gateway>
 
 USER INPUT:
-  OPERATIONS_OPERATOR_DIDS=<same comma-delimited DIDs as Operations Web>
+  OPERATIONS_OPERATOR_DIDS=<comma-delimited operator DIDs>
 
 OPTIONAL ALERT DELIVERY:
   OPERATIONS_ALERT_WEBHOOK_URL=<HTTPS webhook URL>
@@ -307,12 +284,7 @@ Pair 1:
   Gateway.GATEWAY_APPVIEW_INTERNAL_SECRET
   App View.GATEWAY_APPVIEW_INTERNAL_SECRET
 
-Pair 2:
-  Gateway.GATEWAY_OPERATIONS_INTERNAL_SECRET
-  Ops.GATEWAY_OPERATIONS_INTERNAL_SECRET
-
-Each pair must match internally. The two pairs must be different from one another
-and different from their Production equivalents.
+The pair must match internally and differ from its Production equivalent.
 
 
 RAILWAY-GENERATED VARIABLES
@@ -332,13 +304,8 @@ Web:
   NEXT_PUBLIC_SITE_URL=<Dev Web origin>
   NEXT_PUBLIC_SOCIALWIRE_API_URL=<Dev Gateway origin>
 
-Operations Web:
-  NEXT_PUBLIC_OPERATIONS_GATEWAY_ORIGIN=<Dev Gateway origin>
-
 Gateway:
   OAUTH_PUBLIC_ORIGIN=<Dev Web origin>
-  OAUTH_OPERATIONS_ORIGIN=<Dev Operations Web origin>
-  OAUTH_OPERATIONS_CLIENT_ID=<Dev Gateway origin>/operations-oauth-client-metadata.json
   OAUTH_IOS_METADATA_ORIGIN=<Dev Gateway origin>
 
 If CORS_ALLOWED_ORIGINS is set, replace its origins at the same time. Domain changes

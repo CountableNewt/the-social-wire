@@ -50,6 +50,7 @@ func RegisterClientPerformance(g *httpx.Group, telemetry *TelemetryBuffer, envir
 			!slices.Contains([]string{"local", "dev", "test", "production"}, *body.Environment) {
 			return httpx.Errorf(http.StatusBadRequest, "Invalid client performance sample")
 		}
+		telemetry := telemetryFor(r.Context(), telemetry)
 		dimensions := map[string]string{
 			"event":             *body.Event,
 			"feed_type":         *body.FeedType,

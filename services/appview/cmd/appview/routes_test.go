@@ -20,11 +20,11 @@ import (
 
 func TestStandaloneRouterMountsDocumentedProtectedRoutes(t *testing.T) {
 	env := config.Env{
-		"APP_ENV": "dev", "PODCASTS_ENABLED": "true", "EMBEDDED_SCHEDULING_ENABLED": "true",
-		"SQLITE_DB_PATH":                    filepath.Join(t.TempDir(), "social-wire.sqlite"),
-		"PDS_ATTESTATION_RECEIPT_SECRET":    "routing-fixture-attestation-key-at-least-32",
-		"EMBEDDED_SCHEDULING_PUBLIC_ORIGIN": "https://routing-fixture.example",
-		"EMBEDDED_SCHEDULING_STORAGE_KEY":   base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"APP_ENV":                        "dev",
+		"SQLITE_DB_PATH":                 filepath.Join(t.TempDir(), "social-wire.sqlite"),
+		"PDS_ATTESTATION_RECEIPT_SECRET": "routing-fixture-attestation-key-at-least-32",
+		"SCHEDULING_PUBLIC_ORIGIN":       "https://routing-fixture.example",
+		"SCHEDULING_STORAGE_KEY":         base64.StdEncoding.EncodeToString(make([]byte, 32)),
 	}
 	core, err := config.LoadCore(env)
 	if err != nil {
@@ -89,14 +89,11 @@ func TestStandaloneRouterMountsDocumentedProtectedRoutes(t *testing.T) {
 }
 
 func activeProtectedRoute(path string) bool {
-	if strings.HasPrefix(path, "/xrpc/app.thesocialwire.podcast.getPublic") {
-		return false
-	}
 	for _, prefix := range []string{
 		"/v1/appview/", "/v1/publications/", "/v1/media/", "/v1/lists", "/v1/sync/", "/v1/pds/cache/",
 		"/v1/semble/", "/v1/subscription/", "/xrpc/at.skej.",
 		"/xrpc/app.thesocialwire.appview.", "/xrpc/app.thesocialwire.articleDraft.",
-		"/xrpc/app.thesocialwire.socialDraft.", "/xrpc/app.thesocialwire.podcast.",
+		"/xrpc/app.thesocialwire.socialDraft.",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			return true
