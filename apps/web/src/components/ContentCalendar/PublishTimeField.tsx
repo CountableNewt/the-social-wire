@@ -29,7 +29,7 @@ export function PublishTimeField({ label = "Publish At", value, disabled, onChan
         className="w-full rounded-xl border bg-background px-3 py-2" />
     </label>
     <p id={id} className="text-xs text-muted-foreground">Browser Time Zone · {localTime.resolvedOptions().timeZone}</p>
-    <p className="text-xs text-muted-foreground">Choose :00, :15, :30, or :45. Publishing times are approximate and may be delayed by 15–30 minutes.</p>
+    <p className="text-xs text-muted-foreground">Choose :00, :15, :30, or :45. Publishing times are approximate; posts may publish after the selected time.</p>
     {instant
       ? <p className="text-xs text-muted-foreground">Scheduled For {localTime.format(new Date(instant))}</p>
       : <p role={value ? "alert" : undefined} className={value ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
