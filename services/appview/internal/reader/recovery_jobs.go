@@ -103,7 +103,7 @@ func finishRecovery(ctx context.Context, db *sqlitedb.DB, claim *recoveryClaim, 
 			state = "pending"
 		}
 	}
-	result, err := db.Writer().ExecContext(ctx, `UPDATE pds_recovery_jobs SET status=?,available_at_us=?,lease_owner=NULL,lease_until_us=NULL
+	result, err := db.ExecContext(ctx, `UPDATE pds_recovery_jobs SET status=?,available_at_us=?,lease_owner=NULL,lease_until_us=NULL
   WHERE viewer_did=? AND status='running' AND lease_owner=? AND lease_until_us>?`, state, now.Add(delay).UnixMicro(), claim.viewer, claim.owner, now.UnixMicro())
 	if err != nil {
 		return err

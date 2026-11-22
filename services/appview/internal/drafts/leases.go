@@ -49,8 +49,8 @@ func (s *Service) acquire(ctx context.Context, owner string) (context.Context, f
 	release := func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		_, _ = s.db.Writer().ExecContext(cleanup, "DELETE FROM private_social_draft_transfer_leases WHERE owner=? AND token=?", owner, token)
-		_, _ = s.db.Writer().ExecContext(cleanup, "DELETE FROM private_social_draft_owner_leases WHERE owner=? AND token=?", owner, token)
+		_, _ = s.db.ExecContext(cleanup, "DELETE FROM private_social_draft_transfer_leases WHERE owner=? AND token=?", owner, token)
+		_, _ = s.db.ExecContext(cleanup, "DELETE FROM private_social_draft_owner_leases WHERE owner=? AND token=?", owner, token)
 	}
 	return context.WithValue(ctx, ownerLeaseKey{}, ownerLease{owner, token}), release, nil
 }

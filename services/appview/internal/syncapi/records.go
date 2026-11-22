@@ -154,7 +154,7 @@ func (s service) get(r *http.Request, collection, rkey string, force bool, ttl, 
 	}
 	result.CachedAt = now
 	if result.Body == nil {
-		_, err = s.db.Writer().ExecContext(ctx, `
+		_, err = s.db.ExecContext(ctx, `
 			DELETE FROM pds_repo_record_cache WHERE owner_did=? AND scope_key=? AND cached_at<=?
 		`, did, scope, isotime.Format(now))
 		if err != nil {
@@ -162,7 +162,7 @@ func (s service) get(r *http.Request, collection, rkey string, force bool, ttl, 
 		}
 		return result, err
 	}
-	_, err = s.db.Writer().ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO pds_repo_record_cache(owner_did,scope_key,cid,json_body,cached_at,expires_at)
 		VALUES(?,?,?,?,?,?) ON CONFLICT(owner_did,scope_key) DO UPDATE SET cid=excluded.cid,
 		json_body=excluded.json_body,cached_at=excluded.cached_at,expires_at=excluded.expires_at

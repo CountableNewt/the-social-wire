@@ -52,7 +52,7 @@ func (s *Store) ClaimOAuthRefresh(ctx context.Context, did, owner, tokenHash str
 }
 
 func (s *Store) BeginOAuthRefresh(ctx context.Context, did, owner, tokenHash string, now int64) error {
-	result, err := s.db.Writer().ExecContext(ctx, `UPDATE oauth_refresh_leases SET request_started=1 WHERE did=? AND token_hash=? AND owner=? AND request_started=0 AND expires_at_us>?
+	result, err := s.db.ExecContext(ctx, `UPDATE oauth_refresh_leases SET request_started=1 WHERE did=? AND token_hash=? AND owner=? AND request_started=0 AND expires_at_us>?
   AND EXISTS(SELECT 1 FROM scheduler_actor_leases WHERE purpose='oauth-refresh' AND actor_did=? AND owner=? AND expires_at_us>?)`, did, tokenHash, owner, now, did, owner, now)
 	if err != nil {
 		return err

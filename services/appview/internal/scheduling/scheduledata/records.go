@@ -15,7 +15,7 @@ import (
 const ScheduleCollection = "at.skej.schedule"
 
 func (s *Store) WriteProtocolRecord(ctx context.Context, did, collection, rkey string, value json.RawMessage, now string) error {
-	return writeProtocol(ctx, s.db.Writer(), did, collection, rkey, value, now)
+	return writeProtocol(ctx, s.db, did, collection, rkey, value, now)
 }
 
 func writeProtocol(ctx context.Context, db storeExecer, did, collection, rkey string, value json.RawMessage, now string) error {
@@ -74,7 +74,7 @@ func listRecords(ctx context.Context, db jobsQueryer, query string, args ...any)
 }
 
 func (s *Store) DeleteProtocolRecord(ctx context.Context, did, collection, rkey string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM pds_protocol_records WHERE did=? AND collection=? AND rkey=?", did, collection, rkey)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM pds_protocol_records WHERE did=? AND collection=? AND rkey=?", did, collection, rkey)
 	return err
 }
 
@@ -140,7 +140,7 @@ func (s *Store) FindPublishedSchedule(ctx context.Context, scheduleURI string) (
 }
 
 func (s *Store) UpdateParentPublishedURI(ctx context.Context, did, rkey, parentPublishedURI, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "UPDATE scheduled_jobs SET parent_published_uri=?,updated_at=? WHERE did=? AND rkey=?",
+	_, err := s.db.ExecContext(ctx, "UPDATE scheduled_jobs SET parent_published_uri=?,updated_at=? WHERE did=? AND rkey=?",
 		parentPublishedURI, now, did, rkey)
 	return err
 }
@@ -163,7 +163,7 @@ func (s *Store) InsertAuditEvent(ctx context.Context, did string, scheduleRKey *
 	value[8] = value[8]&0x3f | 0x80
 	encoded := hex.EncodeToString(value[:])
 	id := encoded[:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:]
-	_, err := s.db.Writer().ExecContext(ctx, "INSERT INTO audit_events(id,did,schedule_rkey,action,message,created_at) VALUES(?,?,?,?,?,?)",
+	_, err := s.db.ExecContext(ctx, "INSERT INTO audit_events(id,did,schedule_rkey,action,message,created_at) VALUES(?,?,?,?,?,?)",
 		id, did, scheduleRKey, action, message, now)
 	return err
 }

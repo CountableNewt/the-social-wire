@@ -97,7 +97,7 @@ func (s *Store) ConsumeOAuthState(ctx context.Context, state, now string) (*OAut
 }
 
 func (s *Store) CreateWebSession(ctx context.Context, sessionID string, viewer Viewer, expiresAt string) error {
-	_, err := s.db.Writer().ExecContext(ctx, `INSERT OR REPLACE INTO web_sessions
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO web_sessions
 		(session_id,did,handle,display_name,avatar,expires_at) VALUES(?,?,?,?,?,?)`,
 		sessionID, viewer.DID, viewer.Handle, viewer.DisplayName, viewer.Avatar, expiresAt)
 	return err
@@ -119,7 +119,7 @@ func (s *Store) Viewer(ctx context.Context, sessionID, now string) (*Viewer, err
 }
 
 func (s *Store) DeleteWebSession(ctx context.Context, sessionID string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM web_sessions WHERE session_id=?", sessionID)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM web_sessions WHERE session_id=?", sessionID)
 	return err
 }
 
@@ -132,7 +132,7 @@ type storeExecer interface {
 }
 
 func (s *Store) CreateOAuthSession(ctx context.Context, session OAuthSession, now string) error {
-	return s.writeSession(ctx, s.db.Writer(), session, now)
+	return s.writeSession(ctx, s.db, session, now)
 }
 
 func (s *Store) writeSession(ctx context.Context, db storeExecer, session OAuthSession, now string) error {

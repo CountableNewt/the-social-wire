@@ -241,7 +241,17 @@ func TestLiveTursoColdMaintenanceWriteFanout(t *testing.T) {
 					pool = pools[1]
 				}
 				results <- pool.Write(ctx, func(tx *sql.Tx) error {
-					_, err := tx.ExecContext(ctx, "INSERT INTO http_job_leases(name,owner,expires_at_us) VALUES(?,?,?)", fmt.Sprintf("%s%d", prefix, index), "synthetic", time.Now().Add(time.Minute).UnixMicro())
+					if index == 8 {
+						_, err := tx.ExecContext(ctx, "INSERT INTO http_job_leases(name,owner,expires_at_us) VALUES(?,?,?)", fmt.Sprintf("%s%d", prefix, index), "synthetic", time.Now().Add(time.Minute).UnixMicro())
+						return err
+					}
+					var owner string
+					err := tx.QueryRowContext(ctx, `INSERT INTO http_job_leases(name,owner,expires_at_us) VALUES(?,?,?)
+						ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,expires_at_us=excluded.expires_at_us
+						WHERE http_job_leases.expires_at_us<=? RETURNING owner`, fmt.Sprintf("%s%d", prefix, index), "synthetic", time.Now().Add(time.Minute).UnixMicro(), time.Now().UnixMicro()).Scan(&owner)
+					if err == nil && owner != "synthetic" {
+						return errors.New("synthetic lease ownership mismatch")
+					}
 					return err
 				})
 			}()
@@ -272,7 +282,8 @@ func TestLiveTursoColdMaintenanceWriteFanout(t *testing.T) {
 			_ = pool.Close()
 		}
 		if cleanupErr != nil {
-			t.Fatal("synthetic probe cleanup failed")
+			kind, code := ErrorDiagnostic(cleanupErr)
+			t.Fatalf("synthetic probe cleanup failed kind=%s code=%s", kind, code)
 		}
 	}
 	if failures != 0 {

@@ -161,14 +161,14 @@ func (q *discoveryQueue) finish(ctx context.Context, claim discoveryClaim, faile
 	var err error
 	retry := failed && claim.attempts < discoveryMaxAttempts
 	if !failed {
-		result, err = q.db.Writer().ExecContext(ctx, `DELETE FROM public_discovery_jobs
+		result, err = q.db.ExecContext(ctx, `DELETE FROM public_discovery_jobs
 			WHERE id=? AND status='running' AND lease_owner=? AND lease_until_us>?`, claim.id, claim.owner, nowUS)
 	} else {
 		status, delay := "pending", time.Second*time.Duration(1<<min(claim.attempts, 8))
 		if !retry {
 			status, delay = "failed", time.Hour
 		}
-		result, err = q.db.Writer().ExecContext(ctx, `UPDATE public_discovery_jobs SET status=?,available_at_us=?,
+		result, err = q.db.ExecContext(ctx, `UPDATE public_discovery_jobs SET status=?,available_at_us=?,
 			lease_owner=NULL,lease_until_us=NULL,updated_at_us=?
 			WHERE id=? AND status='running' AND lease_owner=? AND lease_until_us>?`,
 			status, sqlitedb.TimeMicroseconds(now.Add(delay)), nowUS, claim.id, claim.owner, nowUS)
