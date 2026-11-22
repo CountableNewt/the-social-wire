@@ -106,10 +106,14 @@ func matches(ctx context.Context, db rowsQueryer, scopes []thinstore.Publication
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return json.Marshal(matchScopeSites(scopes, byAuthor))
+}
+
+func matchScopeSites(scopes []thinstore.PublicationScope, byAuthor map[string][]string) []feedMatch {
 	result := make([]feedMatch, 0, len(scopes))
 	for _, scope := range scopes {
 		var sites []string
-		if authors[scope.AuthorDID] && (scope.PublicationAtURI != nil || len(scope.PublicationScopeAtURIs)+len(scope.PublicationSiteURLs) > 0) {
+		if scope.PublicationAtURI != nil || len(scope.PublicationScopeAtURIs)+len(scope.PublicationSiteURLs) > 0 {
 			sites = []string{}
 			for _, site := range byAuthor[scope.AuthorDID] {
 				if thinstore.MatchesPublication(&site, scope.PublicationAtURI, scope.PublicationScopeAtURIs, scope.PublicationSiteURLs) {
@@ -122,7 +126,7 @@ func matches(ctx context.Context, db rowsQueryer, scopes []thinstore.Publication
 		}
 		result = append(result, feedMatch{scope.AuthorDID, scope.PublicationID, sites})
 	}
-	return json.Marshal(result)
+	return result
 }
 
 const readExpression = `CASE WHEN ? THEN rm.subject_uri IS NOT NULL
@@ -172,6 +176,12 @@ func listEntriesWithAuthority(ctx context.Context, db rowsQueryer, viewer string
 	if err := json.Unmarshal(scopeJSON, &matched); err != nil {
 		return page, err
 	}
+	return listMatchedEntries(ctx, db, viewer, matched, filter, cursor, limit, includePublication, migrated)
+}
+
+// listMatchedEntries consumes site matches verified in the same read snapshot.
+func listMatchedEntries(ctx context.Context, db rowsQueryer, viewer string, matched []feedMatch, filter thinstore.EntryListFilter, cursor *string, limit int, includePublication, migrated bool) (thinstore.EntryListResponse, error) {
+	page := thinstore.EntryListResponse{Entries: []thinstore.EntryListItem{}}
 	if cursor != nil {
 		if _, _, valid := thinstore.DecodeCursor(*cursor); !valid {
 			return page, httpx.ErrBadRequest

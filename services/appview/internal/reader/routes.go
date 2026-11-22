@@ -185,10 +185,10 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 	var updated string
 	var projections bool
 	err := s.db.Read(ctx, func(tx *sql.Tx) error {
-		var scopeRows []thinstore.PublicationScope
+		var matched []feedMatch
 		var migrated bool
 		var err error
-		updated, scopeRows, migrated, err = feedSnapshot(ctx, tx, viewer, string(selector.Kind), selector.ID)
+		updated, _, matched, migrated, err = feedSnapshotWithMatches(ctx, tx, viewer, string(selector.Kind), selector.ID)
 		if errors.Is(err, sql.ErrNoRows) {
 			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM appview_viewer_feeds WHERE viewer_did=?)", viewer).Scan(&projections); err != nil {
 				return err
@@ -198,7 +198,7 @@ func (s *service) feed(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		page, err = listEntriesWithAuthority(ctx, tx, viewer, scopeRows, args.filter, args.cursor, args.limit, true, migrated)
+		page, err = listMatchedEntries(ctx, tx, viewer, matched, args.filter, args.cursor, args.limit, true, migrated)
 		return err
 	})
 	if errors.Is(err, sql.ErrNoRows) {

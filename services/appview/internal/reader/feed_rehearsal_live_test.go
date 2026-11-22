@@ -126,8 +126,9 @@ func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation strin
 		counter := &readerQueryCounter{Tx: tx}
 		var requested []thinstore.PublicationScope
 		var migrated bool
+		var matched []feedMatch
 		if costOperation == "feed" {
-			_, requested, migrated, err = feedSnapshot(budget, counter, viewer, kind, id)
+			_, requested, matched, migrated, err = feedSnapshotWithMatches(budget, counter, viewer, kind, id)
 		} else {
 			requested, err = scopes(budget, counter, viewer, kind, id)
 		}
@@ -136,7 +137,7 @@ func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation strin
 			switch costOperation {
 			case "feed":
 				var result thinstore.EntryListResponse
-				result, err = listEntriesWithAuthority(budget, counter, viewer, requested, thinstore.FilterAll, nil, 50, true, migrated)
+				result, err = listMatchedEntries(budget, counter, viewer, matched, thinstore.FilterAll, nil, 50, true, migrated)
 				returned = len(result.Entries)
 			case "counts":
 				var result map[string]int
@@ -208,9 +209,9 @@ func runImportedReaderAcceptance(t *testing.T, profile bool, costOperation strin
 					return result, err
 				}
 				defer tx.Rollback()
-				_, requested, migrated, err := feedSnapshot(ctx, tx, viewer, kind, id)
+				_, _, matched, migrated, err := feedSnapshotWithMatches(ctx, tx, viewer, kind, id)
 				if err == nil {
-					result, err = listEntriesWithAuthority(ctx, tx, viewer, requested, filter, cursor, 50, true, migrated)
+					result, err = listMatchedEntries(ctx, tx, viewer, matched, filter, cursor, 50, true, migrated)
 				}
 				if err != nil {
 					return result, err

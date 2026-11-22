@@ -41,18 +41,18 @@ func TestFeedSnapshotMatchesIndependentScopeReadAndUsesOneQuery(t *testing.T) {
 			return err
 		}
 		counter := &readerQueryCounter{Tx: tx}
-		updated, got, migrated, err := feedSnapshot(t.Context(), counter, testViewer, "subscribed", "")
+		updated, got, matched, migrated, err := feedSnapshotWithMatches(t.Context(), counter, testViewer, "subscribed", "")
 		if err != nil {
 			return err
 		}
 		if updated != "2026-11-21T00:00:00Z" || migrated || !reflect.DeepEqual(got, old) || counter.count != 1 {
 			t.Fatalf("snapshot mismatch: updated=%s migrated=%v scopes=%+v queries=%d", updated, migrated, got, counter.count)
 		}
-		page, err := listEntriesWithAuthority(t.Context(), counter, testViewer, got, thinstore.FilterAll, nil, 50, true, migrated)
+		page, err := listMatchedEntries(t.Context(), counter, testViewer, matched, thinstore.FilterAll, nil, 50, true, migrated)
 		if err != nil {
 			return err
 		}
-		if len(page.Entries) != 2 || counter.count != 3 {
+		if len(page.Entries) != 2 || counter.count != 2 {
 			t.Fatalf("full feed bundle: entries=%d queries=%d", len(page.Entries), counter.count)
 		}
 		return nil
@@ -134,4 +134,78 @@ func TestGetFeedSnapshotHTTPPaginationAndUnavailableStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	get(path, http.StatusServiceUnavailable)
+}
+
+func TestCombinedFeedSnapshotPreservesAliasMatchingFiltersAndPagination(t *testing.T) {
+	db := testReaderDB(t)
+	seedFeedSnapshot(t, db)
+	ids := seedItems(t, db)
+	for _, statement := range []string{
+		`UPDATE content_items SET publication_site='https://example.com/News' WHERE uri LIKE '%/0'`,
+		`UPDATE content_items SET publication_site=NULL WHERE uri LIKE '%/2'`,
+		`UPDATE appview_publication_scopes SET publication_at_uri='at://did:plc:AUTHOR/site.standard.publication/news' WHERE publication_id='publication'`,
+		`INSERT INTO appview_publication_scopes VALUES('did:plc:viewer','website','did:plc:author',NULL,'[]','["https://example.com/News/#section"]','[]','["subscribed"]','2026-11-21T00:00:00Z')`,
+		`INSERT INTO appview_publication_scopes VALUES('did:plc:viewer','unscoped','did:plc:author',NULL,'[]','[]','[]','["subscribed"]','2026-11-21T00:00:00Z')`,
+		`INSERT INTO appview_publication_scopes VALUES('did:plc:viewer','no-match','did:plc:author',NULL,'[]','["https://unmatched.example"]','[]','["subscribed"]','2026-11-21T00:00:00Z')`,
+		`INSERT INTO appview_feed_publications VALUES('did:plc:viewer','subscribed','','website'),('did:plc:viewer','subscribed','','unscoped'),('did:plc:viewer','subscribed','','no-match')`,
+		`INSERT INTO appview_publication_scopes VALUES('did:plc:viewer','outside-feed','did:plc:outsider',NULL,'[]','["https://outside.example"]','[]','["following"]','2026-11-21T00:00:00Z')`,
+		`INSERT INTO appview_viewer_feeds VALUES('did:plc:viewer','following','','2026-11-21T00:00:00Z')`,
+		`INSERT INTO appview_feed_publications VALUES('did:plc:viewer','following','','outside-feed')`,
+	} {
+		if _, err := db.Writer().Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Writer().Exec(`INSERT INTO read_marks VALUES(?,?,?)`, testViewer, ids[1], "2026-11-21T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	for _, filter := range []thinstore.EntryListFilter{thinstore.FilterAll, thinstore.FilterRead, thinstore.FilterUnread} {
+		var cursor *string
+		for pageIndex := range 6 {
+			err := db.Read(t.Context(), func(tx *sql.Tx) error {
+				oldScopes, err := scopes(t.Context(), tx, testViewer, "subscribed", "")
+				if err != nil {
+					return err
+				}
+				expected, err := listEntriesWithAuthority(t.Context(), tx, testViewer, oldScopes, filter, cursor, 1, true, false)
+				if err != nil {
+					return err
+				}
+				counter := &readerQueryCounter{Tx: tx}
+				_, gotScopes, matched, migrated, err := feedSnapshotWithMatches(t.Context(), counter, testViewer, "subscribed", "")
+				if err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(gotScopes, oldScopes) {
+					t.Fatal("combined query changed publication scopes")
+				}
+				if len(matched) != 3 {
+					t.Fatalf("alias/unscoped/no-match selection changed: matches=%d", len(matched))
+				}
+				for _, match := range matched {
+					if match.PublicationID == "outside-feed" || match.PublicationID == "no-match" {
+						t.Fatal("unrelated publication leaked into feed")
+					}
+				}
+				actual, err := listMatchedEntries(t.Context(), counter, testViewer, matched, filter, cursor, 1, true, migrated)
+				if err != nil {
+					return err
+				}
+				if !reflect.DeepEqual(actual, expected) {
+					t.Fatalf("filter=%s page=%d changed entries/cursor", filter, pageIndex)
+				}
+				if counter.count != 2 {
+					t.Fatalf("combined feed required %d data queries", counter.count)
+				}
+				cursor = actual.Cursor
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cursor == nil {
+				break
+			}
+		}
+	}
 }
