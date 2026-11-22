@@ -14,6 +14,8 @@ import (
 
 var ErrRemoteDatabase = errors.New("Turso database operation failed")
 
+const tursoPoolSize = 8
+
 // OpenTurso opens the newer Turso engine over its official pure-Go HTTP driver.
 // It does not create local files, enable WAL, migrate schemas or retry mutations.
 func OpenTurso(ctx context.Context, endpoint, token string) (*DB, error) {
@@ -35,14 +37,14 @@ func openTursoWithIdlePolicy(ctx context.Context, endpoint, token string, client
 	protectedClient := *client
 	transport := protectedClient.Transport
 	if transport == nil {
-		transport = http.DefaultTransport
+		transport = defaultTursoTransport()
 	}
 	protectedClient.Transport = &tursoTransport{origin: parsed.Host, next: transport}
 	protectedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return ErrRemoteDatabase }
 	connector := turso.NewConnector(parsed.String(), token).WithHTTPClient(&protectedClient).WithSessionRetention()
 	pool := sql.OpenDB(&tursoConnector{connector: connector, maxIdle: maxIdle, now: now})
-	pool.SetMaxOpenConns(8)
-	pool.SetMaxIdleConns(8)
+	pool.SetMaxOpenConns(tursoPoolSize)
+	pool.SetMaxIdleConns(tursoPoolSize)
 	pool.SetConnMaxIdleTime(time.Minute)
 	// ResetSession checks backend idle time synchronously before reuse, including
 	// after a serverless freeze. Keep active sessions warm across requests;
