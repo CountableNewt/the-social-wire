@@ -25,6 +25,7 @@ func TestErrorDiagnosticDoesNotExposeProviderMessages(t *testing.T) {
 		{"invalid HTTP", &turso.HTTPError{StatusCode: 999, Message: "private"}, "http", "UNKNOWN"},
 		{"canceled", fmt.Errorf("private: %w", context.Canceled), "context", "CANCELED"},
 		{"deadline", context.DeadlineExceeded, "context", "DEADLINE_EXCEEDED"},
+		{"lost session", remoteError(turso.ErrSessionLost), "turso", "SESSION_LOST"},
 		{"unknown", errors.New("private payload"), "unknown", "UNKNOWN"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

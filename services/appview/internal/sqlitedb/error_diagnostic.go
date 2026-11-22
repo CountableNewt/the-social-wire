@@ -18,6 +18,8 @@ func ErrorDiagnostic(err error) (kind, code string) {
 		return "context", "CANCELED"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "context", "DEADLINE_EXCEEDED"
+	case errors.Is(err, turso.ErrSessionLost):
+		return "turso", "SESSION_LOST"
 	}
 	var server *turso.Error
 	if errors.As(err, &server) {
