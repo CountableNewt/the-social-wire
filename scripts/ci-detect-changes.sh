@@ -76,8 +76,6 @@ filter_changed web \
   'services/**' \
   'scripts/**' \
   'tools/**' \
-  'railway/**' \
-  '.railway/**' \
   'docs/runbooks/**' \
   'package.json' \
   'bun.lock' \
@@ -94,7 +92,6 @@ filter_changed appview \
   'packages/spec/openapi.yaml' \
   'packages/vendor/**' \
   'scripts/ci/**' \
-  'railway/appview*.json' \
   'package.json' \
   'bun.lock' \
   '.dockerignore'

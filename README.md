@@ -11,29 +11,30 @@ Web Frontend (Next.js)       iOS/iPadOS (SwiftUI)
           │                         │
           └────── ATProto OAuth ────┘
                          │
-       User's PDS        │       Go AppView (Railway)
+       User's PDS        │       Go AppView (Vercel)
        User-owned        └────── OAuth/DPoP + Reader API
-       protocol records          SQLite on persistent /data
-                                 Bounded RSS + embedded scheduling
+       protocol records          Turso + private encrypted Blob storage
+                                 Bounded RSS + leased scheduling
 ```
 
-The hosted target has two services: Frontend and AppView with SQLite. AppView
+The hosted target has two Vercel projects: Web and AppView. AppView
 retains the public XRPC and `/v1/*` compatibility contracts on the existing API
 domains. See the [standalone cutover runbook](docs/architecture/standalone-reader.md)
 for data import, key preservation, backups, and Development-first acceptance.
 
-GitHub remains origin, GitHub Actions runs required verification, and Railway
-builds and deploys the protected branches through its GitHub integration.
+GitHub remains origin and GitHub Actions runs required verification. Both Vercel
+projects use `main` for Production and the `dev` branch Preview for Development.
+The old Railway writer remains frozen pending operator infrastructure retirement.
 
 ## Monorepo Structure
 
 ```
 the-social-wire/
   apps/
-    web/             # Next.js Frontend; standalone Node runtime
+    web/             # Next.js Frontend; Vercel and portable Node runtime
     apple/           # SwiftUI client; shared ReadStateCore in Packages/
   services/
-    appview/         # Public Go API, SQLite, RSS and scheduling
+    appview/         # Public Go API, Turso/SQLite, RSS and scheduling
   packages/
     lexicons/        # record schemas plus app.thesocialwire.* service XRPC lexicons
     spec/            # OpenAPI 3.1 compatibility contract + endpoint manifest
@@ -50,7 +51,7 @@ the-social-wire/
 | [Bun](https://bun.sh) | Matches root [`package.json`](package.json) `packageManager` (currently 1.3.x) |
 | [Go](https://go.dev/dl/) | Matches [AppView go.mod](services/appview/go.mod) |
 | [Swift](https://swift.org/install) | Supplied by Xcode for the native client |
-| [Railway CLI](https://docs.railway.com/guides/cli) | Latest (hosted operations and migration access) |
+| [Vercel CLI](https://vercel.com/docs/cli) and [Turso CLI](https://docs.turso.tech/cli/introduction) | Hosted operations only; not needed for local development |
 | [Xcode](https://developer.apple.com/xcode/) | 16+ (for iOS) |
 
 ## Quick Start
@@ -107,7 +108,7 @@ bash scripts/ci/verify-runtime-images.sh appview
 - **Protocol-first where data is portable**: folders, publication preferences, subscriptions, and read-later records live on the user's own ATProto PDS
 - **AppView-owned read state**: feed read/unread state is local-first in clients and synchronized to Social Wire AppView for counters and unread filtering
 - **Thin AppView read path**: signed-in clients load bootstrap data, feeds, and entry detail through the public AppView; standard.site bodies remain authoritative on publisher PDSes, while RSS feed bodies may be retained in the derived index (see [docs/architecture/appview.md](docs/architecture/appview.md))
-- **Local projections**: AppView keeps reader projections, private drafts, analytics and caches in SQLite. User-authored protocol records remain authoritative on the PDS.
+- **Server projections**: AppView keeps reader projections, private drafts, analytics and caches in Turso, with SQLite available locally. User-authored protocol records remain authoritative on the PDS. Private attachment ciphertext lives in private Blob storage.
 - **Direct ATProto where it fits**: discovery and repo reads use public XRPC; Bluesky App View (`public.api.bsky.app`) for follows and profiles only
 - **Interoperable by design**: lexicons are public — any ATProto client can read a user's Social Wire folders
 
@@ -115,15 +116,16 @@ bash scripts/ci/verify-runtime-images.sh appview
 
 | Component | Where |
 |-----------|-------|
-| Frontend | Railway, `apps/web/Dockerfile` |
-| AppView + SQLite + bundled media processor | Railway, `services/appview/Dockerfile.standalone`, one `/data` volume |
-| Required CI | GitHub Actions, packaged Frontend and SQLite AppView checks |
-| Releases | Railway GitHub integration, Development before Production |
+| Frontend | Vercel Web project, root `apps/web` |
+| AppView | Vercel backend project, root `services/appview`, six Go Functions |
+| Data | Separate US Turso AppView/scheduling databases and private Blob storage per environment |
+| Required CI | GitHub Actions, Web/Go/Apple/source contracts and portable image checks |
+| Releases | `dev` branch Preview before `main` Production in both projects |
 
-Select `/railway/web-standalone.json` and `/railway/appview-standalone.json` for
-the two services. Historical distributed sources and Postgres backups remain
-available during the rollback window. Follow the [cutover runbook](docs/architecture/standalone-reader.md)
-before retiring old compute; preserve databases, data volumes, object buckets and keys.
+Follow the [runtime and cutover guide](docs/architecture/standalone-reader.md)
+for explicit schema initialization, stable domains and recovery. Railway resource
+retirement is still an operator step; source cleanup does not delete infrastructure.
+The Dockerfiles remain available for local verification and recovery.
 
 ## Docs
 

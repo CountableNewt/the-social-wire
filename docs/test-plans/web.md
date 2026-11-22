@@ -67,8 +67,8 @@ Schema validation tests live in `packages/lexicons/__tests__/`. CI job: **`lexic
 ## Manual verification
 
 - [ ] Sign in with loopback OAuth on `localhost`
-- [ ] Sign in on Railway Development through `testing.thesocialwire.app`; confirm the client ID is its same-origin `/oauth-client-metadata.json` and returns to `/callback`
-- [ ] Confirm Production metadata and redirects remain on `thesocialwire.app`, and neither environment publishes a generated `*.up.railway.app` OAuth identity
+- [ ] Sign in on the Vercel Development branch Preview through `testing.thesocialwire.app`; confirm the client ID is its same-origin `/oauth-client-metadata.json` and returns to `/callback`
+- [ ] Confirm Production metadata and redirects remain on `thesocialwire.app`, and neither environment publishes a generated hosting-provider OAuth identity
 - [ ] Subscribe to a publication (standard.site or RSS)
 - [ ] Mark entry read/unread; confirm sidebar badges
 - [ ] Bootstrap, aggregate/scoped feeds, and flat entry detail load through the gateway

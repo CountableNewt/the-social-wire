@@ -47,7 +47,7 @@ apps/apple/SocialWireTests/
 | Release | `https://api.thesocialwire.app` |
 | Beta / SocialWire-TestFlight | `project.yml` sets `SOCIALWIRE_TESTING_API`; uses the testing host |
 
-Both public API hosts are Railway Gateway custom domains. Do not substitute a generated `*.up.railway.app` URL without also registering its reversed-host callback scheme and publishing matching client metadata.
+Both public API hosts are stable Vercel AppView custom domains. Do not substitute a generated deployment URL without also registering its reversed-host callback scheme and publishing matching client metadata.
 
 ## Manual OAuth checklist
 
@@ -85,7 +85,7 @@ Functional parity with `apps/web` (native SwiftUI chrome; not pixel-matched layo
 | Article presentation | `entryArticlePresentation.ts` | `ArticlePresentationResolver`, `EntryDetailView` | Done — HTML vs web preview with per-entry lock |
 | Feed social actions | `EntrySocialToolbar.tsx` | `ArticleToolbar`, `SavedLinkToolbar` | Done — Reply/Like/Repost/Quote on feed and saved Bluesky subjects |
 | Read-later settings | `/saved/settings` | `SettingsView` | Done — no provider selector; web redirects to `/saved`, iOS settings cover feed display/account |
-| L@tr credentials | Railway Web `/api/latr-gateway` (`LATR_GATEWAY_*`) | Railway Social Wire Gateway `/xrpc/link.latr.bookmarks.*` (`LATR_IOS_PROXY_*`) | Done — secrets server-side only |
+| L@tr credentials | Vercel Web `/api/latr-gateway` (`LATR_GATEWAY_*`) | Vercel Go AppView `/xrpc/link.latr.bookmarks.*` (`LATR_IOS_PROXY_*`) | Done — secrets server-side only |
 
 ### L@tr save transport
 
@@ -96,7 +96,7 @@ iOS must **not** ship L@tr API credentials. All six bookmark NSIDs go to `Social
 - `X-Latr-Gateway-DPoP` (external L@tr Gateway `htu`; forwarded as outbound `DPoP`)
 - `X-ATProto-Upstream-DPoP` (PDS write-through)
 
-The **Social Wire Gateway** injects L@tr credentials from **`LATR_IOS_PROXY_URL`**, **`LATR_IOS_PROXY_CLIENT_ID`**, **`LATR_IOS_PROXY_API_KEY`**, or **`LATR_IOS_PROXY_CLIENT_CREDENTIAL`** in the matching Railway Gateway service. These are separate from the **web** proxy variables (`LATR_GATEWAY_*`) on the matching Railway Web service. Legacy `LATR_GATEWAY_*` names on Gateway are deprecated aliases. List/get use GET, save/delete/migration use POST, and archive/unarchive uses PATCH. Migration carries its PDS proof pool in the body; the other methods forward upstream proof headers.
+The **Social Wire Gateway** injects L@tr credentials from **`LATR_IOS_PROXY_URL`**, **`LATR_IOS_PROXY_CLIENT_ID`**, **`LATR_IOS_PROXY_API_KEY`**, or **`LATR_IOS_PROXY_CLIENT_CREDENTIAL`** in the matching Vercel AppView project/target. These are separate from the **web** proxy variables (`LATR_GATEWAY_*`) on the matching Vercel Web project/target. Legacy `LATR_GATEWAY_*` names on Gateway are deprecated aliases. List/get use GET, save/delete/migration use POST, and archive/unarchive uses PATCH. Migration carries its PDS proof pool in the body; the other methods forward upstream proof headers.
 
 ## Related
 

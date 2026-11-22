@@ -229,18 +229,18 @@ bun run typecheck
 
 ## Deployment
 
-Development and Production currently run on Railway; #963 prepares separate Vercel Web projects built with Root Directory `apps/web`. No hosted cutover is implied by the checked-in configuration.
+Web runs in one Vercel project with Root Directory `apps/web`; the second project hosts Go AppView at `services/appview`. Each project uses `main` for Production and the `dev` branch Preview for Development. The old Railway writer remains frozen while operator infrastructure retirement is pending.
 
 | Environment | Web origin | `NEXT_PUBLIC_APP_ENV` | `NEXT_PUBLIC_SOCIALWIRE_API_URL` |
 |-------------|------------|-----------------------|----------------------------------|
 | Development | `https://testing.thesocialwire.app` | `dev` | `https://api.testing.thesocialwire.app` |
 | Production | `https://thesocialwire.app` | `prod` | `https://api.thesocialwire.app` |
 
-Set `NEXT_PUBLIC_SITE_URL` to the Web origin in the same row. The public domains remain the stable OAuth/CORS identities across the provider change. Each Web service serves same-origin metadata: Development redirects to `https://testing.thesocialwire.app/callback`, and Production redirects to `https://thesocialwire.app/callback`. The matching Gateway's `OAUTH_PUBLIC_ORIGIN` and CORS configuration must use that Web origin. Server-only L@tr credentials belong on the matching Web service/project.
+Set `NEXT_PUBLIC_SITE_URL` to the Web origin in the same row. The public domains remain the stable OAuth/CORS identities across the provider change. Each Web service serves same-origin metadata: Development redirects to `https://testing.thesocialwire.app/callback`, and Production redirects to `https://thesocialwire.app/callback`. Set AppView `OAUTH_PUBLIC_ORIGIN` to the matching stable API origin. Set `CORS_ALLOWED_ORIGINS` explicitly to frontend origins: `https://testing.thesocialwire.app` in Development, and `https://thesocialwire.app,https://www.thesocialwire.app` in Production. The API OAuth origin is not a frontend CORS allowlist. Server-only L@tr credentials belong on the matching Web service/project.
 
-For the Vercel target, `apps/web/vercel.json` installs the root Bun workspace with the frozen lockfile, builds the Next.js app, and pins Functions to `sfo1`. Keep “Include source files outside the Root Directory” enabled for workspace dependencies. Configure the Development project production branch as `dev`, and Production as `main`; retain the existing required CI and Development-first promotion gate.
+For the Vercel target, `apps/web/vercel.json` installs the root Bun workspace with the frozen lockfile, builds the Next.js app, and pins Functions to `sfo1`. Keep “Include source files outside the Root Directory” enabled for workspace dependencies. Configure `main` as the production branch and branch-specific Preview settings for `dev` in the same project; retain required CI and Development-first promotion. Keep Development and Production variables, domains and private credentials isolated. Initialize Development databases explicitly outside Preview builds; remote serving never performs startup DDL.
 
-Set `APP_ENV`/`NEXT_PUBLIC_APP_ENV` explicitly for each project and preview environment. Development/preview must use testing API endpoints and credentials. Keep `NEXT_PUBLIC_LIVESTREAM_ENABLED=true` in Development and `false` in Production. Livestream defaults off in Production when the flag is missing.
+Set `APP_ENV`/`NEXT_PUBLIC_APP_ENV` explicitly for Production and the `dev` branch Preview in each project. Development/preview must use testing API endpoints and credentials. Keep `NEXT_PUBLIC_LIVESTREAM_ENABLED=true` in Development and `false` in Production. Livestream defaults off in Production when the flag is missing.
 
 `NEXT_PUBLIC_SITE_URL` controls social-card metadata only and should use the stable domain. Without it, `VERCEL_URL` provides a deployment-specific metadata fallback; it does not change OAuth client IDs. OAuth remains same-origin, including preview callbacks. Signed-in previews additionally require explicitly approved API CORS/client origins; metadata alone does not grant API access, and backend trust must not be wildcard-relaxed.
 
