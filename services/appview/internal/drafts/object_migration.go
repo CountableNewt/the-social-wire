@@ -79,7 +79,7 @@ type ObjectMigrationResult struct {
 	Complete bool  `json:"complete"`
 }
 
-// MigrateObjectsFromEnvironment copies ciphertext from the existing S3 bucket
+// MigrateObjectsFromEnvironment preserves existing bytes from the S3 bucket
 // to an explicitly selected private Blob store. Both writers must be stopped.
 func MigrateObjectsFromEnvironment(ctx context.Context, env config.Env, receipt string) (ObjectMigrationResult, error) {
 	if env["SOCIAL_DRAFT_MIGRATION_SOURCE"] != "s3" || env["SOCIAL_DRAFT_MIGRATION_DESTINATION"] != "vercel-blob" || env["SOCIAL_DRAFT_MIGRATION_WRITERS_FROZEN"] != "true" {
@@ -128,7 +128,7 @@ func migrateObjects(ctx context.Context, source migrationSource, destination mig
 	}
 	inventory := make(map[string]string)
 	err = source.Walk(ctx, func(object migrationObject) error {
-		if !assetDigest.MatchString(object.key) || object.size <= 0 || object.size > maxStoredObjectBytes || len(inventory) >= maxMigrationObjects {
+		if !validObjectKey(object.key) || object.size <= 0 || object.size > maxStoredObjectBytes || len(inventory) >= maxMigrationObjects {
 			return ErrObjectMigration
 		}
 		keyID := migrationDigest([]byte(object.key))

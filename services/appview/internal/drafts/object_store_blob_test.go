@@ -173,3 +173,56 @@ func TestPrivateBlobEnvironmentRequiresExplicitBackendAndKey(t *testing.T) {
 		t.Fatal("unknown backend accepted")
 	}
 }
+
+func TestPrivateBlobLegacyKeysStayPrivateAndExact(t *testing.T) {
+	key := legacyClipFixture
+	calls := 0
+	s := blobTestStore(t, func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.Method == http.MethodGet {
+			if r.URL.Path != "/"+key || r.URL.Host != "teststore.private.blob.vercel-storage.com" {
+				t.Fatal("legacy path changed")
+			}
+			return blobTestResponse(200, "ciphertext"), nil
+		}
+		if r.Method == http.MethodPost {
+			var p struct {
+				URLs []string `json:"urls"`
+			}
+			if json.NewDecoder(r.Body).Decode(&p) != nil || len(p.URLs) != 1 || p.URLs[0] != "https://teststore.private.blob.vercel-storage.com/"+key {
+				t.Fatal("legacy delete changed identity")
+			}
+			return blobTestResponse(200, `{}`), nil
+		}
+		if r.Method == http.MethodPut {
+			if r.URL.Query().Get("pathname") != key || r.Header.Get("X-Allow-Overwrite") != "0" {
+				t.Fatal("legacy migration changed immutable path")
+			}
+			return blobTestResponse(200, `{"pathname":"`+key+`","url":"https://teststore.private.blob.vercel-storage.com/`+key+`"}`), nil
+		}
+		t.Fatal("unexpected method")
+		return nil, errUnavailable
+	})
+	b, err := s.Get(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Close()
+	if err := s.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+	if err := (migrationBlobDestination{s}).Create(t.Context(), key, bytes.NewReader([]byte{1}), 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"../" + key, key + "?x=1", strings.Replace(key, "clips/", "clips/%2e%2e/", 1)} {
+		if _, err := s.Get(t.Context(), bad); err == nil {
+			t.Fatal("unsafe path reached network")
+		}
+		if err := s.Delete(t.Context(), bad); err == nil {
+			t.Fatal("unsafe delete reached network")
+		}
+	}
+	if calls != 3 {
+		t.Fatal("unsafe key reached network")
+	}
+}
