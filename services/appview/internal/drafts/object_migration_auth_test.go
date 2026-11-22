@@ -150,3 +150,50 @@ func TestMigrationDelegationExpiresBeforeNetworkAndIsMigrationOnly(t *testing.T)
 		t.Fatal("ambiguous credentials accepted")
 	}
 }
+
+func TestMigrationDelegationSignsExactLegacyPathsWithoutExtraOperations(t *testing.T) {
+	s, err := migrationBlobStoreFromEnvironment(migrationDelegationFixture(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := legacyClipFixture
+	calls := 0
+	s.client.Transport = blobTestTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		q := r.URL.Query()
+		if q.Get("vercel-blob-signature") == "" || r.Header.Get("Authorization") != "" {
+			t.Fatal("missing delegated signature")
+		}
+		if r.Method == http.MethodGet {
+			if r.URL.Path != "/"+key {
+				t.Fatal("legacy GET identity changed")
+			}
+			return blobTestResponse(200, "opaque bytes"), nil
+		}
+		if r.Method != http.MethodPut || q.Get("pathname") != key || q.Get("vercel-blob-allow-overwrite") != "false" {
+			t.Fatal("unapproved legacy write")
+		}
+		return blobTestResponse(200, `{"pathname":"`+key+`","url":"https://teststore.private.blob.vercel-storage.com/`+key+`"}`), nil
+	})
+	d := migrationBlobDestination{s}
+	body, err := d.Get(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body.Close()
+	if err := d.Create(t.Context(), key, bytes.NewReader([]byte{1}), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put(t.Context(), key, bytes.NewReader([]byte{1}), 1); err == nil {
+		t.Fatal("delegation allowed legacy overwrite")
+	}
+	if err := s.Delete(t.Context(), key); err == nil {
+		t.Fatal("delegation allowed legacy deletion")
+	}
+	if _, err := s.Get(t.Context(), strings.Replace(key, "audio.m4a", "%2e%2e", 1)); err == nil {
+		t.Fatal("delegation allowed encoded traversal")
+	}
+	if calls != 2 {
+		t.Fatal("invalid delegated operation reached network")
+	}
+}

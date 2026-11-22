@@ -17,8 +17,8 @@ const maxStoredObjectBytes = maxFileBytes + 1024*1024
 
 var blobStoreID = regexp.MustCompile(`^[A-Za-z0-9]{1,63}$`)
 
-// The HTTP contract follows the official @vercel/blob API client. Only already
-// encrypted bytes enter this adapter. Object names are existing random keys.
+// The HTTP contract follows the official @vercel/blob API client. Draft payloads
+// are encrypted before storage; archived legacy objects retain their original bytes.
 type vercelBlobStore struct {
 	client                        *http.Client
 	token, storeID, privateOrigin string
@@ -52,7 +52,7 @@ func (s *vercelBlobStore) request(ctx context.Context, method, endpoint string, 
 }
 
 func (s *vercelBlobStore) objectURL(key string) (string, error) {
-	if !assetDigest.MatchString(key) {
+	if !validObjectKey(key) {
 		return "", errUnavailable
 	}
 	return s.privateOrigin + "/" + key, nil

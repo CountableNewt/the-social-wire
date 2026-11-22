@@ -231,3 +231,62 @@ func TestMigrationPrivateBlobCreatesWithoutOverwriteAndDistinguishesMissing(t *t
 		t.Fatal(err)
 	}
 }
+
+func TestLegacyObjectMigrationPreservesKeysBytesAndPrivateResume(t *testing.T) {
+	source, destination, sourceID, destinationID, path := migrationFixture(t)
+	first := legacyClipFixture
+	second := strings.Replace(first, "audio.m4a", "audiogram.mp4", 1)
+	source.objects = map[string][]byte{first: []byte("opaque legacy audio"), second: []byte("opaque legacy video")}
+	destination.failKey = second
+	if result, err := migrateObjects(t.Context(), source, destination, sourceID, destinationID, path); err == nil || result.Complete || result.Objects != 1 {
+		t.Fatalf("partial migration: %+v %v", result, err)
+	}
+	destination.failKey = ""
+	for range 2 {
+		if result, err := migrateObjects(t.Context(), source, destination, sourceID, destinationID, path); err != nil || !result.Complete || result.Objects != 2 {
+			t.Fatalf("legacy resume: %+v %v", result, err)
+		}
+	}
+	for key, value := range source.objects {
+		if !bytes.Equal(destination.objects[key], value) {
+			t.Fatal("legacy identity or ciphertext changed")
+		}
+	}
+	encoded, err := os.ReadFile(path)
+	if err != nil || bytes.Contains(encoded, []byte(first)) || bytes.Contains(encoded, []byte("opaque legacy")) {
+		t.Fatal("receipt disclosed object identity or bytes")
+	}
+	creates := destination.creates
+	destination.objects[first] = []byte("conflicting bytes")
+	if _, err := migrateObjects(t.Context(), source, destination, sourceID, destinationID, path); err == nil || destination.creates != creates {
+		t.Fatal("legacy conflict overwritten")
+	}
+}
+
+func TestLegacyObjectPathsCannotReplaceReceiptOrStoreDigests(t *testing.T) {
+	for _, field := range []string{"map-key", "content-sha", "source-id"} {
+		t.Run(field, func(t *testing.T) {
+			source, destination, sourceID, destinationID, path := migrationFixture(t)
+			if field == "source-id" {
+				if _, err := migrateObjects(t.Context(), source, destination, legacyClipFixture, destinationID, path); err == nil || source.gets != 0 {
+					t.Fatal("legacy pathname accepted as source digest")
+				}
+				return
+			}
+			key := migrationDigest([]byte(legacyClipFixture))
+			value := migrationReceiptObject{Bytes: 1, SHA256: strings.Repeat("c", 64)}
+			if field == "map-key" {
+				key = legacyClipFixture
+			} else {
+				value.SHA256 = legacyClipFixture
+			}
+			receipt := &migrationReceipt{Version: 1, SourceSHA256: sourceID, DestinationSHA256: destinationID, Objects: map[string]migrationReceiptObject{key: value}}
+			if err := writeMigrationReceipt(path, receipt); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := migrateObjects(t.Context(), source, destination, sourceID, destinationID, path); err == nil || source.gets != 0 {
+				t.Fatal("receipt digest validation relaxed")
+			}
+		})
+	}
+}

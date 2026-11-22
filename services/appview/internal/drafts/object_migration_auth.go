@@ -114,7 +114,7 @@ func (d *blobMigrationDelegation) signRequest(r *http.Request) error {
 	} else if r.Method != http.MethodGet {
 		return errUnavailable
 	}
-	if !assetDigest.MatchString(key) {
+	if !validObjectKey(key) {
 		return errUnavailable
 	}
 	lines := []string{"operation=" + operation, "pathname=" + key}
