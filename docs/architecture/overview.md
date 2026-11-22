@@ -1,157 +1,36 @@
 # Architecture Overview
 
-## System Components
+The Social Wire has thin Next.js and native SwiftUI clients, a Go AppView API, US Turso databases and private encrypted Blob storage. User-owned protocol records remain on each viewer's ATProto PDS.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Clients                                  │
-│                                                                  │
-│  Web (Next.js 16.2+, Railway)   iOS/iPadOS (SwiftUI, App Store) │
-│          │                                    │                  │
-│          └──────── ATProto OAuth (PKCE+DPoP) ─┘                 │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-              ▼                             ▼
-   User's ATProto PDS               Public ATProto XRPC
-   (user-controlled)                (Bluesky App View + author PDS)
-          │                                │
-   app.thesocialwire.*                     ├── Discovery (follows)
-   app.bsky.graph.follow                   ├── Profiles
-          │                                └── Author repo reads (default)
-          │
-          ▼ (authenticated read path)
-   Social Wire Gateway (Railway)
-     /xrpc/app.thesocialwire.* (eligible JSON queries/procedures)
-     /v1/* compatibility, streams, cached reads, L@tr, telemetry
-          │
-          ▼
-     Railway Redis (projection/PDS caches, PLC/RSS leases, ranking primitives)
-     Railway Postgres (content_items, read state, ingest/repair/Operations state)
+```text
+Web (Vercel) / Apple client
+    |
+    +---- viewer PDS: portable user records and publishing
+    +---- public ATProto: identity, graph and publisher records
+    `---- Go AppView (Vercel): OAuth/DPoP and application APIs
+              |
+              +---- Turso AppView: projections and private application state
+              +---- Turso scheduling: encrypted sessions and leased jobs
+              +---- private Blob: server-encrypted draft attachment objects
+              `---- bounded RSS/discovery and external integrations
 ```
 
-## Data Ownership
+## Runtime and Data Ownership
 
-The Social Wire follows a protocol-first ownership model:
+The backend project has six Go Functions: reader, publishing, scheduling, analytics, integrations and maintenance. Shared source lives in `services/appview/internal/appviewruntime`. Existing API paths and stable public domains remain unchanged across hosting providers. Bootstrap uses authenticated NDJSON without buffering. Server-side projection and unread logic remain shared by Web and Apple clients.
 
-| Data | Where | Who owns it |
-|------|-------|-------------|
-| Follow graph | `app.bsky.graph.follow` on user's PDS | User |
-| Folders | `app.thesocialwire.folder` on user's PDS | User |
-| Publication folder assignment | `app.thesocialwire.publicationPrefs` on user's PDS | User |
-| standard.site source records | Author PDS `site.standard.document` / `site.standard.entry` | Authors |
-| Entry lists and indexed detail | Gateway Thin AppView `content_items` | Derived; TTL-bound |
-| RSS entry bodies | Parsed feed content in `content_items.render_json` when supplied | Derived; TTL-bound |
-| Read state | Client local cache + Social Wire AppView `read_marks`/read floors | User-visible derived state |
-| Hosted caches and leases | Private Railway Redis | Disposable and rebuildable |
+The viewer's PDS remains authoritative for user-authored protocol records. Publisher PDS records remain authoritative for standard.site content. AppView stores rebuildable content/projection data and private unpublished state. AppView and scheduling use distinct databases and encryption keys remain unchanged during migration. Browser and Apple caches are per-device, rebuildable state.
 
-User organisation data remains on the PDS. Feed read/unread state is not written to ATProto repo records. Current clients require AppView for feeds and entry detail; a disabled or unavailable AppView produces an unavailable read path rather than a long-lived PDS-direct list fallback. See [appview.md](appview.md).
+## Hosting and Releases
 
-## Auth Flow
+Exactly two Vercel projects host Web (`apps/web`) and AppView (`services/appview`). Both use `main` for Production and the `dev` branch Preview for Development. Environment-specific domains, database tokens, private Blob stores and credentials stay isolated. Other preview branches do not inherit Development scheduling or shared database initialization.
 
-```
-User enters handle
-       │
-       ▼
-Resolve DID via bsky.social / PLC directory
-       │
-       ▼
-Discover the PDS protected-resource metadata and authorization issuer
-       │
-       ▼
-Submit a pushed authorization request (PAR) with PKCE + DPoP
-       │
-       ▼
-Redirect to the discovered authorization endpoint with request_uri
-       │
-       ▼
-User approves on PDS
-       │
-       ▼
-Callback: exchange code at the discovered token endpoint → DPoP-bound tokens
-       │
-       ├─── access token (memory) → PDS XRPC writes (via Agent/client)
-       │
-       └─── refresh token (Keychain / sessionStorage) → silent refresh
-```
+Functions run in `sfo1`; database and object placement must remain in the United States. The maintenance Function uses a consolidated authenticated schedule with durable per-action leases and cadence fences. Production runs every 15 minutes and Development hourly; delivery is approximate. Serving never applies remote schema DDL. Initialize remote stores explicitly, with Development Preview initialization outside builds.
 
-## Direct ATProto Reads
+GitHub remains the canonical remote. Readonly GitHub Actions checks and the Development-first source parity gate precede release. Railway source configuration has been retired; hosted resources remain frozen pending the separate operator retirement step. Historical backups and encrypted objects are recovery material, not a running fallback writer.
 
-Public ATProto reads still support identity, follows, profiles, direct user-record writes, and narrow publisher-record enrichment. The legacy discovery path probes author PDSes as follows:
+## Local Development and Recovery
 
-1. Fetch follows via `app.bsky.graph.getFollows`
-2. Probe each followed DID with `com.atproto.repo.listRecords?collection=site.standard.entry`
-3. Read `site.standard.*` records with `com.atproto.repo.listRecords` / `getRecord` when direct enrichment is needed
+`cmd/appview` runs the combined backend with local SQLite. Portable Web and AppView Docker images, the persistent-volume guard, non-root entrypoint, verified SQLite backup and offline preflight commands remain supported. No local Postgres/Redis stack or retired Swift backend is required.
 
-See [discovery.md](discovery.md) for the detailed walkthrough.
-
-## Thin AppView
-
-With `ENABLE_THIN_APPVIEW` enabled on AppView, the replicated **Ingress
-Controller** appends standard.site commits to the durable inbox, the
-**Projection Pool** projects those rows, and the fenced **Coordinator** polls subscribed Skyreader RSS feeds and
-writes derived `content_items`. Clients load the sidebar and first feed page via
-**`GET /v1/appview/bootstrap-stream`**, then use Lexicon-defined
-`app.thesocialwire.publication.*` and `app.thesocialwire.appview.*` XRPC methods
-for eligible JSON reads and mutations. Compatibility `/v1/*` routes remain
-documented in OpenAPI. Web performs only narrow author-PDS URL/embed enrichment
-when indexed standard.site detail lacks a usable destination. The separate
-Operations service records environment-scoped health, gaps, recovery jobs, and
-audited operator actions through its own XRPC namespace and compatibility
-routes.
-
-Enrollment (`app.thesocialwire.appview.enrollSources`, with a
-`app.thesocialwire.appview.enrollSources` procedure) backfills followed author DIDs
-after client-side discovery because the global relay may miss very new repos.
-
-Full designs: [appview.md](appview.md) and [redis.md](redis.md). Railway deploys each service from its config in [`railway/`](../../railway/README.md).
-
-## Deployment
-
-### Infrastructure
-
-Development and production run as isolated Railway environments. Web,
-Operations Web, Gateway, AppView, Ingress Controller, Projection Pool, Coordinator, Operations,
-Database Migrator, and Railway Postgres deploy in each environment. A private
-disposable Redis is currently
-selected by Gateway, AppView, and the indexing services in both environments; Postgres cache
-tables remain available as rollback backends. Service-to-service traffic uses
-Railway private networking.
-
-```
-GitHub (source)
-       │
-       ▼ push to main or dev
-GitHub Actions
-       │
-       ├─ web / operations-web
-       ├─ gateway / appview / ingress-controller / indexing-worker / operations
-       ├─ database-migrator
-       └─ lexicons / spec → CI — Required
-```
-
-Railway's GitHub integration deploys the environment that tracks each branch after source
-changes. GitHub Actions validates the repository but does not deploy infrastructure.
-The Railway Database Migrator applies pending database migrations before
-dependent application revisions start.
-
-### Environments
-
-| Environment | Branch | Backend hosting |
-|-------------|--------|-----------------|
-| Production | `main` | Railway Web, Operations Web, Gateway, AppView, Ingress Controller, Projection Pool, Coordinator, Operations, Database Migrator, and Postgres |
-| Development | `dev` | Railway Web, Operations Web, Gateway, AppView, Ingress Controller, Projection Pool, Coordinator, Operations, Database Migrator, and Postgres |
-| Local | — | Web runs in local mode; Swift service integration uses `APP_ENV=dev` plus an isolated disposable Postgres URL |
-
-### Local development
-
-Run Swift services directly as described in the root README, with Gateway,
-AppView, and Charybdis pointed at the same isolated disposable Postgres database.
-SQLite backends remain implemented, but all three process entry points currently
-share the Operations `APP_ENV=dev|prod` guard, so `APP_ENV=local` startup is not
-runnable.
-
-## Verification
-
-See [Test plans](../test-plans/README.md) for commands and coverage inventory per package.
+See the [runtime guide](standalone-reader.md) for configuration, schema initialization and recovery, and [test plans](../test-plans/README.md) for checks. The old [distributed AppView](appview.md), [indexing](indexing-services.md) and [Redis](redis.md) designs are historical references.

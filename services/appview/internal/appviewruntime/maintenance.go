@@ -207,12 +207,24 @@ func pollRSSOnce(ctx context.Context, db *sqlitedb.DB, service *ingest.Service, 
 	if err != nil {
 		return err
 	}
+	return pollRSSFeeds(ctx, feeds, service.RefreshFeed)
+}
+
+// A bounded run may leave backlog for the next oldest-first selection. Do not
+// start another 20-second fetch without time for its database checkpoint, and
+// never update a feed's metadata merely because admission deferred it.
+func pollRSSFeeds(ctx context.Context, feeds []string, refresh func(context.Context, string) (int, error)) error {
+	const feedBudget = 30 * time.Second
 	var failure error
-	for _, feed := range feeds {
+	for index, feed := range feeds {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(failure, err)
 		}
-		_, err := service.RefreshFeed(ctx, feed)
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < feedBudget {
+			slog.Info("RSS poll batch deferred", "attempted", index, "remaining", len(feeds)-index)
+			break
+		}
+		_, err := refresh(ctx, feed)
 		failure = errors.Join(failure, err)
 	}
 	return failure

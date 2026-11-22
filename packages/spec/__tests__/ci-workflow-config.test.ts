@@ -66,7 +66,7 @@ describe("standalone reader CI", () => {
     expect(parsed.on).toHaveProperty("pull_request");
     expect(parsed.on).toHaveProperty("merge_group");
     expect(parsed.on).toHaveProperty("workflow_dispatch");
-    // Railway's wait-for-checks gate needs a suite on the merged branch SHA.
+    // Required release proof also covers the merged branch SHA.
     expect(parsed.on.push).toEqual({ branches: ["main", "dev"] });
     const steps = parsed.jobs.changes.steps;
     expect(steps.some((step: any) => step.run === "node scripts/ci/validated-merge.mjs --receipt")).toBe(true);

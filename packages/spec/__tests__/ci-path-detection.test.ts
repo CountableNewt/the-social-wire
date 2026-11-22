@@ -85,7 +85,6 @@ describe("standalone CI path detection", () => {
     "services/appview/internal/thinstore/store.go",
     "apps/web/package.json",
     "packages/vendor/example/package.json",
-    "railway/appview-standalone.json",
     "package.json", "bun.lock", ".dockerignore",
   ])("checks backend runtime plus schema/source contracts for %s", path => {
     const result = detect(repositoryWithChange(path), "pull_request");
@@ -96,7 +95,6 @@ describe("standalone CI path detection", () => {
     "apps/web/vercel.json",
     "packages/read-state/src/index.ts",
     "packages/spec/__tests__/example.test.ts",
-    "railway/web.json",
   ])("retains cross-client/source contracts without distributed runtime jobs for %s", path => {
     expect(Object.fromEntries(detect(repositoryWithChange(path), "pull_request"))).toEqual({ web: "true", appview: "false", apple: "false" });
   });

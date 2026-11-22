@@ -103,21 +103,31 @@ func openSpecializedServices(ctx context.Context, surface Surface, core config.C
 	cleanups = append(cleanups, client.CloseIdleConnections)
 	services.repo = atproto.NewRepoClient(client, core.PLCURL, logger)
 	if surface.appviewDatabase() {
-		services.db, err = openDatabase(ctx, core)
+		err = startupStage(logger, surface, "appview-open", func() error {
+			var e error
+			services.db, e = openDatabase(ctx, core)
+			return e
+		})
 		if err != nil {
 			return
 		}
 		cleanups = append(cleanups, func() { _ = services.db.Close() })
 	}
 	if surface.draftStorage() {
-		services.drafts, err = drafts.FromEnvironment(services.db, env)
+		err = startupStage(logger, surface, "draft-storage", func() error {
+			var e error
+			services.drafts, e = drafts.FromEnvironment(services.db, env)
+			return e
+		})
 		if err != nil {
 			err = fmt.Errorf("configure draft storage: %w", err)
 			return
 		}
 	}
 	if services.db != nil {
-		if err = verifyRuntimeSchema(ctx, services.db, services.drafts != nil); err != nil {
+		if err = startupStage(logger, surface, "appview-schema", func() error {
+			return verifyRuntimeSchema(ctx, services.db, services.drafts != nil)
+		}); err != nil {
 			return
 		}
 		if services.operations.Enabled {
@@ -130,7 +140,11 @@ func openSpecializedServices(ctx context.Context, surface Surface, core config.C
 		}
 	}
 	if surface.scheduler() {
-		services.scheduling, err = scheduler.Open(ctx, core, env, client, logger)
+		err = startupStage(logger, surface, "scheduling-open", func() error {
+			var e error
+			services.scheduling, e = scheduler.Open(ctx, core, env, client, logger)
+			return e
+		})
 		if err != nil {
 			err = fmt.Errorf("initialize scheduling: %w", err)
 			return

@@ -1,7 +1,7 @@
 name: CI
 
-# GitHub remains the protected source gate during the Railway standalone cutover.
-# Verify the packaged Web and Go SQLite backend processes before Railway source builds.
+# GitHub remains the protected source gate for Vercel releases.
+# Also verify the portable Web and Go SQLite images used for local recovery.
 on:
   push:
     branches: [main, dev]

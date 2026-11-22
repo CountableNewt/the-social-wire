@@ -25,7 +25,10 @@ func (c *tursoConnector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, remoteError(err)
 	}
 	fail := func(err error) (driver.Conn, error) { _ = raw.Close(); return nil, remoteError(err) }
-	if _, err := raw.ExecContext(ctx, "PRAGMA foreign_keys=ON", nil); err != nil {
+	// A fixed two-statement sequence uses the official driver pipeline path,
+	// avoiding cursor-stream EOF delays observed during connection setup.
+	// Verification below remains independent; no user mutation is replayed.
+	if _, err := raw.ExecContext(ctx, "PRAGMA foreign_keys=ON; SELECT 1", nil); err != nil {
 		return fail(err)
 	}
 	rows, err := raw.QueryContext(ctx, "PRAGMA foreign_keys", nil)
@@ -81,7 +84,9 @@ func (c *tursoConnection) BeginTx(ctx context.Context, options driver.TxOptions)
 		query = "BEGIN"
 	}
 	defer c.markActivity()
-	if _, err := c.remoteSession.ExecContext(ctx, query, nil); err != nil {
+	// Control statements use the same bounded pipeline path as initialization.
+	// The official driver refreshes autocommit state after the sequence.
+	if _, err := c.remoteSession.ExecContext(ctx, query+"; SELECT 1", nil); err != nil {
 		return nil, remoteError(err)
 	}
 	c.readOnly = options.ReadOnly
@@ -191,7 +196,7 @@ type tursoTransaction struct {
 }
 
 func (t *tursoTransaction) Commit() error {
-	_, err := t.connection.remoteSession.ExecContext(t.ctx, "COMMIT", nil)
+	_, err := t.connection.remoteSession.ExecContext(t.ctx, "COMMIT; SELECT 1", nil)
 	t.connection.markActivity()
 	t.connection.readOnly = false
 	if err != nil {
@@ -205,7 +210,7 @@ func (t *tursoTransaction) Commit() error {
 func (t *tursoTransaction) Rollback() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := t.connection.remoteSession.ExecContext(ctx, "ROLLBACK", nil)
+	_, err := t.connection.remoteSession.ExecContext(ctx, "ROLLBACK; SELECT 1", nil)
 	t.connection.markActivity()
 	t.connection.readOnly = false
 	if err != nil {

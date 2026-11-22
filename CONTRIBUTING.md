@@ -53,7 +53,7 @@ hosted wiki can drift or be overwritten, so make the source change here first.
 
 ## Branch protection
 
-Require the **`CI — Required`** check from [.github/workflows/ci.yml](.github/workflows/ci.yml) on both `dev` and `main`. It gates merges on path-filtered jobs for Web, Go AppView, native Apple, Lexicons and OpenAPI. Railway deployment remains independent and is handled by Railway's GitHub integration.
+Require the **`CI — Required`** check from [.github/workflows/ci.yml](.github/workflows/ci.yml) on both `dev` and `main`. It gates merges on path-filtered jobs for Web, Go AppView, native Apple, Lexicons and OpenAPI. Vercel hosts two projects: Web and AppView. Each uses `main` for Production and the `dev` branch Preview for Development. Verify Development before promoting the same source to Production.
 
 ## License
 
