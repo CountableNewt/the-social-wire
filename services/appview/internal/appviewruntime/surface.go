@@ -54,6 +54,11 @@ func runSurface(ctx context.Context, surface Surface, args []string, env config.
 	if !surface.valid() {
 		return errors.New("unknown AppView surface")
 	}
+	if enabled, err := migrationMaintenanceEnabled(env); err != nil {
+		return err
+	} else if enabled {
+		return runMigrationMaintenance(ctx, surface, args, env, logger)
+	}
 	if surface == All {
 		return runAll(ctx, args, env, logger)
 	}

@@ -16,7 +16,7 @@ var ErrRemoteDatabase = errors.New("Turso database operation failed")
 
 const tursoPoolSize = 8
 
-// OpenTurso opens the newer Turso engine over its official pure-Go HTTP driver.
+// OpenTurso opens Turso classic libSQL over the official pure-Go HTTP driver.
 // It does not create local files, enable WAL, migrate schemas or retry mutations.
 func OpenTurso(ctx context.Context, endpoint, token string) (*DB, error) {
 	return openTurso(ctx, endpoint, token, &http.Client{Timeout: 20 * time.Second})
@@ -29,8 +29,8 @@ func openTurso(ctx context.Context, endpoint, token string, client *http.Client)
 func openTursoWithIdlePolicy(ctx context.Context, endpoint, token string, client *http.Client, maxIdle time.Duration, now func() time.Time) (*DB, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
-		(parsed.Path != "" && parsed.Path != "/") || parsed.ForceQuery || (parsed.Scheme != "turso" && parsed.Scheme != "https") ||
-		strings.TrimSpace(token) != token || token == "" || strings.ContainsAny(token, "\r\n") {
+		(parsed.Path != "" && parsed.Path != "/") || parsed.ForceQuery || (parsed.Scheme != "libsql" && parsed.Scheme != "turso" && parsed.Scheme != "https") ||
+		strings.TrimSpace(token) != token || token == "" || strings.ContainsAny(token, " \t\r\n") {
 		return nil, errors.New("Turso requires an HTTPS endpoint without credentials or parameters and a separate token")
 	}
 	parsed.Scheme, parsed.Path = "https", ""
