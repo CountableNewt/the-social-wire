@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure or a cutover stage retired in #963. Do not apply its deployment commands. Current runtime, initialization and recovery guidance is in `docs/architecture/standalone-reader.md`.
+
 # Embedded scheduling cutover
 
 The Social Wire Web backend prepares Standard.site records locally. Immediate article publishing continues to write through the viewer's PDS session. Scheduled posts and articles keep their `at.skej.schedule` records, schedule URIs, and publication keys. Standalone AppView owns the queue and runs the scheduler after cutover.

@@ -192,7 +192,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.checkpoint(ctx); err != nil {
 		return err
 	}
-	if _, err := s.db.Writer().ExecContext(ctx, "UPDATE auth_vault_cleanup SET pending=0 WHERE id=1"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE auth_vault_cleanup SET pending=0 WHERE id=1"); err != nil {
 		return err
 	}
 	return s.checkpoint(ctx)

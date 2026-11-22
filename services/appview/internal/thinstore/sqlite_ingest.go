@@ -14,8 +14,7 @@ type SQLiteIngestStore struct {
 	DB *sqlitedb.DB
 }
 
-func (s SQLiteIngestStore) UpsertContentItem(ctx context.Context, item IndexedContentItem) error {
-	_, err := s.writeContentItem(ctx, item, `
+const contentUpsertConflict = `
 		DO UPDATE SET
 			cid=excluded.cid,author_did=excluded.author_did,collection=excluded.collection,
 			created_at=excluded.created_at,indexed_at=excluded.indexed_at,created_at_us=excluded.created_at_us,indexed_at_us=excluded.indexed_at_us,publication_site=excluded.publication_site,
@@ -24,7 +23,10 @@ func (s SQLiteIngestStore) UpsertContentItem(ctx context.Context, item IndexedCo
 			content_items.publication_site,content_items.render_json,content_items.expires_at)
 		IS NOT (excluded.cid,excluded.author_did,excluded.collection,excluded.created_at,
 			excluded.publication_site,excluded.render_json,excluded.expires_at)
-	`)
+	`
+
+func (s SQLiteIngestStore) UpsertContentItem(ctx context.Context, item IndexedContentItem) error {
+	_, err := s.writeContentItem(ctx, item, contentUpsertConflict)
 	return err
 }
 
@@ -33,26 +35,34 @@ func (s SQLiteIngestStore) InsertContentItemIfAbsent(ctx context.Context, item I
 }
 
 func (s SQLiteIngestStore) writeContentItem(ctx context.Context, item IndexedContentItem, conflict string) (bool, error) {
-	createdAt, indexedAt := pdsTimestamp(item.CreatedAt), isoString(item.IndexedAt)
-	createdMicros, err := sqlitedb.TimestampMicroseconds(createdAt)
+	args, err := contentItemValues(item)
 	if err != nil {
 		return false, err
 	}
-	indexedMicros, err := sqlitedb.TimestampMicroseconds(indexedAt)
-	if err != nil {
-		return false, err
-	}
-	result, err := s.DB.Writer().ExecContext(ctx, `
+	result, err := s.DB.ExecContext(ctx, `
 		INSERT INTO content_items
 			(uri,cid,author_did,collection,created_at,indexed_at,created_at_us,indexed_at_us,publication_site,render_json,expires_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uri) `+conflict,
-		item.URI, item.CID, item.AuthorDID, item.Collection, createdAt,
-		indexedAt, createdMicros, indexedMicros, item.PublicationSite, item.Render.EncodedJSON(), isoString(item.ExpiresAt))
+		args...)
 	if err != nil {
 		return false, err
 	}
 	count, err := result.RowsAffected()
 	return count > 0, err
+}
+
+func contentItemValues(item IndexedContentItem) ([]any, error) {
+	createdAt, indexedAt := pdsTimestamp(item.CreatedAt), isoString(item.IndexedAt)
+	createdMicros, err := sqlitedb.TimestampMicroseconds(createdAt)
+	if err != nil {
+		return nil, err
+	}
+	indexedMicros, err := sqlitedb.TimestampMicroseconds(indexedAt)
+	if err != nil {
+		return nil, err
+	}
+	return []any{item.URI, item.CID, item.AuthorDID, item.Collection, createdAt,
+		indexedAt, createdMicros, indexedMicros, item.PublicationSite, item.Render.EncodedJSON(), isoString(item.ExpiresAt)}, nil
 }
 
 func (s SQLiteIngestStore) HasContentItem(ctx context.Context, uri string) (bool, error) {
@@ -84,7 +94,15 @@ func (s SQLiteIngestStore) FetchRssFeedMetadata(ctx context.Context, feed string
 }
 
 func (s SQLiteIngestStore) StoreRssFeedMetadata(ctx context.Context, metadata RssFeedFetchMetadata) error {
-	_, err := s.DB.Writer().ExecContext(ctx, `
+	return storeRSSMetadata(ctx, s.DB, metadata)
+}
+
+type ingestExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func storeRSSMetadata(ctx context.Context, executor ingestExecutor, metadata RssFeedFetchMetadata) error {
+	_, err := executor.ExecContext(ctx, `
 		INSERT INTO rss_feed_fetch_metadata
 			(feed_url,etag,last_modified,last_poll_at,backoff_until,consecutive_error_count)
 		VALUES(?,?,?,?,?,?)
@@ -116,7 +134,7 @@ func (s SQLiteIngestStore) CompareAndSwapContent(ctx context.Context, item Index
 	if err != nil {
 		return false, err
 	}
-	result, err := s.DB.Writer().ExecContext(ctx, `
+	result, err := s.DB.ExecContext(ctx, `
 		UPDATE content_items SET cid=?,author_did=?,collection=?,created_at=?,indexed_at=?,created_at_us=?,indexed_at_us=?,
 			publication_site=?,render_json=?,expires_at=? WHERE uri=? AND cid=?
 	`, item.CID, item.AuthorDID, item.Collection, createdAt, indexedAt, createdMicros, indexedMicros,

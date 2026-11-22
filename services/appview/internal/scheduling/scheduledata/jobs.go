@@ -116,7 +116,7 @@ func saveJob(ctx context.Context, db storeExecer, job ScheduledJob, now string, 
 }
 
 func (s *Store) UpsertScheduleJob(ctx context.Context, job ScheduledJob, now string) error {
-	return saveJob(ctx, s.db.Writer(), job, now, true)
+	return saveJob(ctx, s.db, job, now, true)
 }
 
 func (s *Store) InsertScheduleJobIfMissing(ctx context.Context, job ScheduledJob, now string) error {
@@ -145,7 +145,7 @@ func (s *Store) ScheduleJob(ctx context.Context, did, rkey string) (*ScheduledJo
 }
 
 func (s *Store) DeleteScheduleJob(ctx context.Context, did, rkey string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM scheduled_jobs WHERE did=? AND rkey=?", did, rkey)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM scheduled_jobs WHERE did=? AND rkey=?", did, rkey)
 	return err
 }
 
@@ -169,7 +169,7 @@ func (s *Store) ClaimScheduleEdit(ctx context.Context, did, rkey, leaseID, now, 
 }
 
 func (s *Store) ReleaseScheduleEdit(ctx context.Context, did, rkey, leaseID string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "DELETE FROM schedule_edit_leases WHERE did=? AND rkey=? AND lease_id=?", did, rkey, leaseID)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM schedule_edit_leases WHERE did=? AND rkey=? AND lease_id=?", did, rkey, leaseID)
 	return err
 }
 
@@ -207,19 +207,19 @@ func (s *Store) BlockedJobs(ctx context.Context) ([]ScheduledJob, error) {
 }
 
 func (s *Store) MarkJobScheduled(ctx context.Context, did, rkey string, parentPublishedURI *string, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, `UPDATE scheduled_jobs SET status='scheduled',parent_published_uri=?,
+	_, err := s.db.ExecContext(ctx, `UPDATE scheduled_jobs SET status='scheduled',parent_published_uri=?,
 		last_error=NULL,updated_at=? WHERE did=? AND rkey=?`, parentPublishedURI, now, did, rkey)
 	return err
 }
 
 func (s *Store) MarkJobPublished(ctx context.Context, did, rkey, uri, cid, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, `UPDATE scheduled_jobs SET status='published',published_uri=?,
+	_, err := s.db.ExecContext(ctx, `UPDATE scheduled_jobs SET status='published',published_uri=?,
 		published_cid=?,last_error=NULL,next_attempt_at=NULL,updated_at=? WHERE did=? AND rkey=?`, uri, cid, now, did, rkey)
 	return err
 }
 
 func (s *Store) UpdatePublishRKey(ctx context.Context, did, rkey, publishRKey, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, "UPDATE scheduled_jobs SET publish_rkey=?,updated_at=? WHERE did=? AND rkey=?", publishRKey, now, did, rkey)
+	_, err := s.db.ExecContext(ctx, "UPDATE scheduled_jobs SET publish_rkey=?,updated_at=? WHERE did=? AND rkey=?", publishRKey, now, did, rkey)
 	return err
 }
 
@@ -240,13 +240,13 @@ func (s *Store) markJobError(ctx context.Context, did, rkey string, status sched
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Writer().ExecContext(ctx, `UPDATE scheduled_jobs SET status=?,last_error=?,
+	_, err = s.db.ExecContext(ctx, `UPDATE scheduled_jobs SET status=?,last_error=?,
 		next_attempt_at=COALESCE(?,next_attempt_at),updated_at=? WHERE did=? AND rkey=?`, status, string(raw), nextAttemptAt, now, did, rkey)
 	return err
 }
 
 func (s *Store) RememberScheduleSubmission(ctx context.Context, did, rkey, now string) error {
-	_, err := s.db.Writer().ExecContext(ctx, `INSERT OR IGNORE INTO pending_schedule_submissions(did,rkey,next_check_at,created_at)
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO pending_schedule_submissions(did,rkey,next_check_at,created_at)
 		VALUES(?,?,?,?)`, did, rkey, now, now)
 	return err
 }

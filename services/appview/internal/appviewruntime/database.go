@@ -34,7 +34,7 @@ func invalidateRuntimeSchema(ctx context.Context, db *sqlitedb.DB) error {
 	if exists == 0 {
 		return nil
 	}
-	_, err := db.Writer().ExecContext(ctx, "DELETE FROM appview_schema_readiness")
+	_, err := db.ExecContext(ctx, "DELETE FROM appview_schema_readiness")
 	return err
 }
 
@@ -51,7 +51,10 @@ func markRuntimeSchema(ctx context.Context, db *sqlitedb.DB, draftsEnabled bool)
 func verifyRuntimeSchemaMarker(ctx context.Context, db *sqlitedb.DB, draftsEnabled bool) error {
 	var version string
 	var draftsReady bool
-	if err := db.Reader().QueryRowContext(ctx, "SELECT version,drafts_enabled FROM appview_schema_readiness WHERE singleton=1").Scan(&version, &draftsReady); err != nil || version != runtimeSchemaVersion || (draftsEnabled && !draftsReady) {
+	if err := db.Reader().QueryRowContext(ctx, "SELECT version,drafts_enabled FROM appview_schema_readiness WHERE singleton=1").Scan(&version, &draftsReady); err != nil {
+		return fmt.Errorf("verify AppView schema readiness: %w", err)
+	}
+	if version != runtimeSchemaVersion || (draftsEnabled && !draftsReady) {
 		return errors.New("AppView schema is not ready; run AppView --initialize-only before serving Turso")
 	}
 	return nil

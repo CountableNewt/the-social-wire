@@ -1,3 +1,5 @@
+> Historical reference: this document describes infrastructure or a cutover stage retired in #963. Do not apply its deployment commands. Current runtime, initialization and recovery guidance is in `docs/architecture/standalone-reader.md`.
+
 # Redis cache, coordination, and ranking
 
 Redis is an optional, disposable acceleration layer for hosted Gateway, AppView, and Charybdis processes. PDS records remain authoritative on the relevant repository, and Postgres remains authoritative for rebuildable source/index state such as `content_items`, read marks and floors, materialized unread counters, RSS fetch metadata, ingestion/repair state, and Operations evidence. Flushing or losing Redis must not lose durable state or make `/readyz` fail.
