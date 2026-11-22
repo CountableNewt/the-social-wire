@@ -52,6 +52,8 @@ func (s *service) requireReadState(next httpx.Handler) httpx.Handler {
 		status, err := pdsStatus(r.Context(), s.db.Reader(), auth.DID)
 		if err == nil {
 			s.reconcileForRequest(r.Context(), auth.DID, status)
+		} else {
+			logDatabaseFailure(r.Context(), "read-state-status", err)
 		}
 		if (err == nil && status.ProjectionReady) || r.URL.Path == readStateStatusPath {
 			return next(w, r)
