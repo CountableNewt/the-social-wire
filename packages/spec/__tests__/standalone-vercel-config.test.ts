@@ -8,6 +8,7 @@ import { registeredGoRoutes } from "./helpers/goRoutes";
 
 const root = join(import.meta.dir, "../../..");
 const backend = appViewVercelConfig("prod", "production");
+const frontend = JSON.parse(readFileSync(join(root, "apps/web/vercel.json"), "utf8"));
 const build = readFileSync(join(root, "services/appview/scripts/vercel-build.sh"), "utf8");
 
 function runBuildScript(surface: string, environment: Record<string, string>, verify: (result: ReturnType<typeof spawnSync>, directory: string) => void) {
@@ -39,6 +40,15 @@ chmod +x "$VERCEL_OUTPUT_FILE"
 }
 
 describe("standalone Vercel AppView contract", () => {
+  it("only automatically deploys main and dev for both projects, including denying slash-named feature branches", () => {
+    // Minimatch's * excludes path separators; ** closes the slash-branch gap.
+    // Vercel gives an explicit true match precedence over matching false rules.
+    const allowlist = { main: true, dev: true, "*": false, "**": false };
+    for (const config of [backend, appViewVercelConfig("dev", "preview", "dev"), frontend]) {
+      expect(config.git.deploymentEnabled).toEqual(allowlist);
+    }
+  });
+
   it("builds six Go surfaces with unchanged API ingress and runtime bounds", () => {
     expect(appViewSurfaces).toEqual(["reader", "publishing", "scheduling", "analytics", "integrations", "maintenance"]);
     expect(Object.keys(backend.services)).toEqual([...appViewSurfaces]);
@@ -119,7 +129,7 @@ describe("standalone Vercel AppView contract", () => {
         jitter: 15,
       },
     });
-    const development = appViewVercelConfig("dev", "production");
+    const development = appViewVercelConfig("dev", "preview", "dev");
     expect(development.schedules.maintenance?.schedule).toBe("0 * * * *");
     // One run per quarter-hour in Production and per hour in Development.
     const largestMonthRuns = (4 + 1) * 24 * 31;
@@ -130,16 +140,44 @@ describe("standalone Vercel AppView contract", () => {
     expect(JSON.stringify(backend)).not.toContain("TURSO_AUTH_TOKEN");
   });
 
-  it("does not schedule maintenance for previews or local development", () => {
-    for (const environment of ["preview", "development", undefined]) {
-      expect(appViewVercelConfig("prod", environment).schedules).toEqual({});
-      expect(appViewVercelConfig("dev", environment).schedules).toEqual({});
+  it("schedules only the exact Development Preview branch and leaves other previews or local runs idle", () => {
+    expect(appViewVercelConfig("dev", "preview", "dev").schedules).toEqual({
+      maintenance: {
+        schedule: "0 * * * *",
+        path: "/internal/schedules/maintenance",
+        requestMethod: "GET",
+        timezone: "UTC",
+        jitter: 15,
+      },
+    });
+    for (const appEnvironment of ["prod", "local", "development", "typo", undefined]) {
+      expect(appViewVercelConfig(appEnvironment, "preview", "dev").schedules).toEqual({});
     }
+    for (const branch of ["main", "feature/dev", "refs/heads/dev", "Dev", "dev ", "", undefined]) {
+      expect(appViewVercelConfig("dev", "preview", branch).schedules).toEqual({});
+    }
+    for (const environment of ["development", "local", undefined]) {
+      expect(appViewVercelConfig("prod", environment, "main").schedules).toEqual({});
+      expect(appViewVercelConfig("dev", environment, "dev").schedules).toEqual({});
+    }
+    expect(appViewVercelConfig("prod", "preview", "main").schedules).toEqual({});
+    expect(appViewVercelConfig("prod", "production", "main").schedules).toEqual(backend.schedules);
     // Missing or unexpected app environments cannot increase schedule frequency.
     for (const environment of [undefined, "local", "production", "typo"]) {
       expect(appViewVercelConfig(environment, "production").schedules.maintenance?.schedule)
         .toBe("0 * * * *");
     }
+  });
+
+  it("builds the Development Preview without automatic shared-store initialization", () => {
+    runBuildScript("maintenance", {
+      VERCEL_ENV: "preview", APP_ENV: "dev", VERCEL_GIT_COMMIT_REF: "dev",
+      DEPLOY_SCHEMA_INITIALIZATION: "false",
+    }, (result, directory) => {
+      expect(result.status, result.stderr?.toString()).toBe(0);
+      expect(existsSync(join(directory, "build-arguments"))).toBe(true);
+      expect(existsSync(join(directory, "initialize-arguments"))).toBe(false);
+    });
   });
 
   it("never passes an arbitrary package path to the Go builder", () => {

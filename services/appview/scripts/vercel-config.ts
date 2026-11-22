@@ -1,5 +1,6 @@
 // Production and Development share the team's Hobby schedule allowance. Keep
-// one dispatcher per release project; previews must never start maintenance.
+// one dispatcher per release environment. Only the explicitly configured dev
+// Preview branch may declare Development maintenance; other previews stay idle.
 export const appViewSurfaces = ["reader", "publishing", "scheduling", "analytics", "integrations", "maintenance"] as const;
 export type AppViewSurface = typeof appViewSurfaces[number];
 
@@ -26,8 +27,9 @@ export function appViewSurfaceForPath(path: string): AppViewSurface {
   return appViewRouteOwnership.find(rule => rule.path === path || (rule.prefix && path.startsWith(rule.prefix)))?.surface ?? "reader";
 }
 
-export function appViewVercelConfig(appEnv?: string, vercelEnv?: string) {
-  const schedules = vercelEnv === "production"
+export function appViewVercelConfig(appEnv?: string, vercelEnv?: string, gitBranch?: string) {
+  const developmentPreview = vercelEnv === "preview" && appEnv === "dev" && gitBranch === "dev";
+  const schedules = vercelEnv === "production" || developmentPreview
     ? {
         maintenance: {
           schedule: appEnv === "prod" ? "*/15 * * * *" : "0 * * * *",
@@ -41,6 +43,7 @@ export function appViewVercelConfig(appEnv?: string, vercelEnv?: string) {
 
   return {
     "$schema": "https://openapi.vercel.sh/vercel.json",
+    git: { deploymentEnabled: { main: true, dev: true, "*": false, "**": false } },
     env: {
       RUNTIME_MODE: "serverless",
       DATABASE_BACKEND: "turso",
