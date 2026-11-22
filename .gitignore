@@ -55,6 +55,7 @@ coverage/
 apps/apple/*.xcodeproj/project.xcworkspace/xcuserdata/*/UserInterfaceState.xcuserstate
 
 # Production database migration artifacts
+/.migration-backups/
 
 # Railway CLI project/service link metadata
 .railway/
