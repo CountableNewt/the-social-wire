@@ -95,12 +95,12 @@ describe("Social Wire XRPC lexicons", () => {
     }
   });
 
-  it("keeps Operations metric filters and gap statuses aligned with the service contract", () => {
+  it("preserves published Operations metric filter limits and compatible gap statuses", () => {
     const metrics = JSON.parse(
       readFileSync(fileForNsid("app.thesocialwire.operations.listMetrics"), "utf8")
     );
-    expect(metrics.defs.main.parameters.properties.metric.maxLength).toBe(160);
-    expect(metrics.defs.main.parameters.properties.collection.maxLength).toBe(256);
+    expect(metrics.defs.main.parameters.properties.metric.maxLength).toBe(256);
+    expect(metrics.defs.main.parameters.properties.collection.maxLength).toBe(512);
 
     const updateGap = JSON.parse(
       readFileSync(fileForNsid("app.thesocialwire.operations.updateGap"), "utf8")
