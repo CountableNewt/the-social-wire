@@ -15,8 +15,10 @@ import Testing
   }
   private func fixture() throws -> Fixture {
     var root = URL(fileURLWithPath: #filePath)
-    for _ in 0..<5 { root.deleteLastPathComponent() }
-    return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: root.appendingPathComponent("read-state/fixtures/v2-foundation.json")))
+    // The native package lives under apps/apple/Packages; the vectors remain
+    // shared with the web implementation under the repository's packages tree.
+    for _ in 0..<7 { root.deleteLastPathComponent() }
+    return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: root.appendingPathComponent("packages/read-state/fixtures/v2-foundation.json")))
   }
   @Test func sharedVectorsPreserveWholeIntentHashesAndOriginalMetadata() throws {
     let f = try fixture()
